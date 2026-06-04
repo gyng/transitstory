@@ -42,7 +42,7 @@ const EMPTY_STATS: Stats = {
 };
 
 export type Mode = "build" | "run";
-export type Tool = "select" | "station" | "line";
+export type Tool = "select" | "station" | "line" | "bulldozer";
 
 export class Game {
   mode: Mode = "build";
@@ -324,13 +324,15 @@ export class Game {
   /** Live preview of the in-progress route for the build HUD (client-side geometry; the $ cost
    *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
    *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
-  draftPreview(): { stops: number; lengthKm: number; invalid: boolean } {
+  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean } {
     const sv = this.bridge.stationsView();
     const pts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
     if (this.cursor) pts.push(lngLatToMm(this.cursor));
     let mm = 0;
     for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    return { stops: this.draft.length, lengthKm: mm / 1_000_000, invalid: this.draftInvalid() };
+    // Authoritative construction cost (track only) from the core, in $millions; 0 until 2 stops.
+    const cost = this.draft.length >= 2 ? this.bridge.previewLineCost(this.draft, this.transport, false) : 0;
+    return { stops: this.draft.length, lengthKm: mm / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid() };
   }
 
   // --- geometry helpers ---
@@ -340,6 +342,7 @@ export class Game {
     let best: number | null = null;
     let bestD = maxPx;
     for (const s of this.bridge.stationsView()) {
+      if (s.removed) continue;
       const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
       const p = this.map.project([lng, lat]);
       const d = Math.hypot(p.x - px, p.y - py);
@@ -351,6 +354,55 @@ export class Game {
     return best;
   }
 
+  /** Nearest non-removed line to a screen pixel (min distance from the pixel to the line's
+   *  projected polyline), within `maxPx`. Used by the bulldozer to target a whole line. */
+  nearestLine(px: number, py: number, maxPx = SNAP_PX + 6): number | null {
+    let best: number | null = null;
+    let bestD = maxPx;
+    const segDist = (a: [number, number], b: [number, number]): number => {
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+    };
+    for (const l of this.bridge.linesView()) {
+      if (l.removed || l.polylineMm.length < 2) continue;
+      const pts = l.polylineMm.map(([x, y]) => {
+        const [lng, lat] = mmToLngLat([x, y]);
+        const p = this.map.project([lng, lat]);
+        return [p.x, p.y] as [number, number];
+      });
+      for (let i = 1; i < pts.length; i++) {
+        const d = segDist(pts[i - 1], pts[i]);
+        if (d <= bestD) {
+          bestD = d;
+          best = l.id;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Bulldoze under a screen pixel: remove the nearest station within snap radius, else the
+   *  nearest line. One undoable Command each (undo = rebuild from seed + log[..-1]). */
+  bulldozeAt(px: number, py: number): void {
+    const st = this.nearestStation(px, py);
+    if (st !== null) {
+      this.noteRejections(this.bridge.apply(cmd.removeStation(st)));
+      if (this.selectedStation === st) this.selectedStation = null;
+      this.refresh();
+      return;
+    }
+    const ln = this.nearestLine(px, py);
+    if (ln !== null) {
+      this.noteRejections(this.bridge.apply(cmd.removeLine(ln)));
+      if (this.selectedLine === ln) this.selectedLine = null;
+      this.refresh();
+    }
+  }
+
   // --- rendering ---
 
   private buildView(): RenderView {
@@ -359,10 +411,12 @@ export class Game {
     const highlight =
       this.selectedStation ?? this.hoveredStation ?? null;
 
-    const stations = stationsV.map((s) => {
-      const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-      return { id: s.id, lng, lat, name: s.name, selected: s.id === this.selectedStation };
-    });
+    const stations = stationsV
+      .filter((s) => !s.removed)
+      .map((s) => {
+        const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+        return { id: s.id, lng, lat, name: s.name, selected: s.id === this.selectedStation };
+      });
 
     const catchments =
       highlight === null
@@ -374,13 +428,15 @@ export class Game {
               return { lng, lat, radiusM: CATCHMENT_M };
             });
 
-    const lines = linesV.map((l) => ({
-      id: l.id,
-      // A line with surface track over water renders red until elevated/tunnelled.
-      color: l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color),
-      path: l.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
-      mode: l.mode, // heavy/high-speed rail (4) gets distinct mainline styling
-    }));
+    const lines = linesV
+      .filter((l) => !l.removed)
+      .map((l) => ({
+        id: l.id,
+        // A line with surface track over water renders red until elevated/tunnelled.
+        color: l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color),
+        path: l.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
+        mode: l.mode, // heavy/high-speed rail (4) gets distinct mainline styling
+      }));
 
     // Blueprint: draft station positions + live cursor (T11 populates draft).
     const blueprint: [number, number][] = this.draft.map((id) => {

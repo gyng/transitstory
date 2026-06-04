@@ -34,6 +34,11 @@ export function attachPointer(game: Game): void {
       return;
     }
 
+    if (game.mode === "build" && game.tool === "bulldozer") {
+      game.bulldozeAt(px, py); // remove nearest station, else nearest line — stays armed
+      return;
+    }
+
     // Select tool (or run mode): pick the nearest station.
     game.selectStation(game.nearestStation(px, py));
   });

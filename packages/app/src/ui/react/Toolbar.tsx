@@ -15,12 +15,14 @@ const TOOL_HINT: Record<Tool, string> = {
   station: "Click to place · hold Ctrl/Shift to place several · Esc or right-click to stop",
   line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
   select: "Click a station or line to inspect it",
+  bulldozer: "Click a station or line to demolish it · Esc or right-click to stop",
 };
 
 const TOOLS: [Tool, string][] = [
   ["station", "◉ Stations"],
   ["line", "╱ Draw line"],
   ["select", "▣ Select"],
+  ["bulldozer", "💥 Bulldoze"],
 ];
 
 const SPEEDS: [number, string][] = [
@@ -195,6 +197,7 @@ export function Toolbar() {
           <div style={{ display: "flex", gap: 6 }}>
             {TOOLS.map(([t, label]) => {
               const on = ui.tool === t;
+              const activeBg = t === "bulldozer" ? "#d62828" : "#1c2024"; // bulldozer reads destructive
               return (
                 <Button
                   key={t}
@@ -203,9 +206,9 @@ export function Toolbar() {
                   onClick={() => game.setTool(t)}
                   style={{
                     flex: 1,
-                    background: on ? "#1c2024" : "#fff",
+                    background: on ? activeBg : "#fff",
                     color: on ? "#fff" : "#1c2024",
-                    borderColor: on ? "#1c2024" : "#d7dade",
+                    borderColor: on ? activeBg : "#d7dade",
                   }}
                 />
               );

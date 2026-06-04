@@ -10,7 +10,9 @@ export type Command =
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
   | { SetRunning: { running: boolean } }
-  | { SetEconomy: { enabled: boolean } };
+  | { SetEconomy: { enabled: boolean } }
+  | { RemoveStation: { station: number } }
+  | { RemoveLine: { line: number } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -21,6 +23,8 @@ export type Event =
   | { SegmentModeSet: { line: number; span: number; mode: number } }
   | { RunningSet: { running: boolean } }
   | { EconomySet: { enabled: boolean } }
+  | { StationRemoved: { station: number } }
+  | { LineRemoved: { line: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -82,6 +86,7 @@ export interface StationView {
   xMm: number;
   yMm: number;
   name: string;
+  removed: boolean;
 }
 
 export interface LineView {
@@ -95,6 +100,7 @@ export interface LineView {
   minRadiusMm: number;
   spanModes: number[];
   crossesWaterSurface: boolean;
+  removed: boolean;
 }
 
 /** The committed city manifest (frontend-facing fields; demand grid embedded for the sim). */

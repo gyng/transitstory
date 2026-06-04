@@ -94,4 +94,10 @@ export class SimBridge {
   linesView(): LineView[] {
     return this.sim.linesView() as LineView[];
   }
+
+  /** Authoritative construction-cost ($, track only) for a hypothetical line — the build HUD's
+   *  preview figure (read-only; never mutates state). */
+  previewLineCost(stationIds: number[], mode: number, loopLine: boolean): number {
+    return this.sim.previewLineCost(new Uint32Array(stationIds), mode, loopLine);
+  }
 }

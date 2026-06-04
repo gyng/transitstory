@@ -23,6 +23,7 @@ export function BuildHud() {
 
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
+  const cost = p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
 
   return (
     <div
@@ -47,6 +48,12 @@ export function BuildHud() {
       <span data-testid="build-hud-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
       <span style={{ opacity: 0.55 }}>·</span>
       <span>~{km} km</span>
+      {p.costM > 0 && (
+        <>
+          <span style={{ opacity: 0.55 }}>·</span>
+          <span data-testid="build-hud-cost">{cost}</span>
+        </>
+      )}
       {p.invalid && (
         <>
           <span style={{ opacity: 0.55 }}>·</span>

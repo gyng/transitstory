@@ -24,6 +24,10 @@ export const cmd = {
   }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
   setEconomy: (enabled: boolean): Command => ({ SetEconomy: { enabled } }),
+  /** Bulldoze a station (tombstone; dropped from any line through it). */
+  removeStation: (station: number): Command => ({ RemoveStation: { station } }),
+  /** Bulldoze a whole line (tombstone; its vehicles despawn). */
+  removeLine: (line: number): Command => ({ RemoveLine: { line } }),
 };
 
 export const WHOLE_LINE = 0xffffffff;
