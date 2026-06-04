@@ -1,6 +1,6 @@
 // Shared UI constants + tiny formatters used across the React chrome. Kept framework-free
 // (no JSX) so both presentational components and the provider can import it. Mode ids match
-// crates/sim trainset::tmode (0 rail,1 bus,2 ferry,3 air).
+// crates/sim trainset::tmode (0 rail,1 bus,2 ferry,3 air,4 heavy/high-speed rail).
 
 export interface ModeDef {
   id: number;
@@ -20,9 +20,11 @@ export const MODES: ModeDef[] = [
     hint: "Terminals on the waterfront — routes cross open water with no track to build." },
   { id: 3, key: "4", icon: "✈", name: "Plane", color: "#cc79a7",
     hint: "Airports for long hops — flies over anything, at any distance." },
+  { id: 4, key: "5", icon: "🚄", name: "Heavy Rail", color: "#9467bd",
+    hint: "High-speed / mainline rail — very fast and high-capacity, but expensive and needs grade-separated track (elevate or tunnel through built-up land and water)." },
 ];
 
-export const MODE_ICON = ["🚇", "🚌", "⛴", "✈"];
+export const MODE_ICON = ["🚇", "🚌", "⛴", "✈", "🚄"];
 export function modeIcon(m: number): string {
   return MODE_ICON[m] ?? "🚇";
 }

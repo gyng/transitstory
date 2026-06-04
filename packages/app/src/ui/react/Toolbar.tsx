@@ -1,13 +1,21 @@
-// Chorded bottom bar: four big transport-mode buttons (1 Rail / 2 Bus / 3 Ferry / 4 Plane)
-// drive construction; selecting one opens its build controls in a popover ABOVE the bar.
-// Right of the modes: Run/Build, speed, the Demand map-layer toggle, and Settings. Keyboard
-// 1–4 chord the modes. Emits to Game / GameLoop only (never mutates sim state directly).
+// Chorded bottom bar: big transport-mode buttons (1 Rail / 2 Bus / 3 Ferry / 4 Plane /
+// 5 Heavy Rail) drive construction; selecting one opens its build controls in a popover ABOVE
+// the bar. Right of the modes: Run/Build, speed, the Demand map-layer toggle, and Settings.
+// Keyboard 1–5 chord the modes. Emits to Game / GameLoop only (never mutates sim state directly).
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Tool } from "../../game";
 import { useGame, useGameUI, useLoop } from "./GameContext";
 import { MODES, type ModeDef } from "./shared";
 import { Settings } from "./Settings";
+import { BuildHud } from "./BuildHud";
+
+// Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
+const TOOL_HINT: Record<Tool, string> = {
+  station: "Click to place · hold Ctrl/Shift to place several · Esc or right-click to stop",
+  line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
+  select: "Click a station or line to inspect it",
+};
 
 const TOOLS: [Tool, string][] = [
   ["station", "◉ Stations"],
@@ -158,6 +166,8 @@ export function Toolbar() {
           pointerEvents: "none",
         }}
       >
+        {/* live route readout (stops · length · validity) while drawing */}
+        <BuildHud />
         {/* build-controls popover (opens above the bar for the active mode) */}
         <div
           id="mode-controls"
@@ -201,6 +211,7 @@ export function Toolbar() {
               );
             })}
           </div>
+          <div style={{ color: "#9aa3ad", font: "11px system-ui,sans-serif" }}>{TOOL_HINT[ui.tool]}</div>
         </div>
 
         {/* the chord bar (wraps on narrow viewports rather than overflowing) */}

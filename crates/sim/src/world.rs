@@ -32,6 +32,10 @@ pub const FARE: i64 = 2; // $ per boarding
 const PER_KM_SURFACE: i64 = 8_000_000;
 const PER_KM_ELEVATED: i64 = 30_000_000;
 const PER_KM_TUNNEL: i64 = 90_000_000;
+// Heavy / high-speed rail needs dedicated, grade-separated right-of-way: far pricier per km.
+const PER_KM_HSR_SURFACE: i64 = 24_000_000;
+const PER_KM_HSR_ELEVATED: i64 = 60_000_000;
+const PER_KM_HSR_TUNNEL: i64 = 180_000_000;
 const TAKING_PER_KM_BUILT: i64 = 6_000_000;
 const TRAIN_COST: i64 = 15_000_000;
 // Recurring maintenance (opex), accrued only while the economy is ON and running. A slow drain
@@ -268,11 +272,16 @@ impl World {
                 if blocks_on_water && c == class::WATER && m == mode::SURFACE {
                     water = true;
                 }
-                // Capital per metre by transport mode (rail also by build-mode).
+                // Capital per metre by transport mode (rail/heavy also by build-mode).
                 let per_km = match tm {
                     tmode::BUS => 3_000_000,
                     tmode::FERRY => 5_000_000,
                     tmode::AIR => 1_000_000,
+                    tmode::HEAVY => match m {
+                        mode::ELEVATED => PER_KM_HSR_ELEVATED,
+                        mode::TUNNEL => PER_KM_HSR_TUNNEL,
+                        _ => PER_KM_HSR_SURFACE,
+                    },
                     _ => match m {
                         mode::ELEVATED => PER_KM_ELEVATED,
                         mode::TUNNEL => PER_KM_TUNNEL,
@@ -280,7 +289,8 @@ impl World {
                     },
                 };
                 capital += per_km * seg_m / 1000;
-                if tm == tmode::RAIL && c == class::BUILT && m == mode::SURFACE {
+                // Surface track through built-up land takes land (rail + heavy rail).
+                if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
                     capital += TAKING_PER_KM_BUILT * seg_m / 1000;
                 }
             }

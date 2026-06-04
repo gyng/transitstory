@@ -29,7 +29,7 @@ export const cmd = {
 export const WHOLE_LINE = 0xffffffff;
 export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;
 /** Transport mode (Line.mode in the sim). Matches crates/sim trainset::tmode. */
-export const TRANSPORT = { RAIL: 0, BUS: 1, FERRY: 2, AIR: 3 } as const;
+export const TRANSPORT = { RAIL: 0, BUS: 1, FERRY: 2, AIR: 3, HEAVY: 4 } as const;
 export type TransportMode = (typeof TRANSPORT)[keyof typeof TRANSPORT];
 
 export function encodeCommand(c: Command): string {

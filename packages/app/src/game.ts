@@ -52,7 +52,7 @@ export class Game {
   transport = 0;
   /** Which transport modes are enabled (settings panel). Disabled modes can't be selected
    *  in the chorded bar — a frontend gate; the sim is mode-agnostic about availability. */
-  enabledModes = new Set([0, 1, 2, 3]);
+  enabledModes = new Set([0, 1, 2, 3, 4]);
   /** Demand-heat map layer toggle + its source points (lng/lat + weight), set at boot. */
   showDemand = false;
   demandHeat: import("./render").DemandPoint[] = [];
@@ -228,7 +228,7 @@ export class Game {
     if (on) this.enabledModes.add(mode);
     else this.enabledModes.delete(mode);
     if (!this.enabledModes.has(this.transport)) {
-      const next = [0, 1, 2, 3].find((m) => this.enabledModes.has(m));
+      const next = [0, 1, 2, 3, 4].find((m) => this.enabledModes.has(m));
       if (next !== undefined) this.transport = next;
     }
     this.refresh();
@@ -277,6 +277,62 @@ export class Game {
     else this.refresh();
   }
 
+  /** Undo the last placed waypoint in the in-progress route (Backspace). */
+  popDraft(): void {
+    if (this.draft.length === 0) return;
+    this.draft.pop();
+    if (this.draft.length === 0) this.map.dragPan.enable();
+    this.refresh();
+  }
+
+  /** Esc / right-click: a two-stage "stop" — first abandon the in-progress route, then (if
+   *  nothing is pending) leave the build tool back to Select. Mirrors the CAD/Leaflet/NIMBY
+   *  convention (Esc cancels the rubber-band, Esc again exits the tool). */
+  stopBuilding(): void {
+    if (this.draft.length > 0) {
+      this.cancelDraft();
+      this.refresh();
+      return;
+    }
+    if (this.tool !== "select") {
+      this.tool = "select";
+      this.refresh();
+    }
+  }
+
+  /** True if the in-progress route is illegal for the active mode — a land mode (rail/bus)
+   *  crossing water. Ferry/air cross water freely. Drives the red ghost + the build readout. */
+  draftInvalid(): boolean {
+    if (this.transport >= 2 || !this.build.loaded || this.draft.length < 1) return false;
+    const sv = this.bridge.stationsView();
+    const pts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
+    if (this.cursor) pts.push(lngLatToMm(this.cursor));
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1];
+      const [bx, by] = pts[i];
+      const len = Math.hypot(bx - ax, by - ay);
+      const steps = Math.min(60, Math.max(1, Math.round(len / this.build.cellMm)));
+      for (let k = 0; k <= steps; k++) {
+        const x = ax + ((bx - ax) * k) / steps;
+        const y = ay + ((by - ay) * k) / steps;
+        if (this.build.classifyMm(x, y) === BUILD.WATER) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Live preview of the in-progress route for the build HUD (client-side geometry; the $ cost
+   *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
+   *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
+  draftPreview(): { stops: number; lengthKm: number; invalid: boolean } {
+    const sv = this.bridge.stationsView();
+    const pts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
+    if (this.cursor) pts.push(lngLatToMm(this.cursor));
+    let mm = 0;
+    for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    return { stops: this.draft.length, lengthKm: mm / 1_000_000, invalid: this.draftInvalid() };
+  }
+
   // --- geometry helpers ---
 
   /** Nearest station id to a screen pixel within `maxPx`, else null (screen-space snap). */
@@ -323,6 +379,7 @@ export class Game {
       // A line with surface track over water renders red until elevated/tunnelled.
       color: l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color),
       path: l.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
+      mode: l.mode, // heavy/high-speed rail (4) gets distinct mainline styling
     }));
 
     // Blueprint: draft station positions + live cursor (T11 populates draft).
@@ -369,7 +426,7 @@ export class Game {
     }
 
     const demand = this.showDemand ? this.demandHeat : [];
-    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards, demand };
+    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards, demand, blueprintInvalid: this.draftInvalid() };
   }
 
   /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */

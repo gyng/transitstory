@@ -17,6 +17,7 @@ export interface LinePath {
   id: number;
   color: Rgb;
   path: [number, number][];
+  mode: number; // transport mode (trainset::tmode); 4 = heavy/high-speed rail (distinct styling)
 }
 export interface CatchmentCircle {
   lng: number;
@@ -53,11 +54,15 @@ export interface RenderView {
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
+  blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
 }
 
 export function colorToRgb(u: number): Rgb {
   return [(u >> 16) & 0xff, (u >> 8) & 0xff, u & 0xff];
 }
+
+/** Heavy/high-speed rail mode id (crates/sim trainset::tmode::HEAVY) — gets mainline styling. */
+const HEAVY_RAIL = 4;
 
 /** Demand heat ramp: low demand = translucent blue, high = warm red, alpha grows with weight
  *  so dense corridors glow. Tuned for the gravity-grid weights (~0..6). */
@@ -98,14 +103,39 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getLineColor: [0, 114, 178, 150],
       lineWidthMinPixels: 1.5,
     }),
+    // Heavy / high-speed rail reads as MAINLINE track, not a flat metro stroke: a dark casing
+    // under a wider colored core with a pale centre stripe (a "double-track" look). Only the
+    // heavy lines are in these two extra layers; metro/bus/ferry/air stay in the flat "lines".
+    new PathLayer({
+      id: "lines-heavy-casing",
+      data: view.lines.filter((d) => d.mode === HEAVY_RAIL),
+      getPath: (d: LinePath) => d.path,
+      getColor: [34, 34, 40, 255],
+      getWidth: 13,
+      widthUnits: "pixels",
+      widthMinPixels: 9,
+      capRounded: true,
+      jointRounded: true,
+    }),
     new PathLayer({
       id: "lines",
       data: view.lines,
       getPath: (d: LinePath) => d.path,
       getColor: (d: LinePath) => d.color,
-      getWidth: 6,
+      getWidth: (d: LinePath) => (d.mode === HEAVY_RAIL ? 8 : 6),
       widthUnits: "pixels",
       widthMinPixels: 4,
+      capRounded: true,
+      jointRounded: true,
+    }),
+    new PathLayer({
+      id: "lines-heavy-centre",
+      data: view.lines.filter((d) => d.mode === HEAVY_RAIL),
+      getPath: (d: LinePath) => d.path,
+      getColor: [245, 245, 250, 220],
+      getWidth: 2,
+      widthUnits: "pixels",
+      widthMinPixels: 1,
       capRounded: true,
       jointRounded: true,
     }),
@@ -117,12 +147,15 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         id: "blueprint",
         data: [{ path: view.blueprint }],
         getPath: (d: { path: [number, number][] }) => d.path,
-        getColor: [120, 124, 130, 190],
+        // Provisional ghost: muted grey when valid, red when the route is illegal (NIMBY's
+        // blue/red blueprint signal). updateTriggers so the colour flips with validity.
+        getColor: view.blueprintInvalid ? [214, 40, 40, 220] : [120, 124, 130, 190],
         getWidth: 4,
         widthUnits: "pixels",
         widthMinPixels: 3,
         capRounded: true,
         jointRounded: true,
+        updateTriggers: { getColor: view.blueprintInvalid ? 1 : 0 },
       }),
     );
   }

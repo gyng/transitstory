@@ -30,6 +30,33 @@ fn capital_accrues_and_tunnel_costs_more_than_surface() {
 }
 
 #[test]
+fn heavy_rail_costs_more_and_runs_faster_than_metro() {
+    // Same geometry, metro (mode 0) vs heavy/high-speed rail (mode 4): HSR track is pricier per
+    // km and its trainset is faster — a distinct mode, not a reskin.
+    let mk = |mode: u8| {
+        let mut w = World::new(1, CityData::default());
+        w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+        w
+    };
+    let metro = mk(0);
+    let heavy = mk(4);
+    assert!(
+        heavy.lines[0].capital_cost > metro.lines[0].capital_cost,
+        "heavy/high-speed rail track costs more per km ({} > {})",
+        heavy.lines[0].capital_cost,
+        metro.lines[0].capital_cost,
+    );
+    assert!(
+        sim::trainset::spec_for_mode(4).v_max_mm_s > sim::trainset::spec_for_mode(0).v_max_mm_s,
+        "HSR is faster than metro",
+    );
+}
+
+#[test]
 fn economy_rejects_unaffordable_construction() {
     // With the economy ON, construction that would drive the balance negative is rejected and
     // the line is restored — the afford-gate (a clamp in the core; the UI reads the rejection).
