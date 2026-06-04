@@ -11,6 +11,9 @@ export const CITIES: CityEntry[] = [
   { id: "singapore", name: "Singapore", blurb: "MRT — dense island metro", manifest: "/data/singapore_city.json" },
   { id: "tokyo", name: "Tokyo", blurb: "JR + subway — the big one", manifest: "/data/tokyo_city.json" },
   { id: "calgary", name: "Calgary", blurb: "C-Train — LRT + free-fare downtown", manifest: "/data/calgary_city.json" },
+  { id: "istanbul", name: "Istanbul", blurb: "Bosphorus — two continents, ferry country", manifest: "/data/istanbul_city.json" },
+  { id: "manhattan", name: "New York", blurb: "Manhattan — a dense linear island", manifest: "/data/manhattan_city.json" },
+  { id: "dublin", name: "Dublin", blurb: "Liffey city — a gentle starter", manifest: "/data/dublin_city.json" },
 ];
 
 export function cityById(id: string | null): CityEntry {

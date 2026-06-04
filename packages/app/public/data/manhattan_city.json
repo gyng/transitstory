@@ -1,0 +1,23 @@
+{
+  "id": "manhattan",
+  "name": "New York",
+  "originLngLat": [
+    -73.97,
+    40.78
+  ],
+  "bbox": [
+    -74.02,
+    40.7,
+    -73.91,
+    40.88
+  ],
+  "center": [
+    -73.97,
+    40.76
+  ],
+  "zoom": 12,
+  "seed": 20260608,
+  "demandGridPath": "/data/manhattan_demand.json",
+  "networkPath": "/data/networks/manhattan.json",
+  "buildabilityPath": "/data/manhattan_buildability.json"
+}

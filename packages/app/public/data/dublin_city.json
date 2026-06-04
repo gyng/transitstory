@@ -1,0 +1,23 @@
+{
+  "id": "dublin",
+  "name": "Dublin",
+  "originLngLat": [
+    -6.26,
+    53.349
+  ],
+  "bbox": [
+    -6.4,
+    53.28,
+    -6.1,
+    53.43
+  ],
+  "center": [
+    -6.26,
+    53.345
+  ],
+  "zoom": 11,
+  "seed": 20260609,
+  "demandGridPath": "/data/dublin_demand.json",
+  "networkPath": "/data/networks/dublin.json",
+  "buildabilityPath": "/data/dublin_buildability.json"
+}

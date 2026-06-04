@@ -68,7 +68,10 @@ def build_city(cid, cfg, seed):
 def main():
     cfg = json.load(open(os.path.join(HERE, "city_demand_config.json")))
     # Deterministic per-city seed (stable across runs).
-    seeds = {"singapore": 20260604, "tokyo": 20260605, "calgary": 20260606}
+    seeds = {
+        "singapore": 20260604, "tokyo": 20260605, "calgary": 20260606,
+        "istanbul": 20260607, "manhattan": 20260608, "dublin": 20260609,
+    }
     for cid, ccfg in cfg["cities"].items():
         build_city(cid, ccfg, seeds.get(cid, 1))
 

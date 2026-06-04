@@ -1,0 +1,23 @@
+{
+  "id": "istanbul",
+  "name": "Istanbul",
+  "originLngLat": [
+    28.98,
+    41.02
+  ],
+  "bbox": [
+    28.85,
+    40.95,
+    29.13,
+    41.13
+  ],
+  "center": [
+    28.98,
+    41.02
+  ],
+  "zoom": 11,
+  "seed": 20260607,
+  "demandGridPath": "/data/istanbul_demand.json",
+  "networkPath": "/data/networks/istanbul.json",
+  "buildabilityPath": "/data/istanbul_buildability.json"
+}

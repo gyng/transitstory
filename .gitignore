@@ -22,3 +22,4 @@ test-results
 # Misc
 .DS_Store
 *.log
+.playwright-mcp/
