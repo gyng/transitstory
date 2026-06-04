@@ -14,7 +14,7 @@ import { withBase } from "../../config";
 import { readSave, type SaveBlob } from "../../sim/save";
 import { SCENARIOS } from "../../objectives";
 
-const SUBTITLE_COUNT = 5;
+const SUBTITLE_COUNT = 53;
 const MASCOT_LINES = [
   "Coo!",
   "Coo coo!",
@@ -131,8 +131,10 @@ export function Menu({
   onStart: (city: CityEntry, withNetwork: boolean, scenario: string | null) => void;
   onResume?: (save: SaveBlob) => void;
 }) {
-  // Pick the over-the-top subtitle ONCE (frontend chrome RNG, not the sim).
-  const [heroSrc] = useState(() => withBase(`/title/sub${1 + Math.floor(Math.random() * SUBTITLE_COUNT)}.webp`));
+  // Hero subtitle: start on a random one (frontend chrome RNG, not the sim); click to cycle.
+  const [subIdx, setSubIdx] = useState(() => 1 + Math.floor(Math.random() * SUBTITLE_COUNT));
+  const heroSrc = withBase(`/title/sub${subIdx}.webp`);
+  const cycleSub = () => setSubIdx((i) => (i % SUBTITLE_COUNT) + 1);
   const [selected, setSelected] = useState<CityEntry>(CITIES[0]);
   const [withNetwork, setWithNetwork] = useState(true);
   const [scenario, setScenario] = useState<string | null>(null);
@@ -180,9 +182,22 @@ export function Menu({
 
       <div className="ot-bg" />
 
-      {/* Center stage: a random over-the-top light-novel subtitle (only this one is fetched). */}
+      {/* Center stage: a random over-the-top light-novel subtitle — click it to cycle to the
+          next. `key={subIdx}` remounts the img so the entrance pop replays on each cycle. */}
       <div className="ot-stage">
-        <img className="ot-hero" alt="Transit Story" decoding="async" src={heroSrc} />
+        <img
+          key={subIdx}
+          className="ot-hero"
+          data-testid="subtitle"
+          alt="Transit Story"
+          decoding="async"
+          src={heroSrc}
+          role="button"
+          aria-label="Show another subtitle"
+          title="Click for another"
+          onClick={cycleSub}
+          style={{ cursor: "pointer" }}
+        />
       </div>
 
       <div className="ot-card">
