@@ -37,9 +37,9 @@ export function mountPanels(host: HTMLElement, game: Game): void {
         "display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;cursor:pointer;" +
         (sel ? "background:#eef4fb" : "");
       row.innerHTML =
-        `<span style="width:14px;height:14px;border-radius:50%;background:${hex(l.color)};` +
+        `<span style="width:14px;height:14px;border-radius:50%;flex:0 0 auto;background:${hex(l.color)};` +
         `box-shadow:0 0 0 2px #fff,0 0 0 3px #d7dade"></span>` +
-        `<span style="flex:1">Line ${l.lineId + 1}</span>` +
+        `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.name}">${l.name || `Line ${l.lineId + 1}`}</span>` +
         `<span data-testid="line-ridership-${l.lineId}" style="color:#7a818a">${Math.round(l.ridership)}</span>`;
       row.addEventListener("click", () => game.selectLine(l.lineId));
       list.appendChild(row);
@@ -62,7 +62,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
 
     if (l.trains === 0) {
       editor.innerHTML =
-        `<div style="font-weight:700;margin-bottom:8px">Line ${id + 1}</div>` +
+        `<div style="font-weight:700;margin-bottom:8px">${l.name}</div>` +
         `<button data-testid="assign-trainset" style="width:100%;padding:8px;border:0;border-radius:7px;` +
         `background:#0072b2;color:#fff;font:600 13px system-ui;cursor:pointer">▶ Assign trainset</button>` +
         `<div style="color:#7a818a;margin-top:6px">Adds trains and auto-suggests a headway.</div>`;
@@ -72,7 +72,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
     }
 
     editor.innerHTML =
-      `<div style="font-weight:700;margin-bottom:8px">Line ${id + 1}</div>` +
+      `<div style="font-weight:700;margin-bottom:8px">${l.name}</div>` +
       `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">` +
       `Trains <input data-testid="trains-input" type="number" min="1" max="8" value="${l.trains}" ` +
       `style="width:56px;padding:4px"></label>` +

@@ -40,6 +40,7 @@ pub struct StationStat {
 #[serde(rename_all = "camelCase")]
 pub struct LineStat {
     pub line_id: u32,
+    pub name: String,
     pub color: u32,
     pub ridership: f64,
     pub stops: u32,
@@ -64,6 +65,8 @@ pub struct StationView {
 #[serde(rename_all = "camelCase")]
 pub struct LineView {
     pub id: u32,
+    pub name: String,
+    pub loop_line: bool,
     pub color: u32,
     pub stops: Vec<u32>,
     /// Polyline vertices in mm `[[x,y], ...]` in stop order.

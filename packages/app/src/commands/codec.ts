@@ -6,7 +6,9 @@ export const cmd = {
   placeStation: (x_mm: number, y_mm: number, name: string | null = null): Command => ({
     PlaceStation: { x_mm, y_mm, name },
   }),
-  createLine: (color: number): Command => ({ CreateLine: { color } }),
+  createLine: (color: number, name: string | null = null, loop_line = false): Command => ({
+    CreateLine: { color, name, loop_line },
+  }),
   addStop: (line: number, station: number, after: number | null = null): Command => ({
     AddStop: { line, station, after },
   }),

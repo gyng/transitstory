@@ -85,6 +85,10 @@ def build(cid, meta):
         name = t.get("name") or t.get("ref")
         if not name:
             continue
+        # Skip under-construction / proposed routes (incomplete stops -> stub lines).
+        if t.get("route") in ("construction", "proposed") or t.get("state") in ("construction", "proposed") \
+                or any(k.startswith(("construction", "proposed")) for k in t):
+            continue
         stops = [m["ref"] for m in r.get("members", [])
                  if m["type"] == "node" and str(m.get("role", "")).startswith("stop")]
         if len(stops) < 2:  # fall back to platforms if no stop roles
@@ -121,13 +125,19 @@ def build(cid, meta):
             if si is not None and si != last:
                 seq.append(si)
                 last = si
-        if len(seq) < 2:
+        # Loop detection: tagged roundtrip, or the route returns to its start station.
+        loop = t.get("roundtrip") == "yes"
+        if len(seq) >= 3 and seq[0] == seq[-1]:
+            loop = True
+            seq = seq[:-1]
+        if len(seq) < 3:  # drop 2-stop stubs (under-construction / airport people-movers)
             continue
         lines.append({
             "name": t.get("name") or t.get("ref") or key,
             "colorHex": norm_colour(t, ci),
             "headwayMin": 4,
             "trains": max(4, min(12, len(seq) // 3)),
+            "loop": loop,
             "stations": seq,
         })
 

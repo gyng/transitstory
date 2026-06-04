@@ -16,6 +16,10 @@ const LAT_ACCEL_MM_S2: f64 = 800.0;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Line {
     pub color: u32,
+    pub name: String,
+    /// Circular line: the path closes (last stop -> first) and trains loop forward instead
+    /// of reversing at an end.
+    pub loop_line: bool,
     pub stops: Vec<StationId>,
     pub headway_ms: i64,
     pub trainset: Option<TrainsetAssignment>,
@@ -48,6 +52,8 @@ impl Line {
     pub fn new(color: u32, default_headway_ms: i64) -> Self {
         Self {
             color,
+            name: String::new(),
+            loop_line: false,
             stops: Vec::new(),
             headway_ms: default_headway_ms,
             trainset: None,
@@ -139,9 +145,22 @@ impl Line {
         0.0
     }
 
+    /// Station id for a stop index (wraps for loops, where index == stops.len() is the start).
+    pub fn station_for_stop_index(&self, i: usize) -> StationId {
+        if self.stops.is_empty() {
+            return StationId(0);
+        }
+        self.stops[i % self.stops.len()]
+    }
+
     /// Rebuild the smoothed polyline + arc-length tables from the ordered stop positions.
+    /// For a loop the path is closed (first stop appended) so trains run a full circuit.
     pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
-        let (poly, stop_idx) = smooth_centripetal(stop_pts);
+        let mut pts: Vec<PointMm> = stop_pts.to_vec();
+        if self.loop_line && pts.len() >= 3 {
+            pts.push(pts[0]);
+        }
+        let (poly, stop_idx) = smooth_centripetal(&pts);
         self.polyline = poly;
         // Cumulative arc-length along the dense polyline.
         self.arclen_mm.clear();

@@ -21,6 +21,11 @@ pub enum Command {
     },
     CreateLine {
         color: u32,
+        #[serde(default)]
+        name: Option<String>,
+        /// Circular line (last stop connects back to the first) vs out-and-back.
+        #[serde(default)]
+        loop_line: bool,
     },
     AddStop {
         line: LineId,

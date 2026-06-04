@@ -12,6 +12,7 @@ export interface NetLine {
   colorHex: string; // RRGGBB
   headwayMin: number;
   trains: number;
+  loop?: boolean;
   stations: number[]; // ordered indices into stations[]
 }
 

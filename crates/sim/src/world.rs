@@ -254,6 +254,7 @@ impl World {
                     .sum();
                 LineStat {
                     line_id: i as u32,
+                    name: l.name.clone(),
                     color: l.color,
                     ridership: ridership as f64,
                     stops: l.stops.len() as u32,
@@ -323,9 +324,12 @@ impl World {
                 self.demand_dirty = true; // catchment capture must recompute
                 vec![Event::StationPlaced { id, name }]
             }
-            Command::CreateLine { color } => {
+            Command::CreateLine { color, name, loop_line } => {
                 let id = LineId(self.lines.len() as u32);
-                self.lines.push(Line::new(*color, DEFAULT_HEADWAY_MS));
+                let mut l = Line::new(*color, DEFAULT_HEADWAY_MS);
+                l.name = name.clone().unwrap_or_else(|| format!("Line {}", id.0 + 1));
+                l.loop_line = *loop_line;
+                self.lines.push(l);
                 vec![Event::LineCreated { id }]
             }
             Command::AddStop {
@@ -457,6 +461,8 @@ impl World {
             .enumerate()
             .map(|(i, l)| LineView {
                 id: i as u32,
+                name: l.name.clone(),
+                loop_line: l.loop_line,
                 color: l.color,
                 stops: l.stops.iter().map(|s| s.0).collect(),
                 polyline_mm: l

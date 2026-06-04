@@ -36,10 +36,17 @@ pub(crate) fn dispatch(world: &mut World) {
         if count == 0 || total <= 0 || line.stops.len() < 2 {
             continue;
         }
-        let round = 2 * total; // out-and-back loop length
+        // Loop: circuit length = one-way; out-and-back: there and back.
+        let round = if line.loop_line { total } else { 2 * total };
         for k in 0..count {
             let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
-            let (s, dir) = if p <= total { (p, 1i8) } else { (2 * total - p, -1i8) };
+            let (s, dir) = if line.loop_line {
+                (p, 1i8)
+            } else if p <= total {
+                (p, 1i8)
+            } else {
+                (2 * total - p, -1i8)
+            };
             let (x, y) = line.point_at(s);
             v.line.push(LineId(li as u32));
             v.s_mm.push(s);
