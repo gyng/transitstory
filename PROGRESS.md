@@ -137,6 +137,27 @@ Built on top of the slice (cargo 20, vitest 10, playwright 10 — all green):
 Demand-data note: the demand grid is still synthetic (gravity bumps); OSM/GTFS-derived demand is the next
 data upgrade. The network geometry is now real OSM.
 
+## Rail vs the built environment (2026-06-05)
+
+Researched how NIMBY Rails handles it (answer: it doesn't — buildings are absent from its data;
+it prototyped eminent-domain and CUT it because OSM building coverage is too uneven). Adopted the
+recommended **middle path**: never hard-block on buildings; make the built environment a SOFT cost.
+cargo 24, vitest 10, playwright 12 — all green.
+
+- **G0 Curve radius + speed caps** — per-vertex curve radius on the Catmull-Rom polyline; trains slow
+  through tight curves (v=√(lat_accel·R)); `min_radius` flagged in the editor.
+- **G1 Buildability** — `scripts/build_buildability.py` rasterizes OSM (water / road-ROW / rail-ROW /
+  built / park) into a coarse 120 m grid per city (committed `<id>_buildability.json`). Per-span build
+  mode (Surface/Elevated/Tunnel via `SetSegmentMode`); per-line **disruption** = Σ weight(class)×metres×
+  mode-factor; **one hard gate = water at surface** (flagged). Elevated/Tunnel cut the penalty + clear water.
+- **G2 UI** — live hazard dots (amber built/park, red water) along the blueprint as you draw; water-crossing
+  lines render red; EditorPanel Track-mode toggle + water warning + tight-curve flag; HUD **Build-impact** meter.
+- **Tier-2** — street-running: Surface track over built-up land caps speed (~43 km/h). The coherent play
+  emerges naturally — surface the open suburbs (0 impact, fast), grade-separate the dense core (low impact, fast).
+
+Known gap: open SEA (OSM coastline, not water polygons) isn't captured by the water gate yet — inland water /
+tagged water bodies are. Economy (Tier 3) would reuse the same disruption number as a $ cost basis (seam left).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
