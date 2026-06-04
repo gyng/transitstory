@@ -7,6 +7,7 @@ import { createOverlay } from "./map/overlay";
 import { loadCity } from "./sim/city";
 import { SimBridge } from "./sim/SimBridge";
 import { Game } from "./game";
+import { GameLoop } from "./sim/GameLoop";
 import { attachPointer } from "./tools/pointer";
 import { mountToolbar } from "./ui/toolbar";
 import { mountPanels } from "./ui/panels";
@@ -33,16 +34,18 @@ async function boot(): Promise<void> {
   const bridge = new SimBridge(city.seed, city.coreCityJson);
 
   const game = new Game(bridge, map, overlay);
+  const loop = new GameLoop(game);
   attachPointer(game);
   installTestHooks(game);
 
   const ui = document.getElementById("ui")!;
-  mountToolbar(ui, game);
+  mountToolbar(ui, game, loop);
   mountPanels(ui, game);
 
-  // Initial render once the map is ready (deck syncs to the camera).
+  // Initial render once the map is ready (deck syncs to the camera), then run the rAF loop.
   map.once("load", () => game.refresh());
   game.refresh();
+  loop.start();
 
   window.__ot = { map, bridge, city, overlay, game };
   window.__APP_READY = true;

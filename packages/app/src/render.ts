@@ -41,11 +41,11 @@ export function colorToRgb(u: number): Rgb {
   return [(u >> 16) & 0xff, (u >> 8) & 0xff, u & 0xff];
 }
 
-export function buildOverlayLayers(view: RenderView): Layer[] {
-  const layers: Layer[] = [];
-
-  // Catchment circles (bottom) — real metres; only selected/hovered shown (capped by Game).
-  layers.push(
+/** Topology layers (rebuilt only on topology/selection change — cached by Game so they keep
+ *  a stable identity across frames). Split into below/above the vehicle layer to preserve the
+ *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
+export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] } {
+  const below: Layer[] = [
     new ScatterplotLayer({
       id: "catchments",
       data: view.catchments,
@@ -57,10 +57,6 @@ export function buildOverlayLayers(view: RenderView): Layer[] {
       getLineColor: [0, 114, 178, 150],
       lineWidthMinPixels: 1.5,
     }),
-  );
-
-  // Committed lines — constant pixel width so they stay legible at every zoom.
-  layers.push(
     new PathLayer({
       id: "lines",
       data: view.lines,
@@ -72,11 +68,10 @@ export function buildOverlayLayers(view: RenderView): Layer[] {
       capRounded: true,
       jointRounded: true,
     }),
-  );
+  ];
 
-  // In-progress blueprint (translucent grey, distinct from committed full-colour lines).
   if (view.blueprint.length > 1) {
-    layers.push(
+    below.push(
       new PathLayer({
         id: "blueprint",
         data: [{ path: view.blueprint }],
@@ -91,24 +86,7 @@ export function buildOverlayLayers(view: RenderView): Layer[] {
     );
   }
 
-  // Vehicles (moving trains) — below stations so platforms stay clickable.
-  layers.push(
-    new ScatterplotLayer({
-      id: "vehicles",
-      data: view.vehicles,
-      getPosition: (d: VehicleDot) => [d.lng, d.lat],
-      getRadius: 5,
-      radiusUnits: "pixels",
-      radiusMinPixels: 4,
-      getFillColor: (d: VehicleDot) => d.color,
-      stroked: true,
-      getLineColor: [255, 255, 255, 230],
-      lineWidthMinPixels: 1.5,
-    }),
-  );
-
-  // Stations (top, pickable). Selected station gets the accent colour + larger radius.
-  layers.push(
+  const above: Layer[] = [
     new ScatterplotLayer({
       id: "stations",
       data: view.stations,
@@ -126,7 +104,23 @@ export function buildOverlayLayers(view: RenderView): Layer[] {
         getRadius: view.stations.map((s) => s.selected).join(","),
       },
     }),
-  );
+  ];
 
-  return layers;
+  return { below, above };
+}
+
+/** The per-frame vehicle layer (moving trains). Below stations so platforms stay clickable. */
+export function vehicleLayer(dots: VehicleDot[]): Layer {
+  return new ScatterplotLayer({
+    id: "vehicles",
+    data: dots,
+    getPosition: (d: VehicleDot) => [d.lng, d.lat],
+    getRadius: 5,
+    radiusUnits: "pixels",
+    radiusMinPixels: 4,
+    getFillColor: (d: VehicleDot) => d.color,
+    stroked: true,
+    getLineColor: [255, 255, 255, 230],
+    lineWidthMinPixels: 1.5,
+  });
 }

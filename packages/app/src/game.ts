@@ -3,10 +3,11 @@
 // call Game methods which emit Commands and refresh — they never mutate sim state directly.
 import type { Map as MlMap } from "maplibre-gl";
 import type { MapboxOverlay } from "@deck.gl/mapbox";
+import type { Layer } from "@deck.gl/core";
 import { CATCHMENT_M, LINE_PALETTE, SNAP_PX } from "./config";
-import { lngLatToMm, mmToLngLat } from "./coords/geo";
+import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { buildOverlayLayers, colorToRgb, type RenderView } from "./render";
+import { colorToRgb, topoLayers, vehicleLayer, type RenderView, type VehicleDot } from "./render";
 import type { SimBridge } from "./sim/SimBridge";
 
 export type Mode = "build" | "run";
@@ -25,6 +26,10 @@ export class Game {
 
   /** Listeners notified after each refresh (panels/stats bind here). */
   onChange: (() => void)[] = [];
+
+  /** Cached topology layers (stable identity across frames; rebuilt only on refresh). */
+  private below: Layer[] = [];
+  private above: Layer[] = [];
 
   constructor(
     readonly bridge: SimBridge,
@@ -214,9 +219,39 @@ export class Game {
     return { stations, lines, catchments, blueprint, vehicles: [] };
   }
 
+  /** Rebuild cached topology layers from authoritative sim views; recompose with current
+   *  (non-interpolated) vehicle positions. The GameLoop recomposes per frame with alpha. */
   refresh(): void {
-    this.overlay.setProps({ layers: buildOverlayLayers(this.buildView()) });
+    const { below, above } = topoLayers(this.buildView());
+    this.below = below;
+    this.above = above;
+    this.composeAndSet(this.currentVehicleDots());
     for (const cb of this.onChange) cb();
+  }
+
+  /** Set the overlay layers: stable cached topo with the vehicle layer in z-order between
+   *  them (catchment/lines/blueprint < vehicles < stations). Reused topo instances mean deck
+   *  only re-uploads the small vehicle layer each frame. */
+  composeAndSet(vehicles: VehicleDot[]): void {
+    this.overlay.setProps({ layers: [...this.below, vehicleLayer(vehicles), ...this.above] });
+  }
+
+  /** Per-line colour table indexed by line id (for vehicle tint). */
+  lineColors(): number[] {
+    return this.bridge.linesView().map((l) => l.color);
+  }
+
+  /** Current (non-interpolated) vehicle dots in lng/lat, tinted by line. */
+  currentVehicleDots(): VehicleDot[] {
+    const pos = this.bridge.vehiclePositions();
+    const lineIds = this.bridge.vehicleLineIds();
+    const colors = this.lineColors();
+    const dots: VehicleDot[] = [];
+    for (let i = 0; i < pos.length; i += 2) {
+      const [lng, lat] = metersToLngLat([pos[i], pos[i + 1]]);
+      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[i / 2]] ?? 0x444444) });
+    }
+    return dots;
   }
 
   /** The next palette colour for a new line (deterministic by line index). */
