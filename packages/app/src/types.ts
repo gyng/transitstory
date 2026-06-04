@@ -9,7 +9,8 @@ export type Command =
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
-  | { SetRunning: { running: boolean } };
+  | { SetRunning: { running: boolean } }
+  | { SetEconomy: { enabled: boolean } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -37,6 +38,7 @@ export interface PerLine {
   headwayMs: number;
   disruption: number;
   crossesWater: boolean;
+  capitalCost: number;
 }
 
 export interface Stats {
@@ -54,6 +56,10 @@ export interface Stats {
   period: string;
   demandMultiplier: number;
   buildDifficulty: number;
+  economyEnabled: boolean;
+  balance: number;
+  capitalSpent: number;
+  fareRevenue: number;
   perStation: PerStation[];
   perLine: PerLine[];
 }

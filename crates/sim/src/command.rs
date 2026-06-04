@@ -52,6 +52,10 @@ pub enum Command {
     SetRunning {
         running: bool,
     },
+    /// Toggle the (optional) economy on/off.
+    SetEconomy {
+        enabled: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -63,5 +67,6 @@ pub enum Event {
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },
     RunningSet { running: bool },
+    EconomySet { enabled: bool },
     Rejected { reason: String },
 }

@@ -26,7 +26,8 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
     `<div data-testid="coverage-bar" style="position:absolute;inset:0 100% 0 0;background:var(--ot-gauge-good)"></div>` +
     `</div><b data-testid="coverage" style="width:26px;text-align:right">0</b></div>` +
     `<div style="color:#7a818a"><span data-testid="waiting">0</span> waiting</div>` +
-    `<div>Build impact <b data-testid="build-impact" style="color:var(--ot-gauge-good)">0</b></div>`;
+    `<div>Build impact <b data-testid="build-impact" style="color:var(--ot-gauge-good)">0</b></div>` +
+    `<div data-testid="money-box">💰 <b data-testid="money" style="color:var(--ot-gauge-good)">—</b></div>`;
 
   host.appendChild(bar);
 
@@ -37,11 +38,20 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
   const coverageBar = bar.querySelector<HTMLElement>('[data-testid="coverage-bar"]')!;
   const waiting = bar.querySelector<HTMLElement>('[data-testid="waiting"]')!;
   const impact = bar.querySelector<HTMLElement>('[data-testid="build-impact"]')!;
+  const money = bar.querySelector<HTMLElement>('[data-testid="money"]')!;
+  const moneyBox = bar.querySelector<HTMLElement>('[data-testid="money-box"]')!;
+
+  const fmtMoney = (d: number): string => {
+    const a = Math.abs(d);
+    const s = a >= 1e9 ? `$${(d / 1e9).toFixed(2)}B` : a >= 1e6 ? `$${Math.round(d / 1e6)}M` : `$${Math.round(d / 1e3)}k`;
+    return s;
+  };
 
   let lastRidership = -1;
   let lastCoverage = -1;
   let lastWaiting = -1;
   let lastImpact = -1;
+  let lastMoney = NaN;
   let lastClock = "";
 
   return {
@@ -78,6 +88,12 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
         impact.textContent = String(bi);
         impact.style.color = bi >= 50 ? "var(--ot-gauge-bad)" : bi >= 20 ? "#e69f00" : "var(--ot-gauge-good)";
         lastImpact = bi;
+      }
+      moneyBox.style.opacity = s.economyEnabled ? "1" : "0.4";
+      if (s.balance !== lastMoney) {
+        money.textContent = fmtMoney(s.balance);
+        money.style.color = s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)";
+        lastMoney = s.balance;
       }
     },
   };

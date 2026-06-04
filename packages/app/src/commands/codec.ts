@@ -23,6 +23,7 @@ export const cmd = {
     SetSegmentMode: { line, span, mode },
   }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
+  setEconomy: (enabled: boolean): Command => ({ SetEconomy: { enabled } }),
 };
 
 export const WHOLE_LINE = 0xffffffff;

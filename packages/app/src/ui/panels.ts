@@ -113,7 +113,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
     const curve = tight ? `<div style="color:#e69f00">⤳ Tight curves — trains slow here.</div>` : "";
     impact.innerHTML =
       water + curve +
-      `<div style="color:#7a818a">Build impact: <b>${Math.round(l.disruption)}</b></div>`;
+      `<div style="color:#7a818a">Build impact: <b>${Math.round(l.disruption)}</b> · Cost: <b>$${Math.round(l.capitalCost / 1e6)}M</b></div>`;
 
     editor.appendChild(modeRow);
     editor.appendChild(impact);

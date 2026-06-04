@@ -23,6 +23,11 @@ pub struct StatsSnapshot {
     /// Surface-rail build impact: 0 (all grade-separated / following ROW) .. 100 (heavy surface
     /// cutting through built-up land). Lower is better.
     pub build_difficulty: u8,
+    /// Economy (dollars). `balance` = start budget + fares − capital; informational if economy off.
+    pub economy_enabled: bool,
+    pub balance: f64,
+    pub capital_spent: f64,
+    pub fare_revenue: f64,
     pub per_station: Vec<StationStat>,
     pub per_line: Vec<LineStat>,
 }
@@ -48,6 +53,7 @@ pub struct LineStat {
     pub headway_ms: f64,
     pub disruption: f64,
     pub crosses_water: bool,
+    pub capital_cost: f64,
 }
 
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,

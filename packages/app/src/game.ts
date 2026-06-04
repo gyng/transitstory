@@ -28,6 +28,10 @@ const EMPTY_STATS: Stats = {
   period: "AM rush",
   demandMultiplier: 1,
   buildDifficulty: 0,
+  economyEnabled: true,
+  balance: 0,
+  capitalSpent: 0,
+  fareRevenue: 0,
   perStation: [],
   perLine: [],
 };
@@ -112,6 +116,11 @@ export class Game {
 
   /** The Headway slider is the lever: derive the train count from headway (round-trip / H)
    *  and re-assign, keeping count↔headway consistent (the dispatcher uses count). */
+  setEconomy(enabled: boolean): void {
+    this.bridge.apply(cmd.setEconomy(enabled));
+    this.refresh();
+  }
+
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
     const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));

@@ -39,6 +39,8 @@ pub struct Line {
     pub disruption_units: i64,
     /// True if any Surface span crosses water (the UI's one hard gate).
     pub crosses_water_surface: bool,
+    /// Capital cost to build this line (dollars): track by mode + land-taking + trains.
+    pub capital_cost: i64,
 }
 
 /// Build modes for a track span.
@@ -65,6 +67,7 @@ impl Line {
             span_mode: Vec::new(),
             disruption_units: 0,
             crosses_water_surface: false,
+            capital_cost: 0,
         }
     }
 

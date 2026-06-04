@@ -25,6 +25,16 @@ pub const MIN_HEADWAY_MS: i64 = 30_000; // 30 s
 pub const MAX_HEADWAY_MS: i64 = 1_800_000; // 30 min
 pub const DEFAULT_HEADWAY_MS: i64 = 300_000; // 5 min
 
+// Economy (optional, NIMBY-style). Dollars. Construction is a one-time capital cost; fares
+// accrue per boarding. The disruption metric feeds the surface land-taking premium.
+pub const START_BUDGET: i64 = 2_000_000_000;
+pub const FARE: i64 = 2; // $ per boarding
+const PER_KM_SURFACE: i64 = 8_000_000;
+const PER_KM_ELEVATED: i64 = 30_000_000;
+const PER_KM_TUNNEL: i64 = 90_000_000;
+const TAKING_PER_KM_BUILT: i64 = 6_000_000;
+const TRAIN_COST: i64 = 15_000_000;
+
 pub struct World {
     pub seed: u64,
     pub clock_ms: i64,
@@ -62,6 +72,8 @@ pub struct World {
     pub alightings: Vec<u64>,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
+    /// Optional economy (NIMBY-style): when off, money is informational only.
+    pub economy_enabled: bool,
 }
 
 /// Borrowed canonical view hashed for determinism. Field order = hash order (stable).
@@ -131,6 +143,7 @@ impl World {
             build_lookup,
             build_cell_mm,
             demand_dirty: false,
+            economy_enabled: true,
         }
     }
 
@@ -160,6 +173,7 @@ impl World {
 
         let mut disr = 0i64;
         let mut water = false;
+        let mut capital = 0i64;
         {
             let l = &self.lines[idx];
             for vi in 1..l.polyline.len() {
@@ -185,10 +199,23 @@ impl World {
                 if c == class::WATER && m == mode::SURFACE {
                     water = true;
                 }
+                // Capital: per-km by mode (tunnel costs most to build) + surface land-taking
+                // through built-up land. Disruption (surface impact) and cost differ on purpose.
+                let per_km = match m {
+                    mode::ELEVATED => PER_KM_ELEVATED,
+                    mode::TUNNEL => PER_KM_TUNNEL,
+                    _ => PER_KM_SURFACE,
+                };
+                capital += per_km * seg_m / 1000;
+                if c == class::BUILT && m == mode::SURFACE {
+                    capital += TAKING_PER_KM_BUILT * seg_m / 1000;
+                }
             }
         }
+        capital += self.lines[idx].trainset.map(|t| t.count as i64).unwrap_or(0) * TRAIN_COST;
         self.lines[idx].disruption_units = disr;
         self.lines[idx].crosses_water_surface = water;
+        self.lines[idx].capital_cost = capital;
     }
 
     /// True if station `s` is on a line with a trainset and at least 2 stops.
@@ -262,9 +289,15 @@ impl World {
                     headway_ms: l.headway_ms as f64,
                     disruption: l.disruption_units as f64,
                     crosses_water: l.crosses_water_surface,
+                    capital_cost: l.capital_cost as f64,
                 }
             })
             .collect();
+
+        // Economy: balance = start budget + fares − capital (informational when off).
+        let capital_spent: i64 = self.lines.iter().map(|l| l.capital_cost).sum();
+        let fare_revenue: i64 = self.ridership_total as i64 * FARE;
+        let balance = START_BUDGET + fare_revenue - capital_spent;
 
         // Build impact: total disruption per km of track, mapped to 0..100 (lower is better).
         let total_disr: i64 = self.lines.iter().map(|l| l.disruption_units).sum();
@@ -287,6 +320,10 @@ impl World {
             period: crate::tod::period_label(crate::tod::hour_of_day(self.clock_ms)).to_string(),
             demand_multiplier: crate::tod::demand_multiplier(crate::tod::hour_of_day(self.clock_ms)) as f64,
             build_difficulty,
+            economy_enabled: self.economy_enabled,
+            balance: balance as f64,
+            capital_spent: capital_spent as f64,
+            fare_revenue: fare_revenue as f64,
             per_station,
             per_line,
         }
@@ -363,6 +400,7 @@ impl World {
                 if let Some(l) = self.lines.get_mut(line.index()) {
                     let count = (*count).clamp(1, MAX_TRAINS_PER_LINE);
                     l.trainset = Some(TrainsetAssignment { spec: *spec, count });
+                    self.recompute_line_buildability(*line); // train count affects capital cost
                     vec![Event::TrainsetAssigned { line: *line, count }]
                 } else {
                     vec![Event::Rejected {
@@ -407,6 +445,10 @@ impl World {
             Command::SetRunning { running } => {
                 self.running = *running;
                 vec![Event::RunningSet { running: *running }]
+            }
+            Command::SetEconomy { enabled } => {
+                self.economy_enabled = *enabled;
+                vec![Event::EconomySet { enabled: *enabled }]
             }
         };
         // Any change to lines / trainsets / headway / running invalidates dispatch.
