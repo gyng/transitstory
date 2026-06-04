@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "build:wasm": "wasm-pack build crates/sim-wasm --target web --out-dir ../../packages/wasm-sim",
+    "build:wasm": "wasm-pack build crates/sim-wasm --target bundler --out-dir ../../packages/wasm-sim",
     "dev": "pnpm --filter app dev",
     "build": "pnpm --filter app build",
     "preview": "pnpm --filter app preview",

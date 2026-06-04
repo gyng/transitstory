@@ -20,7 +20,7 @@ jobs:
       - name: install wasm-pack
         run: cargo install wasm-pack --version 0.14.0 --locked
       - name: build wasm (crates/sim-wasm -> packages/wasm-sim)
-        run: wasm-pack build crates/sim-wasm --target web --out-dir ../../packages/wasm-sim
+        run: wasm-pack build crates/sim-wasm --target bundler --out-dir ../../packages/wasm-sim
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-sim

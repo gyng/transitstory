@@ -22,6 +22,9 @@ importers:
       maplibre-gl:
         specifier: ~5.24.0
         version: 5.24.0
+      sim-wasm:
+        specifier: workspace:*
+        version: link:../wasm-sim
     devDependencies:
       '@playwright/test':
         specifier: ^1.49.0
@@ -38,6 +41,8 @@ importers:
       vitest:
         specifier: ^4.0.0
         version: 4.1.8(@types/node@24.13.0)(vite@8.0.16(@types/node@24.13.0))
+
+  packages/wasm-sim: {}
 
 packages:
 

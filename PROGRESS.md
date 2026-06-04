@@ -19,8 +19,8 @@ Maintained at every checkpoint and every fallback taken.
 | T2 | Sim core + determinism replay test | ✅ done (cargo 6/6) |
 | T3 | Vite shell + coords/geo.ts + Vitest + Playwright load | ✅ done (vitest 3/3, e2e 1/1) |
 | T4 | CI workflow | ✅ done (YAML valid; not run locally) |
-| T8 | sim-wasm wrapper (Sim::new/apply_command_json/tick/SoA) | pending |
-| T9 | TS SimBridge + wasm-in-node smoke | pending |
+| T8 | sim-wasm wrapper (Sim::new/applyCommandJson/tick/SoA) | ✅ done (node smoke) |
+| T9 | TS SimBridge + wasm-in-node smoke | ✅ done (vitest 6/6) |
 | T13 | Synthetic demand grid + singapore_city.json | pending |
 | T5 | MapLibre Singapore basemap + geo.ts | pending |
 | T6 | deck.gl MapboxOverlay + test layer | pending |
@@ -69,6 +69,14 @@ Dependency pins in use: `rand =0.10.1`, `rand_chacha =0.10.0`, `wasm-bindgen =0.
   — CI not gated overnight per PLAN §15).
 - **2026-06-04** — **CP0 reached: walking skeleton green in all three tiers** (cargo 6/6, vitest 3/3, e2e 1/1,
   app build ok). Committing.
+- **2026-06-04** — T8: `Sim` facade (applyCommandJson/tick/stateHash/vehicle copy-out/stats/views).
+  **Fallback taken:** dropped `rand` default features — getrandom 0.3 has no wasm32-unknown-unknown backend;
+  the sim is seeded-only so OsRng was never needed (also reinforces determinism). Node instantiation smoke green.
+- **2026-06-04** — T9: TS SimBridge + types/codec/log + wasm-in-node Vitest smoke. **Decision:** switched
+  wasm-pack `--target web` → `--target bundler` so vite-plugin-wasm auto-instantiates the module in both the
+  Vite browser build and Vitest(node) via top-level await — removes the manual `init()`/fetch friction (the
+  documented T9 risk). Vitest 6/6 (geo 3 + bridge 3, incl. determinism across the wire). Bridge proven; the
+  "vehicle advances across ticks" assertion lands with T14/T15.
 
 ## Known gaps / deferred
 
