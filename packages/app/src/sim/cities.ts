@@ -14,6 +14,12 @@ export const CITIES: CityEntry[] = [
   { id: "istanbul", name: "Istanbul", blurb: "Bosphorus — two continents, ferry country", manifest: "/data/istanbul_city.json" },
   { id: "manhattan", name: "New York", blurb: "Manhattan — a dense linear island", manifest: "/data/manhattan_city.json" },
   { id: "dublin", name: "Dublin", blurb: "Liffey city — a gentle starter", manifest: "/data/dublin_city.json" },
+  { id: "chicago", name: "Chicago", blurb: "The 'L' loop + lakefront grid", manifest: "/data/chicago_city.json" },
+  { id: "sf", name: "San Francisco", blurb: "Bay peninsula + transbay BART", manifest: "/data/sf_city.json" },
+  { id: "brisbane", name: "Brisbane", blurb: "Subtropical river city", manifest: "/data/brisbane_city.json" },
+  { id: "london", name: "London", blurb: "The Tube — radial across the Thames", manifest: "/data/london_city.json" },
+  { id: "pyongyang", name: "Pyongyang", blurb: "Deep metro on the Taedong", manifest: "/data/pyongyang_city.json" },
+  { id: "glasgow", name: "Glasgow", blurb: "Clockwork-Orange loop on the Clyde", manifest: "/data/glasgow_city.json" },
 ];
 
 export function cityById(id: string | null): CityEntry {

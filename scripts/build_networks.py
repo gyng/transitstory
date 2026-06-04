@@ -2,7 +2,7 @@
 """Pull REAL transit networks from OpenStreetMap (Overpass API) and emit them as
 packages/app/public/data/networks/<id>.json — the same schema Game.applyNetwork consumes.
 Re-runnable to refresh/update from OSM. OSM models transit as route relations
-(route=subway/light_rail/monorail/tram) whose ordered "stop" members are the stations and
+(route=subway/light_rail/monorail/tram/train/ferry) whose ordered "stop" members are the stations and
 whose `colour` tag is the line colour; route_master groups direction variants.
 
 Network only (build-time tool); on failure the previously committed network JSON is kept.
@@ -23,14 +23,20 @@ ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-# Route types to pull per city. Heavy-rail "train" is enormous (esp. Tokyo) so we stay on
-# rapid-transit rail + ferries; buses number in the hundreds and would swamp a starting
-# network, so they're left out of the default pull (the mode mapping still tags them if added).
-ROUTE_RE = "^(subway|light_rail|monorail|tram|ferry)$"
+# Route types to pull per city: rapid-transit rail + heavy/commuter rail (route=train) + ferries.
+# Long-distance / high-speed / sleeper / car-shuttle "train" services are filtered out in build()
+# (see SKIP_SERVICE) so we keep urban + commuter/suburban/regional rail only. Buses number in the
+# hundreds and would swamp a starting network, so they're left out of the default pull.
+ROUTE_RE = "^(subway|light_rail|monorail|tram|train|ferry)$"
+# route=train services that are NOT urban transit (intercity, Shinkansen/TGV, sleepers, car trains).
+SKIP_SERVICE = {"high_speed", "long_distance", "night", "car", "car_shuttle"}
 
-# OSM route tag -> sim transport mode (crates/sim trainset::tmode: 0 rail,1 bus,2 ferry,3 air).
+# OSM route tag -> sim transport mode (crates/sim trainset::tmode: 0 rail,1 bus,2 ferry,3 air,
+# 4 heavy/high-speed rail). Metro-family routes are regular rail (0); route=train (commuter /
+# regional / mainline) imports as HEAVY rail (4) so it gets the fast trainset + mainline styling.
 ROUTE_MODE = {
-    "subway": 0, "light_rail": 0, "monorail": 0, "tram": 0, "train": 0,
+    "subway": 0, "light_rail": 0, "monorail": 0, "tram": 0,
+    "train": 4,
     "bus": 1, "trolleybus": 1,
     "ferry": 2,
 }
@@ -84,6 +90,12 @@ def dist_km(a, b):
 
 def build(cid, meta):
     data = overpass(meta["bbox"])
+    # Clip stops to the city bbox (+~2km): a route relation carries its FULL extent, so a
+    # long-distance train / intercity sleeper / international ferry that merely clips the area
+    # would otherwise streak hundreds of km across the map. Keeping only in-bbox stops trims each
+    # line to its local segment; lines left with <min_stops inside are dropped below.
+    cw, cs, ce, cn = meta["bbox"]
+    BBOX_MARGIN = 0.02
     nodes, rels = {}, []
     for el in data["elements"]:
         if el["type"] == "node":
@@ -101,6 +113,8 @@ def build(cid, meta):
         # Skip under-construction / proposed routes (incomplete stops -> stub lines).
         if t.get("route") in ("construction", "proposed") or t.get("state") in ("construction", "proposed") \
                 or any(k.startswith(("construction", "proposed")) for k in t):
+            continue
+        if t.get("service") in SKIP_SERVICE:  # heavy-rail intercity/HSR/sleeper -> not urban transit
             continue
         stops = [m["ref"] for m in r.get("members", [])
                  if m["type"] == "node" and str(m.get("role", "")).startswith("stop")]
@@ -120,6 +134,9 @@ def build(cid, meta):
         nd = nodes.get(node_id)
         if not nd or "lat" not in nd:
             return None
+        if not (cw - BBOX_MARGIN <= nd["lon"] <= ce + BBOX_MARGIN
+                and cs - BBOX_MARGIN <= nd["lat"] <= cn + BBOX_MARGIN):
+            return None  # stop outside the play area -> trims long-distance routes to their local run
         nm = (nd.get("tags", {}).get("name") or nd.get("tags", {}).get("name:en")
               or f"Stop {node_id}")
         if nm in idx_by_name:
@@ -152,7 +169,7 @@ def build(cid, meta):
         lines.append({
             "name": t.get("name") or t.get("ref") or key,
             "colorHex": norm_colour(t, ci),
-            "headwayMin": 4 if mode == 0 else (8 if mode == 1 else 20),
+            "headwayMin": 10 if t.get("route") == "train" else (4 if mode == 0 else (8 if mode == 1 else 20)),
             "trains": max(2, min(12, len(seq) // 3)),
             "loop": loop,
             "mode": mode,

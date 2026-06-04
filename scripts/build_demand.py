@@ -72,6 +72,8 @@ def main():
     seeds = {
         "singapore": 20260604, "tokyo": 20260605, "calgary": 20260606,
         "istanbul": 20260607, "manhattan": 20260608, "dublin": 20260609,
+        "chicago": 20260610, "sf": 20260611, "brisbane": 20260612,
+        "london": 20260613, "pyongyang": 20260614, "glasgow": 20260615,
     }
     want = sys.argv[1:] or list(cfg["cities"].keys())  # default: all configured cities
     for cid in want:

@@ -1,0 +1,23 @@
+{
+  "id": "sf",
+  "name": "San Francisco",
+  "originLngLat": [
+    -122.42,
+    37.77
+  ],
+  "bbox": [
+    -122.52,
+    37.7,
+    -122.25,
+    37.85
+  ],
+  "center": [
+    -122.4,
+    37.77
+  ],
+  "zoom": 11,
+  "seed": 20260611,
+  "demandGridPath": "/data/sf_demand.json",
+  "networkPath": "/data/networks/sf.json",
+  "buildabilityPath": "/data/sf_buildability.json"
+}

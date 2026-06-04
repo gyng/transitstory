@@ -1,0 +1,23 @@
+{
+  "id": "brisbane",
+  "name": "Brisbane",
+  "originLngLat": [
+    153.025,
+    -27.47
+  ],
+  "bbox": [
+    152.95,
+    -27.6,
+    153.1,
+    -27.4
+  ],
+  "center": [
+    153.02,
+    -27.47
+  ],
+  "zoom": 11,
+  "seed": 20260612,
+  "demandGridPath": "/data/brisbane_demand.json",
+  "networkPath": "/data/networks/brisbane.json",
+  "buildabilityPath": "/data/brisbane_buildability.json"
+}

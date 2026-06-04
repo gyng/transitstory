@@ -1,0 +1,23 @@
+{
+  "id": "chicago",
+  "name": "Chicago",
+  "originLngLat": [
+    -87.63,
+    41.88
+  ],
+  "bbox": [
+    -87.8,
+    41.78,
+    -87.58,
+    41.98
+  ],
+  "center": [
+    -87.65,
+    41.88
+  ],
+  "zoom": 11,
+  "seed": 20260610,
+  "demandGridPath": "/data/chicago_demand.json",
+  "networkPath": "/data/networks/chicago.json",
+  "buildabilityPath": "/data/chicago_buildability.json"
+}

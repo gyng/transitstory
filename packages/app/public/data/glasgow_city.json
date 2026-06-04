@@ -1,0 +1,23 @@
+{
+  "id": "glasgow",
+  "name": "Glasgow",
+  "originLngLat": [
+    -4.25,
+    55.861
+  ],
+  "bbox": [
+    -4.4,
+    55.78,
+    -4.1,
+    55.92
+  ],
+  "center": [
+    -4.25,
+    55.86
+  ],
+  "zoom": 11,
+  "seed": 20260615,
+  "demandGridPath": "/data/glasgow_demand.json",
+  "networkPath": "/data/networks/glasgow.json",
+  "buildabilityPath": "/data/glasgow_buildability.json"
+}

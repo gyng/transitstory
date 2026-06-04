@@ -1,0 +1,23 @@
+{
+  "id": "pyongyang",
+  "name": "Pyongyang",
+  "originLngLat": [
+    125.748,
+    39.02
+  ],
+  "bbox": [
+    125.65,
+    38.95,
+    125.85,
+    39.1
+  ],
+  "center": [
+    125.75,
+    39.02
+  ],
+  "zoom": 12,
+  "seed": 20260614,
+  "demandGridPath": "/data/pyongyang_demand.json",
+  "networkPath": "/data/networks/pyongyang.json",
+  "buildabilityPath": "/data/pyongyang_buildability.json"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "london",
+  "name": "London",
+  "originLngLat": [
+    -0.118,
+    51.509
+  ],
+  "bbox": [
+    -0.3,
+    51.42,
+    0.05,
+    51.58
+  ],
+  "center": [
+    -0.118,
+    51.505
+  ],
+  "zoom": 11,
+  "seed": 20260613,
+  "demandGridPath": "/data/london_demand.json",
+  "networkPath": "/data/networks/london.json",
+  "buildabilityPath": "/data/london_buildability.json"
+}
