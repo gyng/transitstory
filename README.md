@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/icon.png" alt="onlytransits mascot — a pigeon in a transit conductor's cap" width="160" />
+</p>
+
 # onlytransits
 
 A web-based 2D top-down transit-network builder game on a real OpenStreetMap map

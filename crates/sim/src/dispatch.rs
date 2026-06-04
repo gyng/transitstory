@@ -11,6 +11,20 @@ pub(crate) fn dispatch(world: &mut World) {
     }
     world.dispatch_dirty = false;
 
+    // Rebuild the per-station serving-lines map (operational lines only) for routing.
+    let nstations = world.stations.len();
+    let mut serving: Vec<Vec<LineId>> = vec![Vec::new(); nstations];
+    for (li, line) in world.lines.iter().enumerate() {
+        if line.trainset.is_some() && line.stops.len() >= 2 {
+            for &st in &line.stops {
+                if st.index() < nstations {
+                    serving[st.index()].push(LineId(li as u32));
+                }
+            }
+        }
+    }
+    world.serving = serving;
+
     let lines = &world.lines;
     let v = &mut world.vehicles;
     v.clear();
@@ -38,7 +52,7 @@ pub(crate) fn dispatch(world: &mut World) {
             v.v_mm_s.push(0);
             v.dwell_until_ms.push(0);
             v.onboard.push(0);
-            v.onboard_dest.push(Vec::new());
+            v.onboard_pax.push(Vec::new());
             v.at_station.push(-1);
         }
     }

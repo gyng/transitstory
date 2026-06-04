@@ -45,8 +45,10 @@ pub struct World {
     pub captured_dest: Vec<f32>,
     /// Fractional passenger-spawn accumulator per station (deterministic count).
     pub spawn_accum: Vec<f32>,
-    /// Per-station FIFO queue of waiting passengers (their destination station).
-    pub waiting: Vec<VecDeque<StationId>>,
+    /// Per-station FIFO queue of waiting passengers (each carrying a multi-leg route).
+    pub waiting: Vec<VecDeque<crate::pax::Pax>>,
+    /// Per-station lines serving it (operational only); rebuilt by the dispatcher for routing.
+    pub serving: Vec<Vec<LineId>>,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -100,6 +102,7 @@ impl World {
             ridership_total: 0,
             boardings: Vec::new(),
             alightings: Vec::new(),
+            serving: Vec::new(),
             demand_dirty: false,
         }
     }

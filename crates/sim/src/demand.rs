@@ -3,11 +3,15 @@
 //! gravity destination pick. Routing here is the single-line direct-ride case; the data is
 //! shaped so RAPTOR/transfers slot in later behind a Router trait (PLAN §6).
 use crate::ids::StationId;
-use crate::line::Line;
+use crate::pax::Pax;
+use crate::routing::plan_route;
 use crate::station::Station;
 use crate::world::World;
 use rand::RngExt;
 use rand_chacha::ChaCha8Rng;
+
+/// Max legs (transfers + 1) a routed trip may use.
+const MAX_LEGS: usize = 4;
 
 /// Catchment radius (mm). ~500 m walk shed.
 pub const CATCHMENT_MM: i64 = 500_000;
@@ -79,6 +83,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     let World {
         ref stations,
         ref lines,
+        ref serving,
         ref captured_origin,
         ref captured_dest,
         ref mut spawn_accum,
@@ -88,6 +93,10 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     } = *world;
 
     for s in 0..n {
+        // Only stations on an operational line originate trips.
+        if serving.get(s).map(|v| v.is_empty()).unwrap_or(true) {
+            continue;
+        }
         // Trip origins: AM weights residential (captured_origin), PM weights jobs (captured_dest).
         let co = captured_origin.get(s).copied().unwrap_or(0.0);
         let cd = captured_dest.get(s).copied().unwrap_or(0.0);
@@ -95,52 +104,52 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         if origin_strength <= 0.0 {
             continue;
         }
-        // A line serving this station (has a trainset, >=2 stops).
-        let li = lines.iter().position(|l| {
-            l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s)
-        });
-        let Some(li) = li else {
-            continue;
-        };
 
         spawn_accum[s] += origin_strength * DEMAND_RATE_PER_MS * mult * dt_ms as f32;
         while spawn_accum[s] >= 1.0 {
             spawn_accum[s] -= 1.0;
-            if let Some(dest) = pick_dest(stations, &lines[li], s, captured_origin, captured_dest, bias, rng) {
-                waiting[s].push_back(dest);
+            if let Some(dest) =
+                pick_dest(stations, serving, captured_origin, captured_dest, bias, s, rng)
+            {
+                // Route across the network (transfers at interchanges); enqueue if reachable.
+                if let Some(legs) = plan_route(lines, serving, StationId(s as u32), dest, MAX_LEGS) {
+                    if !legs.is_empty() {
+                        waiting[s].push_back(Pax { legs, leg: 0 });
+                    }
+                }
             }
         }
     }
 }
 
-/// Gravity destination pick: among the other stops on the line, weighted by destination
-/// coverage × distance-decay. Integer weighted draw from a seeded RNG (deterministic).
+/// Pick a network-wide destination among ALL served stations, weighted by attractiveness
+/// (AM→jobs, PM→homes) × distance-decay. Integer weighted draw from a seeded RNG.
 #[allow(clippy::too_many_arguments)]
 fn pick_dest(
     stations: &[Station],
-    line: &Line,
-    origin: usize,
+    serving: &[Vec<crate::ids::LineId>],
     captured_origin: &[f32],
     captured_dest: &[f32],
     bias: f32,
+    origin: usize,
     rng: &mut ChaCha8Rng,
 ) -> Option<StationId> {
     let opos = stations[origin].pos;
     let mut cands: Vec<(StationId, u64)> = Vec::new();
     let mut total: u64 = 0;
-    for &st in &line.stops {
-        if st.index() == origin {
+    for d_idx in 0..stations.len() {
+        if d_idx == origin || serving.get(d_idx).map(|v| v.is_empty()).unwrap_or(true) {
             continue;
         }
-        let d = opos.dist_mm(&stations[st.index()].pos).max(1) as f64;
+        let dist = opos.dist_mm(&stations[d_idx].pos).max(1) as f64;
         // AM: pulled toward jobs (captured_dest); PM: toward homes (captured_origin).
-        let cd = captured_dest.get(st.index()).copied().unwrap_or(0.0);
-        let cor = captured_origin.get(st.index()).copied().unwrap_or(0.0);
+        let cd = captured_dest.get(d_idx).copied().unwrap_or(0.0);
+        let cor = captured_origin.get(d_idx).copied().unwrap_or(0.0);
         let attract = (bias * cd + (1.0 - bias) * cor) as f64;
-        let decay = 1.0 / (1.0 + d / DEST_DECAY_MM);
-        let w = (attract * decay * 1000.0) as u64 + 1; // +1 baseline so any stop can be chosen
+        let decay = 1.0 / (1.0 + dist / DEST_DECAY_MM);
+        let w = (attract * decay * 1000.0) as u64 + 1; // +1 baseline so any station can be chosen
         total += w;
-        cands.push((st, w));
+        cands.push((StationId(d_idx as u32), w));
     }
     if cands.is_empty() || total == 0 {
         return None;

@@ -24,10 +24,10 @@ pub struct VehicleSoA {
     pub v_mm_s: Vec<i64>,
     /// Dwell timer: vehicle is stopped boarding/alighting until this clock time.
     pub dwell_until_ms: Vec<i64>,
-    /// Onboard passenger count (= onboard_dest.len(); kept for the hash/render).
+    /// Onboard passenger count (= onboard_pax.len(); kept for the hash/render).
     pub onboard: Vec<u16>,
-    /// Destinations of onboard passengers (capacity-capped board/alight in T16b).
-    pub onboard_dest: Vec<Vec<crate::ids::StationId>>,
+    /// Onboard passengers with their multi-leg routes (capacity-capped board/alight).
+    pub onboard_pax: Vec<Vec<crate::pax::Pax>>,
     /// Station id this vehicle arrived at THIS tick (-1 otherwise); consumed by board/alight.
     pub at_station: Vec<i32>,
 }
@@ -56,7 +56,7 @@ impl VehicleSoA {
         self.v_mm_s.clear();
         self.dwell_until_ms.clear();
         self.onboard.clear();
-        self.onboard_dest.clear();
+        self.onboard_pax.clear();
         self.at_station.clear();
     }
 }

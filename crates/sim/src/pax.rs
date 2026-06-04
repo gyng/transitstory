@@ -1,9 +1,25 @@
-//! Passenger boarding/alighting. When a vehicle arrives at a station (recorded by
-//! `vehicle::advance`), alight onboard passengers whose destination is this stop, then board
-//! waiting passengers FIFO up to the trainset capacity (load factor). Leftover passengers
-//! keep waiting and accumulate (the money-free slice's difficulty signal).
+//! Passengers with multi-leg routes. On arrival at a station a vehicle alights riders whose
+//! current leg ends here (re-queueing transferers for their next leg, or counting arrivals),
+//! then boards waiting riders whose current leg is on THIS line, FIFO up to capacity.
+use crate::routing::Leg;
 use crate::trainset::spec as trainset_spec;
 use crate::world::World;
+
+#[derive(Clone, Debug)]
+pub struct Pax {
+    pub legs: Vec<Leg>,
+    pub leg: usize,
+}
+
+impl Pax {
+    pub fn cur(&self) -> Leg {
+        self.legs[self.leg]
+    }
+    /// True if the current leg is the last (alighting it = arrival).
+    pub fn on_last_leg(&self) -> bool {
+        self.leg + 1 >= self.legs.len()
+    }
+}
 
 pub(crate) fn board_alight(world: &mut World) {
     let World {
@@ -26,34 +42,48 @@ pub(crate) fn board_alight(world: &mut World) {
         if s >= waiting.len() {
             continue;
         }
-
-        let line = &lines[vehicles.line[i].index()];
-        let cap = line
-            .trainset
+        let line_id = vehicles.line[i];
+        let cap = lines
+            .get(line_id.index())
+            .and_then(|l| l.trainset)
             .map(|t| trainset_spec(t.spec).capacity as usize)
             .unwrap_or(0);
 
-        // Alight: drop onboard passengers whose destination is this stop.
-        let before = vehicles.onboard_dest[i].len();
-        vehicles.onboard_dest[i].retain(|&d| d.index() != s);
-        let alighted = before - vehicles.onboard_dest[i].len();
-        if s < alightings.len() {
-            alightings[s] += alighted as u64;
-        }
-
-        // Board: FIFO up to capacity (leftover passengers keep waiting).
-        while vehicles.onboard_dest[i].len() < cap {
-            match waiting[s].pop_front() {
-                Some(dest) => {
-                    vehicles.onboard_dest[i].push(dest);
-                    *ridership_total += 1;
-                    if s < boardings.len() {
-                        boardings[s] += 1;
+        // Alight: riders whose current leg ends at this station leave the vehicle; transferers
+        // advance a leg and re-queue here, arrivals are counted.
+        let mut still_aboard: Vec<Pax> = Vec::with_capacity(vehicles.onboard_pax[i].len());
+        for pax in std::mem::take(&mut vehicles.onboard_pax[i]) {
+            if pax.cur().alight.index() == s {
+                if pax.on_last_leg() {
+                    if s < alightings.len() {
+                        alightings[s] += 1;
                     }
+                } else {
+                    let mut p = pax;
+                    p.leg += 1; // transfer: next leg boards here
+                    waiting[s].push_back(p);
                 }
-                None => break,
+            } else {
+                still_aboard.push(pax);
             }
         }
-        vehicles.onboard[i] = vehicles.onboard_dest[i].len() as u16;
+        vehicles.onboard_pax[i] = still_aboard;
+
+        // Board: waiting riders whose current leg is on THIS line, FIFO up to capacity;
+        // others (waiting for a different line, or left behind) keep their order.
+        let mut requeue = std::collections::VecDeque::with_capacity(waiting[s].len());
+        while let Some(pax) = waiting[s].pop_front() {
+            if vehicles.onboard_pax[i].len() < cap && pax.cur().line == line_id {
+                vehicles.onboard_pax[i].push(pax);
+                *ridership_total += 1;
+                if s < boardings.len() {
+                    boardings[s] += 1;
+                }
+            } else {
+                requeue.push_back(pax);
+            }
+        }
+        waiting[s] = requeue;
+        vehicles.onboard[i] = vehicles.onboard_pax[i].len() as u16;
     }
 }
