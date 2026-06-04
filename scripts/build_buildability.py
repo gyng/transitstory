@@ -40,6 +40,7 @@ def query(bbox):
         f'way[leisure=park]{b};way[landuse~"^(forest|grass|meadow|recreation_ground|cemetery)$"]{b};way[natural=wood]{b};',
         f'way[highway~"^(motorway|trunk|primary)$"]{b};',
         f'way[railway~"^(rail|light_rail|subway)$"]{b};',
+        f'way[natural=coastline]{b};',
     ]) + ");out geom;"
     last = None
     for ep in ENDPOINTS:
@@ -130,6 +131,52 @@ def build(cid, bbox):
                     x = ax + (bx - ax) * t / steps
                     y = ay + (by - ay) * t / steps
                     setcell(int((x - west) / dlng), int((y - south) / dlat), cls)
+
+    # Coastline -> sea: OSM coastline is a directed way with LAND on the left, SEA on the
+    # right. Stamp the coast as Water, seed sea cells on the right of each segment, then
+    # flood Open cells (bounded by coast + land features). Landlocked cities have no
+    # coastline -> no-op; only tagged water remains.
+    import collections
+    coast = [el for el in data["elements"]
+             if el.get("type") == "way" and el.get("tags", {}).get("natural") == "coastline" and el.get("geometry")]
+    if coast:
+        seeds = []
+        for el in coast:
+            pts = [(g["lon"], g["lat"]) for g in el["geometry"]]
+            for i in range(1, len(pts)):
+                ax, ay = pts[i - 1]
+                bx, by = pts[i]
+                steps = max(1, int(math.hypot((bx - ax) / dlng, (by - ay) / dlat)) + 1)
+                for t in range(steps + 1):
+                    x = ax + (bx - ax) * t / steps
+                    y = ay + (by - ay) * t / steps
+                    ci = int((x - west) / dlng)
+                    ri = int((y - south) / dlat)
+                    if 0 <= ci < cols and 0 <= ri < rows:
+                        grid[ri * cols + ci] = WATER  # the shoreline blocks surface track
+                ddx, ddy = bx - ax, by - ay
+                nlen = math.hypot(ddx, ddy) or 1.0
+                sx = (ax + bx) / 2 + (ddy / nlen) * dlng * 1.5  # right normal = sea side
+                sy = (ay + by) / 2 + (-ddx / nlen) * dlat * 1.5
+                sci = int((sx - west) / dlng)
+                sri = int((sy - south) / dlat)
+                if 0 <= sci < cols and 0 <= sri < rows:
+                    seeds.append(sri * cols + sci)
+        q = collections.deque()
+        for s in seeds:
+            if grid[s] == OPEN:
+                grid[s] = WATER
+                q.append(s)
+        while q:
+            k = q.popleft()
+            ri, ci = divmod(k, cols)
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = ri + dr, ci + dc
+                if 0 <= nr < rows and 0 <= nc < cols:
+                    nk = nr * cols + nc
+                    if grid[nk] == OPEN:
+                        grid[nk] = WATER
+                        q.append(nk)
 
     cells = []
     for ri in range(rows):
