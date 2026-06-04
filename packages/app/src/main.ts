@@ -11,6 +11,7 @@ import { GameLoop } from "./sim/GameLoop";
 import { attachPointer } from "./tools/pointer";
 import { mountToolbar } from "./ui/toolbar";
 import { mountPanels } from "./ui/panels";
+import { mountStatsBar } from "./ui/statsbar";
 import { installTestHooks } from "./testhooks";
 
 function mountTitle(): void {
@@ -36,16 +37,24 @@ async function boot(): Promise<void> {
   const game = new Game(bridge, map, overlay);
   const loop = new GameLoop(game);
   attachPointer(game);
-  installTestHooks(game);
+  installTestHooks(game, loop);
 
   const ui = document.getElementById("ui")!;
   mountToolbar(ui, game, loop);
   mountPanels(ui, game);
+  const statsBar = mountStatsBar(ui);
 
   // Initial render once the map is ready (deck syncs to the camera), then run the rAF loop.
   map.once("load", () => game.refresh());
   game.refresh();
   loop.start();
+
+  // Stats DOM + waiting-pax halos refresh on a separate ~3 Hz throttle (never per frame).
+  setInterval(() => {
+    const s = bridge.stats();
+    statsBar.update(s);
+    game.setStats(s);
+  }, 333);
 
   window.__ot = { map, bridge, city, overlay, game };
   window.__APP_READY = true;

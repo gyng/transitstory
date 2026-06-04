@@ -23,6 +23,7 @@ declare global {
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;
       setRunning(running: boolean): void;
+      setSpeed(mult: number): void;
       stats(): unknown;
     };
   }

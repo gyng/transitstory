@@ -28,6 +28,11 @@ export interface VehicleDot {
   lat: number;
   color: Rgb;
 }
+export interface WaitingDot {
+  lng: number;
+  lat: number;
+  count: number;
+}
 
 export interface RenderView {
   stations: StationDot[];
@@ -35,6 +40,7 @@ export interface RenderView {
   catchments: CatchmentCircle[];
   blueprint: [number, number][]; // in-progress line being drawn (T11)
   vehicles: VehicleDot[]; // moving trains (T15)
+  waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -102,6 +108,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       updateTriggers: {
         getFillColor: view.stations.map((s) => s.selected).join(","),
         getRadius: view.stations.map((s) => s.selected).join(","),
+      },
+    }),
+    // Waiting-passenger halo: an amber ring that grows with the queue (top, so a starved
+    // station is always visible). Stroked-only so it doesn't occlude the station dot.
+    new ScatterplotLayer({
+      id: "waiting",
+      data: view.waiting,
+      getPosition: (d: WaitingDot) => [d.lng, d.lat],
+      getRadius: (d: WaitingDot) => 8 + Math.min(16, Math.sqrt(d.count) * 2.5),
+      radiusUnits: "pixels",
+      stroked: true,
+      filled: false,
+      getLineColor: [230, 159, 0, 220],
+      lineWidthMinPixels: 2,
+      updateTriggers: {
+        getRadius: view.waiting.map((w) => w.count).join(","),
       },
     }),
   ];

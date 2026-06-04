@@ -7,8 +7,24 @@ import type { Layer } from "@deck.gl/core";
 import { CATCHMENT_M, LINE_PALETTE, SNAP_PX } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayer, type RenderView, type VehicleDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayer, type RenderView, type VehicleDot, type WaitingDot } from "./render";
 import type { SimBridge } from "./sim/SimBridge";
+import type { Stats } from "./types";
+
+const EMPTY_STATS: Stats = {
+  simClockMs: 0,
+  running: false,
+  stationCount: 0,
+  lineCount: 0,
+  vehicleCount: 0,
+  ridershipTotal: 0,
+  waitingTotal: 0,
+  leftBehind: 0,
+  avgLoadFactor: 0,
+  coverageScore: 0,
+  perStation: [],
+  perLine: [],
+};
 
 export type Mode = "build" | "run";
 export type Tool = "select" | "station" | "line";
@@ -30,6 +46,9 @@ export class Game {
   /** Cached topology layers (stable identity across frames; rebuilt only on refresh). */
   private below: Layer[] = [];
   private above: Layer[] = [];
+
+  /** Latest stats snapshot (refreshed on the ~3 Hz throttle); drives waiting-pax halos. */
+  lastStats: Stats = EMPTY_STATS;
 
   constructor(
     readonly bridge: SimBridge,
@@ -216,7 +235,25 @@ export class Game {
     });
     if (this.cursor && blueprint.length >= 1) blueprint.push(this.cursor);
 
-    return { stations, lines, catchments, blueprint, vehicles: [] };
+    // Waiting-passenger halos from the latest stats snapshot (positioned at stations).
+    const waiting: WaitingDot[] = [];
+    for (const ps of this.lastStats.perStation) {
+      if (ps.waiting > 0) {
+        const s = stationsV[ps.stationId];
+        if (s) {
+          const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+          waiting.push({ lng, lat, count: ps.waiting });
+        }
+      }
+    }
+
+    return { stations, lines, catchments, blueprint, vehicles: [], waiting };
+  }
+
+  /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */
+  setStats(s: Stats): void {
+    this.lastStats = s;
+    this.refresh();
   }
 
   /** Rebuild cached topology layers from authoritative sim views; recompose with current
