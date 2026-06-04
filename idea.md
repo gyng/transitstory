@@ -11,3 +11,13 @@ create a web-based browser game
 - low-poly art style (if 3d)
 - time of day/rush hour sim?
 - inspo from nimby, ttd, atrain etc
+
+---
+
+pt 2.
+
+sim mode vs grand tycoon mode
+pure sim mode vs gsg inspired mode with events etc
+
+planes and ferries
+basically you should be able to play any transport fantasy
