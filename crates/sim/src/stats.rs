@@ -20,6 +20,9 @@ pub struct StatsSnapshot {
     pub sim_hour: f64,
     pub period: String,
     pub demand_multiplier: f64,
+    /// Surface-rail build impact: 0 (all grade-separated / following ROW) .. 100 (heavy surface
+    /// cutting through built-up land). Lower is better.
+    pub build_difficulty: u8,
     pub per_station: Vec<StationStat>,
     pub per_line: Vec<LineStat>,
 }
@@ -42,6 +45,8 @@ pub struct LineStat {
     pub stops: u32,
     pub trains: u32,
     pub headway_ms: f64,
+    pub disruption: f64,
+    pub crosses_water: bool,
 }
 
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,
@@ -65,4 +70,7 @@ pub struct LineView {
     pub polyline_mm: Vec<[f64; 2]>,
     /// Tightest curve radius (mm) on the line; large value == effectively straight.
     pub min_radius_mm: f64,
+    /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).
+    pub span_modes: Vec<u8>,
+    pub crosses_water_surface: bool,
 }

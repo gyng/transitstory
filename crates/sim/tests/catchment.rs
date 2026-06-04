@@ -11,6 +11,7 @@ fn city_one_cell() -> CityData {
             cell_m: 600.0,
             cells: vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 10.0, dest_w: 6.0 }],
         },
+        ..Default::default()
     }
 }
 

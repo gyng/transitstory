@@ -8,7 +8,7 @@ fn two_line_world() -> World {
     let cells = (0..30)
         .map(|k| DemandCell { x_mm: 200_000 * (k - 15), y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
         .collect();
-    let mut w = World::new(7, CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells } });
+    let mut w = World::new(7, CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells }, ..Default::default() });
     // E–W line stations 0..4 along y=0
     for k in 0..5 {
         w.apply(&Command::PlaceStation { x_mm: (k as i64 - 2) * 1_500_000, y_mm: 0, name: None });

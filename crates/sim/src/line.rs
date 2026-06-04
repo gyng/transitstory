@@ -29,6 +29,19 @@ pub struct Line {
     pub speed_cap_mm_s: Vec<i64>,
     /// Tightest curve radius on the line (mm); i64::MAX if effectively straight.
     pub min_radius_mm: i64,
+    /// Build mode per inter-stop span: 0=Surface, 1=Elevated, 2=Tunnel.
+    pub span_mode: Vec<u8>,
+    /// Total surface-rail disruption units (lower is better; 0 when elevated/tunnel/ROW).
+    pub disruption_units: i64,
+    /// True if any Surface span crosses water (the UI's one hard gate).
+    pub crosses_water_surface: bool,
+}
+
+/// Build modes for a track span.
+pub mod mode {
+    pub const SURFACE: u8 = 0;
+    pub const ELEVATED: u8 = 1;
+    pub const TUNNEL: u8 = 2;
 }
 
 impl Line {
@@ -43,7 +56,23 @@ impl Line {
             stop_arclen_mm: Vec::new(),
             speed_cap_mm_s: Vec::new(),
             min_radius_mm: i64::MAX,
+            span_mode: Vec::new(),
+            disruption_units: 0,
+            crosses_water_surface: false,
         }
+    }
+
+    /// Span index (inter-stop segment) containing forward arc-length `s_mm`.
+    pub fn span_of(&self, s_mm: i64) -> usize {
+        if self.stop_arclen_mm.len() < 2 {
+            return 0;
+        }
+        for j in 1..self.stop_arclen_mm.len() {
+            if s_mm < self.stop_arclen_mm[j] {
+                return j - 1;
+            }
+        }
+        self.stop_arclen_mm.len() - 2
     }
 
     /// Curve speed cap (mm/s) at forward arc-length `s_mm` (the tighter of the bracketing
@@ -174,10 +203,11 @@ fn cap_from_radius(r_mm: f64) -> i64 {
 /// stop, its index in that polyline (so stations remain exact vertices on the curve).
 fn smooth_centripetal(pts: &[PointMm]) -> (Vec<PointMm>, Vec<usize>) {
     let n = pts.len();
-    if n < 3 {
-        // 0–2 stops: nothing to curve.
+    if n < 2 {
         return (pts.to_vec(), (0..n).collect());
     }
+    // n == 2 still runs the loop below (clamped neighbours => ~linear) so straight spans get
+    // intermediate vertices too — needed for per-segment buildability sampling.
     let p: Vec<(f64, f64)> = pts.iter().map(|q| (q.x_mm as f64, q.y_mm as f64)).collect();
     let mut out: Vec<PointMm> = Vec::with_capacity(n * SAMPLES_PER_SPAN + 1);
     let mut stop_idx: Vec<usize> = Vec::with_capacity(n);

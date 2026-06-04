@@ -7,7 +7,7 @@ fn city() -> CityData {
     let cells = (0..20)
         .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
         .collect();
-    CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 300.0, cells } }
+    CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() }
 }
 
 /// 3 stations always placed; the line covers the given subset of stops.

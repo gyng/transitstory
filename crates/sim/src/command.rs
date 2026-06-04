@@ -37,6 +37,13 @@ pub enum Command {
         line: LineId,
         headway_ms: i64,
     },
+    /// Build mode for one inter-stop span (0=Surface,1=Elevated,2=Tunnel); span=u32::MAX sets
+    /// every span of the line (whole-line toggle).
+    SetSegmentMode {
+        line: LineId,
+        span: u32,
+        mode: u8,
+    },
     SetRunning {
         running: bool,
     },
@@ -49,6 +56,7 @@ pub enum Event {
     StopAdded { line: LineId, station: StationId },
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
+    SegmentModeSet { line: LineId, span: u32, mode: u8 },
     RunningSet { running: bool },
     Rejected { reason: String },
 }

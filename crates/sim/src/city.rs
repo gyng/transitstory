@@ -14,6 +14,36 @@ pub struct CityData {
     /// Demand grid in sim millimetres (the frontend converts lon/lat -> mm before embedding).
     #[serde(default)]
     pub demand: DemandGrid,
+    /// Coarse buildability grid (mm) for the surface-rail cost signal. Additive/optional.
+    #[serde(default)]
+    pub buildability: BuildabilityGrid,
+}
+
+/// Coarse classified grid: each cell carries a class `c` (1=RoadROW 2=RailROW 3=Built
+/// 4=Water 5=Park; absent cells are Open=0). Built offline from OSM (scripts/build_buildability.py).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BuildabilityGrid {
+    #[serde(default)]
+    pub cell_m: f64,
+    #[serde(default)]
+    pub cells: Vec<BuildCell>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BuildCell {
+    pub x_mm: i64,
+    pub y_mm: i64,
+    pub c: u8,
+}
+
+/// Surface-rail cost class codes (shared by the grid + the sim).
+pub mod class {
+    pub const OPEN: u8 = 0;
+    pub const ROAD: u8 = 1;
+    pub const RAIL: u8 = 2;
+    pub const BUILT: u8 = 3;
+    pub const WATER: u8 = 4;
+    pub const PARK: u8 = 5;
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

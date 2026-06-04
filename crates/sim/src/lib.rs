@@ -25,7 +25,7 @@ pub mod trainset;
 pub mod vehicle;
 pub mod world;
 
-pub use city::{CityData, DemandCell, DemandGrid};
+pub use city::{BuildCell, BuildabilityGrid, CityData, DemandCell, DemandGrid};
 pub use command::{Command, Event};
 pub use geo_local::PointMm;
 pub use ids::{LineId, PaxId, StationId, TrainsetId, VehicleId};

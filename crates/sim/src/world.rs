@@ -53,6 +53,9 @@ pub struct World {
     /// A derived cache (not hashed); cleared when the network changes. Lookup-only, so no
     /// HashMap-iteration determinism hazard.
     pub route_cache: rustc_hash::FxHashMap<(u32, u32), Option<Vec<crate::routing::Leg>>>,
+    /// Buildability lookup: (cell_x, cell_y) -> class code. Built once from CityData; lookup-only.
+    pub build_lookup: rustc_hash::FxHashMap<(i32, i32), u8>,
+    pub build_cell_mm: i64,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -88,6 +91,23 @@ pub struct SaveGame {
 
 impl World {
     pub fn new(seed: u64, city: CityData) -> Self {
+        // Build the buildability lookup from the committed grid (div_euclid so negative mm,
+        // e.g. west of a Calgary origin, index consistently with the cells' centres).
+        let build_cell_mm = if city.buildability.cell_m > 0.0 {
+            (city.buildability.cell_m * 1000.0) as i64
+        } else {
+            120_000
+        };
+        let mut build_lookup = rustc_hash::FxHashMap::default();
+        for cell in &city.buildability.cells {
+            build_lookup.insert(
+                (
+                    cell.x_mm.div_euclid(build_cell_mm) as i32,
+                    cell.y_mm.div_euclid(build_cell_mm) as i32,
+                ),
+                cell.c,
+            );
+        }
         World {
             seed,
             clock_ms: 0,
@@ -108,8 +128,67 @@ impl World {
             alightings: Vec::new(),
             serving: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
+            build_lookup,
+            build_cell_mm,
             demand_dirty: false,
         }
+    }
+
+    /// Buildability class at a local mm point (Open if outside the grid).
+    pub fn classify(&self, x_mm: i64, y_mm: i64) -> u8 {
+        let key = (
+            x_mm.div_euclid(self.build_cell_mm) as i32,
+            y_mm.div_euclid(self.build_cell_mm) as i32,
+        );
+        self.build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN)
+    }
+
+    /// Recompute a line's surface-rail disruption + water flag from the buildability grid and
+    /// its per-span build modes. Cheap (one pass over the polyline vertices); called on a
+    /// geometry or mode change. Disruption = Σ weight(class) × segment-metres × mode-factor.
+    fn recompute_line_buildability(&mut self, line: LineId) {
+        use crate::city::class;
+        use crate::line::mode;
+        let idx = line.index();
+        if idx >= self.lines.len() {
+            return;
+        }
+        let nspans = self.lines[idx].stops.len().saturating_sub(1);
+        if self.lines[idx].span_mode.len() != nspans {
+            self.lines[idx].span_mode.resize(nspans, mode::SURFACE);
+        }
+
+        let mut disr = 0i64;
+        let mut water = false;
+        {
+            let l = &self.lines[idx];
+            for vi in 1..l.polyline.len() {
+                let seg_m = (l.arclen_mm[vi] - l.arclen_mm[vi - 1]) / 1000; // mm -> metres
+                if seg_m <= 0 {
+                    continue;
+                }
+                let span = l.span_of(l.arclen_mm[vi]);
+                let m = l.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
+                let c = self.classify(l.polyline[vi].x_mm, l.polyline[vi].y_mm);
+                let w: i64 = match c {
+                    class::BUILT => 10,
+                    class::WATER => 20,
+                    class::PARK => 3,
+                    _ => 0, // Open / RoadROW / RailROW are free corridors
+                };
+                let factor: i64 = match m {
+                    mode::ELEVATED => 25,
+                    mode::TUNNEL => 8,
+                    _ => 100, // Surface pays full
+                };
+                disr += w * seg_m * factor / 100;
+                if c == class::WATER && m == mode::SURFACE {
+                    water = true;
+                }
+            }
+        }
+        self.lines[idx].disruption_units = disr;
+        self.lines[idx].crosses_water_surface = water;
     }
 
     /// True if station `s` is on a line with a trainset and at least 2 stops.
@@ -180,9 +259,17 @@ impl World {
                     stops: l.stops.len() as u32,
                     trains: l.trainset.map(|t| t.count as u32).unwrap_or(0),
                     headway_ms: l.headway_ms as f64,
+                    disruption: l.disruption_units as f64,
+                    crosses_water: l.crosses_water_surface,
                 }
             })
             .collect();
+
+        // Build impact: total disruption per km of track, mapped to 0..100 (lower is better).
+        let total_disr: i64 = self.lines.iter().map(|l| l.disruption_units).sum();
+        let total_track_m: i64 = self.lines.iter().map(|l| l.length_mm() / 1000).sum();
+        let build_difficulty =
+            ((total_disr * 5 / total_track_m.max(1)).clamp(0, 100)) as u8;
 
         StatsSnapshot {
             sim_clock_ms: self.clock_ms as f64,
@@ -198,6 +285,7 @@ impl World {
             sim_hour: crate::tod::hour_of_day(self.clock_ms),
             period: crate::tod::period_label(crate::tod::hour_of_day(self.clock_ms)).to_string(),
             demand_multiplier: crate::tod::demand_multiplier(crate::tod::hour_of_day(self.clock_ms)) as f64,
+            build_difficulty,
             per_station,
             per_line,
         }
@@ -256,6 +344,7 @@ impl World {
                         }
                     }
                     self.rebuild_line_geometry(*line);
+                    self.recompute_line_buildability(*line);
                     vec![Event::StopAdded {
                         line: *line,
                         station: *station,
@@ -289,6 +378,26 @@ impl World {
                     vec![Event::Rejected {
                         reason: "SetHeadway: unknown line".into(),
                     }]
+                }
+            }
+            Command::SetSegmentMode { line, span, mode } => {
+                if let Some(l) = self.lines.get_mut(line.index()) {
+                    let nspans = l.stops.len().saturating_sub(1);
+                    if l.span_mode.len() != nspans {
+                        l.span_mode.resize(nspans, crate::line::mode::SURFACE);
+                    }
+                    let m = (*mode).min(crate::line::mode::TUNNEL);
+                    if *span == u32::MAX {
+                        for s in l.span_mode.iter_mut() {
+                            *s = m;
+                        }
+                    } else if (*span as usize) < l.span_mode.len() {
+                        l.span_mode[*span as usize] = m;
+                    }
+                    self.recompute_line_buildability(*line);
+                    vec![Event::SegmentModeSet { line: *line, span: *span, mode: m }]
+                } else {
+                    vec![Event::Rejected { reason: "SetSegmentMode: unknown line".into() }]
                 }
             }
             Command::SetRunning { running } => {
@@ -356,6 +465,8 @@ impl World {
                     .map(|p| [p.x_mm as f64, p.y_mm as f64])
                     .collect(),
                 min_radius_mm: l.min_radius_mm as f64,
+                span_modes: l.span_mode.clone(),
+                crosses_water_surface: l.crosses_water_surface,
             })
             .collect()
     }
