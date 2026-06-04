@@ -139,74 +139,88 @@ export function Toolbar() {
 
   return (
     <>
-      {/* build-controls popover (opens above the bar for the active mode) */}
+      {/* Bottom-centred stack: the build-controls popover sits ABOVE the chord bar with a real
+          gap, so they can never overlap regardless of bar height — the bar stays pinned at the
+          bottom (this column is bottom-anchored) and the popover grows upward off it. The wrapper
+          is pointer-transparent so map drags pass through the gaps; children re-enable pointers. */}
       <div
-        id="mode-controls"
-        data-testid="mode-controls"
-        style={{
-          position: "fixed",
-          bottom: 84,
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: ui.mode === "build" ? "flex" : "none",
-          flexDirection: "column",
-          gap: 8,
-          padding: "12px 14px",
-          width: "min(440px,92vw)",
-          background: "rgba(255,255,255,.97)",
-          borderRadius: 12,
-          boxShadow: "var(--ot-shadow)",
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>{activeMode.icon}</span>
-          <b style={{ font: "600 14px system-ui", color: activeMode.color }}>{activeMode.name}</b>
-          <span style={{ color: "#9aa3ad", font: "12px system-ui" }}>construction</span>
-        </div>
-        <div style={{ color: "#7a818a", font: "12px system-ui,sans-serif", lineHeight: 1.35 }}>
-          {activeMode.hint}
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {TOOLS.map(([t, label]) => {
-            const on = ui.tool === t;
-            return (
-              <Button
-                key={t}
-                label={label}
-                testid={`tool-${t}`}
-                onClick={() => game.setTool(t)}
-                style={{
-                  flex: 1,
-                  background: on ? "#1c2024" : "#fff",
-                  color: on ? "#fff" : "#1c2024",
-                  borderColor: on ? "#1c2024" : "#d7dade",
-                }}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* the chord bar */}
-      <div
-        id="transport-bar"
         style={{
           position: "fixed",
           bottom: 14,
           left: "50%",
           transform: "translateX(-50%)",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          gap: 6,
-          padding: 6,
-          background: "rgba(255,255,255,.94)",
-          borderRadius: 12,
-          boxShadow: "var(--ot-shadow)",
+          gap: 10,
+          maxWidth: "96vw",
           zIndex: 10,
+          pointerEvents: "none",
         }}
       >
-        {MODES.map((m) => (
+        {/* build-controls popover (opens above the bar for the active mode) */}
+        <div
+          id="mode-controls"
+          data-testid="mode-controls"
+          style={{
+            display: ui.mode === "build" ? "flex" : "none",
+            flexDirection: "column",
+            gap: 8,
+            padding: "12px 14px",
+            width: "min(440px,92vw)",
+            background: "rgba(255,255,255,.97)",
+            borderRadius: 12,
+            boxShadow: "var(--ot-shadow)",
+            pointerEvents: "auto",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{activeMode.icon}</span>
+            <b style={{ font: "600 14px system-ui", color: activeMode.color }}>{activeMode.name}</b>
+            <span style={{ color: "#9aa3ad", font: "12px system-ui" }}>construction</span>
+          </div>
+          <div style={{ color: "#7a818a", font: "12px system-ui,sans-serif", lineHeight: 1.35 }}>
+            {activeMode.hint}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {TOOLS.map(([t, label]) => {
+              const on = ui.tool === t;
+              return (
+                <Button
+                  key={t}
+                  label={label}
+                  testid={`tool-${t}`}
+                  onClick={() => game.setTool(t)}
+                  style={{
+                    flex: 1,
+                    background: on ? "#1c2024" : "#fff",
+                    color: on ? "#fff" : "#1c2024",
+                    borderColor: on ? "#1c2024" : "#d7dade",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* the chord bar (wraps on narrow viewports rather than overflowing) */}
+        <div
+          id="transport-bar"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexWrap: "wrap",
+            gap: 6,
+            padding: 6,
+            maxWidth: "96vw",
+            background: "rgba(255,255,255,.94)",
+            borderRadius: 12,
+            boxShadow: "var(--ot-shadow)",
+            pointerEvents: "auto",
+          }}
+        >
+          {MODES.map((m) => (
           <BigModeButton
             key={m.id}
             m={m}
@@ -262,6 +276,7 @@ export function Toolbar() {
         />
 
         <Button label="⚙" testid="open-settings" onClick={() => setSettingsOpen((o) => !o)} />
+        </div>
       </div>
 
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
