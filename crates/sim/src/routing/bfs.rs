@@ -1,19 +1,31 @@
-//! Multi-leg routing across interchanges. BFS over the line graph: from a station you can
-//! ride any line serving it to any of that line's stops (one leg), and transfer at a shared
-//! station. Returns the minimum-transfer sequence of legs from origin to destination.
-//! (Direct single-line trips fall out as a 1-leg result.) Deterministic: ordered iteration.
+//! The shipped `Router`: minimum-transfer BFS over the line graph. From a station you can ride
+//! any serving line to any of that line's stops (one leg), then transfer at a shared station.
+//! Returns the fewest-leg path; direct single-line trips fall out as a 1-leg result.
+//! Deterministic: index-ordered iteration only (no HashMap iteration).
+use super::{Leg, Router};
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use std::collections::VecDeque;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Leg {
-    pub line: LineId,
-    pub board: StationId,
-    pub alight: StationId,
+/// Min-transfer BFS router. Zero-sized; the seam exists so RAPTOR can replace it later.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BfsRouter;
+
+impl Router for BfsRouter {
+    fn plan(
+        &self,
+        lines: &[Line],
+        serving: &[Vec<LineId>],
+        origin: StationId,
+        dest: StationId,
+        max_legs: usize,
+    ) -> Option<Vec<Leg>> {
+        plan_route(lines, serving, origin, dest, max_legs)
+    }
 }
 
 /// `serving[station]` = lines stopping at that station. `max_legs` bounds transfers.
+/// Free function kept for direct use in tests; `BfsRouter` wraps it for the trait seam.
 pub fn plan_route(
     lines: &[Line],
     serving: &[Vec<LineId>],

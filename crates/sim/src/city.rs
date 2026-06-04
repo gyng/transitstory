@@ -23,6 +23,11 @@ pub struct CityData {
     /// for native tests that don't want abandonment).
     #[serde(default = "default_patience_ms")]
     pub patience_ms: i64,
+    /// Maximum legs (transfers + 1) a routed trip may use. 0 (the `Default` value) means "use
+    /// the routing default" — so it's a per-city knob a future RAPTOR can raise without a core
+    /// change, while `CityData::default()` keeps the shipped behaviour.
+    #[serde(default)]
+    pub max_legs: usize,
 }
 
 /// Default rider patience for cities that don't specify one: 30 sim-minutes.

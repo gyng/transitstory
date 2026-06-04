@@ -86,6 +86,10 @@ pub struct World {
     pub demand_dirty: bool,
     /// Optional economy (NIMBY-style): when off, money is informational only.
     pub economy_enabled: bool,
+    /// The trip-planning strategy (the routing seam). `BfsRouter` ships; RAPTOR swaps in here.
+    pub router: Box<dyn crate::routing::Router>,
+    /// Max legs (transfers + 1) a routed trip may use (from CityData, or the routing default).
+    pub max_legs: usize,
 }
 
 /// Borrowed canonical view hashed for determinism. Field order = hash order (stable).
@@ -138,6 +142,11 @@ impl World {
                 cell.c,
             );
         }
+        let max_legs = if city.max_legs == 0 {
+            crate::routing::DEFAULT_MAX_LEGS
+        } else {
+            city.max_legs
+        };
         World {
             seed,
             clock_ms: 0,
@@ -168,6 +177,8 @@ impl World {
             build_cell_mm,
             demand_dirty: false,
             economy_enabled: true,
+            router: Box::new(crate::routing::BfsRouter),
+            max_legs,
         }
     }
 

@@ -57,6 +57,19 @@ fn same_line_route_is_direct() {
 }
 
 #[test]
+fn router_trait_matches_the_free_function() {
+    // The seam: the shipped BfsRouter behind `trait Router` returns the same plan as the free
+    // function, so a future RAPTOR impl is a drop-in (AGENTS architecture).
+    let mut w = two_line_world();
+    w.tick(50);
+    let router = BfsRouter;
+    let via_trait = Router::plan(&router, &w.lines, &w.serving, StationId(0), StationId(8), 4);
+    let via_fn = plan_route(&w.lines, &w.serving, StationId(0), StationId(8), 4);
+    assert_eq!(via_trait, via_fn, "the trait impl and the free function agree");
+    assert_eq!(via_trait.expect("route").len(), 2);
+}
+
+#[test]
 fn ridership_develops_with_transfers_and_is_deterministic() {
     let mut a = two_line_world();
     for _ in 0..6000 {

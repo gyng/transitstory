@@ -4,14 +4,10 @@
 //! shaped so RAPTOR/transfers slot in later behind a Router trait (PLAN §6).
 use crate::ids::StationId;
 use crate::pax::Pax;
-use crate::routing::plan_route;
 use crate::station::Station;
 use crate::world::World;
 use rand::RngExt;
 use rand_chacha::ChaCha8Rng;
-
-/// Max legs (transfers + 1) a routed trip may use.
-const MAX_LEGS: usize = 4;
 
 /// Catchment radius (mm). ~500 m walk shed.
 pub const CATCHMENT_MM: i64 = 500_000;
@@ -80,6 +76,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     let mult = crate::tod::demand_multiplier(hour);
     let bias = crate::tod::work_bias(hour);
     let now = world.clock_ms;
+    let max_legs = world.max_legs;
 
     let World {
         ref stations,
@@ -91,6 +88,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         ref mut waiting,
         ref mut rng,
         ref mut route_cache,
+        ref router,
         ..
     } = *world;
 
@@ -116,7 +114,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
                 // Route across the network (transfers at interchanges), cached per O/D pair.
                 let entry = route_cache
                     .entry((s as u32, dest.0))
-                    .or_insert_with(|| plan_route(lines, serving, StationId(s as u32), dest, MAX_LEGS));
+                    .or_insert_with(|| router.plan(lines, serving, StationId(s as u32), dest, max_legs));
                 if let Some(legs) = entry {
                     if !legs.is_empty() {
                         waiting[s].push_back(Pax {
