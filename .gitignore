@@ -23,3 +23,5 @@ test-results
 .DS_Store
 *.log
 .playwright-mcp/
+# WSL alternate-data-stream stubs (downloaded-file security-zone metadata)
+*:Zone.Identifier

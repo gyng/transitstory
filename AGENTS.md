@@ -154,32 +154,44 @@ flags · e2e camera-independent via the geo.ts-routed hook · all three tiers gr
 
 ---
 
-## Frontend / atomic design *(vanilla TS — no framework)*
+## Frontend / atomic design *(React 19 chrome over an imperative sim/map core)*
 
-Tree: **page** (`main.ts` shell) → **template** (map-centric layout) → **organisms** (LineListPanel, EditorPanel,
-StatsBar, TransportBar) → **molecules** (headway control, line-list-row, stat-readout) → **atoms** (button, slider,
-swatch, gauge).
+> **Decision change (2026-06-05):** the UI chrome migrated from vanilla-TS `createX` factories to **React 19**
+> (`@vitejs/plugin-react`, new JSX transform). The *load-bearing* rules below are unchanged — only the rendering
+> substrate is. React owns the **DOM chrome**; the map, deck.gl overlay, and rAF loop stay **imperative and outside
+> React**. The old `createX(deps): XHandle` convention is retired; the React equivalent is a function component that
+> reads hook slices and calls `Game` methods.
 
-- **`createX(deps): XHandle` returning `{ el, update(snapshot), destroy() }`.** Components own their own subtree,
-  take typed args from `types.ts`, and never reach into another component's DOM or globals. (Vanilla TS has no JSX
-  to enforce a contract — this convention is it.)
-- **UI emits Commands via injected callbacks and reads snapshots.** A component's only outputs are DOM it owns and
-  Commands funneled through `SimBridge`. **`SetHeadway` fires once on drag-end** (one Command per committed value);
-  `oninput` updates only a local preview label. **Speed buttons change the GameLoop accumulator rate, not a Command.**
-  ✗ `sim.setHeadway(x)` from a slider; ✗ optimistically rendering self-computed state instead of the next snapshot.
-- **Reconcile lists by id key, update in place — never `innerHTML` the list** (drops selection/focus, detaches
-  listeners). Cache last-rendered values and early-return when unchanged.
-- **Atoms are token-driven** (`styles.css` custom props: `--ot-space-*`, `--ot-color-surface`, `--ot-gauge-*`). The
-  one exception is **per-line color**, which is sim-owned (`Line.color:u32`) and must reach the left-list swatch and
-  the deck `PathLayer` by the *same* path so they never drift. ✗ a `'#3388ff'` literal in a panel.
-- **Simulation geometry is deck.gl layers, never DOM.** Panels are absolutely-positioned chrome over the full-screen
-  `#map`, pointer-events scoped so they don't swallow map drags. Selection/hover is shared via the snapshot + command
-  path, not DOM coupling. ✗ an HTML div positioned by lng/lat as a station.
+Tree: **root** (`main.tsx` → `ui/react/App.tsx` phase machine) → **provider** (`GameContext` — the one React⇄sim
+seam) → **components** (`Menu`, `StatsBar`, `Panels` = LineList + Editor, `Toolbar` = chorded bar + popover,
+`Settings`). Shared constants/formatters live in `ui/react/shared.ts` (`MODES`, `modeIcon`, `hex`, `fmtMoney`,
+`PANEL_STYLE`). The `#map` div, deck overlay, `GameLoop` rAF, and `coords/geo.ts` are untouched by React.
 
-**Checklist:** emits Commands via callbacks + reads `update(snapshot)`, zero direct sim mutation · DOM updates outside
-rAF, throttled 1–4 Hz · colors/spacing from tokens, per-line color from `Line.color` (same path as the PathLayer) ·
-lists reconciled by id, no `innerHTML` rebuild · each component a `createX` factory not reaching into others · geometry
-is deck layers, all projection in `coords/geo.ts`.
+- **`GameContext` is the only seam, with TWO slices on TWO cadences** (the "two clocks" rule, enforced):
+  `stats` (the `Stats` snapshot) is **pushed from the existing ~3 Hz interval**; `ui` (mode/tool/transport/
+  selection/enabledModes/showDemand) is updated on `game.onChange` with a shallow-compare so the 3 Hz churn
+  doesn't cause redundant renders. Hooks: `useGame()`/`useLoop()` (stable instances), `useStats()`, `useGameUI()`.
+  ✗ React touching deck.gl/the map/`requestAnimationFrame`; ✗ a component re-rendering per animation frame.
+- **UI emits Commands by calling `Game` methods; it reads snapshots via hooks.** A component's only outputs are the
+  DOM it owns and `Game` calls (which funnel to `SimBridge`). **`SetHeadway` fires once on drag-end** — bind the
+  slider's native `change` to commit and native `input` to a local preview `useState`; React's synthetic `onChange`
+  maps to the DOM `input` event and would commit per drag-tick, so it's banned for the headway slider. **Speed is a
+  `GameLoop` knob (local state → `loop.setSpeed`), not a Command.** ✗ optimistic self-rendered sim state.
+- **Reconcile lists with React keys (`key={id}`) — never `innerHTML`.** Keep data-bound inputs **uncontrolled +
+  keyed** to the committed value so they resync on the next snapshot without clobbering an in-progress drag.
+- **Styles are token-driven** (`styles.css` custom props: `--ot-space-*`, `--ot-color-surface`, `--ot-gauge-*`). The
+  one exception is **per-line color**, sim-owned (`Line.color:u32`), which must reach the list swatch and the deck
+  `PathLayer` by the *same* path (`hex()` in `shared.ts`) so they never drift. ✗ a `'#3388ff'` literal in a panel.
+- **Simulation geometry is deck.gl layers, never DOM.** React panels are absolutely-positioned chrome inside `#ui`
+  (pointer-events scoped) over the full-screen `#map`. Selection/hover flows through the snapshot + command path,
+  not DOM coupling. ✗ an HTML div positioned by lng/lat as a station.
+- **Every `data-testid` is a contract** — the e2e suite asserts on them; preserve them across any component refactor.
+
+**Checklist:** chrome is React, map/deck/rAF stay imperative · all sim reads via `useStats`/`useGameUI`, all writes via
+`Game` methods (zero direct mutation) · headway commits on native `change` only, speed is a loop knob · DOM updates
+throttled to the ~3 Hz `stats` slice, not per frame · colors/spacing from tokens, per-line color via `hex()` (same
+path as the PathLayer) · lists keyed (no `innerHTML`), data inputs uncontrolled+keyed · geometry is deck layers, all
+projection in `coords/geo.ts` · testids preserved.
 
 ---
 

@@ -1,0 +1,98 @@
+// Top-centre HUD: the headline Ridership counter + a 0–100 Coverage/Satisfaction gauge.
+// Fed by the ~3 Hz stats throttle (useStats — never per frame). One number + one gauge,
+// details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
+import { useStats } from "./GameContext";
+import { fmtMoney } from "./shared";
+
+export function StatsBar() {
+  const s = useStats();
+
+  const hh = Math.floor(s.simHour);
+  const mm = Math.floor((s.simHour - hh) * 60);
+  const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+
+  const r = Math.round(s.ridershipTotal);
+  const c = Math.round(s.coverageScore);
+  const w = Math.round(s.waitingTotal);
+  const bi = Math.round(s.buildDifficulty);
+
+  // Bar fills left→right; hue shifts good→bad as coverage drops.
+  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "var(--ot-gauge-bad)";
+  const impactColor = bi >= 50 ? "var(--ot-gauge-bad)" : bi >= 20 ? "#e69f00" : "var(--ot-gauge-good)";
+
+  return (
+    <div
+      id="stats-bar"
+      data-testid="stats-bar"
+      style={{
+        position: "fixed",
+        top: "10px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        padding: "8px 14px",
+        background: "rgba(255,255,255,.95)",
+        borderRadius: "10px",
+        boxShadow: "var(--ot-shadow)",
+        zIndex: 9,
+        font: "13px system-ui,sans-serif",
+        color: "#1c2024",
+      }}
+    >
+      <div>
+        <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>
+          {clock}
+        </b>{" "}
+        <span data-testid="period" style={{ color: "#7a818a" }}>
+          {s.period}
+        </span>
+      </div>
+      <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }}></div>
+      <div>
+        🚇{" "}
+        <b data-testid="ridership" style={{ fontSize: "16px" }}>
+          {r}
+        </b>{" "}
+        riders
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        Coverage
+        <div
+          style={{
+            position: "relative",
+            width: "90px",
+            height: "10px",
+            background: "#e7eaee",
+            borderRadius: "6px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            data-testid="coverage-bar"
+            style={{ position: "absolute", inset: `0 ${100 - c}% 0 0`, background: coverageColor }}
+          ></div>
+        </div>
+        <b data-testid="coverage" style={{ width: "26px", textAlign: "right" }}>
+          {c}
+        </b>
+      </div>
+      <div style={{ color: "#7a818a" }}>
+        <span data-testid="waiting">{w}</span> waiting
+      </div>
+      <div>
+        Build impact{" "}
+        <b data-testid="build-impact" style={{ color: impactColor }}>
+          {bi}
+        </b>
+      </div>
+      <div data-testid="money-box" style={{ opacity: s.economyEnabled ? 1 : 0.4 }}>
+        💰{" "}
+        <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
+          {fmtMoney(s.balance)}
+        </b>
+      </div>
+    </div>
+  );
+}

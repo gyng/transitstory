@@ -184,6 +184,29 @@ run; green standalone).
 - **#6/#7 (prior in this batch)** — real line names from OSM `name`/`ref`; loop lines; importer filters
   construction/<3-stop stubs (fixed the Jurong stub + LRT branch artefacts). Ferries now pulled too (2-stop OK).
 
+## React UI migration (2026-06-05)
+
+Reversed the locked "vanilla TS — no framework" decision (AGENTS.md updated to record it): the UI chrome
+is now **React 19** (`react`/`react-dom` 19.2.7, `@vitejs/plugin-react` 6.0.2 pinned; `jsx: react-jsx`). The
+sim/map/deck.gl core is untouched — React renders only the floating chrome inside `#ui`; the map, the deck
+overlay, and the `GameLoop` rAF loop stay imperative and entirely outside React (two-clocks rule held).
+
+- **State seam = `ui/react/GameContext.tsx`** with two slices on two cadences: `stats` pushed from the existing
+  ~3 Hz interval (the chosen "Context + interval setState"), `ui` (selection/mode/tool/transport/…) updated on
+  `game.onChange` with shallow-compare so selection stays sub-100 ms without per-frame renders. Hooks:
+  `useGame`/`useLoop`/`useStats`/`useGameUI`.
+- **`ui/react/App.tsx`** = the menu→boot→playing phase machine; `boot()` builds the imperative world exactly as
+  the old `main.ts` did (deep-link `?city=` preserved). `main.tsx` mounts it via `createRoot` (no StrictMode —
+  it would double-boot the imperative map/loop).
+- **Components** ported 1:1 (testids + behaviour preserved): `StatsBar`, `Panels` (LineList + Editor), `Toolbar`
+  (chorded bar + popover), `Settings`, `Menu`. Authored in parallel by a 4-agent workflow against a frozen
+  hook/shared contract; integrated + drift-fixed by hand. Headway slider keeps the drag-end-commit rule via
+  native `change`/`input` (React's synthetic `onChange` would fire per drag-tick); data inputs are
+  uncontrolled+keyed so they resync to the committed snapshot.
+- Deleted the vanilla `ui/{menu,panels,statsbar,toolbar,settings}.ts` + `main.ts`. Verified: tsc clean, vite
+  build green, vitest 10, **all 14 e2e green** (incl. the menu/modes/slice/assign/build-tools flows) + visual
+  parity screenshots (`docs/progress/react-menu.png`, `react-ingame.png`).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
