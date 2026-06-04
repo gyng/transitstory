@@ -96,4 +96,12 @@ impl Sim {
         serde_wasm_bindgen::to_value(&self.world.lines_view())
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
+
+    /// Construction-cost preview ($, track only — no trains) for a hypothetical line through
+    /// `station_ids` in `mode`. The build HUD's authoritative figure (same core formula as a
+    /// committed line). `loop_line` closes the route. Returns a plain JS number.
+    #[wasm_bindgen(js_name = previewLineCost)]
+    pub fn preview_line_cost(&self, station_ids: &[u32], mode: u8, loop_line: bool) -> f64 {
+        self.world.preview_line_cost(station_ids, mode, loop_line) as f64
+    }
 }

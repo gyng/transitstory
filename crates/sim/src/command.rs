@@ -59,6 +59,15 @@ pub enum Command {
     SetEconomy {
         enabled: bool,
     },
+    /// Bulldoze a station: tombstone it (the id/slot is never reused — determinism) and drop it
+    /// from every line that stops there. Its catchment frees up for neighbours.
+    RemoveStation {
+        station: StationId,
+    },
+    /// Bulldoze a whole line: tombstone it and despawn its vehicles.
+    RemoveLine {
+        line: LineId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -71,5 +80,7 @@ pub enum Event {
     SegmentModeSet { line: LineId, span: u32, mode: u8 },
     RunningSet { running: bool },
     EconomySet { enabled: bool },
+    StationRemoved { station: StationId },
+    LineRemoved { line: LineId },
     Rejected { reason: String },
 }

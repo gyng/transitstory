@@ -16,7 +16,7 @@ pub(crate) fn dispatch(world: &mut World) {
     let nstations = world.stations.len();
     let mut serving: Vec<Vec<LineId>> = vec![Vec::new(); nstations];
     for (li, line) in world.lines.iter().enumerate() {
-        if line.trainset.is_some() && line.stops.len() >= 2 {
+        if !line.removed && line.trainset.is_some() && line.stops.len() >= 2 {
             for &st in &line.stops {
                 if st.index() < nstations {
                     serving[st.index()].push(LineId(li as u32));
@@ -33,7 +33,7 @@ pub(crate) fn dispatch(world: &mut World) {
     for (li, line) in lines.iter().enumerate() {
         let count = line.trainset.map(|t| t.count).unwrap_or(0);
         let total = line.length_mm();
-        if count == 0 || total <= 0 || line.stops.len() < 2 {
+        if line.removed || count == 0 || total <= 0 || line.stops.len() < 2 {
             continue;
         }
         // Loop: circuit length = one-way; out-and-back: there and back.

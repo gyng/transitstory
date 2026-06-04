@@ -6,10 +6,14 @@ use serde::{Deserialize, Serialize};
 pub struct Station {
     pub pos: PointMm,
     pub name: String,
+    /// Tombstone: a bulldozed station keeps its slot (ids are indices, never shifted) but is
+    /// skipped by demand capture, routing, views, and counts. Determinism-safe (in state_hash).
+    #[serde(default)]
+    pub removed: bool,
 }
 
 impl Station {
     pub fn new(pos: PointMm, name: String) -> Self {
-        Self { pos, name }
+        Self { pos, name, removed: false }
     }
 }

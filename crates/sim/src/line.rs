@@ -44,6 +44,10 @@ pub struct Line {
     pub crosses_water_surface: bool,
     /// Capital cost to build this line (dollars): track by mode + land-taking + trains.
     pub capital_cost: i64,
+    /// Tombstone: a bulldozed line keeps its slot (ids are indices) but is skipped by the
+    /// dispatcher, routing, cost/opex sums, and views. Determinism-safe (in state_hash).
+    #[serde(default)]
+    pub removed: bool,
 }
 
 /// Build modes for a track span.
@@ -72,6 +76,7 @@ impl Line {
             disruption_units: 0,
             crosses_water_surface: false,
             capital_cost: 0,
+            removed: false,
         }
     }
 

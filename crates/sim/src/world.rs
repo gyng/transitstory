@@ -209,11 +209,88 @@ impl World {
         self.build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN)
     }
 
-    /// Recompute a line's surface-rail disruption + water flag from the buildability grid and
-    /// its per-span build modes. Cheap (one pass over the polyline vertices); called on a
-    /// geometry or mode change. Disruption = Σ weight(class) × segment-metres × mode-factor.
-    fn recompute_line_buildability(&mut self, line: LineId) {
+    /// Per-segment (disruption, surface-water flag, TRACK capital) for a line's current
+    /// geometry + span modes — no trainset cost. A pure read of `self` (the buildability grid)
+    /// and the line, shared by `recompute_line_buildability` (the committed line) and
+    /// `preview_line_cost` (a hypothetical one) so the cost formula is never duplicated.
+    fn line_cost_metrics(&self, l: &Line) -> (i64, bool, i64) {
         use crate::city::class;
+        use crate::line::mode;
+        use crate::trainset::tmode;
+        let tm = l.mode;
+        let mut disr = 0i64;
+        let mut water = false;
+        let mut capital = 0i64;
+        for vi in 1..l.polyline.len() {
+            let seg_m = (l.arclen_mm[vi] - l.arclen_mm[vi - 1]) / 1000; // mm -> metres
+            if seg_m <= 0 {
+                continue;
+            }
+            let span = l.span_of(l.arclen_mm[vi]);
+            let m = l.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
+            let c = self.classify(l.polyline[vi].x_mm, l.polyline[vi].y_mm);
+            // Per-mode placement: rail/bus blocked by water + penalised through built land;
+            // ferry wants water (penalised over land, water is free); air is exempt.
+            let (w, blocks_on_water): (i64, bool) = match tm {
+                tmode::BUS => (
+                    match c {
+                        class::BUILT => 2, // buses run on city streets fine
+                        class::WATER => 20,
+                        class::PARK => 2,
+                        _ => 0,
+                    },
+                    true,
+                ),
+                tmode::FERRY => (if c == class::WATER { 0 } else { 14 }, false), // must stay on water
+                tmode::AIR => (0, false), // flies over anything
+                _ => (
+                    match c {
+                        class::BUILT => 10,
+                        class::WATER => 20,
+                        class::PARK => 3,
+                        _ => 0,
+                    },
+                    true,
+                ),
+            };
+            let factor: i64 = match m {
+                mode::ELEVATED => 25,
+                mode::TUNNEL => 8,
+                _ => 100, // Surface pays full
+            };
+            disr += w * seg_m * factor / 100;
+            if blocks_on_water && c == class::WATER && m == mode::SURFACE {
+                water = true;
+            }
+            // Capital per metre by transport mode (rail/heavy also by build-mode).
+            let per_km = match tm {
+                tmode::BUS => 3_000_000,
+                tmode::FERRY => 5_000_000,
+                tmode::AIR => 1_000_000,
+                tmode::HEAVY => match m {
+                    mode::ELEVATED => PER_KM_HSR_ELEVATED,
+                    mode::TUNNEL => PER_KM_HSR_TUNNEL,
+                    _ => PER_KM_HSR_SURFACE,
+                },
+                _ => match m {
+                    mode::ELEVATED => PER_KM_ELEVATED,
+                    mode::TUNNEL => PER_KM_TUNNEL,
+                    _ => PER_KM_SURFACE,
+                },
+            };
+            capital += per_km * seg_m / 1000;
+            // Surface track through built-up land takes land (rail + heavy rail).
+            if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
+                capital += TAKING_PER_KM_BUILT * seg_m / 1000;
+            }
+        }
+        (disr, water, capital)
+    }
+
+    /// Recompute a line's disruption + water flag + capital from the buildability grid and its
+    /// per-span build modes. Cheap (one pass over the polyline vertices); called on a geometry
+    /// or mode change.
+    fn recompute_line_buildability(&mut self, line: LineId) {
         use crate::line::mode;
         let idx = line.index();
         if idx >= self.lines.len() {
@@ -223,82 +300,33 @@ impl World {
         if self.lines[idx].span_mode.len() != nspans {
             self.lines[idx].span_mode.resize(nspans, mode::SURFACE);
         }
-
-        use crate::trainset::tmode;
-        let tm = self.lines[idx].mode;
-        let mut disr = 0i64;
-        let mut water = false;
-        let mut capital = 0i64;
-        {
-            let l = &self.lines[idx];
-            for vi in 1..l.polyline.len() {
-                let seg_m = (l.arclen_mm[vi] - l.arclen_mm[vi - 1]) / 1000; // mm -> metres
-                if seg_m <= 0 {
-                    continue;
-                }
-                let span = l.span_of(l.arclen_mm[vi]);
-                let m = l.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
-                let c = self.classify(l.polyline[vi].x_mm, l.polyline[vi].y_mm);
-                // Per-mode placement: rail/bus blocked by water + penalised through built land;
-                // ferry wants water (penalised over land, water is free); air is exempt.
-                let (w, blocks_on_water): (i64, bool) = match tm {
-                    tmode::BUS => (
-                        match c {
-                            class::BUILT => 2, // buses run on city streets fine
-                            class::WATER => 20,
-                            class::PARK => 2,
-                            _ => 0,
-                        },
-                        true,
-                    ),
-                    tmode::FERRY => (if c == class::WATER { 0 } else { 14 }, false), // must stay on water
-                    tmode::AIR => (0, false), // flies over anything
-                    _ => (
-                        match c {
-                            class::BUILT => 10,
-                            class::WATER => 20,
-                            class::PARK => 3,
-                            _ => 0,
-                        },
-                        true,
-                    ),
-                };
-                let factor: i64 = match m {
-                    mode::ELEVATED => 25,
-                    mode::TUNNEL => 8,
-                    _ => 100, // Surface pays full
-                };
-                disr += w * seg_m * factor / 100;
-                if blocks_on_water && c == class::WATER && m == mode::SURFACE {
-                    water = true;
-                }
-                // Capital per metre by transport mode (rail/heavy also by build-mode).
-                let per_km = match tm {
-                    tmode::BUS => 3_000_000,
-                    tmode::FERRY => 5_000_000,
-                    tmode::AIR => 1_000_000,
-                    tmode::HEAVY => match m {
-                        mode::ELEVATED => PER_KM_HSR_ELEVATED,
-                        mode::TUNNEL => PER_KM_HSR_TUNNEL,
-                        _ => PER_KM_HSR_SURFACE,
-                    },
-                    _ => match m {
-                        mode::ELEVATED => PER_KM_ELEVATED,
-                        mode::TUNNEL => PER_KM_TUNNEL,
-                        _ => PER_KM_SURFACE,
-                    },
-                };
-                capital += per_km * seg_m / 1000;
-                // Surface track through built-up land takes land (rail + heavy rail).
-                if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
-                    capital += TAKING_PER_KM_BUILT * seg_m / 1000;
-                }
-            }
-        }
+        let (disr, water, mut capital) = self.line_cost_metrics(&self.lines[idx]);
         capital += self.lines[idx].trainset.map(|t| t.count as i64).unwrap_or(0) * TRAIN_COST;
         self.lines[idx].disruption_units = disr;
         self.lines[idx].crosses_water_surface = water;
         self.lines[idx].capital_cost = capital;
+    }
+
+    /// Authoritative construction cost (track only, no trains) for a hypothetical line through
+    /// the given station ids in `mode` — the cost-preview query for the build HUD, using the
+    /// SAME formula as a committed line (no UI-side duplication; AGENTS "logic lives in core").
+    /// Spans default to Surface (the draft is surface until grade-separated post-commit).
+    pub fn preview_line_cost(&self, station_ids: &[u32], mode: u8, loop_line: bool) -> i64 {
+        let pts: Vec<PointMm> = station_ids
+            .iter()
+            .filter_map(|&id| self.stations.get(id as usize))
+            .filter(|s| !s.removed)
+            .map(|s| s.pos)
+            .collect();
+        if pts.len() < 2 {
+            return 0;
+        }
+        let mut l = Line::new(0, DEFAULT_HEADWAY_MS);
+        l.mode = mode;
+        l.loop_line = loop_line;
+        l.rebuild_from_points(&pts); // empty span_mode ⇒ every span defaults to Surface
+        let (_disr, _water, capital) = self.line_cost_metrics(&l);
+        capital
     }
 
     /// Best (shortest) headway among operational lines serving station `s`, if any.
@@ -306,7 +334,7 @@ impl World {
     fn best_headway_at(&self, s: usize) -> Option<i64> {
         let mut best: Option<i64> = None;
         for l in &self.lines {
-            if l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s) {
+            if !l.removed && l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s) {
                 best = Some(best.map_or(l.headway_ms, |b| b.min(l.headway_ms)));
             }
         }
@@ -341,7 +369,7 @@ impl World {
 
     /// Total one-time construction capital across all lines.
     fn capital_total(&self) -> i64 {
-        self.lines.iter().map(|l| l.capital_cost).sum()
+        self.lines.iter().filter(|l| !l.removed).map(|l| l.capital_cost).sum()
     }
 
     /// Current money: start budget + fares − capital − opex. Negative = over budget.
@@ -362,8 +390,8 @@ impl World {
         if !self.economy_enabled || dt_ms <= 0 {
             return;
         }
-        let trains: i64 = self.lines.iter().filter_map(|l| l.trainset).map(|t| t.count as i64).sum();
-        let km: i64 = self.lines.iter().map(|l| l.length_mm() / 1_000_000).sum();
+        let trains: i64 = self.lines.iter().filter(|l| !l.removed).filter_map(|l| l.trainset).map(|t| t.count as i64).sum();
+        let km: i64 = self.lines.iter().filter(|l| !l.removed).map(|l| l.length_mm() / 1_000_000).sum();
         let rate_per_day = trains * OPEX_PER_TRAIN_DAY + km * OPEX_PER_KM_DAY;
         self.opex_rem += rate_per_day * dt_ms;
         self.opex_accrued += self.opex_rem / DAY_MS;
@@ -394,6 +422,7 @@ impl World {
         let avg_load_factor = if load_n > 0 { load_sum / load_n as f32 } else { 0.0 };
 
         let per_station = (0..self.stations.len())
+            .filter(|&s| !self.stations[s].removed)
             .map(|s| StationStat {
                 station_id: s as u32,
                 boardings: *self.boardings.get(s).unwrap_or(&0) as f64,
@@ -406,6 +435,7 @@ impl World {
             .lines
             .iter()
             .enumerate()
+            .filter(|(_, l)| !l.removed)
             .map(|(i, l)| {
                 let ridership: u64 = l
                     .stops
@@ -434,16 +464,16 @@ impl World {
         let balance = self.balance();
 
         // Build impact: total disruption per km of track, mapped to 0..100 (lower is better).
-        let total_disr: i64 = self.lines.iter().map(|l| l.disruption_units).sum();
-        let total_track_m: i64 = self.lines.iter().map(|l| l.length_mm() / 1000).sum();
+        let total_disr: i64 = self.lines.iter().filter(|l| !l.removed).map(|l| l.disruption_units).sum();
+        let total_track_m: i64 = self.lines.iter().filter(|l| !l.removed).map(|l| l.length_mm() / 1000).sum();
         let build_difficulty =
             ((total_disr * 5 / total_track_m.max(1)).clamp(0, 100)) as u8;
 
         StatsSnapshot {
             sim_clock_ms: self.clock_ms as f64,
             running: self.running,
-            station_count: self.stations.len() as u32,
-            line_count: self.lines.len() as u32,
+            station_count: self.stations.iter().filter(|s| !s.removed).count() as u32,
+            line_count: self.lines.iter().filter(|l| !l.removed).count() as u32,
             vehicle_count: self.vehicles.len() as u32,
             ridership_total: self.ridership_total as f64,
             waiting_total: waiting_total as f64,
@@ -634,6 +664,46 @@ impl World {
                 self.economy_enabled = *enabled;
                 vec![Event::EconomySet { enabled: *enabled }]
             }
+            Command::RemoveStation { station } => {
+                let idx = station.index();
+                if idx < self.stations.len() && !self.stations[idx].removed {
+                    self.stations[idx].removed = true;
+                    // Drop the station from every line that stops there, then rebuild those
+                    // lines' geometry + cost (the line simply skips the bulldozed stop).
+                    let affected: Vec<usize> = self
+                        .lines
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, l)| !l.removed && l.stops.iter().any(|s| s.index() == idx))
+                        .map(|(li, _)| li)
+                        .collect();
+                    for li in affected {
+                        self.lines[li].stops.retain(|s| s.index() != idx);
+                        self.rebuild_line_geometry(LineId(li as u32));
+                        self.recompute_line_buildability(LineId(li as u32));
+                    }
+                    if let Some(q) = self.waiting.get_mut(idx) {
+                        q.clear(); // riders waiting at a bulldozed station are gone
+                    }
+                    self.demand_dirty = true; // its catchment frees up for neighbours
+                    vec![Event::StationRemoved { station: *station }]
+                } else {
+                    vec![Event::Rejected {
+                        reason: "RemoveStation: unknown or already removed".into(),
+                    }]
+                }
+            }
+            Command::RemoveLine { line } => {
+                let idx = line.index();
+                if idx < self.lines.len() && !self.lines[idx].removed {
+                    self.lines[idx].removed = true; // vehicles despawn on the next dispatch rebuild
+                    vec![Event::LineRemoved { line: *line }]
+                } else {
+                    vec![Event::Rejected {
+                        reason: "RemoveLine: unknown or already removed".into(),
+                    }]
+                }
+            }
         };
         // Any change to lines / trainsets / headway / running invalidates dispatch.
         if !matches!(cmd, Command::PlaceStation { .. }) {
@@ -684,6 +754,7 @@ impl World {
                 x_mm: s.pos.x_mm as f64,
                 y_mm: s.pos.y_mm as f64,
                 name: s.name.clone(),
+                removed: s.removed,
             })
             .collect()
     }
@@ -708,6 +779,7 @@ impl World {
                 min_radius_mm: l.min_radius_mm as f64,
                 span_modes: l.span_mode.clone(),
                 crosses_water_surface: l.crosses_water_surface,
+                removed: l.removed,
             })
             .collect()
     }

@@ -37,6 +37,9 @@ pub(crate) fn prepare(world: &mut World) {
         in_range.clear();
         let mut sum_w = 0.0;
         for (si, st) in stations.iter().enumerate() {
+            if st.removed {
+                continue; // a bulldozed station captures nothing; its share frees up for neighbours
+            }
             let dx = (st.pos.x_mm - cell.x_mm) as f64;
             let dy = (st.pos.y_mm - cell.y_mm) as f64;
             let d = (dx * dx + dy * dy).sqrt();

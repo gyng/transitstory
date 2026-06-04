@@ -77,6 +77,8 @@ pub struct StationView {
     pub x_mm: f64,
     pub y_mm: f64,
     pub name: String,
+    /// Tombstoned (bulldozed): kept for index-stable ids, but the frontend skips rendering it.
+    pub removed: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -95,4 +97,6 @@ pub struct LineView {
     /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).
     pub span_modes: Vec<u8>,
     pub crosses_water_surface: bool,
+    /// Tombstoned (bulldozed): kept for index-stable ids, but the frontend skips rendering it.
+    pub removed: bool,
 }
