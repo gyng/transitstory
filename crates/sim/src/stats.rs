@@ -37,6 +37,8 @@ pub struct StatsSnapshot {
     pub balance: f64,
     pub capital_spent: f64,
     pub fare_revenue: f64,
+    /// Cumulative recurring maintenance charged (opex); 0 unless the economy is enabled.
+    pub opex_spent: f64,
     pub per_station: Vec<StationStat>,
     pub per_line: Vec<LineStat>,
 }

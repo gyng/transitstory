@@ -11,7 +11,7 @@ import { colorToRgb, topoLayers, vehicleLayer, type HazardDot, type RenderView, 
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
-import type { Stats } from "./types";
+import type { Event, Stats } from "./types";
 
 const EMPTY_STATS: Stats = {
   simClockMs: 0,
@@ -32,10 +32,11 @@ const EMPTY_STATS: Stats = {
   period: "AM rush",
   demandMultiplier: 1,
   buildDifficulty: 0,
-  economyEnabled: true,
+  economyEnabled: false,
   balance: 0,
   capitalSpent: 0,
   fareRevenue: 0,
+  opexSpent: 0,
   perStation: [],
   perLine: [],
 };
@@ -58,6 +59,8 @@ export class Game {
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
+  /** Last rejection reason (e.g. afford-gate) for a transient toast; cleared on dismiss. */
+  notice: string | null = null;
 
   /** In-progress line draft (ordered station ids) + live cursor lng/lat (T11). */
   draft: number[] = [];
@@ -80,9 +83,23 @@ export class Game {
     readonly build: Buildability = new Buildability(),
   ) {}
 
+  /** Capture an afford-gate (or other) rejection so the UI can flash it; returns the events. */
+  private noteRejections(events: Event[]): Event[] {
+    const r = events.find((e) => "Rejected" in e) as { Rejected: { reason: string } } | undefined;
+    if (r) this.notice = r.Rejected.reason;
+    return events;
+  }
+
+  /** Dismiss the transient notice (the toast auto-calls this); cheap onChange, no re-render of deck. */
+  dismissNotice(): void {
+    if (this.notice === null) return;
+    this.notice = null;
+    for (const cb of this.onChange) cb();
+  }
+
   /** Set the build mode (0 Surface, 1 Elevated, 2 Tunnel) for a whole line (or one span). */
   setLineMode(line: number, mode: number, span: number = WHOLE_LINE): void {
-    this.bridge.apply(cmd.setSegmentMode(line, span, mode));
+    this.noteRejections(this.bridge.apply(cmd.setSegmentMode(line, span, mode)));
     this.refresh();
   }
 
@@ -109,7 +126,7 @@ export class Game {
       | { LineCreated: { id: number } }
       | undefined;
     const lineId = created ? created.LineCreated.id : this.bridge.linesView().length - 1;
-    for (const s of ids) this.bridge.apply(cmd.addStop(lineId, s));
+    for (const s of ids) this.noteRejections(this.bridge.apply(cmd.addStop(lineId, s)));
     this.cancelDraft();
     this.selectedLine = lineId;
     this.selectedStation = null;
@@ -120,7 +137,7 @@ export class Game {
   /** Assign trains and auto-suggest a sensible headway (round-trip / count) on first assign. */
   assignTrainset(line: number, count: number): void {
     const hadTrains = (this.bridge.linesView()[line] && this.lineTrains(line)) || 0;
-    this.bridge.apply(cmd.assignTrainset(line, 0, count));
+    this.noteRejections(this.bridge.apply(cmd.assignTrainset(line, 0, count)));
     if (hadTrains === 0) {
       this.bridge.apply(cmd.setHeadway(line, this.suggestHeadwayMs(line, count)));
     }

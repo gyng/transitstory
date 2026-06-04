@@ -71,6 +71,8 @@ export interface Stats {
   balance: number;
   capitalSpent: number;
   fareRevenue: number;
+  /** Cumulative recurring maintenance charged (opex); 0 unless the economy is enabled. */
+  opexSpent: number;
   perStation: PerStation[];
   perLine: PerLine[];
 }

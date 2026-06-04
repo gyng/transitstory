@@ -19,6 +19,7 @@ export interface GameUI {
   showDemand: boolean;
   selectedLine: number | null;
   selectedStation: number | null;
+  notice: string | null;
 }
 
 function snapUI(g: Game): GameUI {
@@ -30,6 +31,7 @@ function snapUI(g: Game): GameUI {
     showDemand: g.showDemand,
     selectedLine: g.selectedLine,
     selectedStation: g.selectedStation,
+    notice: g.notice,
   };
 }
 
@@ -41,6 +43,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.showDemand === b.showDemand &&
     a.selectedLine === b.selectedLine &&
     a.selectedStation === b.selectedStation &&
+    a.notice === b.notice &&
     a.enabledModes.length === b.enabledModes.length &&
     a.enabledModes.every((v, i) => v === b.enabledModes[i])
   );

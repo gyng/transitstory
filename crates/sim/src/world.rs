@@ -34,6 +34,11 @@ const PER_KM_ELEVATED: i64 = 30_000_000;
 const PER_KM_TUNNEL: i64 = 90_000_000;
 const TAKING_PER_KM_BUILT: i64 = 6_000_000;
 const TRAIN_COST: i64 = 15_000_000;
+// Recurring maintenance (opex), accrued only while the economy is ON and running. A slow drain
+// that fares must outrun — the second pressure axis alongside waiting. Tunable game balance.
+const DAY_MS: i64 = 86_400_000;
+const OPEX_PER_TRAIN_DAY: i64 = 200_000;
+const OPEX_PER_KM_DAY: i64 = 50_000;
 
 pub struct World {
     pub seed: u64,
@@ -84,8 +89,13 @@ pub struct World {
     pub abandoned: u64,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
-    /// Optional economy (NIMBY-style): when off, money is informational only.
+    /// Optional economy (NIMBY-style): when OFF (the default), money is informational only —
+    /// when ON, construction you can't afford is rejected and opex drains the balance.
     pub economy_enabled: bool,
+    /// Cumulative maintenance (opex) charged so far, and the sub-day remainder (exact integer
+    /// accrual). Affects `balance` → the afford-gate, so both are folded into state_hash.
+    pub opex_accrued: i64,
+    pub opex_rem: i64,
     /// The trip-planning strategy (the routing seam). `BfsRouter` ships; RAPTOR swaps in here.
     pub router: Box<dyn crate::routing::Router>,
     /// Max legs (transfers + 1) a routed trip may use (from CityData, or the routing default).
@@ -113,6 +123,8 @@ struct Canonical<'a> {
     wait_samples: u64,
     denied_boardings: u64,
     abandoned: u64,
+    opex_accrued: i64,
+    opex_rem: i64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -176,7 +188,9 @@ impl World {
             build_lookup,
             build_cell_mm,
             demand_dirty: false,
-            economy_enabled: true,
+            economy_enabled: false,
+            opex_accrued: 0,
+            opex_rem: 0,
             router: Box::new(crate::routing::BfsRouter),
             max_legs,
         }
@@ -315,6 +329,42 @@ impl World {
         ((served / total * 100.0).round() as i64).clamp(0, 100) as u8
     }
 
+    /// Total one-time construction capital across all lines.
+    fn capital_total(&self) -> i64 {
+        self.lines.iter().map(|l| l.capital_cost).sum()
+    }
+
+    /// Current money: start budget + fares − capital − opex. Negative = over budget.
+    fn balance(&self) -> i64 {
+        START_BUDGET + self.ridership_total as i64 * FARE - self.capital_total() - self.opex_accrued
+    }
+
+    /// After a capital-changing mutation + recompute: true iff the economy is on AND the change
+    /// raised capital AND drove the balance negative — i.e. the player can't afford it. The
+    /// caller must then restore the pre-command state (the afford-gate; clamps live in the core).
+    fn overspent(&self, old_capital: i64) -> bool {
+        self.economy_enabled && self.capital_total() > old_capital && self.balance() < 0
+    }
+
+    /// Accrue recurring maintenance (opex) for one running step. Exact integer accrual via a
+    /// sub-day remainder; only charged while the economy is enabled. Deterministic.
+    fn accrue_opex(&mut self, dt_ms: i64) {
+        if !self.economy_enabled || dt_ms <= 0 {
+            return;
+        }
+        let trains: i64 = self.lines.iter().filter_map(|l| l.trainset).map(|t| t.count as i64).sum();
+        let km: i64 = self.lines.iter().map(|l| l.length_mm() / 1_000_000).sum();
+        let rate_per_day = trains * OPEX_PER_TRAIN_DAY + km * OPEX_PER_KM_DAY;
+        self.opex_rem += rate_per_day * dt_ms;
+        self.opex_accrued += self.opex_rem / DAY_MS;
+        self.opex_rem %= DAY_MS;
+    }
+
+    /// Charge opex for one running tick (called from the tick phase loop).
+    pub(crate) fn tick_economy(&mut self, dt_ms: i64) {
+        self.accrue_opex(dt_ms);
+    }
+
     /// Low-frequency structured readout for the UI (the wasm->ts query port).
     pub fn stats_snapshot(&self) -> StatsSnapshot {
         let waiting_total: u64 = self.waiting.iter().map(|q| q.len() as u64).sum();
@@ -368,10 +418,10 @@ impl World {
             })
             .collect();
 
-        // Economy: balance = start budget + fares − capital (informational when off).
-        let capital_spent: i64 = self.lines.iter().map(|l| l.capital_cost).sum();
+        // Economy: balance = start budget + fares − capital − opex (informational when off).
+        let capital_spent = self.capital_total();
         let fare_revenue: i64 = self.ridership_total as i64 * FARE;
-        let balance = START_BUDGET + fare_revenue - capital_spent;
+        let balance = self.balance();
 
         // Build impact: total disruption per km of track, mapped to 0..100 (lower is better).
         let total_disr: i64 = self.lines.iter().map(|l| l.disruption_units).sum();
@@ -410,6 +460,7 @@ impl World {
             balance: balance as f64,
             capital_spent: capital_spent as f64,
             fare_revenue: fare_revenue as f64,
+            opex_spent: self.opex_accrued as f64,
             per_station,
             per_line,
         }
@@ -464,6 +515,8 @@ impl World {
                 let valid_line = line.index() < self.lines.len();
                 let valid_station = station.index() < self.stations.len();
                 if valid_line && valid_station {
+                    let old_capital = self.capital_total();
+                    let saved_stops = self.lines[line.index()].stops.clone();
                     {
                         let l = &mut self.lines[line.index()];
                         match after {
@@ -473,10 +526,20 @@ impl World {
                     }
                     self.rebuild_line_geometry(*line);
                     self.recompute_line_buildability(*line);
-                    vec![Event::StopAdded {
-                        line: *line,
-                        station: *station,
-                    }]
+                    if self.overspent(old_capital) {
+                        // Can't afford this extension — restore the line exactly (afford-gate).
+                        self.lines[line.index()].stops = saved_stops;
+                        self.rebuild_line_geometry(*line);
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected {
+                            reason: "Not enough money for this extension".into(),
+                        }]
+                    } else {
+                        vec![Event::StopAdded {
+                            line: *line,
+                            station: *station,
+                        }]
+                    }
                 } else {
                     vec![Event::Rejected {
                         reason: "AddStop: unknown line or station".into(),
@@ -484,11 +547,21 @@ impl World {
                 }
             }
             Command::AssignTrainset { line, spec, count } => {
-                if let Some(l) = self.lines.get_mut(line.index()) {
+                if line.index() < self.lines.len() {
                     let count = (*count).clamp(1, MAX_TRAINS_PER_LINE);
-                    l.trainset = Some(TrainsetAssignment { spec: *spec, count });
+                    let old_capital = self.capital_total();
+                    let saved = self.lines[line.index()].trainset;
+                    self.lines[line.index()].trainset = Some(TrainsetAssignment { spec: *spec, count });
                     self.recompute_line_buildability(*line); // train count affects capital cost
-                    vec![Event::TrainsetAssigned { line: *line, count }]
+                    if self.overspent(old_capital) {
+                        self.lines[line.index()].trainset = saved;
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected {
+                            reason: "Not enough money for these trains".into(),
+                        }]
+                    } else {
+                        vec![Event::TrainsetAssigned { line: *line, count }]
+                    }
                 } else {
                     vec![Event::Rejected {
                         reason: "AssignTrainset: unknown line".into(),
@@ -510,21 +583,35 @@ impl World {
                 }
             }
             Command::SetSegmentMode { line, span, mode } => {
-                if let Some(l) = self.lines.get_mut(line.index()) {
-                    let nspans = l.stops.len().saturating_sub(1);
-                    if l.span_mode.len() != nspans {
-                        l.span_mode.resize(nspans, crate::line::mode::SURFACE);
-                    }
-                    let m = (*mode).min(crate::line::mode::TUNNEL);
-                    if *span == u32::MAX {
-                        for s in l.span_mode.iter_mut() {
-                            *s = m;
+                if line.index() < self.lines.len() {
+                    let old_capital = self.capital_total();
+                    let saved_modes = self.lines[line.index()].span_mode.clone();
+                    {
+                        let l = &mut self.lines[line.index()];
+                        let nspans = l.stops.len().saturating_sub(1);
+                        if l.span_mode.len() != nspans {
+                            l.span_mode.resize(nspans, crate::line::mode::SURFACE);
                         }
-                    } else if (*span as usize) < l.span_mode.len() {
-                        l.span_mode[*span as usize] = m;
+                        let m = (*mode).min(crate::line::mode::TUNNEL);
+                        if *span == u32::MAX {
+                            for s in l.span_mode.iter_mut() {
+                                *s = m;
+                            }
+                        } else if (*span as usize) < l.span_mode.len() {
+                            l.span_mode[*span as usize] = m;
+                        }
                     }
                     self.recompute_line_buildability(*line);
-                    vec![Event::SegmentModeSet { line: *line, span: *span, mode: m }]
+                    if self.overspent(old_capital) {
+                        self.lines[line.index()].span_mode = saved_modes;
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected {
+                            reason: "Not enough money to grade-separate this line".into(),
+                        }]
+                    } else {
+                        let m = (*mode).min(crate::line::mode::TUNNEL);
+                        vec![Event::SegmentModeSet { line: *line, span: *span, mode: m }]
+                    }
                 } else {
                     vec![Event::Rejected { reason: "SetSegmentMode: unknown line".into() }]
                 }
@@ -570,6 +657,8 @@ impl World {
             wait_samples: self.wait_samples,
             denied_boardings: self.denied_boardings,
             abandoned: self.abandoned,
+            opex_accrued: self.opex_accrued,
+            opex_rem: self.opex_rem,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

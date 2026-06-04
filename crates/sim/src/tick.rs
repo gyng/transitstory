@@ -31,6 +31,8 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         crate::pax::board_alight(world);
         // Phase 5b — riders who have waited past the city's patience give up (renege).
         crate::pax::renege(world);
-        // Phase 6 — accounting/stats is computed on demand in stats_snapshot().
+        // Phase 6 — accounting: charge recurring maintenance (opex) when the economy is on.
+        world.tick_economy(dt);
+        //          The rest of stats is computed on demand in stats_snapshot().
     }
 }

@@ -144,10 +144,46 @@ export function App() {
     <GameProvider game={world.game} loop={world.loop}>
       <Title name={world.cityName} />
       <UndoControl />
+      <Toast />
       <StatsBar />
       <Panels />
       <Toolbar />
     </GameProvider>
+  );
+}
+
+/** Transient notice (e.g. an afford-gate rejection) so a gated Command has a visible echo
+ *  (AGENTS: every Command needs an on-map/HUD echo). Auto-dismisses after a few seconds. */
+function Toast() {
+  const game = useGame();
+  const { notice } = useGameUI();
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => game.dismissNotice(), 3000);
+    return () => window.clearTimeout(id);
+  }, [notice, game]);
+  if (!notice) return null;
+  return (
+    <div
+      data-testid="notice"
+      onClick={() => game.dismissNotice()}
+      style={{
+        position: "fixed",
+        top: 56,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 20,
+        padding: "8px 16px",
+        borderRadius: 8,
+        background: "var(--ot-gauge-bad, #d62828)",
+        color: "#fff",
+        font: "600 13px system-ui,sans-serif",
+        boxShadow: "0 4px 16px rgba(0,0,0,.3)",
+        cursor: "pointer",
+      }}
+    >
+      {notice}
+    </div>
   );
 }
 

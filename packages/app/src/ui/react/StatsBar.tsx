@@ -102,7 +102,15 @@ export function StatsBar() {
           {bi}
         </b>
       </div>
-      <div data-testid="money-box" style={{ opacity: s.economyEnabled ? 1 : 0.4 }}>
+      <div
+        data-testid="money-box"
+        style={{ opacity: s.economyEnabled ? 1 : 0.4, cursor: s.economyEnabled ? "help" : "default" }}
+        title={
+          s.economyEnabled
+            ? `Fares ${fmtMoney(s.fareRevenue)} − capital ${fmtMoney(s.capitalSpent)} − upkeep ${fmtMoney(s.opexSpent)}`
+            : "Economy is off (enable it in ⚙ Settings)"
+        }
+      >
         💰{" "}
         <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
           {fmtMoney(s.balance)}
