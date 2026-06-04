@@ -22,6 +22,9 @@ const EMPTY_STATS: Stats = {
   leftBehind: 0,
   avgLoadFactor: 0,
   coverageScore: 0,
+  simHour: 6,
+  period: "AM rush",
+  demandMultiplier: 1,
   perStation: [],
   perLine: [],
 };

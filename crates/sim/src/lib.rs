@@ -19,6 +19,7 @@ pub mod render_buf;
 pub mod station;
 pub mod stats;
 mod tick;
+pub mod tod;
 pub mod trainset;
 pub mod vehicle;
 pub mod world;

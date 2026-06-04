@@ -22,7 +22,7 @@ test("place stations and draw a line through them", async ({ page }) => {
   const lines = await page.evaluate(() => window.__ot!.bridge.linesView());
   expect(lines).toHaveLength(1);
   expect(lines[0].stops).toEqual([0, 1, 2]);
-  expect(lines[0].polylineMm.length).toBe(3); // geometry rebuilt on AddStop
+  expect(lines[0].polylineMm.length).toBeGreaterThan(3); // dense smoothed curve (F1)
 
   await page.screenshot({ path: "../../docs/progress/cp5-stations-and-line.png" });
 });

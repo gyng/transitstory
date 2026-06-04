@@ -34,7 +34,8 @@ describe("SimBridge (wasm-in-node)", () => {
     const lines = b.linesView();
     expect(lines).toHaveLength(1);
     expect(lines[0].stops).toEqual([0, 1, 2]);
-    expect(lines[0].polylineMm).toHaveLength(3); // geometry rebuilt on AddStop
+    // Curved track (F1): the polyline is a dense smoothed curve, denser than the 3 stops.
+    expect(lines[0].polylineMm.length).toBeGreaterThan(3);
 
     const stats = b.stats();
     expect(stats.stationCount).toBe(3);

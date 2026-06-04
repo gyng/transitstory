@@ -46,6 +46,9 @@ export interface Stats {
   leftBehind: number;
   avgLoadFactor: number;
   coverageScore: number;
+  simHour: number;
+  period: string;
+  demandMultiplier: number;
   perStation: PerStation[];
   perLine: PerLine[];
 }

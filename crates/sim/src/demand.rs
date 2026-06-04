@@ -71,6 +71,11 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     if n == 0 {
         return;
     }
+    // Time-of-day modulation: overall volume + AM(home→work)/PM(work→home) directionality.
+    let hour = crate::tod::hour_of_day(world.clock_ms);
+    let mult = crate::tod::demand_multiplier(hour);
+    let bias = crate::tod::work_bias(hour);
+
     let World {
         ref stations,
         ref lines,
@@ -83,8 +88,11 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     } = *world;
 
     for s in 0..n {
+        // Trip origins: AM weights residential (captured_origin), PM weights jobs (captured_dest).
         let co = captured_origin.get(s).copied().unwrap_or(0.0);
-        if co <= 0.0 {
+        let cd = captured_dest.get(s).copied().unwrap_or(0.0);
+        let origin_strength = bias * co + (1.0 - bias) * cd;
+        if origin_strength <= 0.0 {
             continue;
         }
         // A line serving this station (has a trainset, >=2 stops).
@@ -95,10 +103,10 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
             continue;
         };
 
-        spawn_accum[s] += co * DEMAND_RATE_PER_MS * dt_ms as f32;
+        spawn_accum[s] += origin_strength * DEMAND_RATE_PER_MS * mult * dt_ms as f32;
         while spawn_accum[s] >= 1.0 {
             spawn_accum[s] -= 1.0;
-            if let Some(dest) = pick_dest(stations, &lines[li], s, captured_dest, rng) {
+            if let Some(dest) = pick_dest(stations, &lines[li], s, captured_origin, captured_dest, bias, rng) {
                 waiting[s].push_back(dest);
             }
         }
@@ -107,11 +115,14 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
 
 /// Gravity destination pick: among the other stops on the line, weighted by destination
 /// coverage × distance-decay. Integer weighted draw from a seeded RNG (deterministic).
+#[allow(clippy::too_many_arguments)]
 fn pick_dest(
     stations: &[Station],
     line: &Line,
     origin: usize,
+    captured_origin: &[f32],
     captured_dest: &[f32],
+    bias: f32,
     rng: &mut ChaCha8Rng,
 ) -> Option<StationId> {
     let opos = stations[origin].pos;
@@ -122,9 +133,12 @@ fn pick_dest(
             continue;
         }
         let d = opos.dist_mm(&stations[st.index()].pos).max(1) as f64;
-        let cd = captured_dest.get(st.index()).copied().unwrap_or(0.0) as f64;
+        // AM: pulled toward jobs (captured_dest); PM: toward homes (captured_origin).
+        let cd = captured_dest.get(st.index()).copied().unwrap_or(0.0);
+        let cor = captured_origin.get(st.index()).copied().unwrap_or(0.0);
+        let attract = (bias * cd + (1.0 - bias) * cor) as f64;
         let decay = 1.0 / (1.0 + d / DEST_DECAY_MM);
-        let w = (cd * decay * 1000.0) as u64 + 1; // +1 baseline so any stop can be chosen
+        let w = (attract * decay * 1000.0) as u64 + 1; // +1 baseline so any stop can be chosen
         total += w;
         cands.push((st, w));
     }

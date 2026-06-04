@@ -16,6 +16,10 @@ pub struct StatsSnapshot {
     pub left_behind: f64,
     pub avg_load_factor: f32,
     pub coverage_score: u8,
+    /// Time-of-day: in-game hour [0,24), period label, and the current demand multiplier.
+    pub sim_hour: f64,
+    pub period: String,
+    pub demand_multiplier: f64,
     pub per_station: Vec<StationStat>,
     pub per_line: Vec<LineStat>,
 }

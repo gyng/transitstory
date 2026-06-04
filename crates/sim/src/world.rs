@@ -187,6 +187,9 @@ impl World {
             left_behind: waiting_total as f64,
             avg_load_factor,
             coverage_score: self.coverage_score(),
+            sim_hour: crate::tod::hour_of_day(self.clock_ms),
+            period: crate::tod::period_label(crate::tod::hour_of_day(self.clock_ms)).to_string(),
+            demand_multiplier: crate::tod::demand_multiplier(crate::tod::hour_of_day(self.clock_ms)) as f64,
             per_station,
             per_line,
         }
