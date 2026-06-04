@@ -79,6 +79,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     let hour = crate::tod::hour_of_day(world.clock_ms);
     let mult = crate::tod::demand_multiplier(hour);
     let bias = crate::tod::work_bias(hour);
+    let now = world.clock_ms;
 
     let World {
         ref stations,
@@ -118,7 +119,12 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
                     .or_insert_with(|| plan_route(lines, serving, StationId(s as u32), dest, MAX_LEGS));
                 if let Some(legs) = entry {
                     if !legs.is_empty() {
-                        waiting[s].push_back(Pax { legs: legs.clone(), leg: 0 });
+                        waiting[s].push_back(Pax {
+                            legs: legs.clone(),
+                            leg: 0,
+                            t_spawn_ms: now,
+                            t_wait_ms: now,
+                        });
                     }
                 }
             }

@@ -10,8 +10,8 @@ fn city() -> CityData {
     CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() }
 }
 
-/// 3 stations always placed; the line covers the given subset of stops.
-fn world_with_stops(stops: &[u32]) -> World {
+/// 3 stations always placed; the line covers the given subset of stops at the given headway.
+fn world_with_stops_headway(stops: &[u32], headway_ms: i64) -> World {
     let mut w = World::new(7, city());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
@@ -21,9 +21,14 @@ fn world_with_stops(stops: &[u32]) -> World {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
-    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 200_000 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms });
     w.apply(&Command::SetRunning { running: true });
     w
+}
+
+/// 3 stations always placed; the line covers the given subset of stops (default headway).
+fn world_with_stops(stops: &[u32]) -> World {
+    world_with_stops_headway(stops, 200_000)
 }
 
 #[test]
@@ -56,4 +61,47 @@ fn coverage_score_monotonic_under_superset() {
         sup.stats_snapshot().coverage_score,
         base.stats_snapshot().coverage_score,
     );
+}
+
+#[test]
+fn coverage_score_rewards_shorter_headway() {
+    // Same coverage, shorter headway => the gauge must NOT be lower (and here, strictly higher:
+    // a frequent line is better service than an infrequent one over identical stops).
+    let mut slow = world_with_stops_headway(&[0, 1, 2], 1_200_000); // 20 min
+    slow.tick(50);
+    let mut fast = world_with_stops_headway(&[0, 1, 2], 60_000); // 1 min
+    fast.tick(50);
+    let (slow_c, fast_c) = (slow.stats_snapshot().coverage_score, fast.stats_snapshot().coverage_score);
+    assert!(fast_c >= slow_c, "shorter headway never lowers coverage ({fast_c} >= {slow_c})");
+    assert!(fast_c > slow_c, "a frequent line should out-score an infrequent one ({fast_c} > {slow_c})");
+}
+
+#[test]
+fn coverage_score_monotonic_under_superset_and_shorter_headway() {
+    // The AGENTS contract: superset network + shorter headway => score not lower.
+    let mut base = world_with_stops_headway(&[0, 1], 1_200_000);
+    base.tick(50);
+    let mut better = world_with_stops_headway(&[0, 1, 2], 60_000);
+    better.tick(50);
+    assert!(
+        better.stats_snapshot().coverage_score >= base.stats_snapshot().coverage_score,
+        "superset + shorter headway scores at least the baseline ({} >= {})",
+        better.stats_snapshot().coverage_score,
+        base.stats_snapshot().coverage_score,
+    );
+}
+
+#[test]
+fn lifecycle_telemetry_populates_and_left_behind_aliases_denials() {
+    // Journey/wait telemetry must populate once trips complete, and left_behind must be the
+    // real cumulative denied-boarding counter (not the live waiting-queue depth).
+    let mut w = world_with_stops_headway(&[0, 1, 2], 60_000);
+    for _ in 0..6000 {
+        w.tick(50);
+    }
+    let st = w.stats_snapshot();
+    assert!(st.ridership_total > 0.0, "riders board");
+    assert!(st.avg_wait_ms > 0.0, "platform wait telemetry populates after boardings");
+    assert!(st.avg_journey_ms > 0.0, "journey telemetry populates after completed trips");
+    assert_eq!(st.left_behind, st.denied_boardings, "left_behind aliases denied_boardings");
 }

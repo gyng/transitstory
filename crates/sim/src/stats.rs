@@ -1,6 +1,7 @@
 //! Low-frequency structured readout (the wasm->ts query port). Numerics are f64/u32 so
-//! they marshal as plain JS numbers, never BigInt. Ridership/waiting/coverage stay 0
-//! until T16; counts + per-line colour are populated now so the UI has something to bind.
+//! they marshal as plain JS numbers, never BigInt. Ridership/waiting/coverage and the
+//! passenger-lifecycle telemetry (avg journey/wait, denied boardings) are computed live in
+//! `World::stats_snapshot`; per-line colour comes straight from the command-sourced state.
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -13,7 +14,13 @@ pub struct StatsSnapshot {
     pub vehicle_count: u32,
     pub ridership_total: f64,
     pub waiting_total: f64,
+    /// Cumulative "left behind" = times a rider was passed by a full vehicle (== denied_boardings).
     pub left_behind: f64,
+    pub denied_boardings: f64,
+    /// Average end-to-end trip time (ms) over completed trips; 0 before the first arrival.
+    pub avg_journey_ms: f64,
+    /// Average platform wait (ms) per boarding; 0 before the first boarding.
+    pub avg_wait_ms: f64,
     pub avg_load_factor: f32,
     pub coverage_score: u8,
     /// Time-of-day: in-game hour [0,24), period label, and the current demand multiplier.

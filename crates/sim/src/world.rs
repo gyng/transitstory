@@ -70,6 +70,16 @@ pub struct World {
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
     pub alightings: Vec<u64>,
+    // --- passenger lifecycle telemetry (service-quality legibility) ---
+    /// Σ end-to-end trip time (ms) over completed trips, and the completed-trip count.
+    pub total_journey_ms: u64,
+    pub journey_samples: u64,
+    /// Σ platform wait (ms) over boardings, and the boarding count (one sample per board).
+    pub total_wait_ms: u64,
+    pub wait_samples: u64,
+    /// Cumulative times a rider wanting a line was passed by a full vehicle (the real
+    /// "left behind" pressure — distinct from the live waiting-queue depth).
+    pub denied_boardings: u64,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
     /// Optional economy (NIMBY-style): when off, money is informational only.
@@ -91,6 +101,11 @@ struct Canonical<'a> {
     veh_dwell_ms: &'a [i64],
     veh_onboard: &'a [u16],
     ridership_total: u64,
+    total_journey_ms: u64,
+    journey_samples: u64,
+    total_wait_ms: u64,
+    wait_samples: u64,
+    denied_boardings: u64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -138,6 +153,11 @@ impl World {
             ridership_total: 0,
             boardings: Vec::new(),
             alightings: Vec::new(),
+            total_journey_ms: 0,
+            journey_samples: 0,
+            total_wait_ms: 0,
+            wait_samples: 0,
+            denied_boardings: 0,
             serving: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             build_lookup,
@@ -242,27 +262,41 @@ impl World {
         self.lines[idx].capital_cost = capital;
     }
 
-    /// True if station `s` is on a line with a trainset and at least 2 stops.
-    fn station_served(&self, s: usize) -> bool {
-        self.lines
-            .iter()
-            .any(|l| l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s))
+    /// Best (shortest) headway among operational lines serving station `s`, if any.
+    /// "Operational" = has a trainset and ≥2 stops.
+    fn best_headway_at(&self, s: usize) -> Option<i64> {
+        let mut best: Option<i64> = None;
+        for l in &self.lines {
+            if l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s) {
+                best = Some(best.map_or(l.headway_ms, |b| b.min(l.headway_ms)));
+            }
+        }
+        best
     }
 
-    /// 0–100 coverage score: fraction of total origin demand that is served by some line.
-    /// Monotonic — extending a line to cover more demand can only raise it (PLAN §7).
+    /// 0–100 coverage score: the blend AGENTS mandates — (% of captured origin demand served)
+    /// × a bounded wait-vs-headway quality factor. A served station contributes its demand
+    /// weight scaled by the quality of its BEST (shortest-headway) line, where quality runs
+    /// from 1.0 at the min headway down to a floor of 0.5 at the max headway. The floor is what
+    /// keeps it MONOTONIC: extending coverage adds a non-negative term, and shortening a
+    /// headway only raises a station's quality — neither can ever lower the score (PLAN §7).
     fn coverage_score(&self) -> u8 {
         let total: f32 = self.captured_origin.iter().sum();
         if total <= 0.0 {
             return 0;
         }
-        let served: f32 = self
-            .captured_origin
-            .iter()
-            .enumerate()
-            .filter(|(s, _)| self.station_served(*s))
-            .map(|(_, &w)| w)
-            .sum();
+        let span = (MAX_HEADWAY_MS - MIN_HEADWAY_MS).max(1) as f32;
+        let mut served = 0.0f32;
+        for (s, &w) in self.captured_origin.iter().enumerate() {
+            if w <= 0.0 {
+                continue;
+            }
+            if let Some(h) = self.best_headway_at(s) {
+                let frac_h = ((h - MIN_HEADWAY_MS) as f32 / span).clamp(0.0, 1.0);
+                let quality = 1.0 - 0.5 * frac_h; // [0.5, 1.0]
+                served += w * quality;
+            }
+        }
         ((served / total * 100.0).round() as i64).clamp(0, 100) as u8
     }
 
@@ -338,7 +372,18 @@ impl World {
             vehicle_count: self.vehicles.len() as u32,
             ridership_total: self.ridership_total as f64,
             waiting_total: waiting_total as f64,
-            left_behind: waiting_total as f64,
+            left_behind: self.denied_boardings as f64,
+            denied_boardings: self.denied_boardings as f64,
+            avg_journey_ms: if self.journey_samples > 0 {
+                self.total_journey_ms as f64 / self.journey_samples as f64
+            } else {
+                0.0
+            },
+            avg_wait_ms: if self.wait_samples > 0 {
+                self.total_wait_ms as f64 / self.wait_samples as f64
+            } else {
+                0.0
+            },
             avg_load_factor,
             coverage_score: self.coverage_score(),
             sim_hour: crate::tod::hour_of_day(self.clock_ms),
@@ -503,6 +548,11 @@ impl World {
             veh_dwell_ms: &self.vehicles.dwell_until_ms,
             veh_onboard: &self.vehicles.onboard,
             ridership_total: self.ridership_total,
+            total_journey_ms: self.total_journey_ms,
+            journey_samples: self.journey_samples,
+            total_wait_ms: self.total_wait_ms,
+            wait_samples: self.wait_samples,
+            denied_boardings: self.denied_boardings,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

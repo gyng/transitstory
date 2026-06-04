@@ -18,7 +18,9 @@ export type Event =
   | { StopAdded: { line: number; station: number } }
   | { TrainsetAssigned: { line: number; count: number } }
   | { HeadwaySet: { line: number; headway_ms: number } }
+  | { SegmentModeSet: { line: number; span: number; mode: number } }
   | { RunningSet: { running: boolean } }
+  | { EconomySet: { enabled: boolean } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -50,7 +52,13 @@ export interface Stats {
   vehicleCount: number;
   ridershipTotal: number;
   waitingTotal: number;
+  /** Cumulative "left behind" = times a rider was passed by a full vehicle (== deniedBoardings). */
   leftBehind: number;
+  deniedBoardings: number;
+  /** Average end-to-end trip time (ms) over completed trips; 0 before the first arrival. */
+  avgJourneyMs: number;
+  /** Average platform wait (ms) per boarding; 0 before the first boarding. */
+  avgWaitMs: number;
   avgLoadFactor: number;
   coverageScore: number;
   simHour: number;

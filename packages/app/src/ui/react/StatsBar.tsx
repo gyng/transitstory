@@ -15,6 +15,14 @@ export function StatsBar() {
   const c = Math.round(s.coverageScore);
   const w = Math.round(s.waitingTotal);
   const bi = Math.round(s.buildDifficulty);
+  const lb = Math.round(s.leftBehind);
+  const avgWaitMin = s.avgWaitMs / 60000;
+  const avgTripMin = s.avgJourneyMs / 60000;
+  // Service-quality detail lives on the waiting readout's tooltip (progressive disclosure),
+  // not as new always-on HUD numbers (AGENTS IA: one number + one gauge).
+  const waitTip =
+    `Avg wait ~${avgWaitMin.toFixed(1)} min · Avg trip ~${avgTripMin.toFixed(1)} min` +
+    (lb > 0 ? ` · ${lb} left behind (full trains)` : "");
 
   // Bar fills left→right; hue shifts good→bad as coverage drops.
   const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "var(--ot-gauge-bad)";
@@ -78,8 +86,13 @@ export function StatsBar() {
           {c}
         </b>
       </div>
-      <div style={{ color: "#7a818a" }}>
+      <div style={{ color: "#7a818a", cursor: "help" }} title={waitTip}>
         <span data-testid="waiting">{w}</span> waiting
+        {lb > 0 && (
+          <span data-testid="left-behind" style={{ color: "var(--ot-gauge-bad)", marginLeft: "6px" }}>
+            · {lb} left behind
+          </span>
+        )}
       </div>
       <div>
         Build impact{" "}

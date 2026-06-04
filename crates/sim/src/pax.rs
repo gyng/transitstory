@@ -9,6 +9,10 @@ use crate::world::World;
 pub struct Pax {
     pub legs: Vec<Leg>,
     pub leg: usize,
+    /// Clock (ms) when this passenger first spawned — drives end-to-end journey time.
+    pub t_spawn_ms: i64,
+    /// Clock (ms) the current leg began waiting (reset on transfer) — drives platform wait time.
+    pub t_wait_ms: i64,
 }
 
 impl Pax {
@@ -29,6 +33,12 @@ pub(crate) fn board_alight(world: &mut World) {
         ref mut ridership_total,
         ref mut boardings,
         ref mut alightings,
+        clock_ms,
+        ref mut total_journey_ms,
+        ref mut journey_samples,
+        ref mut total_wait_ms,
+        ref mut wait_samples,
+        ref mut denied_boardings,
         ..
     } = *world;
 
@@ -58,9 +68,13 @@ pub(crate) fn board_alight(world: &mut World) {
                     if s < alightings.len() {
                         alightings[s] += 1;
                     }
+                    // Completed trip: fold end-to-end journey time into the running average.
+                    *total_journey_ms += (clock_ms - pax.t_spawn_ms).max(0) as u64;
+                    *journey_samples += 1;
                 } else {
                     let mut p = pax;
                     p.leg += 1; // transfer: next leg boards here
+                    p.t_wait_ms = clock_ms; // starts waiting for the next leg now
                     waiting[s].push_back(p);
                 }
             } else {
@@ -73,13 +87,21 @@ pub(crate) fn board_alight(world: &mut World) {
         // others (waiting for a different line, or left behind) keep their order.
         let mut requeue = std::collections::VecDeque::with_capacity(waiting[s].len());
         while let Some(pax) = waiting[s].pop_front() {
-            if vehicles.onboard_pax[i].len() < cap && pax.cur().line == line_id {
+            let wants_this = pax.cur().line == line_id;
+            if wants_this && vehicles.onboard_pax[i].len() < cap {
+                // Boarded: fold platform wait time into the running average.
+                *total_wait_ms += (clock_ms - pax.t_wait_ms).max(0) as u64;
+                *wait_samples += 1;
                 vehicles.onboard_pax[i].push(pax);
                 *ridership_total += 1;
                 if s < boardings.len() {
                     boardings[s] += 1;
                 }
             } else {
+                // A rider who wanted THIS line but found it full was left behind (real pressure).
+                if wants_this {
+                    *denied_boardings += 1;
+                }
                 requeue.push_back(pax);
             }
         }
