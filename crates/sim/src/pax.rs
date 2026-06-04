@@ -25,6 +25,34 @@ impl Pax {
     }
 }
 
+/// Drop waiting riders whose current-leg wait has exceeded the city's patience (renege). This
+/// is the only difficulty source with teeth in a money-free game: too-infrequent service loses
+/// riders outright. Deterministic — integer clock vs integer `t_wait_ms`. Disabled when
+/// `patience_ms <= 0` (e.g. `CityData::default()` in native tests).
+pub(crate) fn renege(world: &mut World) {
+    let patience = world.city.patience_ms;
+    if patience <= 0 {
+        return;
+    }
+    let clock = world.clock_ms;
+    let mut gave_up = 0u64;
+    for q in world.waiting.iter_mut() {
+        if q.is_empty() {
+            continue;
+        }
+        let mut kept = std::collections::VecDeque::with_capacity(q.len());
+        for pax in q.drain(..) {
+            if clock - pax.t_wait_ms > patience {
+                gave_up += 1;
+            } else {
+                kept.push_back(pax);
+            }
+        }
+        *q = kept;
+    }
+    world.abandoned += gave_up;
+}
+
 pub(crate) fn board_alight(world: &mut World) {
     let World {
         ref lines,

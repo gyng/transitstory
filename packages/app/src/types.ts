@@ -55,6 +55,8 @@ export interface Stats {
   /** Cumulative "left behind" = times a rider was passed by a full vehicle (== deniedBoardings). */
   leftBehind: number;
   deniedBoardings: number;
+  /** Cumulative riders who gave up waiting (renege) — frequency/coverage pressure. */
+  abandoned: number;
   /** Average end-to-end trip time (ms) over completed trips; 0 before the first arrival. */
   avgJourneyMs: number;
   /** Average platform wait (ms) per boarding; 0 before the first boarding. */

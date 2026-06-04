@@ -80,6 +80,8 @@ pub struct World {
     /// Cumulative times a rider wanting a line was passed by a full vehicle (the real
     /// "left behind" pressure — distinct from the live waiting-queue depth).
     pub denied_boardings: u64,
+    /// Cumulative riders who gave up waiting (renege) because service was too infrequent.
+    pub abandoned: u64,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
     /// Optional economy (NIMBY-style): when off, money is informational only.
@@ -106,6 +108,7 @@ struct Canonical<'a> {
     total_wait_ms: u64,
     wait_samples: u64,
     denied_boardings: u64,
+    abandoned: u64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -158,6 +161,7 @@ impl World {
             total_wait_ms: 0,
             wait_samples: 0,
             denied_boardings: 0,
+            abandoned: 0,
             serving: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             build_lookup,
@@ -374,6 +378,7 @@ impl World {
             waiting_total: waiting_total as f64,
             left_behind: self.denied_boardings as f64,
             denied_boardings: self.denied_boardings as f64,
+            abandoned: self.abandoned as f64,
             avg_journey_ms: if self.journey_samples > 0 {
                 self.total_journey_ms as f64 / self.journey_samples as f64
             } else {
@@ -553,6 +558,7 @@ impl World {
             total_wait_ms: self.total_wait_ms,
             wait_samples: self.wait_samples,
             denied_boardings: self.denied_boardings,
+            abandoned: self.abandoned,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

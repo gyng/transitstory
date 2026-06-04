@@ -17,6 +17,8 @@ pub struct StatsSnapshot {
     /// Cumulative "left behind" = times a rider was passed by a full vehicle (== denied_boardings).
     pub left_behind: f64,
     pub denied_boardings: f64,
+    /// Cumulative riders who gave up waiting (renege) — the frequency/coverage pressure signal.
+    pub abandoned: f64,
     /// Average end-to-end trip time (ms) over completed trips; 0 before the first arrival.
     pub avg_journey_ms: f64,
     /// Average platform wait (ms) per boarding; 0 before the first boarding.

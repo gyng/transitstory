@@ -23,6 +23,7 @@ const EMPTY_STATS: Stats = {
   waitingTotal: 0,
   leftBehind: 0,
   deniedBoardings: 0,
+  abandoned: 0,
   avgJourneyMs: 0,
   avgWaitMs: 0,
   avgLoadFactor: 0,

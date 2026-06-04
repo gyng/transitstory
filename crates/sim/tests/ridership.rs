@@ -3,11 +3,21 @@
 use sim::*;
 
 fn city() -> CityData {
+    city_patience(0) // patience 0 => renege disabled (existing ridership/coverage tests)
+}
+
+fn city_patience(patience_ms: i64) -> CityData {
     // Demand cells strung along the corridor so the stations have catchment.
     let cells = (0..20)
         .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
         .collect();
-    CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() }
+    CityData {
+        id: "t".into(),
+        seed: 7,
+        demand: DemandGrid { cell_m: 300.0, cells },
+        patience_ms,
+        ..Default::default()
+    }
 }
 
 /// 3 stations always placed; the line covers the given subset of stops at the given headway.
@@ -104,4 +114,44 @@ fn lifecycle_telemetry_populates_and_left_behind_aliases_denials() {
     assert!(st.avg_wait_ms > 0.0, "platform wait telemetry populates after boardings");
     assert!(st.avg_journey_ms > 0.0, "journey telemetry populates after completed trips");
     assert_eq!(st.left_behind, st.denied_boardings, "left_behind aliases denied_boardings");
+}
+
+#[test]
+fn riders_abandon_when_service_is_too_infrequent() {
+    // One slow vehicle on a long route can't drain the queue within a short patience window,
+    // so waiting riders give up — the difficulty signal. Deterministic, and disabled at p=0.
+    let build = |patience: i64| {
+        let mut w = World::new(7, city_patience(patience));
+        w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        for s in [0, 1, 2] {
+            w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+        }
+        w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 }); // sparse service
+        w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 1_800_000 });
+        w.apply(&Command::SetRunning { running: true });
+        w
+    };
+
+    let mut a = build(120_000); // 2-min patience
+    for _ in 0..8000 {
+        a.tick(50); // 400 s
+    }
+    assert!(a.stats_snapshot().abandoned > 0.0, "infrequent service loses riders to renege");
+
+    // Deterministic replay.
+    let mut b = build(120_000);
+    for _ in 0..8000 {
+        b.tick(50);
+    }
+    assert_eq!(a.state_hash(), b.state_hash());
+
+    // Patience 0 disables renege entirely.
+    let mut c = build(0);
+    for _ in 0..8000 {
+        c.tick(50);
+    }
+    assert_eq!(c.stats_snapshot().abandoned, 0.0, "patience 0 => nobody gives up");
 }

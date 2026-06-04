@@ -16,6 +16,7 @@ fn city_with_grid() -> CityData {
         seed: 1,
         demand: DemandGrid::default(),
         buildability: BuildabilityGrid { cell_m: 100.0, cells: bcells },
+        ..Default::default()
     }
 }
 

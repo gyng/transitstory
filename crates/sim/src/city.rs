@@ -17,6 +17,17 @@ pub struct CityData {
     /// Coarse buildability grid (mm) for the surface-rail cost signal. Additive/optional.
     #[serde(default)]
     pub buildability: BuildabilityGrid,
+    /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
+    /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
+    /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy
+    /// for native tests that don't want abandonment).
+    #[serde(default = "default_patience_ms")]
+    pub patience_ms: i64,
+}
+
+/// Default rider patience for cities that don't specify one: 30 sim-minutes.
+fn default_patience_ms() -> i64 {
+    1_800_000
 }
 
 /// Coarse classified grid: each cell carries a class `c` (1=RoadROW 2=RailROW 3=Built

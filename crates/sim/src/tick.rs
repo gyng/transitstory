@@ -6,6 +6,7 @@
 //!   3. dispatch trains          (T14)
 //!   4. move trains              (T14)
 //!   5. alight then board        (T16b)
+//!   5b. renege (give up waiting) (patience)
 //!   6. accounting / stats       (T16b)
 //! `tick` must be total and infallible — no panics, clamp/saturate instead. The GameLoop
 //! only calls this while running (Build mode does not tick).
@@ -28,6 +29,8 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         crate::vehicle::advance(world, dt);
         // Phase 5 — alight then board (capacity-capped).
         crate::pax::board_alight(world);
+        // Phase 5b — riders who have waited past the city's patience give up (renege).
+        crate::pax::renege(world);
         // Phase 6 — accounting/stats is computed on demand in stats_snapshot().
     }
 }
