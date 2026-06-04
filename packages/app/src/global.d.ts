@@ -4,6 +4,7 @@ import type { Map as MlMap } from "maplibre-gl";
 import type { MapboxOverlay } from "@deck.gl/mapbox";
 import type { SimBridge } from "./sim/SimBridge";
 import type { LoadedCity } from "./sim/city";
+import type { Game } from "./game";
 
 declare global {
   interface Window {
@@ -14,6 +15,7 @@ declare global {
       bridge: SimBridge;
       city: LoadedCity;
       overlay: MapboxOverlay;
+      game: Game;
     };
     __ot_test?: {
       placeStationLngLat(lng: number, lat: number): void;

@@ -3,9 +3,13 @@
 // the game loop attach in T6/T10+.
 import "./styles.css";
 import { createMap } from "./map/basemap";
-import { createOverlay, testMarkerLayer } from "./map/overlay";
+import { createOverlay } from "./map/overlay";
 import { loadCity } from "./sim/city";
 import { SimBridge } from "./sim/SimBridge";
+import { Game } from "./game";
+import { attachPointer } from "./tools/pointer";
+import { mountToolbar } from "./ui/toolbar";
+import { installTestHooks } from "./testhooks";
 
 function mountTitle(): void {
   const el = document.createElement("div");
@@ -23,12 +27,22 @@ async function boot(): Promise<void> {
   const map = createMap("map");
   const overlay = createOverlay();
   map.addControl(overlay);
-  overlay.setProps({ layers: [testMarkerLayer()] });
 
   const city = await loadCity();
   const bridge = new SimBridge(city.seed, city.coreCityJson);
 
-  window.__ot = { map, bridge, city, overlay };
+  const game = new Game(bridge, map, overlay);
+  attachPointer(game);
+  installTestHooks(game);
+
+  const ui = document.getElementById("ui")!;
+  mountToolbar(ui, game);
+
+  // Initial render once the map is ready (deck syncs to the camera).
+  map.once("load", () => game.refresh());
+  game.refresh();
+
+  window.__ot = { map, bridge, city, overlay, game };
   window.__APP_READY = true;
 }
 

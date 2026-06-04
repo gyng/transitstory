@@ -24,7 +24,7 @@ Maintained at every checkpoint and every fallback taken.
 | T13 | Synthetic demand grid + singapore_city.json | pending |
 | T5 | MapLibre Singapore basemap + geo.ts | pending |
 | T6 | deck.gl MapboxOverlay + test layer | pending |
-| T10 | Place-station tool | pending |
+| T10 | Place-station tool + catchment | ✅ done |
 | T11 | Draw-line tool | pending |
 | T12 | Assign trainset + headway slider + SoA clamp | pending |
 | T14 | Vehicle movement (Rust) | pending |
