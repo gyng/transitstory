@@ -1,12 +1,30 @@
-// App entry. T3: app shell + readiness flag for the Playwright load smoke. T5 mounts the
-// MapLibre map here and flips __MAP_READY on map 'idle'.
+// App entry. Boots the MapLibre map, loads the committed city (manifest + demand grid),
+// constructs the SimBridge, and exposes a debug/test handle on window. Tools, overlay, and
+// the game loop attach in T6/T10+.
 import "./styles.css";
+import { createMap } from "./map/basemap";
+import { loadCity } from "./sim/city";
+import { SimBridge } from "./sim/SimBridge";
 
-const title = document.createElement("h1");
-title.id = "app-title";
-title.textContent = "onlytransits";
-title.style.cssText =
-  "position:fixed;top:12px;left:16px;margin:0;font:600 18px system-ui,sans-serif;color:#1c2024;z-index:10";
-document.getElementById("ui")?.appendChild(title);
+function mountTitle(): void {
+  const el = document.createElement("div");
+  el.id = "app-title";
+  el.textContent = "onlytransits";
+  el.style.cssText =
+    "position:fixed;top:10px;left:14px;margin:0;padding:4px 10px;border-radius:8px;" +
+    "background:rgba(255,255,255,.85);font:600 15px system-ui,sans-serif;color:#1c2024;" +
+    "box-shadow:0 2px 10px rgba(0,0,0,.12);z-index:10";
+  document.getElementById("ui")?.appendChild(el);
+}
 
-window.__APP_READY = true;
+async function boot(): Promise<void> {
+  mountTitle();
+  const map = createMap("map");
+  const city = await loadCity();
+  const bridge = new SimBridge(city.seed, city.coreCityJson);
+
+  window.__ot = { map, bridge, city };
+  window.__APP_READY = true;
+}
+
+void boot();
