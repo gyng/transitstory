@@ -145,13 +145,19 @@ def build(cid, cfg):
 
     cells = []
     for ri in range(rows):
+        clat = south + (ri + 0.5) * dlat
+        if clat > north:  # the +1 row's centre can spill past the bbox edge — keep cells inside
+            continue
         for ci in range(cols):
+            clon = west + (ci + 0.5) * dlng
+            if clon > east:
+                continue
             k = ri * cols + ci
             o, d = origin[k], dest[k]
             if o + d > 0.05:
                 cells.append({
-                    "lon": round(west + (ci + 0.5) * dlng, 5),
-                    "lat": round(south + (ri + 0.5) * dlat, 5),
+                    "lon": round(clon, 5),
+                    "lat": round(clat, 5),
                     "originWeight": round(o, 3),
                     "destWeight": round(d, 3),
                 })
