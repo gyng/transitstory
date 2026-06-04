@@ -13,7 +13,9 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 postcard = { version = "1.1", features = ["use-std"] }
-rand = "=0.10.1"
+# default-features off drops getrandom/OsRng (no OS entropy in a deterministic sim, and
+# it has no wasm32-unknown-unknown backend). We only need the RngExt traits + seeded PRNG.
+rand = { version = "=0.10.1", default-features = false, features = ["alloc"] }
 rand_chacha = "=0.10.0"
 indexmap = { version = "2", features = ["serde"] }
 rustc-hash = "2"

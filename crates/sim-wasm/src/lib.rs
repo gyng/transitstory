@@ -1,12 +1,99 @@
-//! onlytransits — wasm-bindgen facade (the ONLY wasm-aware crate).
+//! onlytransits — wasm-bindgen facade (the ONLY wasm-aware crate). A thin translation
+//! membrane over `sim`: decode JSON commands, drive ticks, copy-out SoA buffers, marshal
+//! stats/geometry. NO game logic, validation, or scoring lives here — those are in `sim`.
 //!
-//! Thin translation membrane over `sim`: decode commands, drive ticks, copy-out SoA
-//! buffers, marshal stats. NO game logic lives here. The real `Sim` facade lands in T8.
+//! Boundary conventions (PLAN §0): commands cross as JSON (postcard is Rust-only save);
+//! i64/u64 are kept off the JS boundary (state hash as hex string, mm geometry as f64).
+use sim::{CityData, Command, World};
 use wasm_bindgen::prelude::*;
 
-/// Smoke export so the scaffold builds and a wasm-pack/node smoke can confirm the
-/// module instantiates (guards wasm-bindgen crate/CLI version skew). Replaced in T8.
 #[wasm_bindgen]
-pub fn ping() -> i32 {
-    1
+pub struct Sim {
+    world: World,
+}
+
+#[wasm_bindgen]
+impl Sim {
+    /// `seed` is a JS number (cast to u64) so callers never deal with BigInt. `city_json`
+    /// is the committed CityData manifest (demand grid already in mm); a parse failure
+    /// falls back to an empty city rather than trapping the module.
+    #[wasm_bindgen(constructor)]
+    pub fn new(seed: f64, city_json: &str) -> Sim {
+        let city = CityData::from_json(city_json).unwrap_or_default();
+        Sim {
+            world: World::new(seed as u64, city),
+        }
+    }
+
+    /// Apply one JSON-encoded Command (the only write path). Returns the emitted events
+    /// (assigned ids, auto-names, rejections) as a JS value. Bad JSON => thrown JS error.
+    #[wasm_bindgen(js_name = applyCommandJson)]
+    pub fn apply_command_json(&mut self, json: &str) -> Result<JsValue, JsValue> {
+        let cmd: Command = serde_json::from_str(json)
+            .map_err(|e| JsValue::from_str(&format!("invalid command JSON: {e}")))?;
+        let events = self.world.apply(&cmd);
+        serde_wasm_bindgen::to_value(&events).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Advance one fixed logical step (ms as a JS number; cast to i64 internally).
+    pub fn tick(&mut self, dt_ms: f64) {
+        self.world.tick(dt_ms as i64);
+    }
+
+    /// Canonical state hash as a hex string (avoids BigInt). The determinism oracle.
+    #[wasm_bindgen(js_name = stateHash)]
+    pub fn state_hash(&self) -> String {
+        format!("{:016x}", self.world.state_hash())
+    }
+
+    // --- render copy-out (wasm->ts state port) ---
+
+    #[wasm_bindgen(js_name = vehicleCount)]
+    pub fn vehicle_count(&self) -> usize {
+        self.world.vehicles.len()
+    }
+
+    /// Interleaved current vehicle positions `[x0,y0,x1,y1,...]` in metres (Float32Array).
+    #[wasm_bindgen(js_name = vehiclePositions)]
+    pub fn vehicle_positions(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_positions_m(&self.world)
+    }
+
+    /// Interleaved previous-tick positions in metres (for alpha interpolation).
+    #[wasm_bindgen(js_name = vehiclePrevPositions)]
+    pub fn vehicle_prev_positions(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_prev_positions_m(&self.world)
+    }
+
+    #[wasm_bindgen(js_name = vehicleAngles)]
+    pub fn vehicle_angles(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_angles(&self.world)
+    }
+
+    #[wasm_bindgen(js_name = vehicleLineIds)]
+    pub fn vehicle_line_ids(&self) -> Vec<u32> {
+        sim::render_buf::vehicle_line_ids(&self.world)
+    }
+
+    // --- structured queries (wasm->ts query port; low frequency) ---
+
+    /// Stats readout for the bottom bar / panels (camelCase JS object, numbers not BigInt).
+    pub fn stats(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.stats_snapshot())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Authoritative station geometry for rendering.
+    #[wasm_bindgen(js_name = stationsView)]
+    pub fn stations_view(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.stations_view())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Authoritative line geometry (ordered stops + polyline).
+    #[wasm_bindgen(js_name = linesView)]
+    pub fn lines_view(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.lines_view())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
 }

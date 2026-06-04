@@ -16,8 +16,10 @@ create a web-based browser game
 
 pt 2.
 
-sim mode vs grand tycoon mode
-pure sim mode vs gsg inspired mode with events etc
+sim mode vs grand tycoon mode vs viz
+pure sim mode vs gsg inspired mode with events etc vs pure visualisation from global live feeds
 
-planes and ferries
+cars and buses and planes and ferries
 basically you should be able to play any transport fantasy
+
+rename to transit story

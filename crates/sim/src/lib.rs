@@ -12,9 +12,12 @@ pub mod geo_local;
 pub mod hash;
 pub mod ids;
 pub mod line;
+pub mod render_buf;
 pub mod station;
+pub mod stats;
 mod tick;
 pub mod trainset;
+pub mod vehicle;
 pub mod world;
 
 pub use city::{CityData, DemandCell, DemandGrid};
@@ -23,7 +26,9 @@ pub use geo_local::PointMm;
 pub use ids::{LineId, PaxId, StationId, TrainsetId, VehicleId};
 pub use line::Line;
 pub use station::Station;
+pub use stats::{LineStat, StationStat, StatsSnapshot};
 pub use trainset::{TrainsetAssignment, TrainsetSpec};
+pub use vehicle::VehicleSoA;
 pub use world::{
     replay, SaveGame, World, DEFAULT_HEADWAY_MS, MAX_HEADWAY_MS, MAX_TRAINS_PER_LINE,
     MIN_HEADWAY_MS,

@@ -9,8 +9,10 @@ use crate::hash::fnv1a;
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use crate::station::Station;
+use crate::stats::{LineStat, LineView, StatsSnapshot, StationView};
 use crate::tick;
 use crate::trainset::TrainsetAssignment;
+use crate::vehicle::VehicleSoA;
 use rand_chacha::ChaCha8Rng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,7 @@ pub struct World {
     pub rng: ChaCha8Rng,
     pub stations: Vec<Station>,
     pub lines: Vec<Line>,
+    pub vehicles: VehicleSoA,
     pub city: CityData,
     pub cmd_log: Vec<Command>,
 }
@@ -59,8 +62,41 @@ impl World {
             rng: ChaCha8Rng::seed_from_u64(seed),
             stations: Vec::new(),
             lines: Vec::new(),
+            vehicles: VehicleSoA::default(),
             city,
             cmd_log: Vec::new(),
+        }
+    }
+
+    /// Low-frequency structured readout for the UI (the wasm->ts query port). Ridership /
+    /// waiting / coverage are filled in T16b; counts + per-line metadata are live now.
+    pub fn stats_snapshot(&self) -> StatsSnapshot {
+        let per_line = self
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| LineStat {
+                line_id: i as u32,
+                color: l.color,
+                ridership: 0.0,
+                stops: l.stops.len() as u32,
+                trains: l.trainset.map(|t| t.count as u32).unwrap_or(0),
+                headway_ms: l.headway_ms as f64,
+            })
+            .collect();
+        StatsSnapshot {
+            sim_clock_ms: self.clock_ms as f64,
+            running: self.running,
+            station_count: self.stations.len() as u32,
+            line_count: self.lines.len() as u32,
+            vehicle_count: self.vehicles.len() as u32,
+            ridership_total: 0.0,
+            waiting_total: 0.0,
+            left_behind: 0.0,
+            avg_load_factor: 0.0,
+            coverage_score: 0,
+            per_station: Vec::new(),
+            per_line,
         }
     }
 
@@ -184,6 +220,38 @@ impl World {
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)
+    }
+
+    /// Authoritative station geometry for rendering (mm as f64; no BigInt at the boundary).
+    pub fn stations_view(&self) -> Vec<StationView> {
+        self.stations
+            .iter()
+            .enumerate()
+            .map(|(i, s)| StationView {
+                id: i as u32,
+                x_mm: s.pos.x_mm as f64,
+                y_mm: s.pos.y_mm as f64,
+                name: s.name.clone(),
+            })
+            .collect()
+    }
+
+    /// Authoritative line geometry (ordered stops + polyline) for rendering.
+    pub fn lines_view(&self) -> Vec<LineView> {
+        self.lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| LineView {
+                id: i as u32,
+                color: l.color,
+                stops: l.stops.iter().map(|s| s.0).collect(),
+                polyline_mm: l
+                    .polyline
+                    .iter()
+                    .map(|p| [p.x_mm as f64, p.y_mm as f64])
+                    .collect(),
+            })
+            .collect()
     }
 
     pub fn save(&self) -> SaveGame {
