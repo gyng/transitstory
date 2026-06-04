@@ -5,6 +5,12 @@ use crate::routing::Leg;
 use crate::trainset::spec_for_mode;
 use crate::world::World;
 
+/// Load-dependent dwell: each boarding/alighting passenger adds time at the stop, capped. This is
+/// what makes BUNCHING emergent — a crowded vehicle dwells longer, falls behind, and the (now
+/// lighter-loaded) follower catches up. Integer + deterministic.
+const DWELL_PER_PAX_MS: i64 = 250;
+const MAX_EXTRA_DWELL_MS: i64 = 80_000;
+
 #[derive(Clone, Debug)]
 pub struct Pax {
     pub legs: Vec<Leg>,
@@ -81,17 +87,22 @@ pub(crate) fn board_alight(world: &mut World) {
             continue;
         }
         let line_id = vehicles.line[i];
-        let cap = lines
+        let (cap, base_dwell) = lines
             .get(line_id.index())
             .filter(|l| l.trainset.is_some())
-            .map(|l| spec_for_mode(l.mode).capacity as usize)
-            .unwrap_or(0);
+            .map(|l| {
+                let spec = spec_for_mode(l.mode);
+                (spec.capacity as usize, spec.dwell_ms)
+            })
+            .unwrap_or((0, 0));
 
         // Alight: riders whose current leg ends at this station leave the vehicle; transferers
         // advance a leg and re-queue here, arrivals are counted.
+        let mut alighted_here: i64 = 0;
         let mut still_aboard: Vec<Pax> = Vec::with_capacity(vehicles.onboard_pax[i].len());
         for pax in std::mem::take(&mut vehicles.onboard_pax[i]) {
             if pax.cur().alight.index() == s {
+                alighted_here += 1;
                 if pax.on_last_leg() {
                     if s < alightings.len() {
                         alightings[s] += 1;
@@ -113,6 +124,7 @@ pub(crate) fn board_alight(world: &mut World) {
 
         // Board: waiting riders whose current leg is on THIS line, FIFO up to capacity;
         // others (waiting for a different line, or left behind) keep their order.
+        let mut boarded_here: i64 = 0;
         let mut requeue = std::collections::VecDeque::with_capacity(waiting[s].len());
         while let Some(pax) = waiting[s].pop_front() {
             let wants_this = pax.cur().line == line_id;
@@ -120,6 +132,7 @@ pub(crate) fn board_alight(world: &mut World) {
                 // Boarded: fold platform wait time into the running average.
                 *total_wait_ms += (clock_ms - pax.t_wait_ms).max(0) as u64;
                 *wait_samples += 1;
+                boarded_here += 1;
                 vehicles.onboard_pax[i].push(pax);
                 *ridership_total += 1;
                 if s < boardings.len() {
@@ -135,5 +148,12 @@ pub(crate) fn board_alight(world: &mut World) {
         }
         waiting[s] = requeue;
         vehicles.onboard[i] = vehicles.onboard_pax[i].len() as u16;
+
+        // Load-dependent dwell: extend the (already-set) base dwell by the boarding/alighting
+        // load, so a crowded vehicle falls behind and bunching emerges on an overloaded line.
+        if base_dwell > 0 {
+            let extra = (DWELL_PER_PAX_MS * (alighted_here + boarded_here)).min(MAX_EXTRA_DWELL_MS);
+            vehicles.dwell_until_ms[i] = clock_ms + base_dwell + extra;
+        }
     }
 }

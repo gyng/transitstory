@@ -117,6 +117,37 @@ fn lifecycle_telemetry_populates_and_left_behind_aliases_denials() {
 }
 
 #[test]
+fn crowded_stops_extend_dwell_beyond_base() {
+    // Load-dependent dwell is the bunching mechanism: a vehicle that boards/alights a crowd dwells
+    // longer than the base. Run a busy single line and catch a dwell extended past base+ε.
+    let mut w = world_with_stops(&[0, 1, 2]); // headway 200_000, demand corridor
+    let base = sim::trainset::spec_for_mode(0).dwell_ms; // rail base dwell
+    let mut saw_extended = false;
+    for _ in 0..8000 {
+        w.tick(50);
+        for i in 0..w.vehicles.len() {
+            // dwell_until set this tick to clock + base + extra; extra>0 pushes it past clock+base.
+            if w.vehicles.dwell_until_ms[i] > w.clock_ms + base + 50 {
+                saw_extended = true;
+            }
+        }
+        if saw_extended {
+            break;
+        }
+    }
+    assert!(saw_extended, "a crowded stop dwells longer than the base (bunching pressure)");
+
+    // Determinism holds with load-dependent dwell.
+    let mut a = world_with_stops(&[0, 1, 2]);
+    let mut b = world_with_stops(&[0, 1, 2]);
+    for _ in 0..3000 {
+        a.tick(50);
+        b.tick(50);
+    }
+    assert_eq!(a.state_hash(), b.state_hash());
+}
+
+#[test]
 fn riders_abandon_when_service_is_too_infrequent() {
     // One slow vehicle on a long route can't drain the queue within a short patience window,
     // so waiting riders give up — the difficulty signal. Deterministic, and disabled at p=0.
