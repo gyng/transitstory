@@ -45,6 +45,14 @@ if [ "${DEMAND_ONLY:-0}" = "1" ]; then
   exit 0
 fi
 
+# Optional: overlay REAL land-use-derived demand (homes→origins, jobs/POIs→dests) over the
+# synthetic baseline. keep-on-fail leaves the just-written synthetic grid for any city that
+# fails, so the game always has a complete grid. Default stays synthetic (offline+deterministic).
+if [ "${DEMAND_SOURCE:-synthetic}" = "osm" ]; then
+  echo "══ 1b   demand  (real land-use · OSM Overpass · keep-on-fail) ═════════════"
+  run scripts/build_demand_osm.py "${ids[@]+${ids[@]}}"
+fi
+
 echo "══ 2/3  networks  (real lines · OSM Overpass · keep-on-fail) ══════════════"
 run scripts/build_networks.py "${ids[@]+${ids[@]}}"
 
