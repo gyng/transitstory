@@ -21,11 +21,13 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
 
     // Dynamics only run while Running (Build mode is paused).
     if world.running {
-        // Phase 2 — spawn + route passengers (T16a)
-        // crate::demand::spawn(world, dt);
-        // Phase 4 — move trains along the line.
+        // Phase 2 — recompute catchment capture if stations changed, then spawn+route pax.
+        crate::demand::prepare(world);
+        crate::demand::spawn(world, dt);
+        // Phase 4 — move trains along the line (records station arrivals).
         crate::vehicle::advance(world, dt);
-        // Phase 5 — alight then board (T16b)
-        // Phase 6 — accounting / stats (T16b)
+        // Phase 5 — alight then board (capacity-capped).
+        crate::pax::board_alight(world);
+        // Phase 6 — accounting/stats is computed on demand in stats_snapshot().
     }
 }

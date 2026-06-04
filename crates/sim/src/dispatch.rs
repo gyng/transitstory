@@ -38,6 +38,8 @@ pub(crate) fn dispatch(world: &mut World) {
             v.v_mm_s.push(0);
             v.dwell_until_ms.push(0);
             v.onboard.push(0);
+            v.onboard_dest.push(Vec::new());
+            v.at_station.push(-1);
         }
     }
 }

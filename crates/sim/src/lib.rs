@@ -8,11 +8,13 @@
 
 pub mod city;
 pub mod command;
+mod demand;
 mod dispatch;
 pub mod geo_local;
 pub mod hash;
 pub mod ids;
 pub mod line;
+mod pax;
 pub mod render_buf;
 pub mod station;
 pub mod stats;

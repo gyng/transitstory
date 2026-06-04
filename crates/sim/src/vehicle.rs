@@ -24,8 +24,12 @@ pub struct VehicleSoA {
     pub v_mm_s: Vec<i64>,
     /// Dwell timer: vehicle is stopped boarding/alighting until this clock time.
     pub dwell_until_ms: Vec<i64>,
-    /// Onboard passenger count (capacity-capped in T16b).
+    /// Onboard passenger count (= onboard_dest.len(); kept for the hash/render).
     pub onboard: Vec<u16>,
+    /// Destinations of onboard passengers (capacity-capped board/alight in T16b).
+    pub onboard_dest: Vec<Vec<crate::ids::StationId>>,
+    /// Station id this vehicle arrived at THIS tick (-1 otherwise); consumed by board/alight.
+    pub at_station: Vec<i32>,
 }
 
 impl VehicleSoA {
@@ -52,26 +56,28 @@ impl VehicleSoA {
         self.v_mm_s.clear();
         self.dwell_until_ms.clear();
         self.onboard.clear();
+        self.onboard_dest.clear();
+        self.at_station.clear();
     }
 }
 
-/// The next stop's arc-length in the travel direction (returns the end if past the last
-/// stop, which triggers a reversal in `advance`).
-fn next_stop_arc(arc: &[i64], s: i64, dir: i64) -> i64 {
+/// Index of the next stop in the travel direction (the end index if past the last stop,
+/// which triggers a reversal in `advance`).
+fn next_stop_index(arc: &[i64], s: i64, dir: i64) -> usize {
     if dir > 0 {
-        for &a in arc.iter() {
-            if a > s + 1 {
-                return a;
+        for i in 0..arc.len() {
+            if arc[i] > s + 1 {
+                return i;
             }
         }
-        *arc.last().unwrap_or(&0)
+        arc.len().saturating_sub(1)
     } else {
-        for &a in arc.iter().rev() {
-            if a < s - 1 {
-                return a;
+        for i in (0..arc.len()).rev() {
+            if arc[i] < s - 1 {
+                return i;
             }
         }
-        *arc.first().unwrap_or(&0)
+        0
     }
 }
 
@@ -103,7 +109,8 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             .unwrap_or_else(|| trainset_spec(0));
         let dir = v.dir[i] as i64;
         let s = v.s_mm[i];
-        let next_arc = next_stop_arc(&line.arclen_mm, s, dir);
+        let stop_idx = next_stop_index(&line.arclen_mm, s, dir);
+        let next_arc = line.arclen_mm[stop_idx];
         let dist_to_stop = (next_arc - s).abs();
 
         let accel_step = spec.accel_mm_s2 * dt_ms / 1000;
@@ -128,10 +135,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             new_s = next_arc;
             nv = 0;
             v.dwell_until_ms[i] = clock + spec.dwell_ms;
-            if next_arc >= total {
-                v.dir[i] = -1;
-            } else if next_arc <= 0 {
-                v.dir[i] = 1;
+            // Record arrival at this stop's station for the board/alight phase.
+            v.at_station[i] = line.stops[stop_idx].0 as i32;
+            if stop_idx + 1 >= line.arclen_mm.len() {
+                v.dir[i] = -1; // forward end -> reverse
+            } else if stop_idx == 0 {
+                v.dir[i] = 1; // back end -> reverse
             }
         }
 
