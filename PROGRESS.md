@@ -1,4 +1,4 @@
-# onlytransits — Build Progress (flight recorder)
+# transitstory — Build Progress (flight recorder)
 
 Live log of the autonomous overnight build of the Singapore vertical slice (per [PLAN.md](PLAN.md)).
 Maintained at every checkpoint and every fallback taken.

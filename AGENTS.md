@@ -1,6 +1,6 @@
-# onlytransits — AGENTS.md
+# transitstory — AGENTS.md
 
-Engineering & design conventions for **onlytransits** (a 2D top-down transit-builder game:
+Engineering & design conventions for **transitstory** (a 2D top-down transit-builder game:
 deterministic Rust→WASM sim + TS/Vite frontend on a real OSM map). This file loads into every
 coding session, so it is deliberately high-signal. It encodes the rules that **protect the locked
 decisions** — treat them as constraints to satisfy, not options to relitigate. For the build plan,

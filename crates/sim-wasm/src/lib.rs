@@ -1,4 +1,4 @@
-//! onlytransits — wasm-bindgen facade (the ONLY wasm-aware crate). A thin translation
+//! transitstory — wasm-bindgen facade (the ONLY wasm-aware crate). A thin translation
 //! membrane over `sim`: decode JSON commands, drive ticks, copy-out SoA buffers, marshal
 //! stats/geometry. NO game logic, validation, or scoring lives here — those are in `sim`.
 //!

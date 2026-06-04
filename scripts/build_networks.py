@@ -59,7 +59,7 @@ def overpass(bbox):
     for ep in ENDPOINTS:
         try:
             req = urllib.request.Request(ep, data=("data=" + urllib.parse.quote(q)).encode(),
-                                         headers={"User-Agent": "onlytransits/0.1 (build script)"})
+                                         headers={"User-Agent": "transitstory/0.1 (build script)"})
             with urllib.request.urlopen(req, timeout=200) as r:
                 return json.load(r)
         except Exception as ex:  # try the next mirror

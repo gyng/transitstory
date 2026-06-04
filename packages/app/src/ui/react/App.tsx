@@ -76,7 +76,7 @@ function Title({ name }: { name: string }) {
         zIndex: 10,
       }}
     >
-      onlytransits · {name}
+      Transit Story · {name}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-//! onlytransits — deterministic simulation core.
+//! transitstory — deterministic simulation core.
 //!
 //! PURE: no IO, no wall-clock, no threads, no wasm-bindgen, no float-Mercator/lng-lat,
 //! no `std::HashMap` iteration. Time is `i64` sim-milliseconds, positions are `i64`

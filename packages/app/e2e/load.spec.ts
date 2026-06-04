@@ -8,7 +8,7 @@ test("app shell loads and signals ready", async ({ page }) => {
   await page.waitForFunction(() => window.__APP_READY === true, undefined, {
     timeout: 30_000,
   });
-  await expect(page.locator("#app-title")).toContainText("onlytransits");
+  await expect(page.locator("#app-title")).toContainText("Transit Story");
 
   mkdirSync("../../docs/progress", { recursive: true });
   await page.screenshot({ path: "../../docs/progress/cp0-app-shell.png" });

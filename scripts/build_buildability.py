@@ -46,7 +46,7 @@ def query(bbox):
     for ep in ENDPOINTS:
         try:
             req = urllib.request.Request(ep, data=("data=" + urllib.parse.quote(q)).encode(),
-                                         headers={"User-Agent": "onlytransits/0.1"})
+                                         headers={"User-Agent": "transitstory/0.1"})
             with urllib.request.urlopen(req, timeout=260) as r:
                 return json.load(r)
         except Exception as ex:

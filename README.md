@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" alt="onlytransits mascot — a pigeon in a transit conductor's cap" width="160" />
+  <img src="docs/icon.png" alt="transitstory mascot — a pigeon in a transit conductor's cap" width="160" />
 </p>
 
-# onlytransits
+# transitstory
 
 A web-based 2D top-down transit-network builder game on a real OpenStreetMap map
 (NIMBY Rails / OpenTTD / A-Train / Mini Metro lineage). Deterministic Rust→WASM

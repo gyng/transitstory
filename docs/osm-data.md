@@ -1,4 +1,4 @@
-# What's extractable from OpenStreetMap (onlytransits)
+# What's extractable from OpenStreetMap (transitstory)
 
 Inventory of transit-relevant OSM data + Overpass patterns + how each maps into the game.
 Everything is pulled **offline** into committed JSON (no runtime Overpass), like

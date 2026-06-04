@@ -1,4 +1,4 @@
-# onlytransits — Overnight Build Plan (ultracode)
+# transitstory — Overnight Build Plan (ultracode)
 
 > **Purpose.** This is a self-contained, execute-without-a-human plan to take this repo
 > from empty to a **playable vertical slice** of a NIMBY-Rails-style 2D transit-builder
@@ -204,7 +204,7 @@ a `CityData` contract means GTFS and the other 8 cities are pure data, not refac
 ## 4. Repo layout
 
 ```
-onlytransits/
+transitstory/
 ├── idea.md                         # existing seed (do not delete)
 ├── PLAN.md                         # this file
 ├── PROGRESS.md                     # flight recorder — created in T1, updated every checkpoint
