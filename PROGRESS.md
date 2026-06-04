@@ -9,8 +9,8 @@ Maintained at every checkpoint and every fallback taken.
 - [x] **M1** Singapore map renders & is interactive (T5, T6, CP3/CP4) ✅
 - [x] **M2** WASM sim bridge proven (T8, T9, T13, CP2) ✅
 - [x] **M3** Build tools — place stations, draw a line, assign a trainset (T10–T12, CP5) ✅
-- [ ] **M4** Live sim — vehicles run, passengers flow, ridership accrues (T14–T16b, CP6/CP7)
-- [ ] **M5** Stats readout + full slice verified e2e (T17, T18, CP8)
+- [x] **M4** Live sim — vehicles run, passengers flow, ridership accrues (T14–T16b, CP6/CP7) ✅
+- [x] **M5** Stats readout + full slice verified e2e (T17, T18, CP8) ✅ — **SLICE COMPLETE**
 
 ### Task status
 | Task | Title | Status |
@@ -27,13 +27,13 @@ Maintained at every checkpoint and every fallback taken.
 | T10 | Place-station tool + catchment | ✅ done (CP5) |
 | T11 | Draw-line tool (snap/blueprint/commit) | ✅ done (CP5, e2e) |
 | T12 | Assign trainset + headway slider + left line list | ✅ done (CP5, e2e) |
-| T14 | Vehicle movement (Rust) | pending |
-| T15 | Fixed-timestep animation loop | pending |
-| T16a | Catchment capture + spawn | pending |
-| T16b | Board/ride/alight + stats + coverage | pending |
-| T17 | Stats bar + coverage gauge + waiting dots | pending |
-| T18 | End-to-end slice Playwright spec | pending |
-| T7 | Self-host PMTiles (DEFERRED unless time) | deferred |
+| T14 | Vehicle movement (Rust) | ✅ done (cargo, replay) |
+| T15 | Fixed-timestep animation loop | ✅ done (CP6, e2e) |
+| T16a | Catchment capture + spawn | ✅ done (no-double-count test) |
+| T16b | Board/ride/alight + stats + coverage | ✅ done (ridership + monotonic coverage) |
+| T17 | Stats bar + coverage gauge + waiting dots | ✅ done (CP7) |
+| T18 | End-to-end slice Playwright spec | ✅ done (CP8, vs preview bundle) |
+| T7 | Self-host PMTiles (DEFERRED unless time) | deferred (hosted CARTO style ships) |
 
 ## Resolved tool versions (verified at run start, 2026-06-04)
 
@@ -82,6 +82,39 @@ Dependency pins in use: `rand =0.10.1`, `rand_chacha =0.10.0`, `wasm-bindgen =0.
   T6: deck.gl MapboxOverlay overlaid + marker (CP4, screenshot). **M1 done.** T10/T11: place-station +
   interactive draw-line (snap/blueprint/commit, dragPan toggle) + overlay render from authoritative views;
   e2e places 3 stations + draws line [0,1,2] (CP5 screenshot cp5-stations-and-line.png). Now T12.
+- **2026-06-05 (overnight)** — T12: trainset + headway slider + line list panels (M3 done, CP5). T14:
+  deterministic vehicle motion (arc-length + trapezoidal + dwell + reverse), vehicle integer state folded
+  into state_hash so the replay gate now covers movement. **Fallback:** raw-node wasm smoke can't load the
+  bundler-target module (no manual init) — verify vehicles via the Vitest bridge instead. T15: fixed-timestep
+  accumulator loop + 60fps interpolation + speed controls (CP6, cp6-vehicles-running.png).
+- **2026-06-05 (overnight)** — T16a/b: catchment capture (normalized, no-double-count test), seeded spawn,
+  gravity destination pick (RngExt — RngCore not exported with rand default-features off), board/ride/alight
+  with capacity, stats + monotonic coverage. **Fallback:** dropped rand default features earlier already
+  covers the RNG path. T17: stats HUD (ridership + coverage gauge + waiting halos) on a 3 Hz throttle (CP7).
+  T18: flagship slice e2e vs the production preview bundle (CP8, cp8-slice-running.png).
+- **2026-06-05 — SLICE COMPLETE. All three tiers green together:** cargo 14, vitest 10, playwright 7.
+  The Singapore vertical slice is playable end-to-end (place → draw → assign → run → ridership + coverage).
+
+## Definition of Done — verification (PLAN §14)
+
+- ✅ **End-to-end playable loop vs the production bundle** — `e2e/slice.spec.ts` against `vite preview`:
+  place stations → draw a line → assign trainset + auto headway → Run → animated trains, passengers
+  board/ride/alight, live ridership + 0–100 coverage gauge. Screenshots in `docs/progress/`.
+- ✅ **Deterministic pure core** — `crates/sim` has no clock/thread/HashMap-iteration/float-Mercator; the
+  replay-equality test (incl. vehicle + ridership state) is green and re-gated at every commit.
+- ✅ **Command-sourcing** — every mutation flows through `applyCommandJson`; in-memory log retained (save =
+  seed + log). Frontend never mutates sim state.
+- ✅ **All three tiers green** — `cargo test --workspace` (14), `pnpm --filter app run test` (10, incl.
+  wasm-in-node smoke), committed Playwright e2e (7) asserting concrete facts + screenshots.
+- ✅ **Basemap no API key / no runtime tile-API dep beyond the hosted style** — CARTO Positron (OSM-derived),
+  visible OSM attribution, `ATTRIBUTION` committed. (Self-hosted PMTiles is the deferred T7 upgrade.)
+- ✅ **Sim consumes only a committed deterministic demand grid** (synthetic; pyrosm deferred).
+- ✅ **Clean pnpm + Cargo workspace**, pinned + locked deps (`Cargo.lock` + `pnpm-lock.yaml` committed), large
+  assets gitignored, reproducible `scripts/build_demand.py`. PROGRESS documents versions + fallbacks.
+- ✅ **Unimplemented-but-real seams** — `CityData` (WGS84), routing (DirectRide now, RAPTOR-shaped data via the
+  dispatch/demand structure), `Command` enum, demand grid — so GTFS / transfers / more lines / multiplayer
+  are additive. (Note: a formal `trait Router`/`trait Demand` abstraction is implied by the module layout but
+  not yet extracted into named traits — a clean next step.)
 
 ## Known gaps / deferred
 
