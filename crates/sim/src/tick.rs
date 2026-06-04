@@ -12,14 +12,20 @@
 use crate::world::World;
 
 pub(crate) fn step(world: &mut World, dt_ms: i64) {
+    let dt = dt_ms.max(0);
     // Phase 1 — advance the integer clock.
-    world.clock_ms = world.clock_ms.saturating_add(dt_ms.max(0));
+    world.clock_ms = world.clock_ms.saturating_add(dt);
 
-    // Phases 2-6 are implemented in T14/T16. They run unconditionally here; the caller
-    // (GameLoop) decides when to tick. Kept as explicit no-ops so the ordering is visible.
-    // crate::demand::spawn(world, dt_ms);
-    // crate::dispatch::dispatch(world, dt_ms);
-    // crate::vehicle::advance(world, dt_ms);
-    // crate::pax::board_alight(world);
-    // crate::stats::accumulate(world);
+    // Phase 3 — (re)dispatch vehicles if the network changed (also when Run starts).
+    crate::dispatch::dispatch(world);
+
+    // Dynamics only run while Running (Build mode is paused).
+    if world.running {
+        // Phase 2 — spawn + route passengers (T16a)
+        // crate::demand::spawn(world, dt);
+        // Phase 4 — move trains along the line.
+        crate::vehicle::advance(world, dt);
+        // Phase 5 — alight then board (T16b)
+        // Phase 6 — accounting / stats (T16b)
+    }
 }

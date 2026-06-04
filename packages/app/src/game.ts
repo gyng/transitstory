@@ -73,8 +73,12 @@ export class Game {
     this.refresh();
   }
 
+  /** The Headway slider is the lever: derive the train count from headway (round-trip / H)
+   *  and re-assign, keeping count↔headway consistent (the dispatcher uses count). */
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
+    const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));
+    this.bridge.apply(cmd.assignTrainset(line, 0, count));
     this.refresh();
   }
 
@@ -82,10 +86,10 @@ export class Game {
     return this.bridge.stats().perLine.find((l) => l.lineId === line)?.trains ?? 0;
   }
 
-  /** Round-trip travel time / train count, clamped to the sim's headway bounds. */
-  suggestHeadwayMs(line: number, count: number): number {
+  /** Estimated round-trip travel time (ms): out-and-back run + dwell at each stop. */
+  roundTripMs(line: number): number {
     const l = this.bridge.linesView()[line];
-    if (!l) return 300_000;
+    if (!l) return 600_000;
     let lenMm = 0;
     for (let i = 1; i < l.polylineMm.length; i++) {
       const [ax, ay] = l.polylineMm[i - 1];
@@ -95,8 +99,12 @@ export class Game {
     const vMaxMmS = 22_000;
     const dwellMs = 20_000;
     const oneWayMs = (lenMm / vMaxMmS) * 1000 + l.stops.length * dwellMs;
-    const roundTrip = 2 * oneWayMs;
-    return Math.max(30_000, Math.min(1_800_000, Math.round(roundTrip / Math.max(1, count))));
+    return 2 * oneWayMs;
+  }
+
+  /** Round-trip / train count, clamped to the sim's headway bounds. */
+  suggestHeadwayMs(line: number, count: number): number {
+    return Math.max(30_000, Math.min(1_800_000, Math.round(this.roundTripMs(line) / Math.max(1, count))));
   }
 
   setMode(mode: Mode): void {

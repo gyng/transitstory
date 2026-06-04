@@ -44,7 +44,17 @@ describe("SimBridge (wasm-in-node)", () => {
 
     const pos = b.vehiclePositions();
     expect(pos).toBeInstanceOf(Float32Array);
-    expect(pos.length % 2).toBe(0); // interleaved x,y (populated in T14)
+    expect(pos.length % 2).toBe(0); // interleaved x,y
+  });
+
+  it("dispatches vehicles and moves them when running (T14)", () => {
+    const b = build(); // build() assigns 3 trains, runs, ticks 50x
+    expect(b.vehicleCount()).toBe(3);
+    const before = Array.from(b.vehiclePositions());
+    for (let i = 0; i < 200; i++) b.tick(50);
+    const after = Array.from(b.vehiclePositions());
+    const moved = before.some((v, i) => v !== after[i]);
+    expect(moved).toBe(true); // a vehicle advanced along the line
   });
 
   it("rejects invalid commands without throwing", () => {

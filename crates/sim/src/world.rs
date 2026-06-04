@@ -34,15 +34,25 @@ pub struct World {
     pub vehicles: VehicleSoA,
     pub city: CityData,
     pub cmd_log: Vec<Command>,
+    /// Set when a line/trainset/headway/running change requires the dispatcher to rebuild
+    /// vehicles; cleared after a rebuild so steady running does no work.
+    pub dispatch_dirty: bool,
 }
 
 /// Borrowed canonical view hashed for determinism. Field order = hash order (stable).
+/// Vehicle integer state (line/arc-position/dir/dwell/onboard) is included so the
+/// determinism test covers movement; render-only floats (x/y/angle) are excluded.
 #[derive(Serialize)]
 struct Canonical<'a> {
     clock_ms: i64,
     running: bool,
     stations: &'a [Station],
     lines: &'a [Line],
+    veh_line: &'a [LineId],
+    veh_s_mm: &'a [i64],
+    veh_dir: &'a [i8],
+    veh_dwell_ms: &'a [i64],
+    veh_onboard: &'a [u16],
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -65,6 +75,7 @@ impl World {
             vehicles: VehicleSoA::default(),
             city,
             cmd_log: Vec::new(),
+            dispatch_dirty: false,
         }
     }
 
@@ -201,6 +212,10 @@ impl World {
                 vec![Event::RunningSet { running: *running }]
             }
         };
+        // Any change to lines / trainsets / headway / running invalidates dispatch.
+        if !matches!(cmd, Command::PlaceStation { .. }) {
+            self.dispatch_dirty = true;
+        }
         self.cmd_log.push(cmd.clone());
         events
     }
@@ -217,6 +232,11 @@ impl World {
             running: self.running,
             stations: &self.stations,
             lines: &self.lines,
+            veh_line: &self.vehicles.line,
+            veh_s_mm: &self.vehicles.s_mm,
+            veh_dir: &self.vehicles.dir,
+            veh_dwell_ms: &self.vehicles.dwell_until_ms,
+            veh_onboard: &self.vehicles.onboard,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

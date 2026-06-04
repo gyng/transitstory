@@ -8,6 +8,7 @@
 
 pub mod city;
 pub mod command;
+mod dispatch;
 pub mod geo_local;
 pub mod hash;
 pub mod ids;
