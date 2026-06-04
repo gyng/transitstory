@@ -1,0 +1,51 @@
+// Loads the committed city manifest + demand grid and builds the core city JSON that
+// Sim::new consumes. The demand grid is stored in lng/lat; we convert each cell to local
+// mm HERE (coords/geo.ts boundary) so the sim only ever sees mm (snake_case keys match the
+// Rust serde field names of DemandGrid/DemandCell — NOT camelCase).
+import { CITY_PATH } from "../config";
+import { lngLatToMm } from "../coords/geo";
+
+export interface RawCity {
+  id: string;
+  name: string;
+  originLngLat: [number, number];
+  bbox: [number, number, number, number];
+  center: [number, number];
+  zoom: number;
+  seed: number;
+  demandGridPath: string;
+}
+
+export interface RawDemand {
+  cellM: number;
+  bbox: [number, number, number, number];
+  cells: { lon: number; lat: number; originWeight: number; destWeight: number }[];
+}
+
+export interface LoadedCity {
+  raw: RawCity;
+  seed: number;
+  coreCityJson: string;
+  demandCellCount: number;
+}
+
+/** Pure: build the core (mm) city JSON from the raw manifest + lng/lat demand grid. */
+export function buildCoreCity(raw: RawCity, demand: RawDemand): {
+  json: string;
+  cellCount: number;
+} {
+  const cells = demand.cells.map((c) => {
+    const [x_mm, y_mm] = lngLatToMm([c.lon, c.lat]);
+    return { x_mm, y_mm, origin_w: c.originWeight, dest_w: c.destWeight };
+  });
+  const core = { seed: raw.seed, demand: { cell_m: demand.cellM, cells } };
+  return { json: JSON.stringify(core), cellCount: cells.length };
+}
+
+/** Fetch the manifest + grid (served from public/) and assemble the core city JSON. */
+export async function loadCity(): Promise<LoadedCity> {
+  const raw: RawCity = await (await fetch(CITY_PATH)).json();
+  const demand: RawDemand = await (await fetch(raw.demandGridPath)).json();
+  const { json, cellCount } = buildCoreCity(raw, demand);
+  return { raw, seed: raw.seed, coreCityJson: json, demandCellCount: cellCount };
+}

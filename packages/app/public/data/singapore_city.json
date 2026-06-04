@@ -1,0 +1,10 @@
+{
+  "id": "singapore",
+  "name": "Singapore",
+  "originLngLat": [103.8198, 1.3521],
+  "bbox": [103.55, 1.13, 104.15, 1.5],
+  "center": [103.8198, 1.3521],
+  "zoom": 11,
+  "seed": 20260604,
+  "demandGridPath": "/data/singapore_demand.json"
+}
