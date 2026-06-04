@@ -24,8 +24,10 @@ export interface Network {
   lines: NetLine[];
 }
 
+import { withBase } from "../config";
+
 export async function loadNetwork(path: string): Promise<Network> {
-  const res = await fetch(path);
+  const res = await fetch(withBase(path));
   if (!res.ok) throw new Error(`network fetch failed: ${path}`);
   return res.json();
 }

@@ -3,6 +3,7 @@
 // mm HERE (coords/geo.ts boundary) so the sim only ever sees mm (snake_case keys match the
 // Rust serde field names of DemandGrid/DemandCell — NOT camelCase).
 import { lngLatToMm, setOrigin } from "../coords/geo";
+import { withBase } from "../config";
 
 export interface RawCity {
   id: string;
@@ -67,13 +68,13 @@ export function buildCoreCity(
 /** Fetch the manifest + grids, set the session's coordinate origin, and assemble the core
  *  city JSON. setOrigin MUST happen before buildCoreCity so lng/lat -> mm is correct. */
 export async function loadCity(manifestPath: string): Promise<LoadedCity> {
-  const raw: RawCity = await (await fetch(manifestPath)).json();
+  const raw: RawCity = await (await fetch(withBase(manifestPath))).json();
   setOrigin(raw.originLngLat[0], raw.originLngLat[1]);
-  const demand: RawDemand = await (await fetch(raw.demandGridPath)).json();
+  const demand: RawDemand = await (await fetch(withBase(raw.demandGridPath))).json();
   let buildability: RawBuildability | undefined;
   if (raw.buildabilityPath) {
     try {
-      buildability = await (await fetch(raw.buildabilityPath)).json();
+      buildability = await (await fetch(withBase(raw.buildabilityPath))).json();
     } catch {
       buildability = undefined; // graceful: no penalties without the grid
     }

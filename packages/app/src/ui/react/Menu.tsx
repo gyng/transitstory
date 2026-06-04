@@ -10,6 +10,7 @@
 // is chosen ONCE (frontend chrome RNG, not the sim).
 import { useRef, useState } from "react";
 import { CITIES, type CityEntry } from "../../sim/cities";
+import { withBase } from "../../config";
 
 const SUBTITLE_COUNT = 5;
 const MASCOT_LINES = [
@@ -123,7 +124,7 @@ const MENU_CSS = `
 
 export function Menu({ onStart }: { onStart: (city: CityEntry, withNetwork: boolean) => void }) {
   // Pick the over-the-top subtitle ONCE (frontend chrome RNG, not the sim).
-  const [heroSrc] = useState(() => `/title/sub${1 + Math.floor(Math.random() * SUBTITLE_COUNT)}.webp`);
+  const [heroSrc] = useState(() => withBase(`/title/sub${1 + Math.floor(Math.random() * SUBTITLE_COUNT)}.webp`));
   const [selected, setSelected] = useState<CityEntry>(CITIES[0]);
   const [withNetwork, setWithNetwork] = useState(true);
   const mascotRef = useRef<HTMLButtonElement>(null);
@@ -225,13 +226,13 @@ export function Menu({ onStart }: { onStart: (city: CityEntry, withNetwork: bool
           }}
         >
           <div ref={bubbleRef} className="ot-bubble" />
-          <img src="/title/mascot.webp" alt="Station-master pigeon" decoding="async" />
+          <img src={withBase("/title/mascot.webp")} alt="Station-master pigeon" decoding="async" />
         </button>
       </div>
 
       {/* Bottom-right: the real wordmark. */}
       <div className="ot-brand">
-        <img className="ot-logo" src="/title/logo.webp" alt="Transit Story" decoding="async" />
+        <img className="ot-logo" src={withBase("/title/logo.webp")} alt="Transit Story" decoding="async" />
       </div>
     </div>
   );

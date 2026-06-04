@@ -13,8 +13,12 @@ export const TICK_MS = 50;
 export const CATCHMENT_M = 500;
 export const SNAP_PX = 18;
 
-/** Committed city manifest + demand grid (served from public/). */
-export const CITY_PATH = "/data/singapore_city.json";
+/** Prefix a `public/`-rooted asset path with Vite's deploy base, so committed data/title
+ *  assets resolve under a project-pages base (`/transitstory/`) as well as at root (`/`).
+ *  BASE_URL is "/" in dev/preview and "/transitstory/" in the GitHub Pages build. */
+export function withBase(path: string): string {
+  return import.meta.env.BASE_URL.replace(/\/+$/, "") + (path.startsWith("/") ? path : "/" + path);
+}
 
 /** Colour-blind-safe (Okabe-Ito) line palette; lines auto-assign the next entry on create. */
 export const LINE_PALETTE: number[] = [
