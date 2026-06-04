@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "slice/**"]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust (sim unit + determinism + wasm build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test (workspace; includes the determinism re-gate)
+        run: cargo test --workspace --release
+      - name: install wasm-pack
+        run: cargo install wasm-pack --version 0.14.0 --locked
+      - name: build wasm (crates/sim-wasm -> packages/wasm-sim)
+        run: wasm-pack build crates/sim-wasm --target web --out-dir ../../packages/wasm-sim
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sim
+          path: packages/wasm-sim
+
+  web:
+    name: Web (vitest + build + playwright)
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-sim
+          path: packages/wasm-sim
+      - run: pnpm install --frozen-lockfile
+      - name: vitest (TS logic + wasm-in-node smoke)
+        run: pnpm --filter app run test
+      - name: build production bundle
+        run: pnpm --filter app build
+      - name: cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm --filter app exec playwright install --with-deps chromium
+      - name: playwright e2e (asserts behavioural facts vs the preview bundle)
+        run: CI=1 pnpm --filter app exec playwright test
