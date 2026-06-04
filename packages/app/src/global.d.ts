@@ -18,8 +18,8 @@ declare global {
       game: Game;
     };
     __ot_test?: {
-      placeStationLngLat(lng: number, lat: number): void;
-      drawLine(stationIds: number[]): void;
+      placeStationLngLat(lng: number, lat: number): number;
+      drawLine(stationIds: number[]): number;
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;
       setRunning(running: boolean): void;

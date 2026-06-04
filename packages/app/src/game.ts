@@ -63,14 +63,40 @@ export class Game {
     return lineId;
   }
 
+  /** Assign trains and auto-suggest a sensible headway (round-trip / count) on first assign. */
   assignTrainset(line: number, count: number): void {
+    const hadTrains = (this.bridge.linesView()[line] && this.lineTrains(line)) || 0;
     this.bridge.apply(cmd.assignTrainset(line, 0, count));
+    if (hadTrains === 0) {
+      this.bridge.apply(cmd.setHeadway(line, this.suggestHeadwayMs(line, count)));
+    }
     this.refresh();
   }
 
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
     this.refresh();
+  }
+
+  private lineTrains(line: number): number {
+    return this.bridge.stats().perLine.find((l) => l.lineId === line)?.trains ?? 0;
+  }
+
+  /** Round-trip travel time / train count, clamped to the sim's headway bounds. */
+  suggestHeadwayMs(line: number, count: number): number {
+    const l = this.bridge.linesView()[line];
+    if (!l) return 300_000;
+    let lenMm = 0;
+    for (let i = 1; i < l.polylineMm.length; i++) {
+      const [ax, ay] = l.polylineMm[i - 1];
+      const [bx, by] = l.polylineMm[i];
+      lenMm += Math.hypot(bx - ax, by - ay);
+    }
+    const vMaxMmS = 22_000;
+    const dwellMs = 20_000;
+    const oneWayMs = (lenMm / vMaxMmS) * 1000 + l.stops.length * dwellMs;
+    const roundTrip = 2 * oneWayMs;
+    return Math.max(30_000, Math.min(1_800_000, Math.round(roundTrip / Math.max(1, count))));
   }
 
   setMode(mode: Mode): void {
@@ -89,6 +115,12 @@ export class Game {
   selectStation(id: number | null): void {
     this.selectedStation = id;
     this.selectedLine = null;
+    this.refresh();
+  }
+
+  selectLine(id: number | null): void {
+    this.selectedLine = id;
+    this.selectedStation = null;
     this.refresh();
   }
 

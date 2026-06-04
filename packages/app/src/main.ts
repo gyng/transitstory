@@ -9,6 +9,7 @@ import { SimBridge } from "./sim/SimBridge";
 import { Game } from "./game";
 import { attachPointer } from "./tools/pointer";
 import { mountToolbar } from "./ui/toolbar";
+import { mountPanels } from "./ui/panels";
 import { installTestHooks } from "./testhooks";
 
 function mountTitle(): void {
@@ -37,6 +38,7 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById("ui")!;
   mountToolbar(ui, game);
+  mountPanels(ui, game);
 
   // Initial render once the map is ready (deck syncs to the camera).
   map.once("load", () => game.refresh());

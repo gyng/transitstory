@@ -7,8 +7,8 @@ Maintained at every checkpoint and every fallback taken.
 
 - [x] **M0** Walking skeleton — repo + green tests in all 3 tiers (T1–T4, CP0) ✅
 - [x] **M1** Singapore map renders & is interactive (T5, T6, CP3/CP4) ✅
-- [ ] **M2** WASM sim bridge proven (T8, T9, T13, CP2)
-- [ ] **M3** Build tools — place stations, draw a line, assign a trainset (T10–T12, CP5)
+- [x] **M2** WASM sim bridge proven (T8, T9, T13, CP2) ✅
+- [x] **M3** Build tools — place stations, draw a line, assign a trainset (T10–T12, CP5) ✅
 - [ ] **M4** Live sim — vehicles run, passengers flow, ridership accrues (T14–T16b, CP6/CP7)
 - [ ] **M5** Stats readout + full slice verified e2e (T17, T18, CP8)
 
@@ -21,12 +21,12 @@ Maintained at every checkpoint and every fallback taken.
 | T4 | CI workflow | ✅ done (YAML valid; not run locally) |
 | T8 | sim-wasm wrapper (Sim::new/applyCommandJson/tick/SoA) | ✅ done (node smoke) |
 | T9 | TS SimBridge + wasm-in-node smoke | ✅ done (vitest 6/6) |
-| T13 | Synthetic demand grid + singapore_city.json | pending |
-| T5 | MapLibre Singapore basemap + geo.ts | pending |
-| T6 | deck.gl MapboxOverlay + test layer | pending |
-| T10 | Place-station tool + catchment | ✅ done |
-| T11 | Draw-line tool | pending |
-| T12 | Assign trainset + headway slider + SoA clamp | pending |
+| T13 | Synthetic demand grid + singapore_city.json + loader | ✅ done (cargo 8/8, vitest 9/9) |
+| T5 | MapLibre Singapore basemap + geo.ts | ✅ done (CP3, e2e) |
+| T6 | deck.gl MapboxOverlay + test layer | ✅ done (CP4) |
+| T10 | Place-station tool + catchment | ✅ done (CP5) |
+| T11 | Draw-line tool (snap/blueprint/commit) | ✅ done (CP5, e2e) |
+| T12 | Assign trainset + headway slider + left line list | ✅ done (CP5, e2e) |
 | T14 | Vehicle movement (Rust) | pending |
 | T15 | Fixed-timestep animation loop | pending |
 | T16a | Catchment capture + spawn | pending |
@@ -77,6 +77,11 @@ Dependency pins in use: `rand =0.10.1`, `rand_chacha =0.10.0`, `wasm-bindgen =0.
   Vite browser build and Vitest(node) via top-level await — removes the manual `init()`/fetch friction (the
   documented T9 risk). Vitest 6/6 (geo 3 + bridge 3, incl. determinism across the wire). Bridge proven; the
   "vehicle advances across ticks" assertion lands with T14/T15.
+- **2026-06-04 → 06-05 (overnight)** — T13: synthetic demand grid (3050 cells, no pyrosm) + city manifest +
+  loader (cargo 8/8, vitest 9/9). **M2 done.** T5: CARTO Positron basemap + OSM attribution (CP3, screenshot).
+  T6: deck.gl MapboxOverlay overlaid + marker (CP4, screenshot). **M1 done.** T10/T11: place-station +
+  interactive draw-line (snap/blueprint/commit, dragPan toggle) + overlay render from authoritative views;
+  e2e places 3 stations + draws line [0,1,2] (CP5 screenshot cp5-stations-and-line.png). Now T12.
 
 ## Known gaps / deferred
 
