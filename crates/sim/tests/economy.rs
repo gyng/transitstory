@@ -6,7 +6,7 @@ fn rail_world() -> World {
     let mut w = World::new(1, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
@@ -37,7 +37,7 @@ fn fares_grow_the_balance_over_time() {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     for s in [0, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }

@@ -25,6 +25,9 @@ declare global {
       setRunning(running: boolean): void;
       setSpeed(mult: number): void;
       setLineMode(line: number, mode: number): void;
+      setTransport(mode: number): void;
+      setModeEnabled(mode: number, on: boolean): void;
+      setShowDemand(on: boolean): void;
       stats(): unknown;
     };
   }

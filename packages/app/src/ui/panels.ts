@@ -11,6 +11,11 @@ function hex(u: number): string {
   return "#" + (u & 0xffffff).toString(16).padStart(6, "0");
 }
 
+const MODE_ICON = ["🚇", "🚌", "⛴", "✈"];
+function modeIcon(m: number): string {
+  return MODE_ICON[m] ?? "🚇";
+}
+
 export function mountPanels(host: HTMLElement, game: Game): void {
   const list = document.createElement("div");
   list.id = "line-list";
@@ -39,6 +44,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
       row.innerHTML =
         `<span style="width:14px;height:14px;border-radius:50%;flex:0 0 auto;background:${hex(l.color)};` +
         `box-shadow:0 0 0 2px #fff,0 0 0 3px #d7dade"></span>` +
+        `<span style="flex:0 0 auto" title="mode">${modeIcon(l.mode)}</span>` +
         `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.name}">${l.name || `Line ${l.lineId + 1}`}</span>` +
         `<span data-testid="line-ridership-${l.lineId}" style="color:#7a818a">${Math.round(l.ridership)}</span>`;
       row.addEventListener("click", () => game.selectLine(l.lineId));
@@ -62,7 +68,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
 
     if (l.trains === 0) {
       editor.innerHTML =
-        `<div style="font-weight:700;margin-bottom:8px">${l.name}</div>` +
+        `<div style="font-weight:700;margin-bottom:8px">${modeIcon(l.mode)} ${l.name}</div>` +
         `<button data-testid="assign-trainset" style="width:100%;padding:8px;border:0;border-radius:7px;` +
         `background:#0072b2;color:#fff;font:600 13px system-ui;cursor:pointer">▶ Assign trainset</button>` +
         `<div style="color:#7a818a;margin-top:6px">Adds trains and auto-suggests a headway.</div>`;
@@ -72,7 +78,7 @@ export function mountPanels(host: HTMLElement, game: Game): void {
     }
 
     editor.innerHTML =
-      `<div style="font-weight:700;margin-bottom:8px">${l.name}</div>` +
+      `<div style="font-weight:700;margin-bottom:8px">${modeIcon(l.mode)} ${l.name}</div>` +
       `<label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">` +
       `Trains <input data-testid="trains-input" type="number" min="1" max="8" value="${l.trains}" ` +
       `style="width:56px;padding:4px"></label>` +
@@ -83,26 +89,30 @@ export function mountPanels(host: HTMLElement, game: Game): void {
       `<div style="color:#7a818a;margin:4px 0 10px">Capacity × frequency are your two levers.</div>`;
 
     // Track mode (whole line): Surface / Elevated / Tunnel — the built-environment lever.
+    // Only rail builds track; bus rides roads, ferry/air have no grade to choose.
     const lv = game.bridge.linesView().find((x) => x.id === id);
     const modes = lv?.spanModes ?? [];
     const allMode = modes.length && modes.every((m) => m === modes[0]) ? modes[0] : -1;
     const tight = lv && lv.minRadiusMm < 100_000;
+    const isRail = l.mode === 0;
     const modeRow = document.createElement("div");
-    modeRow.innerHTML = `<div style="font-weight:600;margin-bottom:4px">Track</div>`;
-    const btns = document.createElement("div");
-    btns.style.cssText = "display:flex;gap:4px";
-    (["Surface", "Elevated", "Tunnel"] as const).forEach((label, m) => {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.dataset.testid = `mode-${m}`;
-      const on = allMode === m;
-      b.style.cssText =
-        "flex:1;padding:5px;border-radius:6px;border:1px solid #d7dade;cursor:pointer;font:600 12px system-ui;" +
-        (on ? "background:#0072b2;color:#fff" : "background:#fff;color:#1c2024");
-      b.addEventListener("click", () => game.setLineMode(id, m));
-      btns.appendChild(b);
-    });
-    modeRow.appendChild(btns);
+    if (isRail) {
+      modeRow.innerHTML = `<div style="font-weight:600;margin-bottom:4px">Track</div>`;
+      const btns = document.createElement("div");
+      btns.style.cssText = "display:flex;gap:4px";
+      (["Surface", "Elevated", "Tunnel"] as const).forEach((label, m) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.dataset.testid = `mode-${m}`;
+        const on = allMode === m;
+        b.style.cssText =
+          "flex:1;padding:5px;border-radius:6px;border:1px solid #d7dade;cursor:pointer;font:600 12px system-ui;" +
+          (on ? "background:#0072b2;color:#fff" : "background:#fff;color:#1c2024");
+        b.addEventListener("click", () => game.setLineMode(id, m));
+        btns.appendChild(b);
+      });
+      modeRow.appendChild(btns);
+    }
 
     const impact = document.createElement("div");
     impact.dataset.testid = "line-impact";

@@ -171,6 +171,8 @@ impl World {
             self.lines[idx].span_mode.resize(nspans, mode::SURFACE);
         }
 
+        use crate::trainset::tmode;
+        let tm = self.lines[idx].mode;
         let mut disr = 0i64;
         let mut water = false;
         let mut capital = 0i64;
@@ -184,11 +186,29 @@ impl World {
                 let span = l.span_of(l.arclen_mm[vi]);
                 let m = l.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
                 let c = self.classify(l.polyline[vi].x_mm, l.polyline[vi].y_mm);
-                let w: i64 = match c {
-                    class::BUILT => 10,
-                    class::WATER => 20,
-                    class::PARK => 3,
-                    _ => 0, // Open / RoadROW / RailROW are free corridors
+                // Per-mode placement: rail/bus blocked by water + penalised through built land;
+                // ferry wants water (penalised over land, water is free); air is exempt.
+                let (w, blocks_on_water): (i64, bool) = match tm {
+                    tmode::BUS => (
+                        match c {
+                            class::BUILT => 2, // buses run on city streets fine
+                            class::WATER => 20,
+                            class::PARK => 2,
+                            _ => 0,
+                        },
+                        true,
+                    ),
+                    tmode::FERRY => (if c == class::WATER { 0 } else { 14 }, false), // must stay on water
+                    tmode::AIR => (0, false), // flies over anything
+                    _ => (
+                        match c {
+                            class::BUILT => 10,
+                            class::WATER => 20,
+                            class::PARK => 3,
+                            _ => 0,
+                        },
+                        true,
+                    ),
                 };
                 let factor: i64 = match m {
                     mode::ELEVATED => 25,
@@ -196,18 +216,22 @@ impl World {
                     _ => 100, // Surface pays full
                 };
                 disr += w * seg_m * factor / 100;
-                if c == class::WATER && m == mode::SURFACE {
+                if blocks_on_water && c == class::WATER && m == mode::SURFACE {
                     water = true;
                 }
-                // Capital: per-km by mode (tunnel costs most to build) + surface land-taking
-                // through built-up land. Disruption (surface impact) and cost differ on purpose.
-                let per_km = match m {
-                    mode::ELEVATED => PER_KM_ELEVATED,
-                    mode::TUNNEL => PER_KM_TUNNEL,
-                    _ => PER_KM_SURFACE,
+                // Capital per metre by transport mode (rail also by build-mode).
+                let per_km = match tm {
+                    tmode::BUS => 3_000_000,
+                    tmode::FERRY => 5_000_000,
+                    tmode::AIR => 1_000_000,
+                    _ => match m {
+                        mode::ELEVATED => PER_KM_ELEVATED,
+                        mode::TUNNEL => PER_KM_TUNNEL,
+                        _ => PER_KM_SURFACE,
+                    },
                 };
                 capital += per_km * seg_m / 1000;
-                if c == class::BUILT && m == mode::SURFACE {
+                if tm == tmode::RAIL && c == class::BUILT && m == mode::SURFACE {
                     capital += TAKING_PER_KM_BUILT * seg_m / 1000;
                 }
             }
@@ -251,8 +275,8 @@ impl World {
         let mut load_n = 0u32;
         for i in 0..self.vehicles.len() {
             if let Some(l) = self.lines.get(self.vehicles.line[i].index()) {
-                if let Some(t) = l.trainset {
-                    let cap = crate::trainset::spec(t.spec).capacity.max(1) as f32;
+                if l.trainset.is_some() {
+                    let cap = crate::trainset::spec_for_mode(l.mode).capacity.max(1) as f32;
                     load_sum += self.vehicles.onboard[i] as f32 / cap;
                     load_n += 1;
                 }
@@ -282,6 +306,7 @@ impl World {
                 LineStat {
                     line_id: i as u32,
                     name: l.name.clone(),
+                    mode: l.mode,
                     color: l.color,
                     ridership: ridership as f64,
                     stops: l.stops.len() as u32,
@@ -361,11 +386,12 @@ impl World {
                 self.demand_dirty = true; // catchment capture must recompute
                 vec![Event::StationPlaced { id, name }]
             }
-            Command::CreateLine { color, name, loop_line } => {
+            Command::CreateLine { color, name, loop_line, mode } => {
                 let id = LineId(self.lines.len() as u32);
                 let mut l = Line::new(*color, DEFAULT_HEADWAY_MS);
                 l.name = name.clone().unwrap_or_else(|| format!("Line {}", id.0 + 1));
                 l.loop_line = *loop_line;
+                l.mode = *mode;
                 self.lines.push(l);
                 vec![Event::LineCreated { id }]
             }
@@ -504,6 +530,7 @@ impl World {
             .map(|(i, l)| LineView {
                 id: i as u32,
                 name: l.name.clone(),
+                mode: l.mode,
                 loop_line: l.loop_line,
                 color: l.color,
                 stops: l.stops.iter().map(|s| s.0).collect(),

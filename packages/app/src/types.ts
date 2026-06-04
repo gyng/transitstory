@@ -4,7 +4,7 @@
 
 export type Command =
   | { PlaceStation: { x_mm: number; y_mm: number; name: string | null } }
-  | { CreateLine: { color: number; name?: string | null; loop_line?: boolean } }
+  | { CreateLine: { color: number; name?: string | null; loop_line?: boolean; mode?: number } }
   | { AddStop: { line: number; station: number; after: number | null } }
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
@@ -31,6 +31,7 @@ export interface PerStation {
 export interface PerLine {
   lineId: number;
   name: string;
+  mode: number;
   color: number;
   ridership: number;
   stops: number;
@@ -74,6 +75,7 @@ export interface StationView {
 export interface LineView {
   id: number;
   name: string;
+  mode: number;
   loopLine: boolean;
   color: number;
   stops: number[];

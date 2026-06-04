@@ -46,6 +46,7 @@ pub struct StationStat {
 pub struct LineStat {
     pub line_id: u32,
     pub name: String,
+    pub mode: u8,
     pub color: u32,
     pub ridership: f64,
     pub stops: u32,
@@ -72,6 +73,7 @@ pub struct StationView {
 pub struct LineView {
     pub id: u32,
     pub name: String,
+    pub mode: u8,
     pub loop_line: bool,
     pub color: u32,
     pub stops: Vec<u32>,

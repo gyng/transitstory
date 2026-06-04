@@ -2,7 +2,7 @@
 //! current leg ends here (re-queueing transferers for their next leg, or counting arrivals),
 //! then boards waiting riders whose current leg is on THIS line, FIFO up to capacity.
 use crate::routing::Leg;
-use crate::trainset::spec as trainset_spec;
+use crate::trainset::spec_for_mode;
 use crate::world::World;
 
 #[derive(Clone, Debug)]
@@ -45,8 +45,8 @@ pub(crate) fn board_alight(world: &mut World) {
         let line_id = vehicles.line[i];
         let cap = lines
             .get(line_id.index())
-            .and_then(|l| l.trainset)
-            .map(|t| trainset_spec(t.spec).capacity as usize)
+            .filter(|l| l.trainset.is_some())
+            .map(|l| spec_for_mode(l.mode).capacity as usize)
             .unwrap_or(0);
 
         // Alight: riders whose current leg ends at this station leave the vehicle; transferers

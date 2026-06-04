@@ -23,8 +23,21 @@ ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-# Route types to pull per city (Tokyo's heavy-rail "train" network is enormous, so subway+LR).
-ROUTE_RE = "^(subway|light_rail|monorail|tram)$"
+# Route types to pull per city. Heavy-rail "train" is enormous (esp. Tokyo) so we stay on
+# rapid-transit rail + ferries; buses number in the hundreds and would swamp a starting
+# network, so they're left out of the default pull (the mode mapping still tags them if added).
+ROUTE_RE = "^(subway|light_rail|monorail|tram|ferry)$"
+
+# OSM route tag -> sim transport mode (crates/sim trainset::tmode: 0 rail,1 bus,2 ferry,3 air).
+ROUTE_MODE = {
+    "subway": 0, "light_rail": 0, "monorail": 0, "tram": 0, "train": 0,
+    "bus": 1, "trolleybus": 1,
+    "ferry": 2,
+}
+
+
+def route_mode(tags):
+    return ROUTE_MODE.get(tags.get("route", ""), 0)
 PALETTE = ["d42e12", "009645", "9e28b5", "fa9e0d", "0aa1dd", "00b0b9",
            "e6007e", "6f2c91", "f68b1f", "84bd00", "ee2737", "0067a5"]
 
@@ -119,6 +132,7 @@ def build(cid, meta):
     lines = []
     for ci, (key, (r, stops)) in enumerate(sorted(best.items())):
         t = r.get("tags", {})
+        mode = route_mode(t)
         seq, last = [], None
         for nid in stops:
             si = station_index(nid)
@@ -130,14 +144,18 @@ def build(cid, meta):
         if len(seq) >= 3 and seq[0] == seq[-1]:
             loop = True
             seq = seq[:-1]
-        if len(seq) < 3:  # drop 2-stop stubs (under-construction / airport people-movers)
+        # Rail needs >=3 stops (2-stop = under-construction / people-mover stub); ferries and
+        # buses are legitimately point-to-point, so 2 stops is fine for them.
+        min_stops = 2 if mode in (1, 2) else 3
+        if len(seq) < min_stops:
             continue
         lines.append({
             "name": t.get("name") or t.get("ref") or key,
             "colorHex": norm_colour(t, ci),
-            "headwayMin": 4,
-            "trains": max(4, min(12, len(seq) // 3)),
+            "headwayMin": 4 if mode == 0 else (8 if mode == 1 else 20),
+            "trains": max(2, min(12, len(seq) // 3)),
             "loop": loop,
+            "mode": mode,
             "stations": seq,
         })
 

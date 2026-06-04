@@ -16,7 +16,7 @@ fn world_with_stops(stops: &[u32]) -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     for &s in stops {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }

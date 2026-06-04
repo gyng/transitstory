@@ -7,7 +7,7 @@ fn line_world() -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None }); // 3 km E
     w.apply(&Command::PlaceStation { x_mm: 6_000_000, y_mm: 0, name: None }); // 6 km E
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(2), after: None });
@@ -61,7 +61,7 @@ fn sharp_corner_detects_tight_radius_straight_does_not() {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 1_000_000, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     for s in [0, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
@@ -74,7 +74,7 @@ fn sharp_corner_detects_tight_radius_straight_does_not() {
     s.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     s.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None });
     s.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
-    s.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    s.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     for st in [0, 1, 2] {
         s.apply(&Command::AddStop { line: LineId(0), station: StationId(st), after: None });
     }
@@ -89,7 +89,7 @@ fn loop_line_runs_forward_without_reversing() {
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 2_000_000, name: None });
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 2_000_000, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: Some("Loop".into()), loop_line: true });
+    w.apply(&Command::CreateLine { color: 1, name: Some("Loop".into()), loop_line: true, mode: 0 });
     for s in [0, 1, 2, 3] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
@@ -112,7 +112,7 @@ fn no_vehicles_until_running() {
     let mut w = World::new(1, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });

@@ -13,6 +13,7 @@ export interface NetLine {
   headwayMin: number;
   trains: number;
   loop?: boolean;
+  mode?: number; // transport mode (0=rail,1=bus,2=ferry,3=air); default rail
   stations: number[]; // ordered indices into stations[]
 }
 

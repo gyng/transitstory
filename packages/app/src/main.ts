@@ -38,6 +38,7 @@ async function boot(manifestPath: string, withNetwork: boolean): Promise<void> {
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
   const game = new Game(bridge, map, overlay, new Buildability(city.buildability));
+  game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   const loop = new GameLoop(game);
   attachPointer(game);
   installTestHooks(game, loop);

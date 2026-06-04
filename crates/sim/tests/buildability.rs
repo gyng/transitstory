@@ -24,7 +24,7 @@ fn line_world() -> World {
     let mut w = World::new(1, city_with_grid());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w
@@ -54,7 +54,7 @@ fn open_corridor_has_no_disruption() {
     let mut w = World::new(1, city_with_grid());
     w.apply(&Command::PlaceStation { x_mm: 6_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 8_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     assert_eq!(w.lines[0].disruption_units, 0);

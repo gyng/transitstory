@@ -155,14 +155,42 @@ cargo 24, vitest 10, playwright 12 — all green.
 - **Tier-2** — street-running: Surface track over built-up land caps speed (~43 km/h). The coherent play
   emerges naturally — surface the open suburbs (0 impact, fast), grade-separate the dense core (low impact, fast).
 
-Known gap: open SEA (OSM coastline, not water polygons) isn't captured by the water gate yet — inland water /
-tagged water bodies are. Economy (Tier 3) would reuse the same disruption number as a $ cost basis (seam left).
+## Economy, sea, modes & layers (2026-06-05)
+
+Batch closing the buildability seams and adding the multi-mode play. cargo 28, vitest 10,
+playwright 14 — all green (one full-suite e2e is GL-context-flaky at the tail of the single-worker
+run; green standalone).
+
+- **#1 Sea gap closed** — `build_buildability.py` now floods OSM **coastline** into open SEA (seed
+  right-of-coastline, BFS over Open cells → WATER), so the water hard-gate covers the strait/harbour,
+  not just tagged inland water. The hazard dots + red surface-water lines now fire over the sea.
+- **#2 Economy (Tier 3)** — `Line.capital_cost` = per-km by mode + land-taking + trains; tunnelling
+  costs far more than surface; fares = ridership×FARE accrue to `balance` = START_BUDGET + fares − capital.
+  Optional `economy_enabled` toggle (HUD money box dims when off). Reuses the disruption basis from G1.
+- **6 cities** — Istanbul, New York (Manhattan), Dublin added to `cities.ts` + `city_demand_config.json`
+  + per-city committed manifests/demand/buildability (now Singapore, Tokyo, Calgary, Istanbul, NYC, Dublin).
+- **#5 OSM data inventory** — `docs/osm-data.md`: what's extractable from OSM for modes/demand/coastline/heatmap.
+- **#3 Transport modes** — `trainset::tmode` (RAIL/BUS/FERRY/AIR) + `spec_for_mode` presets; `Line.mode`
+  carried through the Command path (`CreateLine.mode`). Per-mode placement gate in `recompute_line_buildability`:
+  rail (built/water/park weighted, water-flagged), bus (rides roads, cheap), ferry (water IS its road — no
+  flag, land penalised), air (flies over anything). Per-km capital scales by mode.
+- **#3 Chorded mode UI** — bottom bar with four big mode buttons (1 Rail / 2 Bus / 3 Ferry / 4 Plane);
+  selecting one opens its build-controls popover above (Stations / Draw line / Select + a mode hint) and
+  arms construction in that mode. Keyboard 1–4 chord the modes. Line list + editor show a mode badge;
+  the Surface/Elevated/Tunnel Track control is rail-only.
+- **#4 Demand map layer** — toggleable travel-demand heat overlay (deck.gl ScatterplotLayer, blue→red by
+  grid weight) sourced from the committed demand cells; sits under the network.
+- **#8 Settings panel** — ⚙ panel toggles each transport mode on/off (greys out the bar) and the economy.
+- **#6/#7 (prior in this batch)** — real line names from OSM `name`/`ref`; loop lines; importer filters
+  construction/<3-stop stubs (fixed the Jurong stub + LRT branch artefacts). Ferries now pulled too (2-stop OK).
 
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
 - **Real OSM demand (pyrosm)** — deferred; T13 ships a deterministic synthetic grid (sim consumes the JSON identically).
-- Multiplayer, GTFS import, other cities, transfers/RAPTOR K>1, junctions, fares, time-of-day — architectural seams only (PLAN §15).
+- **Done since the slice:** curves+speed caps, time-of-day, transfers (BFS+cache), real OSM networks +
+  6 cities, buildability/build-modes, economy (capital+fares), transport modes (rail/bus/ferry/air),
+  demand layer, settings. Remaining seams: multiplayer, GTFS import, RAPTOR K>1, track junctions, terrain gradient.
 - **idea.md "pt 2" (user-added 2026-06-04):** game modes — *sim mode vs grand-tycoon mode*, *pure-sim vs
   GSG-inspired mode with events*. Future scope, well beyond the thin slice. Noted, not built (guard the loop).
   The command-sourced deterministic core is mode-agnostic, so a future "mode" is a new outer-ring layer +

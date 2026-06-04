@@ -38,6 +38,11 @@ export interface HazardDot {
   lat: number;
   color: Rgb; // amber = built/park, red = water
 }
+export interface DemandPoint {
+  lng: number;
+  lat: number;
+  weight: number; // travel demand at this grid cell (origin+dest)
+}
 
 export interface RenderView {
   stations: StationDot[];
@@ -47,10 +52,22 @@ export interface RenderView {
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
+  demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
 }
 
 export function colorToRgb(u: number): Rgb {
   return [(u >> 16) & 0xff, (u >> 8) & 0xff, u & 0xff];
+}
+
+/** Demand heat ramp: low demand = translucent blue, high = warm red, alpha grows with weight
+ *  so dense corridors glow. Tuned for the gravity-grid weights (~0..6). */
+function demandColor(w: number): [number, number, number, number] {
+  const t = Math.max(0, Math.min(1, w / 5));
+  const r = Math.round(40 + t * 200);
+  const g = Math.round(90 + (1 - t) * 60);
+  const b = Math.round(200 - t * 150);
+  const a = Math.round(34 + t * 70);
+  return [r, g, b, a];
 }
 
 /** Topology layers (rebuilt only on topology/selection change — cached by Game so they keep
@@ -58,6 +75,18 @@ export function colorToRgb(u: number): Rgb {
  *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
 export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] } {
   const below: Layer[] = [
+    // Travel-demand heat (bottom of the stack so the network draws over it). Soft blue→red
+    // additive blobs sized by demand weight — a "where do people want to go" map layer.
+    new ScatterplotLayer({
+      id: "demand-heat",
+      data: view.demand,
+      getPosition: (d: DemandPoint) => [d.lng, d.lat],
+      getRadius: (d: DemandPoint) => 120 + Math.sqrt(d.weight) * 120,
+      radiusUnits: "meters",
+      radiusMinPixels: 6,
+      getFillColor: (d: DemandPoint) => demandColor(d.weight),
+      stroked: false,
+    }),
     new ScatterplotLayer({
       id: "catchments",
       data: view.catchments,

@@ -6,8 +6,8 @@ export const cmd = {
   placeStation: (x_mm: number, y_mm: number, name: string | null = null): Command => ({
     PlaceStation: { x_mm, y_mm, name },
   }),
-  createLine: (color: number, name: string | null = null, loop_line = false): Command => ({
-    CreateLine: { color, name, loop_line },
+  createLine: (color: number, name: string | null = null, loop_line = false, mode = 0): Command => ({
+    CreateLine: { color, name, loop_line, mode },
   }),
   addStop: (line: number, station: number, after: number | null = null): Command => ({
     AddStop: { line, station, after },
@@ -28,6 +28,9 @@ export const cmd = {
 
 export const WHOLE_LINE = 0xffffffff;
 export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;
+/** Transport mode (Line.mode in the sim). Matches crates/sim trainset::tmode. */
+export const TRANSPORT = { RAIL: 0, BUS: 1, FERRY: 2, AIR: 3 } as const;
+export type TransportMode = (typeof TRANSPORT)[keyof typeof TRANSPORT];
 
 export function encodeCommand(c: Command): string {
   return JSON.stringify(c);

@@ -17,6 +17,9 @@ const LAT_ACCEL_MM_S2: f64 = 800.0;
 pub struct Line {
     pub color: u32,
     pub name: String,
+    /// Transport mode: 0=rail, 1=bus, 2=ferry, 3=air (trainset::tmode). Picks the vehicle
+    /// preset + the placement-gate rules.
+    pub mode: u8,
     /// Circular line: the path closes (last stop -> first) and trains loop forward instead
     /// of reversing at an end.
     pub loop_line: bool,
@@ -55,6 +58,7 @@ impl Line {
         Self {
             color,
             name: String::new(),
+            mode: 0,
             loop_line: false,
             stops: Vec::new(),
             headway_ms: default_headway_ms,

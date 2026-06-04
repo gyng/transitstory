@@ -13,6 +13,9 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
     setRunning: (running) => game.setMode(running ? "run" : "build"),
     setSpeed: (mult) => loop.setSpeed(mult),
     setLineMode: (line, mode) => game.setLineMode(line, mode),
+    setTransport: (mode) => game.setTransport(mode),
+    setModeEnabled: (mode, on) => game.setModeEnabled(mode, on),
+    setShowDemand: (on) => game.setShowDemand(on),
     stats: () => game.bridge.stats(),
   };
 }

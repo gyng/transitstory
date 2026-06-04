@@ -2,7 +2,6 @@
 //! accel/cruise/brake + fixed dwell, out-and-back). Positions are integer mm. Holds
 //! previous-tick AND current-tick positions so the frontend interpolates at 60fps.
 use crate::ids::LineId;
-use crate::trainset::spec as trainset_spec;
 use crate::world::World;
 
 #[derive(Default)]
@@ -109,10 +108,7 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             continue;
         }
 
-        let spec = line
-            .trainset
-            .map(|t| trainset_spec(t.spec))
-            .unwrap_or_else(|| trainset_spec(0));
+        let spec = crate::trainset::spec_for_mode(line.mode);
         // Loops always run forward (+1); out-and-back uses the stored direction.
         let dir = if line.loop_line { 1 } else { v.dir[i] as i64 };
         let s = v.s_mm[i];

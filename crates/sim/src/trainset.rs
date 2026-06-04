@@ -24,6 +24,24 @@ pub fn spec(spec_id: u8) -> TrainsetSpec {
     SPECS[(spec_id as usize).min(SPECS.len() - 1)]
 }
 
+/// Transport modes (distinct from per-span BUILD modes in line::mode).
+pub mod tmode {
+    pub const RAIL: u8 = 0;
+    pub const BUS: u8 = 1;
+    pub const FERRY: u8 = 2;
+    pub const AIR: u8 = 3;
+}
+
+/// Vehicle preset per transport mode (speed/capacity/dwell differ; the sim path is shared).
+pub fn spec_for_mode(mode: u8) -> TrainsetSpec {
+    match mode {
+        tmode::BUS => TrainsetSpec { capacity: 80, v_max_mm_s: 14_000, accel_mm_s2: 1100, decel_mm_s2: 1500, dwell_ms: 12_000 },
+        tmode::FERRY => TrainsetSpec { capacity: 400, v_max_mm_s: 11_000, accel_mm_s2: 400, decel_mm_s2: 600, dwell_ms: 40_000 },
+        tmode::AIR => TrainsetSpec { capacity: 250, v_max_mm_s: 200_000, accel_mm_s2: 3000, decel_mm_s2: 3000, dwell_ms: 60_000 },
+        _ => SPECS[0], // rail
+    }
+}
+
 /// A trainset assignment on a line. `count` is clamped at the command boundary so the
 /// pre-sized SoA vehicle capacity is never exceeded (AGENTS game-design lever rule).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

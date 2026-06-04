@@ -42,6 +42,15 @@ export type Tool = "select" | "station" | "line";
 export class Game {
   mode: Mode = "build";
   tool: Tool = "station";
+  /** Active transport mode for new construction (0 rail,1 bus,2 ferry,3 air). The chorded
+   *  bottom bar sets this; new lines are created with it and the buildability gate follows. */
+  transport = 0;
+  /** Which transport modes are enabled (settings panel). Disabled modes can't be selected
+   *  in the chorded bar — a frontend gate; the sim is mode-agnostic about availability. */
+  enabledModes = new Set([0, 1, 2, 3]);
+  /** Demand-heat map layer toggle + its source points (lng/lat + weight), set at boot. */
+  showDemand = false;
+  demandHeat: import("./render").DemandPoint[] = [];
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
@@ -91,7 +100,7 @@ export class Game {
    *  interactive draw gesture (T11) and the test hook both funnel here. */
   drawLineByIds(ids: number[]): number {
     if (ids.length < 2) return -1;
-    const ev = this.bridge.apply(cmd.createLine(this.nextLineColor()));
+    const ev = this.bridge.apply(cmd.createLine(this.nextLineColor(), null, false, this.transport));
     const created = ev.find((e) => "LineCreated" in e) as
       | { LineCreated: { id: number } }
       | undefined;
@@ -163,6 +172,34 @@ export class Game {
   setTool(tool: Tool): void {
     if (this.tool === "line" && tool !== "line") this.cancelDraft();
     this.tool = tool;
+    this.refresh();
+  }
+
+  /** Select the transport mode for new construction (chorded bottom bar). Switching mode
+   *  drops any in-progress draft and arms the line tool so the next draw uses the new mode. */
+  setTransport(mode: number): void {
+    if (!this.enabledModes.has(mode) || mode === this.transport) return;
+    this.cancelDraft();
+    this.transport = mode;
+    this.tool = "line";
+    this.refresh();
+  }
+
+  /** Enable/disable a transport mode (settings panel). Disabling the active mode falls back
+   *  to the lowest still-enabled mode so construction always targets a valid mode. */
+  setModeEnabled(mode: number, on: boolean): void {
+    if (on) this.enabledModes.add(mode);
+    else this.enabledModes.delete(mode);
+    if (!this.enabledModes.has(this.transport)) {
+      const next = [0, 1, 2, 3].find((m) => this.enabledModes.has(m));
+      if (next !== undefined) this.transport = next;
+    }
+    this.refresh();
+  }
+
+  /** Toggle the travel-demand heat map layer. */
+  setShowDemand(on: boolean): void {
+    this.showDemand = on;
     this.refresh();
   }
 
@@ -294,7 +331,8 @@ export class Game {
       }
     }
 
-    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards };
+    const demand = this.showDemand ? this.demandHeat : [];
+    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards, demand };
   }
 
   /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */
@@ -346,7 +384,7 @@ export class Game {
       this.bridge.apply(cmd.placeStation(x, y, s.name));
     }
     net.lines.forEach((line, li) => {
-      this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0, line.name, line.loop ?? false));
+      this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0, line.name, line.loop ?? false, line.mode ?? 0));
       for (const idx of line.stations) this.bridge.apply(cmd.addStop(li, idx));
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
       this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * 60_000)));
