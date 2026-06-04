@@ -1,0 +1,126 @@
+// Objective tracker + win/lose banner — pure outer-ring chrome. Reads the ~3 Hz stats slice,
+// evaluates a Scenario, and renders progress + a sticky end-state. Issues no Commands; the sim
+// is untouched. The card sits top-right (the EditorPanel's top-right space is empty until a
+// selection); the end banner is a centred dismissible overlay so the player can keep building.
+import { useEffect, useRef, useState } from "react";
+import { useStats } from "./GameContext";
+import { evalScenario, nextStatus, type Scenario, type Status } from "../../objectives";
+
+export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
+  const stats = useStats();
+  const [status, setStatus] = useState<Status>("active");
+  const [dismissedBanner, setDismissedBanner] = useState(false);
+  const statusRef = useRef<Status>("active");
+
+  const e = evalScenario(scenario, stats);
+
+  // Status is sticky: the first win/loss freezes it (a later dip never reverts it).
+  useEffect(() => {
+    const ns = nextStatus(statusRef.current, e);
+    if (ns !== statusRef.current) {
+      statusRef.current = ns;
+      setStatus(ns);
+    }
+  }, [e.allMet, e.failed]);
+
+  const showBanner = status !== "active" && !dismissedBanner;
+
+  return (
+    <>
+      <div
+        data-testid="objectives"
+        style={{
+          position: "fixed",
+          top: 56,
+          right: 10,
+          zIndex: 9,
+          width: 220,
+          padding: "10px 12px",
+          borderRadius: 10,
+          background: "rgba(255,255,255,.95)",
+          boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
+          font: "13px system-ui,sans-serif",
+          color: "#1c2024",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <b>🎯 {scenario.title}</b>
+          <span
+            data-testid="objective-status"
+            style={{
+              fontSize: 11,
+              color: status === "won" ? "var(--ot-gauge-good,#009e73)" : status === "lost" ? "var(--ot-gauge-bad,#d62828)" : "#7a818a",
+            }}
+          >
+            {status === "active" ? "in progress" : status}
+          </span>
+        </div>
+        <div style={{ color: "#7a818a", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
+        {e.goals.map((g, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+            <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "#1c2024" }}>
+              {g.met ? "✓" : "○"} {g.goal.label}
+            </span>
+            <span style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums" }}>
+              {Math.round(g.current)}/{g.goal.target}
+            </span>
+          </div>
+        ))}
+        {scenario.deadlineMs !== undefined && status === "active" && (
+          <div style={{ color: "#7a818a", fontSize: 11, marginTop: 6 }}>
+            ⏳ {Math.max(0, Math.ceil((scenario.deadlineMs - stats.simClockMs) / 60_000))} min left
+          </div>
+        )}
+      </div>
+
+      {showBanner && (
+        <div
+          data-testid="objective-banner"
+          onClick={() => setDismissedBanner(true)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,.35)",
+            cursor: "pointer",
+          }}
+        >
+          <div
+            style={{
+              padding: "26px 34px",
+              borderRadius: 16,
+              background: "#fff",
+              textAlign: "center",
+              boxShadow: "0 12px 40px rgba(0,0,0,.4)",
+              maxWidth: 360,
+            }}
+          >
+            <div style={{ fontSize: 40 }}>{status === "won" ? "🎉" : "⏱️"}</div>
+            <h2 style={{ margin: "8px 0 4px", color: status === "won" ? "#009e73" : "#d62828" }}>
+              {status === "won" ? `${scenario.title} complete!` : "Challenge failed"}
+            </h2>
+            <p style={{ margin: "0 0 14px", color: "#5a626b", fontSize: 14 }}>
+              {status === "won" ? "Every objective met. Keep building, or start a fresh challenge." : e.failReason ?? "Better luck next time."}
+            </p>
+            <button
+              style={{
+                padding: "9px 22px",
+                border: 0,
+                borderRadius: 9,
+                background: "linear-gradient(180deg,#1ab6f0,#0a8fcc)",
+                color: "#fff",
+                font: "700 14px system-ui",
+                cursor: "pointer",
+              }}
+            >
+              Keep building
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

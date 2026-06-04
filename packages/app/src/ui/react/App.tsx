@@ -20,6 +20,9 @@ import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
 import { Toolbar } from "./Toolbar";
+import { OnboardingCoach } from "./Onboarding";
+import { ObjectivePanel } from "./Objectives";
+import { getScenario } from "../../objectives";
 
 interface BootedWorld {
   game: Game;
@@ -94,26 +97,29 @@ function Title({ name }: { name: string }) {
 export function App() {
   const [world, setWorld] = useState<BootedWorld | null>(null);
   const [booting, setBooting] = useState(false);
+  const [scenarioId, setScenarioId] = useState<string | null>(null);
   const started = useRef(false);
 
-  const startBoot = useCallback((manifestPath: string, withNetwork: boolean) => {
+  const startBoot = useCallback((manifestPath: string, withNetwork: boolean, scenario: string | null = null) => {
+    setScenarioId(scenario);
     setBooting(true);
     void boot(manifestPath, withNetwork).then(setWorld);
   }, []);
 
   const startResume = useCallback((save: SaveBlob) => {
+    setScenarioId(null);
     setBooting(true);
     void boot(cityById(save.cityId).manifest, false, save).then(setWorld);
   }, []);
 
-  // Deep-link / e2e: `?city=<id>&network=0|1` skips the menu.
+  // Deep-link / e2e: `?city=<id>&network=0|1&scenario=<id>` skips the menu.
   useEffect(() => {
     if (started.current) return;
     started.current = true;
     const params = new URLSearchParams(location.search);
     const cityParam = params.get("city");
     if (cityParam) {
-      startBoot(cityById(cityParam).manifest, params.get("network") === "1");
+      startBoot(cityById(cityParam).manifest, params.get("network") === "1", params.get("scenario"));
     }
   }, [startBoot]);
 
@@ -134,18 +140,22 @@ export function App() {
     if (booting) return null; // map is being built; chrome appears once the world is ready
     return (
       <Menu
-        onStart={(c: CityEntry, withNet: boolean) => startBoot(c.manifest, withNet)}
+        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) => startBoot(c.manifest, withNet, scenario)}
         onResume={startResume}
       />
     );
   }
+
+  const scenario = getScenario(scenarioId);
 
   return (
     <GameProvider game={world.game} loop={world.loop}>
       <Title name={world.cityName} />
       <UndoControl />
       <Toast />
+      <OnboardingCoach />
       <StatsBar />
+      {scenario && <ObjectivePanel scenario={scenario} />}
       <Panels />
       <Toolbar />
     </GameProvider>

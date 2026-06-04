@@ -12,6 +12,7 @@ import { useRef, useState } from "react";
 import { CITIES, type CityEntry } from "../../sim/cities";
 import { withBase } from "../../config";
 import { readSave, type SaveBlob } from "../../sim/save";
+import { SCENARIOS } from "../../objectives";
 
 const SUBTITLE_COUNT = 5;
 const MASCOT_LINES = [
@@ -127,13 +128,14 @@ export function Menu({
   onStart,
   onResume,
 }: {
-  onStart: (city: CityEntry, withNetwork: boolean) => void;
+  onStart: (city: CityEntry, withNetwork: boolean, scenario: string | null) => void;
   onResume?: (save: SaveBlob) => void;
 }) {
   // Pick the over-the-top subtitle ONCE (frontend chrome RNG, not the sim).
   const [heroSrc] = useState(() => withBase(`/title/sub${1 + Math.floor(Math.random() * SUBTITLE_COUNT)}.webp`));
   const [selected, setSelected] = useState<CityEntry>(CITIES[0]);
   const [withNetwork, setWithNetwork] = useState(true);
+  const [scenario, setScenario] = useState<string | null>(null);
   // A resumable autosave, read once at mount (frontend-only; not the sim).
   const [save] = useState<SaveBlob | null>(() => readSave());
   const mascotRef = useRef<HTMLButtonElement>(null);
@@ -217,7 +219,29 @@ export function Menu({
           </button>
         </div>
 
-        <button className="ot-start" data-testid="start" onClick={() => onStart(selected, withNetwork)}>
+        {/* Optional challenge: Free Play, or a scored scenario (objectives layer). */}
+        <div className="ot-mode" style={{ marginTop: "-4px" }}>
+          <button
+            className={`ot-modebtn${scenario === null ? " sel" : ""}`}
+            data-testid="scenario-none"
+            onClick={() => setScenario(null)}
+          >
+            Free play
+          </button>
+          {Object.values(SCENARIOS).map((sc) => (
+            <button
+              key={sc.id}
+              className={`ot-modebtn${scenario === sc.id ? " sel" : ""}`}
+              data-testid={`scenario-${sc.id}`}
+              title={sc.blurb}
+              onClick={() => setScenario(sc.id)}
+            >
+              🎯 {sc.title}
+            </button>
+          ))}
+        </div>
+
+        <button className="ot-start" data-testid="start" onClick={() => onStart(selected, withNetwork, scenario)}>
           ▶ Start
         </button>
 
