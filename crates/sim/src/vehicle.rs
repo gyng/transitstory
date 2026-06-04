@@ -83,9 +83,15 @@ fn next_stop_index(arc: &[i64], s: i64, dir: i64) -> usize {
 
 /// Advance every vehicle one fixed step along its line (trapezoidal speed + dwell + reverse
 /// at ends). Integer mm/ms throughout; deterministic. Records prev positions for interpolation.
+/// Street-running surface track through built-up land is slow (tram-like) — a real downside
+/// of NOT grade-separating in the dense core (mm/s ~ 43 km/h).
+const STREET_SPEED_MM_S: i64 = 12_000;
+
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
+    let build_lookup = &world.build_lookup;
+    let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
 
     for i in 0..v.len() {
@@ -117,8 +123,17 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         let accel_step = spec.accel_mm_s2 * dt_ms / 1000;
         let decel_step = spec.decel_mm_s2 * dt_ms / 1000;
         let vcur = v.v_mm_s[i];
-        // Effective top speed = min(trainset vmax, local curve speed cap).
-        let vmax_eff = spec.v_max_mm_s.min(line.speed_cap_at(s));
+        // Effective top speed = min(trainset vmax, local curve speed cap, street-running cap).
+        let mut vmax_eff = spec.v_max_mm_s.min(line.speed_cap_at(s));
+        // Street-running: a Surface span over built-up land caps speed (tram-like).
+        let span = line.span_of(s);
+        if line.span_mode.get(span).copied().unwrap_or(0) == crate::line::mode::SURFACE {
+            let (cx, cy) = line.point_at(s);
+            let key = (cx.div_euclid(build_cell_mm) as i32, cy.div_euclid(build_cell_mm) as i32);
+            if build_lookup.get(&key).copied().unwrap_or(0) == crate::city::class::BUILT {
+                vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);
+            }
+        }
         let brake_dist =
             (vcur as i128 * vcur as i128 / (2 * spec.decel_mm_s2.max(1) as i128)) as i64;
 

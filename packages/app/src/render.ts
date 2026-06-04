@@ -33,6 +33,11 @@ export interface WaitingDot {
   lat: number;
   count: number;
 }
+export interface HazardDot {
+  lng: number;
+  lat: number;
+  color: Rgb; // amber = built/park, red = water
+}
 
 export interface RenderView {
   stations: StationDot[];
@@ -41,6 +46,7 @@ export interface RenderView {
   blueprint: [number, number][]; // in-progress line being drawn (T11)
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
+  hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -125,6 +131,16 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       updateTriggers: {
         getRadius: view.waiting.map((w) => w.count).join(","),
       },
+    }),
+    // Live build-conflict dots along the in-progress blueprint (amber built/park, red water).
+    new ScatterplotLayer({
+      id: "hazards",
+      data: view.hazards,
+      getPosition: (d: HazardDot) => [d.lng, d.lat],
+      getRadius: 4,
+      radiusUnits: "pixels",
+      getFillColor: (d: HazardDot) => d.color,
+      stroked: false,
     }),
   ];
 

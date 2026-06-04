@@ -25,7 +25,8 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
     `<div style="position:relative;width:90px;height:10px;background:#e7eaee;border-radius:6px;overflow:hidden">` +
     `<div data-testid="coverage-bar" style="position:absolute;inset:0 100% 0 0;background:var(--ot-gauge-good)"></div>` +
     `</div><b data-testid="coverage" style="width:26px;text-align:right">0</b></div>` +
-    `<div style="color:#7a818a"><span data-testid="waiting">0</span> waiting</div>`;
+    `<div style="color:#7a818a"><span data-testid="waiting">0</span> waiting</div>` +
+    `<div>Build impact <b data-testid="build-impact" style="color:var(--ot-gauge-good)">0</b></div>`;
 
   host.appendChild(bar);
 
@@ -35,10 +36,12 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
   const coverage = bar.querySelector<HTMLElement>('[data-testid="coverage"]')!;
   const coverageBar = bar.querySelector<HTMLElement>('[data-testid="coverage-bar"]')!;
   const waiting = bar.querySelector<HTMLElement>('[data-testid="waiting"]')!;
+  const impact = bar.querySelector<HTMLElement>('[data-testid="build-impact"]')!;
 
   let lastRidership = -1;
   let lastCoverage = -1;
   let lastWaiting = -1;
+  let lastImpact = -1;
   let lastClock = "";
 
   return {
@@ -69,6 +72,12 @@ export function mountStatsBar(host: HTMLElement): StatsBar {
       if (w !== lastWaiting) {
         waiting.textContent = String(w);
         lastWaiting = w;
+      }
+      const bi = Math.round(s.buildDifficulty);
+      if (bi !== lastImpact) {
+        impact.textContent = String(bi);
+        impact.style.color = bi >= 50 ? "var(--ot-gauge-bad)" : bi >= 20 ? "#e69f00" : "var(--ot-gauge-good)";
+        lastImpact = bi;
       }
     },
   };

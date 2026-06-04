@@ -8,6 +8,7 @@ export type Command =
   | { AddStop: { line: number; station: number; after: number | null } }
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
+  | { SetSegmentMode: { line: number; span: number; mode: number } }
   | { SetRunning: { running: boolean } };
 
 export type Event =
@@ -33,6 +34,8 @@ export interface PerLine {
   stops: number;
   trains: number;
   headwayMs: number;
+  disruption: number;
+  crossesWater: boolean;
 }
 
 export interface Stats {
@@ -49,6 +52,7 @@ export interface Stats {
   simHour: number;
   period: string;
   demandMultiplier: number;
+  buildDifficulty: number;
   perStation: PerStation[];
   perLine: PerLine[];
 }
@@ -66,6 +70,8 @@ export interface LineView {
   stops: number[];
   polylineMm: [number, number][];
   minRadiusMm: number;
+  spanModes: number[];
+  crossesWaterSurface: boolean;
 }
 
 /** The committed city manifest (frontend-facing fields; demand grid embedded for the sim). */

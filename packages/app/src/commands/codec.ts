@@ -16,8 +16,15 @@ export const cmd = {
   setHeadway: (line: number, headway_ms: number): Command => ({
     SetHeadway: { line, headway_ms },
   }),
+  /** span = WHOLE_LINE (0xffffffff) sets every span; mode 0=Surface,1=Elevated,2=Tunnel. */
+  setSegmentMode: (line: number, span: number, mode: number): Command => ({
+    SetSegmentMode: { line, span, mode },
+  }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
 };
+
+export const WHOLE_LINE = 0xffffffff;
+export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;
 
 export function encodeCommand(c: Command): string {
   return JSON.stringify(c);

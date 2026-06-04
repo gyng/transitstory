@@ -80,7 +80,43 @@ export function mountPanels(host: HTMLElement, game: Game): void {
       `<b data-testid="headway-label">${mins} min</b></label>` +
       `<input data-testid="headway-slider" type="range" min="2" max="20" step="1" value="${mins}" ` +
       `style="width:100%">` +
-      `<div style="color:#7a818a;margin-top:4px">Capacity × frequency are your two levers.</div>`;
+      `<div style="color:#7a818a;margin:4px 0 10px">Capacity × frequency are your two levers.</div>`;
+
+    // Track mode (whole line): Surface / Elevated / Tunnel — the built-environment lever.
+    const lv = game.bridge.linesView().find((x) => x.id === id);
+    const modes = lv?.spanModes ?? [];
+    const allMode = modes.length && modes.every((m) => m === modes[0]) ? modes[0] : -1;
+    const tight = lv && lv.minRadiusMm < 100_000;
+    const modeRow = document.createElement("div");
+    modeRow.innerHTML = `<div style="font-weight:600;margin-bottom:4px">Track</div>`;
+    const btns = document.createElement("div");
+    btns.style.cssText = "display:flex;gap:4px";
+    (["Surface", "Elevated", "Tunnel"] as const).forEach((label, m) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.testid = `mode-${m}`;
+      const on = allMode === m;
+      b.style.cssText =
+        "flex:1;padding:5px;border-radius:6px;border:1px solid #d7dade;cursor:pointer;font:600 12px system-ui;" +
+        (on ? "background:#0072b2;color:#fff" : "background:#fff;color:#1c2024");
+      b.addEventListener("click", () => game.setLineMode(id, m));
+      btns.appendChild(b);
+    });
+    modeRow.appendChild(btns);
+
+    const impact = document.createElement("div");
+    impact.dataset.testid = "line-impact";
+    impact.style.cssText = "margin-top:8px;font-size:12px";
+    const water = l.crossesWater
+      ? `<div data-testid="water-warning" style="color:#d62828;font-weight:600;margin-bottom:4px">⚠ Surface track crosses water — Elevate or Tunnel.</div>`
+      : "";
+    const curve = tight ? `<div style="color:#e69f00">⤳ Tight curves — trains slow here.</div>` : "";
+    impact.innerHTML =
+      water + curve +
+      `<div style="color:#7a818a">Build impact: <b>${Math.round(l.disruption)}</b></div>`;
+
+    editor.appendChild(modeRow);
+    editor.appendChild(impact);
 
     const trains = editor.querySelector<HTMLInputElement>('[data-testid="trains-input"]')!;
     trains.addEventListener("change", () =>

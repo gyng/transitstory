@@ -7,7 +7,9 @@ import type { Layer } from "@deck.gl/core";
 import { CATCHMENT_M, LINE_PALETTE, SNAP_PX } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayer, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayer, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { WHOLE_LINE } from "./commands/codec";
+import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Stats } from "./types";
 
@@ -25,6 +27,7 @@ const EMPTY_STATS: Stats = {
   simHour: 6,
   period: "AM rush",
   demandMultiplier: 1,
+  buildDifficulty: 0,
   perStation: [],
   perLine: [],
 };
@@ -57,7 +60,14 @@ export class Game {
     readonly bridge: SimBridge,
     readonly map: MlMap,
     readonly overlay: MapboxOverlay,
+    readonly build: Buildability = new Buildability(),
   ) {}
+
+  /** Set the build mode (0 Surface, 1 Elevated, 2 Tunnel) for a whole line (or one span). */
+  setLineMode(line: number, mode: number, span: number = WHOLE_LINE): void {
+    this.bridge.apply(cmd.setSegmentMode(line, span, mode));
+    this.refresh();
+  }
 
   // --- commands (the only write path) ---
 
@@ -227,7 +237,8 @@ export class Game {
 
     const lines = linesV.map((l) => ({
       id: l.id,
-      color: colorToRgb(l.color),
+      // A line with surface track over water renders red until elevated/tunnelled.
+      color: l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color),
       path: l.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
     }));
 
@@ -237,6 +248,30 @@ export class Game {
       return mmToLngLat([s.xMm, s.yMm]);
     });
     if (this.cursor && blueprint.length >= 1) blueprint.push(this.cursor);
+
+    // Live build-conflict dots along the blueprint (amber built/park, red water) — so the
+    // player sees they can't just run surface rail over stuff as they draw.
+    const hazards: HazardDot[] = [];
+    if (blueprint.length >= 2 && this.build.loaded) {
+      for (let i = 1; i < blueprint.length; i++) {
+        const a = lngLatToMm(blueprint[i - 1]);
+        const b = lngLatToMm(blueprint[i]);
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const steps = Math.min(60, Math.max(1, Math.round(len / this.build.cellMm)));
+        for (let k = 0; k <= steps; k++) {
+          const x = a[0] + ((b[0] - a[0]) * k) / steps;
+          const y = a[1] + ((b[1] - a[1]) * k) / steps;
+          const c = this.build.classifyMm(x, y);
+          if (c === BUILD.WATER) {
+            const [lng, lat] = mmToLngLat([x, y]);
+            hazards.push({ lng, lat, color: [214, 40, 40] });
+          } else if (c === BUILD.BUILT || c === BUILD.PARK) {
+            const [lng, lat] = mmToLngLat([x, y]);
+            hazards.push({ lng, lat, color: [230, 159, 0] });
+          }
+        }
+      }
+    }
 
     // Waiting-passenger halos from the latest stats snapshot (positioned at stations).
     const waiting: WaitingDot[] = [];
@@ -250,7 +285,7 @@ export class Game {
       }
     }
 
-    return { stations, lines, catchments, blueprint, vehicles: [], waiting };
+    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards };
   }
 
   /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */

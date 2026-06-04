@@ -12,6 +12,7 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
     setHeadwayMs: (line, ms) => game.setHeadwayMs(line, ms),
     setRunning: (running) => game.setMode(running ? "run" : "build"),
     setSpeed: (mult) => loop.setSpeed(mult),
+    setLineMode: (line, mode) => game.setLineMode(line, mode),
     stats: () => game.bridge.stats(),
   };
 }

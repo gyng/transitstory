@@ -18,5 +18,6 @@
   "zoom": 11,
   "seed": 20260604,
   "demandGridPath": "/data/singapore_demand.json",
-  "networkPath": "/data/networks/singapore.json"
+  "networkPath": "/data/networks/singapore.json",
+  "buildabilityPath": "/data/singapore_buildability.json"
 }

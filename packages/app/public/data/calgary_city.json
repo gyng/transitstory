@@ -18,5 +18,6 @@
   "zoom": 11,
   "seed": 20260606,
   "demandGridPath": "/data/calgary_demand.json",
-  "networkPath": "/data/networks/calgary.json"
+  "networkPath": "/data/networks/calgary.json",
+  "buildabilityPath": "/data/calgary_buildability.json"
 }

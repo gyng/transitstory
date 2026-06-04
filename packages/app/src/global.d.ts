@@ -24,6 +24,7 @@ declare global {
       setHeadwayMs(line: number, ms: number): void;
       setRunning(running: boolean): void;
       setSpeed(mult: number): void;
+      setLineMode(line: number, mode: number): void;
       stats(): unknown;
     };
   }

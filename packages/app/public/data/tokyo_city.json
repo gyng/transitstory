@@ -18,5 +18,6 @@
   "zoom": 11,
   "seed": 20260605,
   "demandGridPath": "/data/tokyo_demand.json",
-  "networkPath": "/data/networks/tokyo.json"
+  "networkPath": "/data/networks/tokyo.json",
+  "buildabilityPath": "/data/tokyo_buildability.json"
 }

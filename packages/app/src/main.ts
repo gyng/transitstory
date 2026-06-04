@@ -7,6 +7,7 @@ import { loadCity } from "./sim/city";
 import { loadNetwork } from "./sim/network";
 import { cityById, type CityEntry } from "./sim/cities";
 import { SimBridge } from "./sim/SimBridge";
+import { Buildability } from "./sim/buildability";
 import { Game } from "./game";
 import { GameLoop } from "./sim/GameLoop";
 import { attachPointer } from "./tools/pointer";
@@ -36,7 +37,7 @@ async function boot(manifestPath: string, withNetwork: boolean): Promise<void> {
   map.addControl(overlay);
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
-  const game = new Game(bridge, map, overlay);
+  const game = new Game(bridge, map, overlay, new Buildability(city.buildability));
   const loop = new GameLoop(game);
   attachPointer(game);
   installTestHooks(game, loop);
