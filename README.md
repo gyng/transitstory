@@ -35,6 +35,34 @@ pnpm build:wasm     # compile the Rust sim to WASM into packages/wasm-sim
 pnpm dev            # start the Vite dev server
 ```
 
+## City data (baking an area)
+
+Each playable city is **baked offline into committed JSON** — the game never calls Overpass at
+runtime; it only reads these files (the `CityData` seam in AGENTS.md). One config drives everything:
+`scripts/city_demand_config.json` (per-city `bbox` + demand `jobCenters`/`homeCenters`).
+
+```bash
+scripts/build_data.sh                  # bake every city in the config
+scripts/build_data.sh istanbul dublin  # just these
+DEMAND_ONLY=1 scripts/build_data.sh    # offline only (skip the OSM stages)
+```
+
+`build_data.sh` runs three stages, all writing to `packages/app/public/data/`:
+
+| Stage | Script | Output | Source | Notes |
+|------|--------|--------|--------|-------|
+| 1 | `build_demand.py` | `<id>_demand.json` | synthetic (Gaussian bumps) | **offline**, deterministic (seeded) |
+| 2 | `build_networks.py` | `networks/<id>.json` | OSM `route` relations | **online** (Overpass); keeps committed JSON on failure |
+| 3 | `build_buildability.py` | `<id>_buildability.json` | OSM landuse/water/rail/road | **online** (Overpass); keeps committed JSON on failure |
+
+Stages 2–3 are failure-safe: a network blip leaves the previously committed data in place, so the
+build never breaks. **Add a new area:** add a `bbox` + demand-centre block to the config, run
+`scripts/build_data.sh <id>`, then add a `<id>_city.json` manifest and a `CITIES` entry in
+`packages/app/src/sim/cities.ts`. See **[docs/osm-data.md](docs/osm-data.md)** for what each OSM layer
+contains and how it maps into the game.
+
+Shipping cities: Singapore, Tokyo, Calgary, Istanbul, New York (Manhattan), Dublin.
+
 ## Tests (three tiers)
 
 ```bash

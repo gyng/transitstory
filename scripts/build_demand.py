@@ -13,6 +13,7 @@ import json
 import math
 import os
 import random
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 M_PER_DEG_LAT = 110540.0
@@ -72,7 +73,12 @@ def main():
         "singapore": 20260604, "tokyo": 20260605, "calgary": 20260606,
         "istanbul": 20260607, "manhattan": 20260608, "dublin": 20260609,
     }
-    for cid, ccfg in cfg["cities"].items():
+    want = sys.argv[1:] or list(cfg["cities"].keys())  # default: all configured cities
+    for cid in want:
+        ccfg = cfg["cities"].get(cid)
+        if ccfg is None:
+            print(f"  skip unknown city {cid}")
+            continue
         build_city(cid, ccfg, seeds.get(cid, 1))
 
 
