@@ -18,9 +18,9 @@
 # the game only ever reads these committed files (see AGENTS.md: the CityData seam).
 #
 # Add a new area: add a bbox + jobCenters/homeCenters block to city_demand_config.json,
-# run `scripts/build_data.sh <id>`, then add a <id>_city.json manifest +
-# a CITIES entry in packages/app/src/sim/cities.ts. See docs/osm-data.md for what each
-# OSM layer contains and how it maps into the game.
+# run `scripts/build_data.sh <id>`, generate the manifest with `scripts/make_manifest.py <id>`
+# (it derives origin/center/zoom/seed from the bbox), then add a CITIES entry in
+# packages/app/src/sim/cities.ts. See docs/osm-data.md for what each OSM layer contains.
 #
 # Usage:
 #   scripts/build_data.sh                  # all cities in city_demand_config.json
