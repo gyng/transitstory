@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/sim", "crates/sim-wasm"]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.0"
+license = "MIT"
+
+# Pins are deliberate (see PLAN.md §0/§2 + AGENTS.md non-negotiable #9).
+# rand 0.10 moved sampling methods onto RngExt; rand_chacha 0.10 line stops at 0.10.0.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1.1", features = ["use-std"] }
+rand = "=0.10.1"
+rand_chacha = "=0.10.0"
+indexmap = { version = "2", features = ["serde"] }
+rustc-hash = "2"
+fnv = "1"
+
+[profile.release]
+opt-level = 3

@@ -1,0 +1,24 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Node
+**/node_modules
+dist
+.vite
+
+# Generated wasm-pack output (rebuilt via `pnpm build:wasm`)
+/packages/wasm-sim
+
+# Large data artifacts — committed OUTPUTS only (see scripts/build_data.sh)
+*.pmtiles
+*.pbf
+/data/raw
+
+# Playwright
+playwright-report
+test-results
+
+# Misc
+.DS_Store
+*.log

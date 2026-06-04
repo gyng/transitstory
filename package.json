@@ -1,0 +1,15 @@
+{
+  "name": "onlytransits",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "build:wasm": "wasm-pack build crates/sim-wasm --target web --out-dir ../../packages/wasm-sim",
+    "dev": "pnpm --filter app dev",
+    "build": "pnpm --filter app build",
+    "preview": "pnpm --filter app preview",
+    "test": "pnpm --filter app run test",
+    "test:rust": "cargo test --workspace --release",
+    "e2e": "pnpm --filter app exec playwright test"
+  }
+}

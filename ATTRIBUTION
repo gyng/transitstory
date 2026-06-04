@@ -1,0 +1,31 @@
+onlytransits — data & basemap attribution
+==========================================
+
+This project renders maps and derives demand data from OpenStreetMap.
+
+Map data
+--------
+© OpenStreetMap contributors.
+Map data is available under the Open Database License (ODbL):
+https://www.openstreetmap.org/copyright
+https://opendatacommons.org/licenses/odbl/
+
+The in-app basemap and any precomputed demand grid are "Produced Works"
+derived from OpenStreetMap data. Visible "© OpenStreetMap contributors"
+attribution is rendered on the map at all times via the MapLibre
+AttributionControl (this is a release gate, not optional polish).
+
+Basemap tiles / style
+---------------------
+- Hosted style fallback: © CARTO (https://carto.com/attribution) — Positron
+  basemap, © OpenStreetMap contributors.
+- Self-hosted vector tiles (deferred T7): Protomaps basemaps
+  (https://protomaps.com) built from OpenStreetMap data. Credit:
+  "© OpenStreetMap contributors, © Protomaps".
+
+Software
+--------
+- MapLibre GL JS (BSD-3-Clause)
+- deck.gl (MIT)
+
+See LICENSES / individual package licenses for full terms.
