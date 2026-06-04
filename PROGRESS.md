@@ -116,6 +116,27 @@ Dependency pins in use: `rand =0.10.1`, `rand_chacha =0.10.0`, `wasm-bindgen =0.
   are additive. (Note: a formal `trait Router`/`trait Demand` abstraction is implied by the module layout but
   not yet extracted into named traits — a clean next step.)
 
+## Post-slice features (F1–F6, 2026-06-05)
+
+Built on top of the slice (cargo 20, vitest 10, playwright 10 — all green):
+
+- **F1 Curved track** — lines follow a centripetal Catmull-Rom curve through stops (soft min
+  radius, no cusps); dense polyline drives render + arc-length motion, `stop_arclen_mm` marks stations.
+- **F2 Time-of-day** — `tod.rs` 24h clock (opens 06:00), twin-peak rush demand multiplier, AM(home→work)/
+  PM(work→home) directionality; clock + period in the HUD. Deterministic (pure fn of clock).
+- **F3 Transfers** — `routing.rs` BFS over the line graph → minimum-transfer multi-leg routes; passengers
+  re-queue at interchanges. `route_cache` (lookup-only FxHashMap) keeps it fast at scale.
+- **F4 Existing networks** — `network.ts` + `Game.applyNetwork` pre-seed real lines via the Command path
+  (shared station indices = interchanges).
+- **F5 Menu + cities** — start menu (city + sandbox/real-network), `cities.ts` registry, per-city manifests +
+  demand grids, settable per-session coordinate origin; deep-link `?city=<id>&network=0|1`.
+- **F6 OSM data source** — `scripts/build_networks.py` pulls **real networks from OpenStreetMap (Overpass)**,
+  re-runnable to update: Singapore 12 lines/177 stations, Tokyo 32 lines/440 stations, Calgary 2 lines/42
+  stations. (Demand model from F1-era T16 confirmed in: gravity catchment + spawn + board/ride/alight.)
+
+Demand-data note: the demand grid is still synthetic (gravity bumps); OSM/GTFS-derived demand is the next
+data upgrade. The network geometry is now real OSM.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
