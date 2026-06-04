@@ -355,6 +355,7 @@ impl World {
                     .iter()
                     .map(|p| [p.x_mm as f64, p.y_mm as f64])
                     .collect(),
+                min_radius_mm: l.min_radius_mm as f64,
             })
             .collect()
     }

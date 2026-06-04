@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 /// Curve samples per inter-stop span (more = smoother + denser polyline).
 const SAMPLES_PER_SPAN: usize = 10;
+/// Comfortable lateral acceleration (mm/s^2) -> curve speed cap = sqrt(a * radius).
+const LAT_ACCEL_MM_S2: f64 = 800.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Line {
@@ -23,6 +25,10 @@ pub struct Line {
     pub arclen_mm: Vec<i64>,
     /// Arc-length (mm) at each STOP along the smoothed polyline (stations to halt at).
     pub stop_arclen_mm: Vec<i64>,
+    /// Curve speed cap (mm/s) at each polyline vertex (i64::MAX where straight).
+    pub speed_cap_mm_s: Vec<i64>,
+    /// Tightest curve radius on the line (mm); i64::MAX if effectively straight.
+    pub min_radius_mm: i64,
 }
 
 impl Line {
@@ -35,7 +41,24 @@ impl Line {
             polyline: Vec::new(),
             arclen_mm: Vec::new(),
             stop_arclen_mm: Vec::new(),
+            speed_cap_mm_s: Vec::new(),
+            min_radius_mm: i64::MAX,
         }
+    }
+
+    /// Curve speed cap (mm/s) at forward arc-length `s_mm` (the tighter of the bracketing
+    /// vertices). i64::MAX where the track is straight.
+    pub fn speed_cap_at(&self, s_mm: i64) -> i64 {
+        if self.speed_cap_mm_s.len() < 2 {
+            return i64::MAX;
+        }
+        let s = s_mm.clamp(0, self.length_mm());
+        for i in 1..self.arclen_mm.len() {
+            if s <= self.arclen_mm[i] {
+                return self.speed_cap_mm_s[i - 1].min(self.speed_cap_mm_s[i]);
+            }
+        }
+        *self.speed_cap_mm_s.last().unwrap_or(&i64::MAX)
     }
 
     /// One-way length of the smoothed path in mm.
@@ -107,7 +130,44 @@ impl Line {
             .iter()
             .map(|&i| self.arclen_mm.get(i).copied().unwrap_or(0))
             .collect();
+
+        // Per-vertex curve speed cap (from local circumradius) + tightest radius.
+        let n = self.polyline.len();
+        self.speed_cap_mm_s = vec![i64::MAX; n];
+        let mut minr = f64::INFINITY;
+        for i in 1..n.saturating_sub(1) {
+            let a = (self.polyline[i - 1].x_mm as f64, self.polyline[i - 1].y_mm as f64);
+            let b = (self.polyline[i].x_mm as f64, self.polyline[i].y_mm as f64);
+            let c = (self.polyline[i + 1].x_mm as f64, self.polyline[i + 1].y_mm as f64);
+            let r = circumradius(a, b, c);
+            self.speed_cap_mm_s[i] = cap_from_radius(r);
+            if r < minr {
+                minr = r;
+            }
+        }
+        self.min_radius_mm = if minr.is_finite() { minr as i64 } else { i64::MAX };
     }
+}
+
+/// Circumradius (mm) of the triangle through three points; +inf when ~collinear (straight).
+fn circumradius(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    let d = |p: (f64, f64), q: (f64, f64)| ((q.0 - p.0).powi(2) + (q.1 - p.1).powi(2)).sqrt();
+    let ab = d(a, b);
+    let bc = d(b, c);
+    let ca = d(c, a);
+    let area2 = ((b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)).abs(); // 2 * area
+    if area2 < 1.0 {
+        return f64::INFINITY;
+    }
+    ab * bc * ca / (2.0 * area2)
+}
+
+/// Curve speed cap (mm/s) for a radius (mm): v = sqrt(lateral_accel * radius).
+fn cap_from_radius(r_mm: f64) -> i64 {
+    if !r_mm.is_finite() {
+        return i64::MAX;
+    }
+    (LAT_ACCEL_MM_S2 * r_mm).sqrt() as i64
 }
 
 /// Centripetal Catmull-Rom through `pts`. Returns the dense polyline and, for each input

@@ -55,6 +55,33 @@ fn vehicle_reverses_at_the_end() {
 }
 
 #[test]
+fn sharp_corner_detects_tight_radius_straight_does_not() {
+    // L-shaped 3-stop line (sharp ~90° corner) => a finite, tight min radius.
+    let mut w = World::new(1, CityData::default());
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 1_000_000, name: None });
+    w.apply(&Command::CreateLine { color: 1 });
+    for s in [0, 1, 2] {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    assert!(w.lines[0].min_radius_mm < 1_000_000, "the corner has a tight radius");
+    // Some vertex therefore carries a finite curve speed cap.
+    assert!(w.lines[0].speed_cap_mm_s.iter().any(|&c| c < i64::MAX), "curve speed cap applied");
+
+    // A straight (collinear) line has no curve constraint.
+    let mut s = World::new(1, CityData::default());
+    s.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    s.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None });
+    s.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
+    s.apply(&Command::CreateLine { color: 1 });
+    for st in [0, 1, 2] {
+        s.apply(&Command::AddStop { line: LineId(0), station: StationId(st), after: None });
+    }
+    assert_eq!(s.lines[0].min_radius_mm, i64::MAX, "straight line is uncapped");
+}
+
+#[test]
 fn no_vehicles_until_running() {
     let mut w = World::new(1, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });

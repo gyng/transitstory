@@ -63,4 +63,6 @@ pub struct LineView {
     pub stops: Vec<u32>,
     /// Polyline vertices in mm `[[x,y], ...]` in stop order.
     pub polyline_mm: Vec<[f64; 2]>,
+    /// Tightest curve radius (mm) on the line; large value == effectively straight.
+    pub min_radius_mm: f64,
 }

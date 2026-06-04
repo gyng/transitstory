@@ -117,17 +117,20 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         let accel_step = spec.accel_mm_s2 * dt_ms / 1000;
         let decel_step = spec.decel_mm_s2 * dt_ms / 1000;
         let vcur = v.v_mm_s[i];
+        // Effective top speed = min(trainset vmax, local curve speed cap).
+        let vmax_eff = spec.v_max_mm_s.min(line.speed_cap_at(s));
         let brake_dist =
             (vcur as i128 * vcur as i128 / (2 * spec.decel_mm_s2.max(1) as i128)) as i64;
 
         let mut nv = if dist_to_stop <= brake_dist {
             (vcur - decel_step).max(0)
         } else {
-            (vcur + accel_step).min(spec.v_max_mm_s)
+            (vcur + accel_step).min(vmax_eff)
         };
         if nv == 0 && dist_to_stop > 0 {
             nv = accel_step.max(1); // crawl so we always reach the stop (no stall)
         }
+        nv = nv.min(vmax_eff); // hold the curve cap even mid-brake
 
         let ds = nv * dt_ms / 1000;
         let mut new_s = s + dir * ds;

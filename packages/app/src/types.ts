@@ -65,6 +65,7 @@ export interface LineView {
   color: number;
   stops: number[];
   polylineMm: [number, number][];
+  minRadiusMm: number;
 }
 
 /** The committed city manifest (frontend-facing fields; demand grid embedded for the sim). */
