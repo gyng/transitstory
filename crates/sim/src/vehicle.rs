@@ -109,8 +109,9 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             .unwrap_or_else(|| trainset_spec(0));
         let dir = v.dir[i] as i64;
         let s = v.s_mm[i];
-        let stop_idx = next_stop_index(&line.arclen_mm, s, dir);
-        let next_arc = line.arclen_mm[stop_idx];
+        // Stops sit at specific arc-lengths along the smoothed polyline.
+        let stop_idx = next_stop_index(&line.stop_arclen_mm, s, dir);
+        let next_arc = line.stop_arclen_mm[stop_idx];
         let dist_to_stop = (next_arc - s).abs();
 
         let accel_step = spec.accel_mm_s2 * dt_ms / 1000;
@@ -137,7 +138,7 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             v.dwell_until_ms[i] = clock + spec.dwell_ms;
             // Record arrival at this stop's station for the board/alight phase.
             v.at_station[i] = line.stops[stop_idx].0 as i32;
-            if stop_idx + 1 >= line.arclen_mm.len() {
+            if stop_idx + 1 >= line.stop_arclen_mm.len() {
                 v.dir[i] = -1; // forward end -> reverse
             } else if stop_idx == 0 {
                 v.dir[i] = 1; // back end -> reverse

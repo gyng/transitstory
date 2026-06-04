@@ -200,21 +200,12 @@ impl World {
     }
 
     fn rebuild_line_geometry(&mut self, line: LineId) {
-        // Snapshot stop positions first to avoid borrowing self mutably + immutably.
+        // Snapshot stop positions first to avoid borrowing self mutably + immutably, then
+        // rebuild the smoothed (curved) polyline + arc-length tables.
         if let Some(l) = self.lines.get(line.index()) {
             let pts: Vec<PointMm> = l.stops.iter().map(|&s| self.station_pos(s)).collect();
             if let Some(l) = self.lines.get_mut(line.index()) {
-                l.polyline = pts;
-                l.arclen_mm.clear();
-                let mut acc = 0i64;
-                for i in 0..l.polyline.len() {
-                    if i == 0 {
-                        l.arclen_mm.push(0);
-                    } else {
-                        acc += l.polyline[i - 1].dist_mm(&l.polyline[i]);
-                        l.arclen_mm.push(acc);
-                    }
-                }
+                l.rebuild_from_points(&pts);
             }
         }
     }
