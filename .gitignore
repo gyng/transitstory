@@ -15,10 +15,8 @@ dist
 *.pbf
 /data/raw
 
-# Subtitle source art (~140 MB of raw covers). Kept LOCAL — too heavy for git history; only the
-# processed transparent webp in packages/app/public/title/ are committed. Re-key + resize via
-# `python3 scripts/build_subtitles.py`. (Move to git-LFS if these ever need versioning.)
-/docs/subtitle/
+# Subtitle source art (~140 MB of raw covers) is versioned via git-LFS (see .gitattributes);
+# reprocess to the transparent webp with `python3 scripts/build_subtitles.py`.
 
 # Playwright
 playwright-report
