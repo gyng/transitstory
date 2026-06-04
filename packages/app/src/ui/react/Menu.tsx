@@ -11,6 +11,7 @@
 import { useRef, useState } from "react";
 import { CITIES, type CityEntry } from "../../sim/cities";
 import { withBase } from "../../config";
+import { readSave, type SaveBlob } from "../../sim/save";
 
 const SUBTITLE_COUNT = 5;
 const MASCOT_LINES = [
@@ -122,11 +123,19 @@ const MENU_CSS = `
       #menu *{animation:none!important}}
   `;
 
-export function Menu({ onStart }: { onStart: (city: CityEntry, withNetwork: boolean) => void }) {
+export function Menu({
+  onStart,
+  onResume,
+}: {
+  onStart: (city: CityEntry, withNetwork: boolean) => void;
+  onResume?: (save: SaveBlob) => void;
+}) {
   // Pick the over-the-top subtitle ONCE (frontend chrome RNG, not the sim).
   const [heroSrc] = useState(() => withBase(`/title/sub${1 + Math.floor(Math.random() * SUBTITLE_COUNT)}.webp`));
   const [selected, setSelected] = useState<CityEntry>(CITIES[0]);
   const [withNetwork, setWithNetwork] = useState(true);
+  // A resumable autosave, read once at mount (frontend-only; not the sim).
+  const [save] = useState<SaveBlob | null>(() => readSave());
   const mascotRef = useRef<HTMLButtonElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
@@ -211,6 +220,26 @@ export function Menu({ onStart }: { onStart: (city: CityEntry, withNetwork: bool
         <button className="ot-start" data-testid="start" onClick={() => onStart(selected, withNetwork)}>
           ▶ Start
         </button>
+
+        {save && onResume && (
+          <button
+            data-testid="resume"
+            onClick={() => onResume(save)}
+            style={{
+              pointerEvents: "auto",
+              marginTop: "12px",
+              padding: "9px 22px",
+              border: "1px solid #39414a",
+              borderRadius: "9px",
+              background: "#1c232b",
+              color: "#eef1f4",
+              font: "600 14px system-ui",
+              cursor: "pointer",
+            }}
+          >
+            ↩ Resume {save.cityName}
+          </button>
+        )}
       </div>
 
       {/* Bottom-left: the clickable station-master pigeon — hops + chirps when poked. */}

@@ -11,8 +11,13 @@ import type { Command, Event, LineView, StationView, Stats } from "../types";
 export class SimBridge {
   private sim: Sim;
   readonly log = new CommandLog();
+  /** Fired after every committed command and after undo — boot wires autosave here. */
+  onCommit: (() => void) | null = null;
 
-  constructor(seed: number, cityJson: string) {
+  constructor(
+    readonly seed: number,
+    private readonly cityJson: string,
+  ) {
     this.sim = new Sim(seed, cityJson);
   }
 
@@ -20,7 +25,31 @@ export class SimBridge {
   apply(command: Command): Event[] {
     const events = this.sim.applyCommandJson(encodeCommand(command)) as Event[];
     this.log.push(command);
+    this.onCommit?.();
     return events;
+  }
+
+  /** Reconstruct the Sim from seed + the current log (never splice state). The basis for both
+   *  undo and load — replays through the same applyCommandJson path the log recorded. */
+  private rebuild(): void {
+    this.sim.free();
+    this.sim = new Sim(this.seed, this.cityJson);
+    for (const c of this.log.all()) this.sim.applyCommandJson(encodeCommand(c));
+  }
+
+  /** Undo = drop the last command and rebuild from seed + log[..-1]. Returns false if empty. */
+  undo(): boolean {
+    if (this.log.length === 0) return false;
+    this.log.popLast();
+    this.rebuild();
+    this.onCommit?.();
+    return true;
+  }
+
+  /** Load a saved command log and rebuild (does NOT fire onCommit — the caller wires that after). */
+  loadLog(cmds: readonly Command[]): void {
+    this.log.replace(cmds);
+    this.rebuild();
   }
 
   tick(dtMs: number): void {

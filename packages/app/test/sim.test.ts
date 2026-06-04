@@ -68,3 +68,54 @@ describe("SimBridge (wasm-in-node)", () => {
     expect(build().stateHash()).toBe(build().stateHash());
   });
 });
+
+describe("save/load + undo (Rank 3)", () => {
+  it("undo rebuilds from seed + log[..-1] (never splices state)", () => {
+    const b = new SimBridge(7, "{}");
+    b.apply(cmd.placeStation(0, 0));
+    b.apply(cmd.placeStation(5_000_000, 0));
+    b.apply(cmd.createLine(0x0072b2));
+    b.apply(cmd.addStop(0, 0));
+    const hashBefore = b.stateHash();
+    b.apply(cmd.addStop(0, 1)); // the command to undo
+    expect(b.stateHash()).not.toBe(hashBefore);
+    expect(b.undo()).toBe(true);
+    expect(b.stateHash()).toBe(hashBefore); // back to the exact pre-command state
+    expect(b.log.length).toBe(4);
+  });
+
+  it("undo on an empty log is a no-op", () => {
+    expect(new SimBridge(1, "{}").undo()).toBe(false);
+  });
+
+  it("loadLog reconstructs an identical world (save = seed + log)", () => {
+    const a = new SimBridge(7, "{}");
+    const log = [
+      cmd.placeStation(0, 0),
+      cmd.placeStation(5_000_000, 0),
+      cmd.createLine(0x0072b2),
+      cmd.addStop(0, 0),
+      cmd.addStop(0, 1),
+      cmd.assignTrainset(0, 0, 2),
+    ];
+    for (const c of log) a.apply(c);
+
+    const b = new SimBridge(7, "{}");
+    b.loadLog(a.log.all());
+    expect(b.stateHash()).toBe(a.stateHash());
+    expect(b.linesView()).toEqual(a.linesView());
+  });
+
+  it("onCommit fires on apply and undo (autosave hook)", () => {
+    const b = new SimBridge(3, "{}");
+    let n = 0;
+    b.onCommit = () => {
+      n++;
+    };
+    b.apply(cmd.placeStation(0, 0));
+    b.apply(cmd.placeStation(1, 0));
+    expect(n).toBe(2);
+    b.undo();
+    expect(n).toBe(3);
+  });
+});

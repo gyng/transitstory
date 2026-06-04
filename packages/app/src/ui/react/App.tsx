@@ -10,11 +10,12 @@ import { loadNetwork } from "../../sim/network";
 import { cityById, type CityEntry } from "../../sim/cities";
 import { SimBridge } from "../../sim/SimBridge";
 import { Buildability } from "../../sim/buildability";
+import { writeSave, type SaveBlob } from "../../sim/save";
 import { Game } from "../../game";
 import { GameLoop } from "../../sim/GameLoop";
 import { attachPointer } from "../../tools/pointer";
 import { installTestHooks } from "../../testhooks";
-import { GameProvider } from "./GameContext";
+import { GameProvider, useGame, useGameUI } from "./GameContext";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
@@ -27,8 +28,9 @@ interface BootedWorld {
 }
 
 /** Build the imperative world for one city. Mirrors the old main.ts boot() — sans the UI
- *  mounts (React owns those) and the 3 Hz stats interval (the GameProvider runs it). */
-async function boot(manifestPath: string, withNetwork: boolean): Promise<BootedWorld> {
+ *  mounts (React owns those) and the 3 Hz stats interval (the GameProvider runs it). When
+ *  `resume` is given, the saved command log is replayed instead of the real network. */
+async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlob): Promise<BootedWorld> {
   const city = await loadCity(manifestPath); // sets the session coordinate origin
 
   const map = createMap("map", city.raw.center, city.raw.zoom);
@@ -42,13 +44,21 @@ async function boot(manifestPath: string, withNetwork: boolean): Promise<BootedW
   attachPointer(game);
   installTestHooks(game, loop);
 
-  if (withNetwork && city.raw.networkPath) {
+  if (resume) {
+    bridge.loadLog(resume.log); // replays seed + saved log through the same Command path
+    game.mode = bridge.stats().running ? "run" : "build";
+  } else if (withNetwork && city.raw.networkPath) {
     try {
       game.applyNetwork(await loadNetwork(city.raw.networkPath));
     } catch (e) {
       console.warn("network load failed; starting empty", e);
     }
   }
+
+  // Autosave from the first PLAYER action onward — wiring onCommit after the pre-seeded network
+  // / resume replay means we don't re-save the baseline; the log always holds the full state.
+  bridge.onCommit = () =>
+    writeSave({ v: 1, cityId: city.raw.id, cityName: city.raw.name, seed: city.seed, log: [...bridge.log.all()] });
 
   map.once("load", () => game.refresh());
   game.refresh();
@@ -91,6 +101,11 @@ export function App() {
     void boot(manifestPath, withNetwork).then(setWorld);
   }, []);
 
+  const startResume = useCallback((save: SaveBlob) => {
+    setBooting(true);
+    void boot(cityById(save.cityId).manifest, false, save).then(setWorld);
+  }, []);
+
   // Deep-link / e2e: `?city=<id>&network=0|1` skips the menu.
   useEffect(() => {
     if (started.current) return;
@@ -102,17 +117,69 @@ export function App() {
     }
   }, [startBoot]);
 
+  // Ctrl/Cmd-Z = undo the last committed command (rebuild from seed + log[..-1]).
+  useEffect(() => {
+    if (!world) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        world.game.undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [world]);
+
   if (!world) {
     if (booting) return null; // map is being built; chrome appears once the world is ready
-    return <Menu onStart={(c: CityEntry, withNet: boolean) => startBoot(c.manifest, withNet)} />;
+    return (
+      <Menu
+        onStart={(c: CityEntry, withNet: boolean) => startBoot(c.manifest, withNet)}
+        onResume={startResume}
+      />
+    );
   }
 
   return (
     <GameProvider game={world.game} loop={world.loop}>
       <Title name={world.cityName} />
+      <UndoControl />
       <StatsBar />
       <Panels />
       <Toolbar />
     </GameProvider>
+  );
+}
+
+/** A small undo affordance next to the title (AGENTS UX "reversible by construction"). Ctrl-Z
+ *  is the primary path; this makes it discoverable. Re-renders on the UI slice so its disabled
+ *  state tracks the 0↔1 command boundary. */
+function UndoControl() {
+  const game = useGame();
+  useGameUI(); // subscribe: re-render when selection/mode change (covers the empty↔non-empty edge)
+  const enabled = game.canUndo();
+  return (
+    <button
+      data-testid="undo"
+      onClick={() => game.undo()}
+      disabled={!enabled}
+      title="Undo last action (Ctrl-Z)"
+      style={{
+        position: "fixed",
+        top: 10,
+        left: 200,
+        zIndex: 10,
+        padding: "4px 10px",
+        borderRadius: 8,
+        border: "0",
+        background: enabled ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.4)",
+        color: enabled ? "#1c2024" : "#9aa3ad",
+        font: "600 13px system-ui,sans-serif",
+        cursor: enabled ? "pointer" : "default",
+        boxShadow: "0 2px 10px rgba(0,0,0,.12)",
+      }}
+    >
+      ↶ Undo
+    </button>
   );
 }

@@ -21,4 +21,9 @@ export class CommandLog {
   popLast(): Command | undefined {
     return this.cmds.pop();
   }
+
+  /** Replace the whole log (loading a save). The caller rebuilds the Sim from it. */
+  replace(cmds: readonly Command[]): void {
+    this.cmds = [...cmds];
+  }
 }

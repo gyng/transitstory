@@ -173,6 +173,22 @@ export class Game {
     this.refresh();
   }
 
+  /** Reversible-by-construction undo: rebuild World from seed + log[..-1] (the frontend never
+   *  splices sim state). Clears the now-possibly-stale selection and resyncs Build/Run. */
+  undo(): boolean {
+    if (!this.bridge.undo()) return false;
+    this.cancelDraft();
+    this.selectedStation = null;
+    this.selectedLine = null;
+    this.mode = this.bridge.stats().running ? "run" : "build";
+    this.refresh();
+    return true;
+  }
+
+  canUndo(): boolean {
+    return this.bridge.log.length > 0;
+  }
+
   setTool(tool: Tool): void {
     if (this.tool === "line" && tool !== "line") this.cancelDraft();
     this.tool = tool;
