@@ -3,6 +3,7 @@
 // the game loop attach in T6/T10+.
 import "./styles.css";
 import { createMap } from "./map/basemap";
+import { createOverlay, testMarkerLayer } from "./map/overlay";
 import { loadCity } from "./sim/city";
 import { SimBridge } from "./sim/SimBridge";
 
@@ -20,10 +21,14 @@ function mountTitle(): void {
 async function boot(): Promise<void> {
   mountTitle();
   const map = createMap("map");
+  const overlay = createOverlay();
+  map.addControl(overlay);
+  overlay.setProps({ layers: [testMarkerLayer()] });
+
   const city = await loadCity();
   const bridge = new SimBridge(city.seed, city.coreCityJson);
 
-  window.__ot = { map, bridge, city };
+  window.__ot = { map, bridge, city, overlay };
   window.__APP_READY = true;
 }
 

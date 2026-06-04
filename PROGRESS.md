@@ -6,7 +6,7 @@ Maintained at every checkpoint and every fallback taken.
 ## Milestone checklist
 
 - [x] **M0** Walking skeleton — repo + green tests in all 3 tiers (T1–T4, CP0) ✅
-- [ ] **M1** Singapore map renders & is interactive (T5, T6, CP3/CP4)
+- [x] **M1** Singapore map renders & is interactive (T5, T6, CP3/CP4) ✅
 - [ ] **M2** WASM sim bridge proven (T8, T9, T13, CP2)
 - [ ] **M3** Build tools — place stations, draw a line, assign a trainset (T10–T12, CP5)
 - [ ] **M4** Live sim — vehicles run, passengers flow, ridership accrues (T14–T16b, CP6/CP7)
