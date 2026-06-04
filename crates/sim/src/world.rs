@@ -49,6 +49,10 @@ pub struct World {
     pub waiting: Vec<VecDeque<crate::pax::Pax>>,
     /// Per-station lines serving it (operational only); rebuilt by the dispatcher for routing.
     pub serving: Vec<Vec<LineId>>,
+    /// Route cache (origin,dest)->legs, so BFS isn't rerun per spawn on large networks.
+    /// A derived cache (not hashed); cleared when the network changes. Lookup-only, so no
+    /// HashMap-iteration determinism hazard.
+    pub route_cache: rustc_hash::FxHashMap<(u32, u32), Option<Vec<crate::routing::Leg>>>,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -103,6 +107,7 @@ impl World {
             boardings: Vec::new(),
             alightings: Vec::new(),
             serving: Vec::new(),
+            route_cache: rustc_hash::FxHashMap::default(),
             demand_dirty: false,
         }
     }

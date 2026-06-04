@@ -89,6 +89,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         ref mut spawn_accum,
         ref mut waiting,
         ref mut rng,
+        ref mut route_cache,
         ..
     } = *world;
 
@@ -111,10 +112,13 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
             if let Some(dest) =
                 pick_dest(stations, serving, captured_origin, captured_dest, bias, s, rng)
             {
-                // Route across the network (transfers at interchanges); enqueue if reachable.
-                if let Some(legs) = plan_route(lines, serving, StationId(s as u32), dest, MAX_LEGS) {
+                // Route across the network (transfers at interchanges), cached per O/D pair.
+                let entry = route_cache
+                    .entry((s as u32, dest.0))
+                    .or_insert_with(|| plan_route(lines, serving, StationId(s as u32), dest, MAX_LEGS));
+                if let Some(legs) = entry {
                     if !legs.is_empty() {
-                        waiting[s].push_back(Pax { legs, leg: 0 });
+                        waiting[s].push_back(Pax { legs: legs.clone(), leg: 0 });
                     }
                 }
             }
