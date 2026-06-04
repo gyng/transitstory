@@ -3,15 +3,16 @@
 // call Game methods which emit Commands and refresh — they never mutate sim state directly.
 import type { Map as MlMap } from "maplibre-gl";
 import type { MapboxOverlay } from "@deck.gl/mapbox";
-import type { Layer } from "@deck.gl/core";
-import { CATCHMENT_M, LINE_PALETTE, SNAP_PX } from "./config";
+import type { Layer, PickingInfo } from "@deck.gl/core";
+import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayer, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayer, type DemandPoint, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
-import type { Event, Stats } from "./types";
+import type { Event, PerStation, Stats } from "./types";
+import { stationTipHtml, type StationTip } from "./ui/react/shared";
 
 const EMPTY_STATS: Stats = {
   simClockMs: 0,
@@ -75,13 +76,85 @@ export class Game {
 
   /** Latest stats snapshot (refreshed on the ~3 Hz throttle); drives waiting-pax halos. */
   lastStats: Stats = EMPTY_STATS;
+  /** Per-station snapshot indexed by station id (perStation is filtered, NOT index-aligned),
+   *  rebuilt once per snapshot — O(1) lookups for the hover tooltip (no .find in the handler). */
+  perStationById: Map<number, PerStation> = new Map();
 
   constructor(
     readonly bridge: SimBridge,
     readonly map: MlMap,
     readonly overlay: MapboxOverlay,
     readonly build: Buildability = new Buildability(),
-  ) {}
+  ) {
+    // Late-bind the station hover tooltip onto the overlay. setProps MERGES, so the per-frame
+    // `layers` prop is untouched. pickingRadius == SNAP_PX so the tooltip's hit radius matches
+    // the click/snap radius — one forgiving pick path. Content comes from game state below, not
+    // from the raw pick coordinates.
+    this.overlay.setProps({
+      pickingRadius: SNAP_PX,
+      getTooltip: (info: PickingInfo) => this.stationTooltip(info),
+    });
+  }
+
+  /** deck getTooltip handler — only the pickable `stations` layer raises it; content is built
+   *  from the snapshot (not the raw pick), so the readout matches what the panels show. */
+  private stationTooltip(info: PickingInfo): { html: string; style: Record<string, string> } | null {
+    if (!info || info.layer?.id !== "stations") return null;
+    const obj = info.object as { id?: number } | undefined;
+    if (!obj || typeof obj.id !== "number") return null;
+    const tip = this.stationTip(obj.id);
+    if (!tip) return null;
+    return {
+      html: stationTipHtml(tip),
+      style: {
+        background: "rgba(255,255,255,.97)",
+        color: "#1c2024",
+        borderRadius: "8px",
+        boxShadow: "0 2px 10px rgba(0,0,0,.18)",
+        padding: "8px 10px",
+      },
+    };
+  }
+
+  /** Assemble the station inspect readout (drives the hover tooltip + the e2e hook). Returns
+   *  placement truth only (verdict = null) in Build mode or before the station has a stats
+   *  entry — never a confident "healthy" before any passenger has moved. */
+  stationTip(id: number): StationTip | null {
+    const sv = this.bridge.stationsView()[id];
+    if (!sv || sv.removed) return null;
+    const ps = this.perStationById.get(id);
+    const lines = this.bridge
+      .linesView()
+      .filter((l) => !l.removed && l.stops.includes(id))
+      .map((l) => ({ id: l.id, color: l.color, name: l.name }));
+    const hasData = this.mode === "run" && ps !== undefined;
+    const waiting = ps?.waiting ?? 0;
+    return {
+      id,
+      name: sv.name,
+      hasData,
+      waiting,
+      boardings: ps?.boardings ?? 0,
+      alightings: ps?.alightings ?? 0,
+      verdict: hasData ? this.starvation(waiting) : null,
+      lines,
+    };
+  }
+
+  /** Waiting-queue verdict — the single source for the tooltip word AND the ring colour. */
+  starvation(waiting: number): "starved" | "busy" | "healthy" {
+    if (waiting >= STARVED_WAITING) return "starved";
+    if (waiting >= BUSY_WAITING) return "busy";
+    return "healthy";
+  }
+
+  /** Drop any pinned station/line (Esc stage 3, click on empty map). */
+  clearSelection(): void {
+    if (this.selectedStation === null && this.selectedLine === null) return;
+    this.selectedStation = null;
+    this.selectedLine = null;
+    this.refresh();
+  }
 
   /** Capture an afford-gate (or other) rejection so the UI can flash it; returns the events. */
   private noteRejections(events: Event[]): Event[] {
@@ -297,7 +370,10 @@ export class Game {
     if (this.tool !== "select") {
       this.tool = "select";
       this.refresh();
+      return;
     }
+    // Stage 3: nothing building and already in Select → drop a pinned station/line.
+    this.clearSelection();
   }
 
   /** True if the in-progress route is illegal for the active mode — a land mode (rail/bus)
@@ -418,6 +494,9 @@ export class Game {
         return { id: s.id, lng, lat, name: s.name, selected: s.id === this.selectedStation };
       });
 
+    // A pinned (selected) station gets the filled catchment; a mere hover peek gets the
+    // stroke-only fainter one (render.ts splits on `peek`).
+    const peeking = this.selectedStation === null;
     const catchments =
       highlight === null
         ? []
@@ -425,7 +504,7 @@ export class Game {
             .filter((s) => s.id === highlight)
             .map((s) => {
               const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-              return { lng, lat, radiusM: CATCHMENT_M };
+              return { lng, lat, radiusM: CATCHMENT_M, peek: peeking };
             });
 
     const lines = linesV
@@ -481,13 +560,73 @@ export class Game {
       }
     }
 
-    const demand = this.showDemand ? this.demandHeat : [];
-    return { stations, lines, catchments, blueprint, vehicles: [], waiting, hazards, demand, blueprintInvalid: this.draftInvalid() };
+    // Pinned-station label (deck TextLayer): name, plus the live queue once it has data.
+    let pinnedLabel: RenderView["pinnedLabel"];
+    if (this.selectedStation !== null) {
+      const s = stationsV[this.selectedStation];
+      if (s && !s.removed) {
+        const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+        const tip = this.stationTip(this.selectedStation);
+        const text = tip && tip.hasData ? `${s.name} · ${Math.round(tip.waiting)} waiting` : s.name;
+        pinnedLabel = { lng, lat, text };
+      }
+    }
+
+    const demand = this.demandPoints();
+    return {
+      stations,
+      lines,
+      catchments,
+      blueprint,
+      vehicles: [],
+      waiting,
+      hazards,
+      demand,
+      blueprintInvalid: this.draftInvalid(),
+      pinnedLabel,
+      selectedLine: this.selectedLine,
+    };
+  }
+
+  /** Travel-demand heat points with a SERVED flag (inside the catchment union of placed
+   *  stations). Memoized on the station id-set + the toggle — recomputed only when topology
+   *  changes or the layer turns on, NEVER per frame / per pointer move. Unmet cells glow warm
+   *  (the gap to fill), served cells fade cool (you've got it). Approximate client-side union —
+   *  the sim-true per-cell served fraction is the demand-model pass's concern. */
+  private demandSig = "";
+  private demandView: DemandPoint[] = [];
+  private demandCellsMm: [number, number][] | null = null;
+  private demandPoints(): DemandPoint[] {
+    if (!this.showDemand) return [];
+    const stationsV = this.bridge.stationsView().filter((s) => !s.removed);
+    const sig = stationsV.map((s) => s.id).join(",");
+    if (sig === this.demandSig && this.demandView.length === this.demandHeat.length) return this.demandView;
+    this.demandSig = sig;
+    if (!this.demandCellsMm) this.demandCellsMm = this.demandHeat.map((c) => lngLatToMm([c.lng, c.lat]));
+    const cells = this.demandCellsMm;
+    const stMm = stationsV.map((s) => [s.xMm, s.yMm] as [number, number]);
+    const rMm = CATCHMENT_M * 1000;
+    const r2 = rMm * rMm;
+    this.demandView = this.demandHeat.map((c, i) => {
+      const [cx, cy] = cells[i];
+      let served = false;
+      for (const [sx, sy] of stMm) {
+        const dx = sx - cx;
+        const dy = sy - cy;
+        if (dx * dx + dy * dy <= r2) {
+          served = true;
+          break;
+        }
+      }
+      return { lng: c.lng, lat: c.lat, weight: c.weight, served };
+    });
+    return this.demandView;
   }
 
   /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */
   setStats(s: Stats): void {
     this.lastStats = s;
+    this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
     this.refresh();
   }
 

@@ -13,6 +13,12 @@ export const TICK_MS = 50;
 export const CATCHMENT_M = 500;
 export const SNAP_PX = 18;
 
+/** Waiting-queue thresholds (passengers) for the station-inspect verdict + starvation ring.
+ *  busy = a watch signal; starved = the ring turns vermillion (the fix is shorter headway /
+ *  more capacity). Single source for both the tooltip verdict word and the on-map ring colour. */
+export const BUSY_WAITING = 4;
+export const STARVED_WAITING = 12;
+
 /** Prefix a `public/`-rooted asset path with Vite's deploy base, so committed data/title
  *  assets resolve under a project-pages base (`/transitstory/`) as well as at root (`/`).
  *  BASE_URL is "/" in dev/preview and "/transitstory/" in the GitHub Pages build. */

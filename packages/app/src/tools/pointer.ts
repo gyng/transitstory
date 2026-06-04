@@ -39,8 +39,10 @@ export function attachPointer(game: Game): void {
       return;
     }
 
-    // Select tool (or run mode): pick the nearest station.
-    game.selectStation(game.nearestStation(px, py));
+    // Select tool (or run mode): pin the nearest station, or click-empty to deselect.
+    const hit = game.nearestStation(px, py);
+    if (hit !== null) game.selectStation(hit);
+    else game.clearSelection();
   });
 
   // Double-click / Enter commits a line draft; Escape / right-click cancel (T11).

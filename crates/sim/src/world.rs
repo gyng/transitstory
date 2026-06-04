@@ -407,15 +407,22 @@ impl World {
     pub fn stats_snapshot(&self) -> StatsSnapshot {
         let waiting_total: u64 = self.waiting.iter().map(|q| q.len() as u64).sum();
 
-        // Average load factor across vehicles (onboard / capacity).
+        // Average load factor across vehicles (onboard / capacity), plus a per-line mean for the
+        // line-inspect strain readout — same single pass, re-binned by line index (no new state).
         let mut load_sum = 0.0f32;
         let mut load_n = 0u32;
+        let mut line_load_sum = vec![0.0f32; self.lines.len()];
+        let mut line_load_n = vec![0u32; self.lines.len()];
         for i in 0..self.vehicles.len() {
-            if let Some(l) = self.lines.get(self.vehicles.line[i].index()) {
+            let li = self.vehicles.line[i].index();
+            if let Some(l) = self.lines.get(li) {
                 if l.trainset.is_some() {
                     let cap = crate::trainset::spec_for_mode(l.mode).capacity.max(1) as f32;
-                    load_sum += self.vehicles.onboard[i] as f32 / cap;
+                    let lf = self.vehicles.onboard[i] as f32 / cap;
+                    load_sum += lf;
                     load_n += 1;
+                    line_load_sum[li] += lf;
+                    line_load_n[li] += 1;
                 }
             }
         }
@@ -454,6 +461,7 @@ impl World {
                     disruption: l.disruption_units as f64,
                     crosses_water: l.crosses_water_surface,
                     capital_cost: l.capital_cost as f64,
+                    load_factor: if line_load_n[i] > 0 { line_load_sum[i] / line_load_n[i] as f32 } else { 0.0 },
                 }
             })
             .collect();

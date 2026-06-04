@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PerLine } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { PANEL_STYLE, hex, modeIcon } from "./shared";
+import { PANEL_STYLE, hex, loadPip, modeIcon } from "./shared";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
 // duplicated literals) while remaining cssText-equivalent in JSX.
@@ -36,7 +36,9 @@ const LIST_STYLE: CSSProperties = {
 
 const EDITOR_STYLE: CSSProperties = {
   ...cssToStyle(PANEL_STYLE),
-  top: "56px",
+  // Stack below the top-right Objectives card when present (it publishes --ot-objective-h);
+  // 0px otherwise, so the panel sits at the top when no scenario is active.
+  top: "calc(56px + var(--ot-objective-h))",
   right: "14px",
   width: "230px",
   padding: "12px",
@@ -44,6 +46,7 @@ const EDITOR_STYLE: CSSProperties = {
 
 function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
   const game = useGame();
+  const pip = l.trains > 0 ? loadPip(l.loadFactor) : null;
   return (
     <div
       data-testid={`line-row-${l.lineId}`}
@@ -77,6 +80,15 @@ function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
       >
         {l.name || `Line ${l.lineId + 1}`}
       </span>
+      {pip && (
+        <span
+          data-testid={`line-load-pip-${l.lineId}`}
+          title={`Load ${pip.pct}% — ${pip.word}`}
+          style={{ flex: "0 0 auto", color: pip.color, fontSize: "11px", lineHeight: 1 }}
+        >
+          {pip.glyph}
+        </span>
+      )}
       <span data-testid={`line-ridership-${l.lineId}`} style={{ color: "#7a818a" }}>
         {Math.round(l.ridership)}
       </span>
@@ -165,6 +177,8 @@ function Editor({ l }: { l: PerLine }) {
   }
 
   const shownMins = previewMins ?? mins;
+  // trains > 0 here (the trains===0 branch returned above), so the line always has a load reading.
+  const pip = loadPip(l.loadFactor);
 
   return (
     <div id="editor-panel" data-testid="editor-panel" style={EDITOR_STYLE}>
@@ -197,6 +211,18 @@ function Editor({ l }: { l: PerLine }) {
         style={{ width: "100%" }}
       />
       <div style={{ color: "#7a818a", margin: "4px 0 10px" }}>Capacity × frequency are your two levers.</div>
+
+      <div data-testid="line-performance" style={{ marginBottom: "10px" }}>
+        <div style={{ fontWeight: 600, marginBottom: "4px" }}>Performance</div>
+        <div data-testid="line-load" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "#7a818a" }}>Load</span>
+          <b style={{ color: pip.color }}>
+            {pip.glyph} {pip.pct}% · {pip.word}
+          </b>
+        </div>
+        {/* `line-demand-served` (Serves N% of nearby demand) lands with the OSM demand-model
+            pass, gated on a new PerLine field — not added here to avoid double-owning it. */}
+      </div>
 
       {isRail && (
         <div>

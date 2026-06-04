@@ -14,7 +14,6 @@ export function StatsBar() {
   const r = Math.round(s.ridershipTotal);
   const c = Math.round(s.coverageScore);
   const w = Math.round(s.waitingTotal);
-  const bi = Math.round(s.buildDifficulty);
   const lost = Math.round(s.abandoned);
   const denied = Math.round(s.deniedBoardings);
   const avgWaitMin = s.avgWaitMs / 60000;
@@ -28,7 +27,6 @@ export function StatsBar() {
 
   // Bar fills left→right; hue shifts good→bad as coverage drops.
   const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "var(--ot-gauge-bad)";
-  const impactColor = bi >= 50 ? "var(--ot-gauge-bad)" : bi >= 20 ? "#e69f00" : "var(--ot-gauge-good)";
 
   return (
     <div
@@ -96,26 +94,21 @@ export function StatsBar() {
           </span>
         )}
       </div>
-      <div>
-        Build impact{" "}
-        <b data-testid="build-impact" style={{ color: impactColor }}>
-          {bi}
-        </b>
-      </div>
-      <div
-        data-testid="money-box"
-        style={{ opacity: s.economyEnabled ? 1 : 0.4, cursor: s.economyEnabled ? "help" : "default" }}
-        title={
-          s.economyEnabled
-            ? `Fares ${fmtMoney(s.fareRevenue)} − capital ${fmtMoney(s.capitalSpent)} − upkeep ${fmtMoney(s.opexSpent)}`
-            : "Economy is off (enable it in ⚙ Settings)"
-        }
-      >
-        💰{" "}
-        <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
-          {fmtMoney(s.balance)}
-        </b>
-      </div>
+      {/* Build impact left the run HUD — it's a build-time, per-line concern (EditorPanel
+          `line-impact`), not a global always-on number. Money mounts only with the economy
+          ruleset on, so it's never dead chrome. StatsBar = clock · ridership · gauge · pressure. */}
+      {s.economyEnabled && (
+        <div
+          data-testid="money-box"
+          style={{ cursor: "help" }}
+          title={`Fares ${fmtMoney(s.fareRevenue)} − capital ${fmtMoney(s.capitalSpent)} − upkeep ${fmtMoney(s.opexSpent)}`}
+        >
+          💰{" "}
+          <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
+            {fmtMoney(s.balance)}
+          </b>
+        </div>
+      )}
     </div>
   );
 }

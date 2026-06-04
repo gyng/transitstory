@@ -66,6 +66,10 @@ pub struct LineStat {
     pub disruption: f64,
     pub crosses_water: bool,
     pub capital_cost: f64,
+    /// Mean load factor (onboard / capacity) across this line's vehicles, 0..~1+. The inspect
+    /// strain readout — distinct from `ridership` (throughput): a line can move many riders and
+    /// still be uncrowded, or move few and be at crush load. 0 when the line has no vehicles.
+    pub load_factor: f32,
 }
 
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,

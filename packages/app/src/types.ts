@@ -46,6 +46,8 @@ export interface PerLine {
   disruption: number;
   crossesWater: boolean;
   capitalCost: number;
+  /** Mean load factor (onboard/capacity) across this line's vehicles; 0 with no vehicles. */
+  loadFactor: number;
 }
 
 export interface Stats {

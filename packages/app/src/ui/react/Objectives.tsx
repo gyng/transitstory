@@ -25,6 +25,17 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
 
   const showBanner = status !== "active" && !dismissedBanner;
 
+  // Publish this card's (data-derived, not DOM-measured) height so the transient EditorPanel
+  // can stack BELOW it via `top: calc(56px + var(--ot-objective-h))` — they share the top-right
+  // anchor and used to overlap. Reset to 0px on unmount (no scenario → editor returns to top).
+  const goalCount = e.goals.length;
+  const hasDeadline = scenario.deadlineMs !== undefined;
+  useEffect(() => {
+    const h = 78 + goalCount * 20 + (hasDeadline ? 22 : 0); // base + per-goal row + deadline, incl. gap
+    document.documentElement.style.setProperty("--ot-objective-h", `${h}px`);
+    return () => document.documentElement.style.setProperty("--ot-objective-h", "0px");
+  }, [goalCount, hasDeadline]);
+
   return (
     <>
       <div

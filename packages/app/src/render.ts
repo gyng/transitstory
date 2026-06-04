@@ -2,7 +2,8 @@
 // conversion happened at the geo.ts boundary in Game). Layer array order IS the z-order
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
-import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { STARVED_WAITING } from "./config";
 
 export type Rgb = [number, number, number];
 
@@ -23,6 +24,8 @@ export interface CatchmentCircle {
   lng: number;
   lat: number;
   radiusM: number;
+  /** true = transient hover peek (stroke-only, fainter); false/undefined = pinned (filled). */
+  peek?: boolean;
 }
 export interface VehicleDot {
   lng: number;
@@ -43,6 +46,7 @@ export interface DemandPoint {
   lng: number;
   lat: number;
   weight: number; // travel demand at this grid cell (origin+dest)
+  served?: boolean; // within the catchment union of placed stations → faded; else unmet → glows
 }
 
 export interface RenderView {
@@ -55,6 +59,8 @@ export interface RenderView {
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
+  pinnedLabel?: { lng: number; lat: number; text: string }; // deck label for the pinned station
+  selectedLine?: number | null; // drives the wide selection casing under the selected line
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -64,14 +70,18 @@ export function colorToRgb(u: number): Rgb {
 /** Heavy/high-speed rail mode id (crates/sim trainset::tmode::HEAVY) — gets mainline styling. */
 const HEAVY_RAIL = 4;
 
-/** Demand heat ramp: low demand = translucent blue, high = warm red, alpha grows with weight
- *  so dense corridors glow. Tuned for the gravity-grid weights (~0..6). */
-function demandColor(w: number): [number, number, number, number] {
+/** Demand heat ramp. The primary channel is SERVED vs UNMET, not raw weight: unmet demand
+ *  (no station in range) glows warm + solid — the gap to fill; served demand fades cool +
+ *  translucent — you've got it covered. Alpha (faint↔solid) is the colour-blind-safe channel,
+ *  with warm/cool hue as the secondary cue. Weight still modulates intensity. */
+function demandColor(w: number, served?: boolean): [number, number, number, number] {
   const t = Math.max(0, Math.min(1, w / 5));
-  const r = Math.round(40 + t * 200);
-  const g = Math.round(90 + (1 - t) * 60);
-  const b = Math.round(200 - t * 150);
-  const a = Math.round(34 + t * 70);
+  if (served) return [90, 130, 170, Math.round(10 + t * 26)]; // cool + faint
+  // unmet: warm + solid, intensity rising with demand weight
+  const r = Math.round(120 + t * 120);
+  const g = Math.round(72 + (1 - t) * 36);
+  const b = Math.round(60 - t * 30);
+  const a = Math.round(58 + t * 112);
   return [r, g, b, a];
 }
 
@@ -89,8 +99,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getRadius: (d: DemandPoint) => 120 + Math.sqrt(d.weight) * 120,
       radiusUnits: "meters",
       radiusMinPixels: 6,
-      getFillColor: (d: DemandPoint) => demandColor(d.weight),
+      getFillColor: (d: DemandPoint) => demandColor(d.weight, d.served),
       stroked: false,
+      // `demand` is a fresh array only when the served set is recomputed (topology/toggle), so
+      // identity is stable across frames; this trigger guards the in-place served recolor.
+      updateTriggers: { getFillColor: view.demand.map((d) => (d.served ? 1 : 0)).join("") },
     }),
     new ScatterplotLayer({
       id: "catchments",
@@ -98,10 +111,31 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getPosition: (d: CatchmentCircle) => [d.lng, d.lat],
       getRadius: (d: CatchmentCircle) => d.radiusM,
       radiusUnits: "meters",
-      getFillColor: [0, 114, 178, 38],
+      // Pinned (selected) station = filled + solid stroke; hover peek = stroke-only, fainter,
+      // so a peek reads as provisional and never greys out what's under it.
+      getFillColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 0] : [0, 114, 178, 38]),
       stroked: true,
-      getLineColor: [0, 114, 178, 150],
+      getLineColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 110] : [0, 114, 178, 170]),
       lineWidthMinPixels: 1.5,
+      updateTriggers: {
+        getFillColor: view.catchments.map((c) => !!c.peek).join(","),
+        getLineColor: view.catchments.map((c) => !!c.peek).join(","),
+      },
+    }),
+    // Selected-line emphasis: a wide dark casing under the picked line so it pops on the muted
+    // basemap regardless of hue (width + dark frame = colour-blind-safe, not a hue change). Wider
+    // than the heavy-rail casing so it frames even mainline track. Bumps only on selection change.
+    new PathLayer({
+      id: "lines-selected-casing",
+      data: view.selectedLine == null ? [] : view.lines.filter((d) => d.id === view.selectedLine),
+      getPath: (d: LinePath) => d.path,
+      getColor: [34, 34, 40, 220],
+      getWidth: 15,
+      widthUnits: "pixels",
+      widthMinPixels: 11,
+      capRounded: true,
+      jointRounded: true,
+      updateTriggers: { getColor: view.selectedLine ?? -1 },
     }),
     // Heavy / high-speed rail reads as MAINLINE track, not a flat metro stroke: a dark casing
     // under a wider colored core with a pale centre stripe (a "double-track" look). Only the
@@ -168,7 +202,10 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getRadius: (d: StationDot) => (d.selected ? 9 : 7),
       radiusUnits: "pixels",
       radiusMinPixels: 5,
-      getFillColor: (d: StationDot) => (d.selected ? [214, 94, 0] : [28, 32, 36]),
+      // Selected fill = selection blue (ties to its blue catchment ring); deliberately NOT the
+      // old [214,94,0] orange, which collided with the Bus identity colour + gauge-bad. The
+      // radius bump + white stroke are the colour-blind-safe channels.
+      getFillColor: (d: StationDot) => (d.selected ? [0, 114, 178] : [28, 32, 36]),
       stroked: true,
       getLineColor: [255, 255, 255],
       lineWidthMinPixels: 2,
@@ -178,8 +215,10 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getRadius: view.stations.map((s) => s.selected).join(","),
       },
     }),
-    // Waiting-passenger halo: an amber ring that grows with the queue (top, so a starved
-    // station is always visible). Stroked-only so it doesn't occlude the station dot.
+    // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is
+    // always visible). Stroked-only so it doesn't occlude the station dot. Amber while merely
+    // busy; flips to thick vermillion once the queue is STARVED — pointing at the headway fix.
+    // updateTriggers on the starved-id SET (a membership string), never per frame.
     new ScatterplotLayer({
       id: "waiting",
       data: view.waiting,
@@ -188,10 +227,15 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       radiusUnits: "pixels",
       stroked: true,
       filled: false,
-      getLineColor: [230, 159, 0, 220],
+      getLineColor: (d: WaitingDot) =>
+        d.count >= STARVED_WAITING ? [214, 40, 40, 235] : [230, 159, 0, 220],
+      getLineWidth: (d: WaitingDot) => (d.count >= STARVED_WAITING ? 3.5 : 2),
+      lineWidthUnits: "pixels",
       lineWidthMinPixels: 2,
       updateTriggers: {
         getRadius: view.waiting.map((w) => w.count).join(","),
+        getLineColor: view.waiting.map((w) => w.count >= STARVED_WAITING).join(","),
+        getLineWidth: view.waiting.map((w) => w.count >= STARVED_WAITING).join(","),
       },
     }),
     // Live build-conflict dots along the in-progress blueprint (amber built/park, red water).
@@ -203,6 +247,30 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       radiusUnits: "pixels",
       getFillColor: (d: HazardDot) => d.color,
       stroked: false,
+    }),
+    // Pinned-station label (deck geometry, NOT a DOM node anchored by lng/lat). One line at the
+    // selected station; data length 0/1 so it costs nothing when nothing is pinned. characterSet
+    // "auto" so names with non-ASCII glyphs render. updateTriggers on the label id/text only.
+    new TextLayer<{ lng: number; lat: number; text: string }>({
+      id: "station-label",
+      data: view.pinnedLabel ? [view.pinnedLabel] : [],
+      getPosition: (d) => [d.lng, d.lat],
+      getText: (d) => d.text,
+      characterSet: "auto",
+      getSize: 12,
+      sizeUnits: "pixels",
+      getColor: [28, 32, 36, 255],
+      getPixelOffset: [0, -16],
+      fontWeight: 700,
+      background: true,
+      getBackgroundColor: [255, 255, 255, 235],
+      backgroundPadding: [5, 3],
+      getTextAnchor: "middle",
+      getAlignmentBaseline: "bottom",
+      updateTriggers: {
+        getText: view.pinnedLabel?.text ?? "",
+        getPosition: view.pinnedLabel ? `${view.pinnedLabel.lng},${view.pinnedLabel.lat}` : "",
+      },
     }),
   ];
 
