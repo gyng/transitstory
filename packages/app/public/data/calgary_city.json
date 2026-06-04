@@ -1,0 +1,22 @@
+{
+  "id": "calgary",
+  "name": "Calgary C-Train",
+  "originLngLat": [
+    -114.0719,
+    51.0447
+  ],
+  "bbox": [
+    -114.27,
+    50.85,
+    -113.92,
+    51.16
+  ],
+  "center": [
+    -114.0719,
+    51.0447
+  ],
+  "zoom": 11,
+  "seed": 20260606,
+  "demandGridPath": "/data/calgary_demand.json",
+  "networkPath": "/data/networks/calgary.json"
+}

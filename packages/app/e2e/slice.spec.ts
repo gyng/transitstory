@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 // the coverage gauge changed. Camera-independent (fixed viewport + __ot_test placement hook
 // through coords/geo.ts). Never a load-only green.
 test("full vertical slice: place → draw → assign → run → ridership + coverage", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
   // 1–3) place stations, draw a line, assign a trainset (auto headway).

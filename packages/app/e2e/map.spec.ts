@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 test("Singapore basemap renders, attributes OSM, and constructs the sim", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__APP_READY === true, undefined, { timeout: 30_000 });
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 

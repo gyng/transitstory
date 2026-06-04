@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // CP6 — the early visual win: vehicles dispatch and visibly move when Running. Camera-
 // independent build via __ot_test; asserts a concrete fact (a vehicle position changed).
 test("vehicles dispatch and move when running", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
   await page.evaluate(() => {

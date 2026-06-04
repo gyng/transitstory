@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // T12: assign a trainset (auto-suggested headway) and override headway; assert authoritative
 // sim state via stats(). Then exercise the EditorPanel UI path and screenshot.
 test("assign trainset + headway via the editor and the command path", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
   await page.evaluate(() => {

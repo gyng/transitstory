@@ -294,6 +294,24 @@ export class Game {
     return dots;
   }
 
+  /** Pre-seed a real-world network (stations + lines) via the Command path. Stations are
+   *  placed in array order (so line indices match), interchanges are shared station indices. */
+  applyNetwork(net: import("./sim/network").Network): void {
+    for (const s of net.stations) {
+      const [x, y] = lngLatToMm([s.lng, s.lat]);
+      this.bridge.apply(cmd.placeStation(x, y, s.name));
+    }
+    net.lines.forEach((line, li) => {
+      this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0));
+      for (const idx of line.stations) this.bridge.apply(cmd.addStop(li, idx));
+      this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
+      this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * 60_000)));
+    });
+    this.selectedStation = null;
+    this.selectedLine = null;
+    this.refresh();
+  }
+
   /** The next palette colour for a new line (deterministic by line index). */
   nextLineColor(): number {
     const n = this.bridge.linesView().length;

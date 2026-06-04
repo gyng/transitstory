@@ -1,7 +1,8 @@
 // THE coordinate boundary. All lng/lat <-> metres <-> mm and Web-Mercator-adjacent math
 // lives here and nowhere else (AGENTS non-negotiable #4). The sim core only ever sees
-// integer millimetres; the map only ever sees lng/lat. Equirectangular linearization
-// around the fixed Singapore origin is sub-metre accurate over one city.
+// integer millimetres; the map only ever sees lng/lat. Equirectangular linearization around
+// a fixed origin is sub-metre accurate over one city. The origin is settable so a session
+// can run any city (setOrigin is called once at boot from the city manifest).
 import { SG_ORIGIN } from "../config";
 
 export type LngLat = [number, number];
@@ -9,15 +10,23 @@ export type Meters = [number, number];
 export type Mm = [number, number];
 
 const M_PER_DEG_LAT = 110540;
-const cosLat0 = Math.cos((SG_ORIGIN.lat * Math.PI) / 180);
-const M_PER_DEG_LNG = 111320 * cosLat0;
+let originLng: number = SG_ORIGIN.lng;
+let originLat: number = SG_ORIGIN.lat;
+let mPerDegLng = 111320 * Math.cos((originLat * Math.PI) / 180);
+
+/** Set the local-frame origin for this session (once, at boot). */
+export function setOrigin(lng: number, lat: number): void {
+  originLng = lng;
+  originLat = lat;
+  mPerDegLng = 111320 * Math.cos((originLat * Math.PI) / 180);
+}
 
 export function lngLatToMeters([lng, lat]: LngLat): Meters {
-  return [(lng - SG_ORIGIN.lng) * M_PER_DEG_LNG, (lat - SG_ORIGIN.lat) * M_PER_DEG_LAT];
+  return [(lng - originLng) * mPerDegLng, (lat - originLat) * M_PER_DEG_LAT];
 }
 
 export function metersToLngLat([x, y]: Meters): LngLat {
-  return [SG_ORIGIN.lng + x / M_PER_DEG_LNG, SG_ORIGIN.lat + y / M_PER_DEG_LAT];
+  return [originLng + x / mPerDegLng, originLat + y / M_PER_DEG_LAT];
 }
 
 export function metersToMm([x, y]: Meters): Mm {

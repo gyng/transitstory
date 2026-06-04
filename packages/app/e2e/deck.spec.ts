@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 test("deck.gl overlay renders over the basemap", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
   // Overlaid mode adds deck's own canvas on top of MapLibre's -> at least two canvases.

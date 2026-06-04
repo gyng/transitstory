@@ -12,12 +12,16 @@ export const POSITRON_STYLE =
 /** Fully self-contained fallback if the hosted style is unreachable. */
 export const MAPLIBRE_DEMO_STYLE = "https://demotiles.maplibre.org/style.json";
 
-export function createMap(container: string | HTMLElement): maplibregl.Map {
+export function createMap(
+  container: string | HTMLElement,
+  center: [number, number] = SG_CENTER,
+  zoom: number = SG_ZOOM,
+): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
     style: POSITRON_STYLE,
-    center: SG_CENTER,
-    zoom: SG_ZOOM,
+    center,
+    zoom,
     attributionControl: false,
     dragRotate: false,
     pitchWithRotate: false,

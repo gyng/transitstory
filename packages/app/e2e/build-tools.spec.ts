@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // Build tools (T10/T11) driven camera-independently via __ot_test (routes through Game ->
 // coords/geo.ts). Asserts authoritative sim state, not just rendering.
 test("place stations and draw a line through them", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
   // Place 3 stations across central Singapore.
