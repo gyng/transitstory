@@ -26,6 +26,8 @@ import { ServiceReport } from "./ServiceReport";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
+import { StatsDashboard } from "./StatsDashboard";
+import { StatsRecorder } from "./statsHistory";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -169,8 +171,43 @@ export function App() {
       <DraftControls />
       <CommuterCard />
       <FollowCard />
+      <StatsRecorder />
+      <DashboardControl />
       <Toolbar />
     </GameProvider>
+  );
+}
+
+/** The prominent "📊 Stats" entry point + the dashboard it opens (ledger + detailed stats +
+ *  charts). The button sits top-left next to Undo; the dashboard is a centred overlay. State is
+ *  local — the always-mounted StatsRecorder keeps history accruing whether or not it's open. */
+function DashboardControl() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        data-testid="open-dashboard"
+        onClick={() => setOpen(true)}
+        title="Network dashboard — ledger, ridership, satisfaction, trend charts"
+        style={{
+          position: "fixed",
+          top: 10,
+          left: 288,
+          zIndex: 10,
+          padding: "4px 12px",
+          borderRadius: 8,
+          border: "0",
+          background: "#1c2024",
+          color: "#fff",
+          font: "700 13px system-ui,sans-serif",
+          cursor: "pointer",
+          boxShadow: "0 2px 10px rgba(0,0,0,.18)",
+        }}
+      >
+        📊 Stats
+      </button>
+      <StatsDashboard open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 
