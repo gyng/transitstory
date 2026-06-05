@@ -9,7 +9,7 @@ use crate::hash::fnv1a;
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use crate::station::Station;
-use crate::stats::{LineStat, LineView, OdLink, StationStat, StatsSnapshot, StationView};
+use crate::stats::{AccessLink, LineStat, LineView, OdLink, StationStat, StatsSnapshot, StationView};
 use crate::tick;
 use crate::trainset::TrainsetAssignment;
 use crate::vehicle::VehicleSoA;
@@ -831,6 +831,40 @@ impl World {
                 OdLink { dest: d, x_mm: p.x_mm as f64, y_mm: p.y_mm as f64, weight: (wt / max) as f32 }
             })
             .collect()
+    }
+
+    /// Accessibility isochrone from a selected origin station: every OTHER served station it can
+    /// reach by transit, with the travel time (wait + ride + transfers) via `Router::reachable`.
+    /// For the opt-in "Reach" overlay. Read-only — solves fresh, mutates nothing. Empty if the
+    /// origin isn't an operational, served station; unreachable stations are simply omitted.
+    pub fn station_access(&self, origin: u32) -> Vec<AccessLink> {
+        let o = origin as usize;
+        if o >= self.stations.len() || self.serving.get(o).map(|v| v.is_empty()).unwrap_or(true) {
+            return Vec::new();
+        }
+        let access = self
+            .router
+            .reachable(&self.lines, &self.serving, StationId(origin), self.max_legs);
+        if access.is_empty() {
+            return Vec::new();
+        }
+        let mut out: Vec<AccessLink> = Vec::new();
+        for d in 0..self.stations.len() {
+            if d == o
+                || self.stations[d].removed
+                || self.serving.get(d).map(|v| v.is_empty()).unwrap_or(true)
+            {
+                continue;
+            }
+            match access.get(d).copied() {
+                Some(t) if t < i64::MAX => {
+                    let p = self.stations[d].pos;
+                    out.push(AccessLink { station: d as u32, x_mm: p.x_mm as f64, y_mm: p.y_mm as f64, ms: t as f64 });
+                }
+                _ => {}
+            }
+        }
+        out
     }
 
     /// Authoritative line geometry (ordered stops + polyline) for rendering.

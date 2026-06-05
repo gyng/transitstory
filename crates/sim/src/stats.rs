@@ -96,6 +96,18 @@ pub struct OdLink {
     pub weight: f32,
 }
 
+/// One reachable station in the accessibility isochrone from a selected origin: how fast transit
+/// gets there (`ms`, wait + ride + transfers via `Router::reachable`). For the opt-in "Reach"
+/// overlay — colour stations green→amber→red by travel time from the pinned one.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessLink {
+    pub station: u32,
+    pub x_mm: f64,
+    pub y_mm: f64,
+    pub ms: f64,
+}
+
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,
 // no BigInt at the boundary); the frontend converts mm -> lng/lat in coords/geo.ts.
 #[derive(Clone, Debug, Serialize, Deserialize)]

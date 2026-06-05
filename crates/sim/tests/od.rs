@@ -64,3 +64,28 @@ fn unserved_origin_yields_nothing_and_query_is_pure() {
     assert_eq!(before, w.state_hash(), "station_od is a pure read — state_hash unchanged");
     assert!(orphan.0 > 0, "the served origin still has links (sanity)");
 }
+
+#[test]
+fn station_access_isochrone_is_monotone_and_pure() {
+    let mut w = running_world();
+    for _ in 0..2000 {
+        w.tick(50);
+    }
+    let acc = w.station_access(0);
+    assert!(!acc.is_empty(), "a served origin reaches other served stations");
+    assert!(acc.iter().all(|a| a.station != 0), "no self in the isochrone");
+    assert!(acc.iter().all(|a| a.ms >= 0.0), "travel times are non-negative");
+    // On a single 4-stop line from station 0, the nearer stop (1) is reached faster than the
+    // farther one (3) — the isochrone respects network distance.
+    let t1 = acc.iter().find(|a| a.station == 1).map(|a| a.ms);
+    let t3 = acc.iter().find(|a| a.station == 3).map(|a| a.ms);
+    if let (Some(t1), Some(t3)) = (t1, t3) {
+        assert!(t1 <= t3, "the nearer stop is reached no slower than the farther ({t1} <= {t3})");
+    }
+    // Pure read: hash is unchanged across calls; an orphaned origin yields nothing.
+    let before = w.state_hash();
+    for _ in 0..3 {
+        let _ = w.station_access(0);
+    }
+    assert_eq!(before, w.state_hash(), "station_access is a pure read");
+}

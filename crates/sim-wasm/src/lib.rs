@@ -111,6 +111,14 @@ impl Sim {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Accessibility isochrone for a selected station — every reachable station + transit travel
+    /// time, for the opt-in "Reach" overlay (read-only). Returns a JS array of `AccessLink`.
+    #[wasm_bindgen(js_name = stationAccess)]
+    pub fn station_access(&self, origin: u32) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.station_access(origin))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Construction-cost preview ($, track only — no trains) for a hypothetical line through
     /// `station_ids` in `mode`. The build HUD's authoritative figure (same core formula as a
     /// committed line). `loop_line` closes the route. Returns a plain JS number.
