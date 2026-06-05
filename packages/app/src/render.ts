@@ -2,7 +2,7 @@
 // conversion happened at the geo.ts boundary in Game). Layer array order IS the z-order
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
-import { ArcLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { ArcLayer, ColumnLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 
 export type Rgb = [number, number, number];
@@ -117,6 +117,8 @@ export interface RenderView {
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
   roadHour: number; // current in-game hour → recolours the roads overlay by live congestion
+  demandCellM: number; // demand-grid cell pitch (m) → sizes the demand hexagons to tile the grid
+  roadCellM: number; // buildability cell pitch (m) → sizes the road hexagons to tile the grid
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
@@ -131,6 +133,18 @@ export function colorToRgb(u: number): Rgb {
 
 /** Heavy/high-speed rail mode id (crates/sim trainset::tmode::HEAVY) — gets mainline styling. */
 const HEAVY_RAIL = 4;
+
+/** Grid-cell overlays (demand heat, road corridors) draw as flat HEXAGONS, not circles — a
+ *  honeycomb reads as one clean tiled field instead of a mud of overlapping discs (the "less
+ *  cluttered" ask). A regular hexagon of centre-to-vertex R covers area ≈2.598·R²; matching that
+ *  to a square grid cell of pitch p (R≈0.62·p) makes the tiles meet edge-to-edge with neither big
+ *  gaps nor heavy overlap. ColumnLayer with diskResolution 6 + extruded:false is the flat hexagon.
+ *  Slightly above the area-match so neighbours just kiss into a continuous surface. */
+const HEX_FILL = 0.64;
+/** Hexagon centre-to-vertex radius (m) for a grid of the given cell pitch (m). */
+function hexRadius(cellM: number): number {
+  return Math.max(20, cellM * HEX_FILL);
+}
 
 /** Demand heat ramp. The primary channel is SERVED vs UNMET, not raw weight: unmet demand
  *  (no station in range) glows warm + solid — the gap to fill; served demand fades cool +
@@ -180,29 +194,35 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     // ROAD corridors (very back, under the network): the cells where a bus runs cheap + fast.
     // Muted slate so it reads as ground truth, not network identity. Metre-radius so it scales
     // with the map. updateTriggers unneeded — `roads` is a stable memoized array per city.
-    new ScatterplotLayer({
+    new ColumnLayer({
       id: "roads",
       data: view.roads,
-      getPosition: (d: RoadCell) => [d.lng, d.lat],
-      getRadius: 70,
+      diskResolution: 6, // hexagon (honeycomb tiling, not overlapping discs)
+      extruded: false, // flat 2D fill on the ground, not a 3D column
+      radius: hexRadius(view.roadCellM),
       radiusUnits: "meters",
-      radiusMinPixels: 2,
+      getPosition: (d: RoadCell) => [d.lng, d.lat],
       // Live congestion: green (flowing) → amber → red (jammed), from the cell's built-up density
       // and the current hour. Stable data identity; recolours only when the hour ticks over.
       getFillColor: (d: RoadCell) => roadColor(view.roadHour, d.density),
+      filled: true,
       stroked: false,
       updateTriggers: { getFillColor: view.roadHour },
     }),
-    // Travel-demand heat (bottom of the stack so the network draws over it). Soft blue→red
-    // additive blobs sized by demand weight — a "where do people want to go" map layer.
-    new ScatterplotLayer({
+    // Travel-demand heat (bottom of the stack so the network draws over it): a HONEYCOMB of flat
+    // hexagons, one per demand cell, tiling the grid. Uniform cell size keeps it tidy — weight is
+    // the COLOUR channel (warm+solid unmet → cool+faint served), not the size, so it reads as one
+    // clean heat field instead of a mud of weight-scaled overlapping discs.
+    new ColumnLayer({
       id: "demand-heat",
       data: view.demand,
-      getPosition: (d: DemandPoint) => [d.lng, d.lat],
-      getRadius: (d: DemandPoint) => 120 + Math.sqrt(d.weight) * 120,
+      diskResolution: 6, // hexagon
+      extruded: false, // flat fill, not a 3D column
+      radius: hexRadius(view.demandCellM),
       radiusUnits: "meters",
-      radiusMinPixels: 6,
+      getPosition: (d: DemandPoint) => [d.lng, d.lat],
       getFillColor: (d: DemandPoint) => demandColor(d.weight, d.served),
+      filled: true,
       stroked: false,
       // `demand` is a fresh array only when the served set is recomputed (topology/toggle), so
       // identity is stable across frames; this trigger guards the in-place served recolor.

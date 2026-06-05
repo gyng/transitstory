@@ -66,6 +66,8 @@ export class Game {
   /** Demand-heat map layer toggle + its source points (lng/lat + weight), set at boot. */
   showDemand = false;
   demandHeat: import("./render").DemandPoint[] = [];
+  /** Demand-grid cell pitch (m), set at boot — sizes the demand-heat hexagons so they tile it. */
+  demandCellM = 400;
   /** Accessibility "Reach" overlay toggle — when on + a station selected, shades reachable
    *  stations by transit travel time from it (the isochrone). Read via a pure core query. */
   showReach = false;
@@ -885,6 +887,8 @@ export class Game {
       blueprint,
       roads,
       roadHour,
+      demandCellM: this.demandCellM,
+      roadCellM: this.build.cellMm / 1000, // mm → m (the buildability grid pitch)
       vehicles: [],
       waiting,
       hazards,

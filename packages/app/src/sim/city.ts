@@ -40,6 +40,8 @@ export interface LoadedCity {
   buildability?: RawBuildability;
   /** Demand grid as lng/lat heat points (origin+dest weight) for the demand map layer. */
   demandHeat: { lng: number; lat: number; weight: number }[];
+  /** Demand grid cell pitch (m) — sizes the demand-heat hexagons so they tile the grid. */
+  demandCellM: number;
 }
 
 /** Pure: build the core (mm) city JSON from the raw manifest + lng/lat grids. */
@@ -81,5 +83,5 @@ export async function loadCity(manifestPath: string): Promise<LoadedCity> {
   }
   const { json, cellCount } = buildCoreCity(raw, demand, buildability);
   const demandHeat = demand.cells.map((c) => ({ lng: c.lon, lat: c.lat, weight: c.originWeight + c.destWeight }));
-  return { raw, seed: raw.seed, coreCityJson: json, demandCellCount: cellCount, buildability, demandHeat };
+  return { raw, seed: raw.seed, coreCityJson: json, demandCellCount: cellCount, buildability, demandHeat, demandCellM: demand.cellM };
 }
