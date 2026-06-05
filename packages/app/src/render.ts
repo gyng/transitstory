@@ -76,8 +76,10 @@ export interface RoadCell {
   density: number; // BUILT cells in its 3×3 (0..9) — drives live congestion colour with the hour
 }
 
-/** MIRROR of sim `tod::congestion_at` (keep in sync): the on-road congestion % (50 jammed … 100
- *  flowing) at a given in-game hour + local built-up density. Visual hint only. */
+/** STRUCTURAL congestion % (50 jammed … 100 flowing) at a given in-game hour + local built-up
+ *  density — mirrors the time + density terms of sim `tod::congestion_at` (keep in sync). The third
+ *  term, self-induced bus traffic, is dynamic and read off the buses slowing, not this static
+ *  overlay — so the overlay reads as "how congestible this corridor is", a planning aid. */
 function congestionPct(hour: number, density: number): number {
   const h = ((hour % 24) + 24) % 24;
   const timePen =
