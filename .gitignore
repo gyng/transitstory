@@ -28,3 +28,4 @@ test-results
 .playwright-mcp/
 # WSL alternate-data-stream stubs (downloaded-file security-zone metadata)
 *:Zone.Identifier
+.claude/

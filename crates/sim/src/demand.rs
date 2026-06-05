@@ -69,6 +69,8 @@ pub(crate) fn prepare(world: &mut World) {
     world.waiting.resize_with(n, Default::default);
     world.boardings.resize(n, 0);
     world.alightings.resize(n, 0);
+    world.denied_at.resize(n, 0);
+    world.abandoned_at.resize(n, 0);
 }
 
 /// Spawn passengers this tick at served stations (deterministic accumulator for count;

@@ -50,6 +50,18 @@ pub struct StationStat {
     pub boardings: f64,
     pub alightings: f64,
     pub waiting: f64,
+    /// Captured gravity demand at this station: resident/trip-origin weight and job/destination
+    /// weight pulled from the demand grid (the figures that drive `coverage_score`). Surfaced
+    /// per-station so the map can show which stations actually *grab* demand vs sit on empty land.
+    pub demand_origin: f64,
+    pub demand_dest: f64,
+    /// Operational lines serving this station (trainset + ≥2 stops). 0 = no service ("orphaned").
+    pub serving: u32,
+    /// Cumulative pressure AT THIS STATION: riders passed by a full vehicle (`denied`) and riders
+    /// who gave up waiting (`abandoned`). The precise "this platform is failing" signal — the
+    /// global `denied_boardings`/`abandoned` totals bucketed to where the loss actually happened.
+    pub denied: f64,
+    pub abandoned: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

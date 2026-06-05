@@ -96,6 +96,11 @@ pub struct World {
     pub denied_boardings: u64,
     /// Cumulative riders who gave up waiting (renege) because service was too infrequent.
     pub abandoned: u64,
+    /// `denied_boardings`/`abandoned` bucketed PER STATION (where the loss happened). Index-stable
+    /// with `stations`; sums equal the global totals. Surfaced as the per-platform starvation
+    /// signal. Folded into state_hash (deterministic, derived from the same command/tick sequence).
+    pub denied_at: Vec<u64>,
+    pub abandoned_at: Vec<u64>,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
     /// Optional economy (NIMBY-style): when OFF (the default), money is informational only —
@@ -132,6 +137,8 @@ struct Canonical<'a> {
     wait_samples: u64,
     denied_boardings: u64,
     abandoned: u64,
+    denied_at: &'a [u64],
+    abandoned_at: &'a [u64],
     opex_accrued: i64,
     opex_rem: i64,
 }
@@ -192,6 +199,8 @@ impl World {
             wait_samples: 0,
             denied_boardings: 0,
             abandoned: 0,
+            denied_at: Vec::new(),
+            abandoned_at: Vec::new(),
             serving: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             access_cache: rustc_hash::FxHashMap::default(),
@@ -441,6 +450,11 @@ impl World {
                 boardings: *self.boardings.get(s).unwrap_or(&0) as f64,
                 alightings: *self.alightings.get(s).unwrap_or(&0) as f64,
                 waiting: self.waiting.get(s).map(|q| q.len()).unwrap_or(0) as f64,
+                demand_origin: *self.captured_origin.get(s).unwrap_or(&0.0) as f64,
+                demand_dest: *self.captured_dest.get(s).unwrap_or(&0.0) as f64,
+                serving: self.serving.get(s).map(|v| v.len()).unwrap_or(0) as u32,
+                denied: *self.denied_at.get(s).unwrap_or(&0) as f64,
+                abandoned: *self.abandoned_at.get(s).unwrap_or(&0) as f64,
             })
             .collect();
 
@@ -751,6 +765,8 @@ impl World {
             wait_samples: self.wait_samples,
             denied_boardings: self.denied_boardings,
             abandoned: self.abandoned,
+            denied_at: &self.denied_at,
+            abandoned_at: &self.abandoned_at,
             opex_accrued: self.opex_accrued,
             opex_rem: self.opex_rem,
         };

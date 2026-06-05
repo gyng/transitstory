@@ -32,6 +32,14 @@ export interface PerStation {
   boardings: number;
   alightings: number;
   waiting: number;
+  /** Captured gravity demand pulled from the grid: resident/origin weight + job/dest weight. */
+  demandOrigin: number;
+  demandDest: number;
+  /** Operational lines serving this station (trainset + ≥2 stops). 0 = no service ("orphaned"). */
+  serving: number;
+  /** Cumulative pressure here: riders passed by a full train + riders who gave up waiting. */
+  denied: number;
+  abandoned: number;
 }
 
 export interface PerLine {

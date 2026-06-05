@@ -42,19 +42,28 @@ pub(crate) fn renege(world: &mut World) {
     }
     let clock = world.clock_ms;
     let mut gave_up = 0u64;
-    for q in world.waiting.iter_mut() {
+    // Disjoint field borrows: `waiting` and `abandoned_at` are distinct fields of `world`.
+    let abandoned_at = &mut world.abandoned_at;
+    for (s, q) in world.waiting.iter_mut().enumerate() {
         if q.is_empty() {
             continue;
         }
         let mut kept = std::collections::VecDeque::with_capacity(q.len());
+        let mut here = 0u64;
         for pax in q.drain(..) {
             if clock - pax.t_wait_ms > patience {
-                gave_up += 1;
+                here += 1;
             } else {
                 kept.push_back(pax);
             }
         }
         *q = kept;
+        if here > 0 {
+            gave_up += here;
+            if let Some(slot) = abandoned_at.get_mut(s) {
+                *slot += here; // bucket the renege to the station it happened at
+            }
+        }
     }
     world.abandoned += gave_up;
 }
@@ -73,6 +82,7 @@ pub(crate) fn board_alight(world: &mut World) {
         ref mut total_wait_ms,
         ref mut wait_samples,
         ref mut denied_boardings,
+        ref mut denied_at,
         ..
     } = *world;
 
@@ -142,6 +152,9 @@ pub(crate) fn board_alight(world: &mut World) {
                 // A rider who wanted THIS line but found it full was left behind (real pressure).
                 if wants_this {
                     *denied_boardings += 1;
+                    if let Some(slot) = denied_at.get_mut(s) {
+                        *slot += 1; // bucket the full-train pass-by to this station
+                    }
                 }
                 requeue.push_back(pax);
             }
