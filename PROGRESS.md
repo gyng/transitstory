@@ -232,6 +232,13 @@ vitest 20, tsc clean — determinism gate green with RAPTOR in the loop.
 - **Still deferred** behind the same seam: inter-station **footpaths** (transfers remain at shared
   station ids only) and a real **departure timetable** (the model is frequency-based by design —
   vehicles are headway-dispatched with emergent positions, so there is no timetable to read).
+- **Accessibility-weighted demand** (the closing of the loop) — `Router::reachable` exposes RAPTOR's
+  one-to-all travel-time labels (near-free; it computes the whole vector anyway). `demand::pick_dest`
+  now weights a trip's destination by **how fast transit reaches it** (wait + ride) instead of
+  crow-flies metres, so a better network *induces* demand toward the places it connects well. Cached
+  per origin (`access_cache`, cleared with `route_cache` on network change); `BfsRouter` opts out
+  (empty vec → geometric fallback). `tests/access.rs`: ordered one-to-all labels, demand skews to the
+  better-connected of two equal-job destinations, and the whole path stays deterministic. cargo 53.
 
 ## Known gaps / deferred
 

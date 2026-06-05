@@ -35,6 +35,10 @@ impl Router for RaptorRouter {
     ) -> Option<Vec<Leg>> {
         plan_raptor(lines, serving, origin, dest, max_legs)
     }
+
+    fn reachable(&self, lines: &[Line], serving: &[Vec<LineId>], origin: StationId, max_legs: usize) -> Vec<i64> {
+        reachable_raptor(lines, serving, origin, max_legs)
+    }
 }
 
 /// One directed traversal of a line: the ordered stops a vehicle visits and the cumulative
@@ -126,7 +130,23 @@ fn plan_raptor(
     if oi >= n || di >= n || oi == di || max_legs == 0 {
         return None;
     }
+    let (best, parent) = raptor_labels(lines, serving, oi, max_legs);
+    if best[di] >= INF {
+        return None;
+    }
+    reconstruct(&parent, oi, di, max_legs)
+}
 
+/// One-to-all earliest-arrival labels (ms) from `origin` to every station, plus the parent
+/// pointers for path reconstruction. This is the shared RAPTOR core: `plan` reconstructs a path
+/// from it, `reachable` exposes the label vector for the demand model's accessibility weighting.
+fn raptor_labels(
+    lines: &[Line],
+    serving: &[Vec<LineId>],
+    oi: usize,
+    max_legs: usize,
+) -> (Vec<i64>, Vec<Option<(StationId, LineId)>>) {
+    let n = serving.len();
     let routes = build_routes(lines);
     let nlines = lines.len();
 
@@ -207,10 +227,21 @@ fn plan_raptor(
         marked = improved;
     }
 
-    if best[di] >= INF {
-        return None;
+    (best, parent)
+}
+
+/// One-to-all travel-time vector (ms) from `origin` to every station; `i64::MAX` = unreachable
+/// within `max_legs`. The demand model weights destination attractiveness by this so that
+/// well-connected places (short transit time) draw more trips than far/slow ones — the network
+/// shapes the demand. RAPTOR already computes the whole label vector, so this is near-free.
+fn reachable_raptor(lines: &[Line], serving: &[Vec<LineId>], origin: StationId, max_legs: usize) -> Vec<i64> {
+    let n = serving.len();
+    let oi = origin.index();
+    if oi >= n || max_legs == 0 {
+        return Vec::new();
     }
-    reconstruct(&parent, oi, di, max_legs)
+    let (best, _) = raptor_labels(lines, serving, oi, max_legs);
+    best.into_iter().map(|t| if t >= INF { i64::MAX } else { t }).collect()
 }
 
 /// Walk parent pointers from `dest` back to `origin` into an ordered leg list.

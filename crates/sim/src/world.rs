@@ -72,6 +72,11 @@ pub struct World {
     /// A derived cache (not hashed); cleared when the network changes. Lookup-only, so no
     /// HashMap-iteration determinism hazard.
     pub route_cache: rustc_hash::FxHashMap<(u32, u32), Option<Vec<crate::routing::Leg>>>,
+    /// Accessibility cache: origin station → one-to-all transit travel time (ms) to every station
+    /// (`i64::MAX` = unreachable), from `Router::reachable`. Lets the demand model weight a trip's
+    /// destination by how fast the network reaches it. Derived (not hashed); cleared on network
+    /// change alongside `route_cache`; lookup-only, so no HashMap-iteration determinism hazard.
+    pub access_cache: rustc_hash::FxHashMap<u32, Vec<i64>>,
     /// Buildability lookup: (cell_x, cell_y) -> class code. Built once from CityData; lookup-only.
     pub build_lookup: rustc_hash::FxHashMap<(i32, i32), u8>,
     pub build_cell_mm: i64,
@@ -189,6 +194,7 @@ impl World {
             abandoned: 0,
             serving: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
+            access_cache: rustc_hash::FxHashMap::default(),
             build_lookup,
             build_cell_mm,
             demand_dirty: false,

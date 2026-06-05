@@ -36,4 +36,13 @@ pub trait Router {
         dest: StationId,
         max_legs: usize,
     ) -> Option<Vec<Leg>>;
+
+    /// One-to-all travel time (ms) from `origin` to every station (`i64::MAX` = unreachable),
+    /// used by the demand model to weight destinations by network accessibility. The default
+    /// returns an empty vec — "no accessibility data" — so callers fall back to a geometric
+    /// model; `RaptorRouter` overrides it with real earliest-arrival labels (near-free, since
+    /// RAPTOR computes the whole vector anyway). Must be deterministic (index-ordered) too.
+    fn reachable(&self, _lines: &[Line], _serving: &[Vec<LineId>], _origin: StationId, _max_legs: usize) -> Vec<i64> {
+        Vec::new()
+    }
 }

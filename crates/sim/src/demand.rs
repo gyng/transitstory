@@ -13,8 +13,12 @@ use rand_chacha::ChaCha8Rng;
 pub const CATCHMENT_MM: i64 = 500_000;
 /// Expected passengers per second per unit of captured origin weight (× this × dt_ms).
 pub const DEMAND_RATE_PER_MS: f32 = 1.0e-5;
-/// Distance-decay scale for destination attractiveness (mm).
+/// Distance-decay scale for destination attractiveness (mm) — the geometric fallback used only
+/// when the router exposes no accessibility data.
 const DEST_DECAY_MM: f64 = 3_000_000.0;
+/// Accessibility-decay scale (ms): a destination's pull halves at ~this transit travel time, so
+/// well-connected (fast-to-reach) places draw proportionally more trips. ~15 min.
+const ACCESS_DECAY_MS: f64 = 900_000.0;
 
 /// Recompute per-station captured origin/destination weight from the demand grid. Each
 /// cell's weight is distributed across in-range stations by normalized decay, so the total
@@ -91,6 +95,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         ref mut waiting,
         ref mut rng,
         ref mut route_cache,
+        ref mut access_cache,
         ref router,
         ..
     } = *world;
@@ -109,10 +114,17 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         }
 
         spawn_accum[s] += origin_strength * DEMAND_RATE_PER_MS * mult * dt_ms as f32;
+        if spawn_accum[s] < 1.0 {
+            continue; // nobody spawns this tick → skip the (lazy, cached) accessibility solve
+        }
+        // One-to-all transit travel time from this origin, cached until the network changes.
+        let access = access_cache
+            .entry(s as u32)
+            .or_insert_with(|| router.reachable(lines, serving, StationId(s as u32), max_legs));
         while spawn_accum[s] >= 1.0 {
             spawn_accum[s] -= 1.0;
             if let Some(dest) =
-                pick_dest(stations, serving, captured_origin, captured_dest, bias, s, rng)
+                pick_dest(stations, serving, captured_origin, captured_dest, access, bias, s, rng)
             {
                 // Route across the network (transfers at interchanges), cached per O/D pair.
                 let entry = route_cache
@@ -134,17 +146,22 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
 }
 
 /// Pick a network-wide destination among ALL served stations, weighted by attractiveness
-/// (AM→jobs, PM→homes) × distance-decay. Integer weighted draw from a seeded RNG.
+/// (AM→jobs, PM→homes) × **accessibility-decay** — how fast transit reaches it (wait + ride),
+/// not crow-flies metres — so a good network induces demand toward the places it connects well.
+/// Falls back to geometric distance-decay when no accessibility data is available (e.g. the
+/// router is `BfsRouter`, or geometry isn't solved yet). Integer weighted draw from a seeded RNG.
 #[allow(clippy::too_many_arguments)]
 fn pick_dest(
     stations: &[Station],
     serving: &[Vec<crate::ids::LineId>],
     captured_origin: &[f32],
     captured_dest: &[f32],
+    access: &[i64],
     bias: f32,
     origin: usize,
     rng: &mut ChaCha8Rng,
 ) -> Option<StationId> {
+    let use_access = !access.is_empty();
     let opos = stations[origin].pos;
     let mut cands: Vec<(StationId, u64)> = Vec::new();
     let mut total: u64 = 0;
@@ -152,12 +169,19 @@ fn pick_dest(
         if d_idx == origin || serving.get(d_idx).map(|v| v.is_empty()).unwrap_or(true) {
             continue;
         }
-        let dist = opos.dist_mm(&stations[d_idx].pos).max(1) as f64;
         // AM: pulled toward jobs (captured_dest); PM: toward homes (captured_origin).
         let cd = captured_dest.get(d_idx).copied().unwrap_or(0.0);
         let cor = captured_origin.get(d_idx).copied().unwrap_or(0.0);
         let attract = (bias * cd + (1.0 - bias) * cor) as f64;
-        let decay = 1.0 / (1.0 + dist / DEST_DECAY_MM);
+        let decay = if use_access {
+            match access.get(d_idx).copied() {
+                Some(t) if t < i64::MAX => ACCESS_DECAY_MS / (ACCESS_DECAY_MS + t as f64),
+                _ => 0.0, // unreachable within max_legs → only the +1 baseline keeps it possible
+            }
+        } else {
+            let dist = opos.dist_mm(&stations[d_idx].pos).max(1) as f64;
+            1.0 / (1.0 + dist / DEST_DECAY_MM)
+        };
         let w = (attract * decay * 1000.0) as u64 + 1; // +1 baseline so any station can be chosen
         total += w;
         cands.push((StationId(d_idx as u32), w));

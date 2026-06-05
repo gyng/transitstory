@@ -11,6 +11,7 @@ pub(crate) fn dispatch(world: &mut World) {
     }
     world.dispatch_dirty = false;
     world.route_cache.clear(); // network changed; routes may differ
+    world.access_cache.clear(); // …and so does destination accessibility
 
     // Rebuild the per-station serving-lines map (operational lines only) for routing.
     let nstations = world.stations.len();
