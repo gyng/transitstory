@@ -136,9 +136,20 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                 if cell != crate::city::class::ROAD {
                     vmax_eff = vmax_eff.min(OFF_ROAD_BUS_MM_S); // off-road: crawl, no road
                 } else {
-                    // On a road, share it with traffic: peak congestion scales the speed down.
-                    // Integer factor over the clock → hash-safe (never the f64 demand multiplier).
-                    vmax_eff = vmax_eff * crate::tod::congestion_pct(clock) / 100;
+                    // On a road, share it with traffic. Congestion = time-of-day × LOCAL built-up
+                    // density (BUILT cells in the 3×3 around this road cell — heavier traffic
+                    // downtown). Integer over the clock + raster → hash-safe.
+                    let mut built = 0i64;
+                    for ddx in -1..=1 {
+                        for ddy in -1..=1 {
+                            if build_lookup.get(&(key.0 + ddx, key.1 + ddy)).copied().unwrap_or(0)
+                                == crate::city::class::BUILT
+                            {
+                                built += 1;
+                            }
+                        }
+                    }
+                    vmax_eff = vmax_eff * crate::tod::congestion_at(clock, built) / 100;
                 }
             } else if cell == crate::city::class::BUILT {
                 vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);

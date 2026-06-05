@@ -33,19 +33,31 @@ pub fn work_bias(hour: f64) -> f32 {
     (0.5 + 0.5 * am - 0.5 * pm).clamp(0.0, 1.0) as f32
 }
 
-/// Road congestion factor (%), an INTEGER step over the in-game hour: a bus on a `class::ROAD`
-/// cell runs at this fraction of its speed (sharing the road with traffic). Worst at the rush
-/// peaks, clear overnight. Pure integer over the clock — unlike `demand_multiplier` (f64), this
-/// can scale HASHED vehicle motion without introducing float drift into the determinism gate.
-pub fn congestion_pct(clock_ms: i64) -> i64 {
+/// Time-of-day congestion penalty (%) — how much rush-hour traffic alone slows a road, before
+/// local density. INTEGER step over the in-game hour (pure integer — never the f64 multiplier — so
+/// it can scale HASHED vehicle motion without float drift). 0 overnight, worst at the peaks.
+fn time_penalty(clock_ms: i64) -> i64 {
     let hour = (6 + clock_ms.div_euclid(HOUR_MS)).rem_euclid(24);
     match hour {
-        7 | 8 | 9 => 55,    // AM rush — heavy
-        17 | 18 | 19 => 55, // PM rush — heavy
-        10..=16 => 80,      // daytime — moderate
-        20 | 21 | 22 => 90, // evening — light
-        _ => 100,           // 23 + 0..6 — clear
+        7 | 8 | 9 | 17 | 18 | 19 => 35, // AM/PM rush — heavy
+        10..=16 => 15,                  // daytime — moderate
+        20 | 21 | 22 => 8,              // evening — light
+        _ => 0,                         // 23 + 0..6 — clear
     }
+}
+
+/// Road congestion factor (%) on an OPEN road — time-of-day only. A bus runs at this fraction of
+/// its speed when nothing's built around it.
+pub fn congestion_pct(clock_ms: i64) -> i64 {
+    100 - time_penalty(clock_ms)
+}
+
+/// Road congestion factor (%) at a cell, combining time-of-day with LOCAL built-up density:
+/// background traffic is heavier where the surroundings are dense (`built_neighbours` = BUILT cells
+/// in the 3×3 around the road). So a downtown arterial gridlocks at rush hour while an open road
+/// keeps flowing. Floored at 50 so a fully-jammed road is never slower than going off-road.
+pub fn congestion_at(clock_ms: i64, built_neighbours: i64) -> i64 {
+    (congestion_pct(clock_ms) - built_neighbours.clamp(0, 9) * 4).clamp(50, 100)
 }
 
 pub fn period_label(hour: f64) -> &'static str {

@@ -149,6 +149,39 @@ fn a_bus_follows_the_road_between_stops() {
 }
 
 #[test]
+fn congestion_is_worse_in_built_up_areas() {
+    // Two parallel roads: A (y=0) hemmed in by BUILT cells above + below (downtown traffic);
+    // B (y=4 km) out in OPEN land. Same time → the downtown bus crawls, the open one flows.
+    let mut cells = Vec::new();
+    for cx in -50..50 {
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 0, c: class::ROAD }); // road A
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: -100_000, c: class::BUILT }); // hemmed in
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 100_000, c: class::BUILT });
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 4_000_000, c: class::ROAD }); // road B (open)
+    }
+    let city = CityData {
+        id: "cong".into(),
+        seed: 7,
+        buildability: BuildabilityGrid { cell_m: 100.0, cells },
+        demand: DemandGrid { cell_m: 200.0, cells: vec![] },
+        patience_ms: 0,
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    let downtown = bus_line(&mut w, 0); // hemmed in by BUILT
+    let open = bus_line(&mut w, 4_000_000); // out in the open
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..800 {
+        w.tick(50); // cruising
+    }
+    let v = |line: u32| -> i64 {
+        (0..w.vehicles.len()).find(|&i| w.vehicles.line[i].0 == line).map(|i| w.vehicles.v_mm_s[i]).unwrap_or(0)
+    };
+    assert!(v(downtown) < v(open), "the downtown bus crawls vs the open road: {} < {}", v(downtown), v(open));
+    assert!(v(downtown) > 0, "but it still moves");
+}
+
+#[test]
 fn bus_road_awareness_is_deterministic() {
     let build = || {
         let mut w = World::new(7, road_city());
