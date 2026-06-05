@@ -22,6 +22,7 @@ import { Panels } from "./Panels";
 import { Toolbar } from "./Toolbar";
 import { OnboardingCoach } from "./Onboarding";
 import { ObjectivePanel } from "./Objectives";
+import { ServiceReport } from "./ServiceReport";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -157,6 +158,7 @@ export function App() {
       <StatsBar />
       {scenario && <ObjectivePanel scenario={scenario} />}
       <Panels />
+      <ServiceReport />
       <Toolbar />
     </GameProvider>
   );

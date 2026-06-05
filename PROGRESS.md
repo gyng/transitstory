@@ -240,6 +240,23 @@ vitest 20, tsc clean — determinism gate green with RAPTOR in the loop.
   (empty vec → geometric fallback). `tests/access.rs`: ordered one-to-all labels, demand skews to the
   better-connected of two equal-job destinations, and the whole path stays deterministic. cargo 53.
 
+## Network dashboard — surfacing the service telemetry (2026-06-05)
+
+The sim produces rich service-quality telemetry (journey/wait time, full-train denials, renege,
+demand multiplier, per-line/-mode ridership) that mostly lived in a single hover-tooltip. Added a
+**collapsible "📊 Network" dashboard** (`ui/react/ServiceReport.tsx`) in the empty bottom-left
+corner — the abstract-state-in-panels half of the IA, so the top StatsBar stays "one number + one
+gauge". Default-open so the info is a visible channel, not a buried hover. Pure chrome: reads only
+the ~3 Hz `stats` slice, issues no Commands, new testids only (existing contract untouched).
+
+- Surfaces: **Avg wait / Avg trip** (were tooltip-only), **Demand served** gauge + the time-of-day
+  **rush multiplier**, the **pressure** trio (waiting / passed-by-full-trains / gave-up, colour-coded),
+  and a **Riders-by-mode** bar chart aggregated from `per_line` (no new sim field). A footer line
+  names the new accessibility loop ("trips favour destinations your network reaches fastest").
+- Browser-corroborated on the live Singapore network: 0 console errors, live values (avg trip 2.2 min,
+  served 94, 1022 waiting), no layout collisions (Toolbar is bottom-centre, this is bottom-left), and
+  the e2e suite is unaffected (specs are camera-independent — hook + testids, no raw canvas clicks).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
