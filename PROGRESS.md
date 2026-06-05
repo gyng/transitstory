@@ -343,6 +343,32 @@ Continued from the visibility pass. Two more behind-the-seam extensions:
   overlays reflect walk-reachable destinations for free. Integer ms throughout; BfsRouter stays
   transit-only (the baseline).
 
+## Buses become the road mode (2026-06-05)
+
+The bake already classified `class::ROAD` (motorway/trunk/primary; Singapore 3400 cells,
+Tokyo 3748) but NOTHING used it — buses were just cheap rail on straight track. Now buses
+are the road-bound mode, all sim-side + deterministic, no new data (chosen A+B+C+E; D/BRT skipped):
+
+- **A — road-aware speed** (`vehicle.rs`): a bus runs full spec speed on a `ROAD` cell, crawls
+  (`OFF_ROAD_BUS_MM_S` ~25 km/h) off-road. Same raster-lookup as the rail street cap, mode-gated.
+- **B — free roads** (`world.rs line_cost_metrics`): an on-road bus segment lays NO track capital
+  (rides the existing road); off-road it builds a busway (3M/km).
+- **C — road-following geometry** (`roadnav.rs` + `rebuild_with_span_points`): a bus's inter-stop
+  span is routed by an integer **grid A\*** over the `ROAD` raster (cheap on road, dear off), fed
+  to the Catmull-Rom smoother as pass-through bends. The search box scales with the stop gap so a
+  road can detour off-straight; over-long spans exceed the cell budget → straight (graceful).
+  Composes with A+B for free (the road-followed polyline rides ROAD cells → cheap + fast).
+- **E — congestion** (`tod::congestion_pct`): an INTEGER step over the in-game hour scales on-road
+  bus speed down at the AM/PM peaks — hash-safe (never the f64 `demand_multiplier`).
+- Verified: `buses.rs` (4 tests) proves on-road is cheaper+faster, peak slows it, a bus detours a
+  U-shaped road, all replay bit-for-bit; full workspace + determinism gate green. Browser-corroborated
+  on live Singapore — a bus drew **161 polyline vertices bending ~900 m to hug roads** (rail: 11
+  verts, straight) at **10M vs 55M** cost, zero console errors.
+- Deferred: **road-graph bake** (true street centrelines vs the 120 m raster — finer follow), **D/BRT**
+  (dedicated-busway tier via the build-mode toggle), and a **🛣 Roads overlay** (show the sim's ROAD
+  corridors so buses build where they're cheap — the CARTO basemap is a proxy today). Frontend overlay
+  left out to avoid colliding with in-flight frontend edits.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
