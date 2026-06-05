@@ -1,7 +1,8 @@
-//! Road navigation: grid A* over the buildability `class::ROAD` raster, used to route a BUS
-//! line's inter-stop span ALONG existing streets instead of straight track. Pure integer cost +
-//! index-ordered expansion → deterministic; the result is fed as pass-through points to the
-//! Catmull-Rom smoother (like player waypoints, but auto-derived for buses).
+//! Class-following navigation: grid A* over the buildability raster, used to route a line's
+//! inter-stop span ALONG cells of a preferred class instead of straight track — BUSES follow
+//! `class::ROAD`, FERRIES follow `class::WATER`. Pure integer cost + index-ordered expansion →
+//! deterministic; the result is fed as pass-through points to the Catmull-Rom smoother (like
+//! player waypoints, but auto-derived).
 use crate::city::class;
 use crate::geo_local::PointMm;
 use rustc_hash::FxHashMap;
@@ -9,20 +10,21 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 const MAX_CELLS: usize = 60_000; // bound the search; beyond this a bus just goes straight
-const ENTER_ROAD: i64 = 10; // cost to step into a ROAD cell (cheap — follow streets)
-const ENTER_OFF: i64 = 100; // cost to step into anything else (laying a busway)
+const ENTER_PREFERRED: i64 = 10; // cost to step into a cell of the preferred class (cheap — follow it)
+const ENTER_OFF: i64 = 100; // cost to step into anything else (leaving the corridor)
 
 #[inline]
 fn cell_of(p: PointMm, cell_mm: i64) -> (i64, i64) {
     (p.x_mm.div_euclid(cell_mm), p.y_mm.div_euclid(cell_mm))
 }
 
-/// Route the span `from`→`to` along roads, returning the intermediate points (simplified cell
-/// centres) a bus should thread to follow streets — or EMPTY (⇒ straight track) when neither end
-/// touches a road, the search box is too big, or the road path is effectively straight anyway.
-pub(crate) fn road_route(
+/// Route the span `from`→`to` along cells of class `prefer`, returning the intermediate points
+/// (simplified cell centres) the line should thread to follow that corridor — or EMPTY (⇒ straight
+/// track) when neither end touches `prefer`, the search box is too big, or the path is straight.
+pub(crate) fn class_route(
     lookup: &FxHashMap<(i32, i32), u8>,
     cell_mm: i64,
+    prefer: u8,
     from: PointMm,
     to: PointMm,
 ) -> Vec<PointMm> {
@@ -32,8 +34,8 @@ pub(crate) fn road_route(
     let cls = |cx: i64, cy: i64| lookup.get(&(cx as i32, cy as i32)).copied().unwrap_or(class::OPEN);
     let (fx, fy) = cell_of(from, cell_mm);
     let (tx, ty) = cell_of(to, cell_mm);
-    // Only road-route when at least one end is on a road; an all-off-road bus just goes straight.
-    if cls(fx, fy) != class::ROAD && cls(tx, ty) != class::ROAD {
+    // Only route when at least one end is on the preferred class; else the line just goes straight.
+    if cls(fx, fy) != prefer && cls(tx, ty) != prefer {
         return Vec::new();
     }
 
@@ -52,7 +54,7 @@ pub(crate) fn road_route(
     let start = idx(fx - minx, fy - miny);
     let goal = idx(tx - minx, ty - miny);
     let (glx, gly) = (tx - minx, ty - miny);
-    let heur = |lx: i64, ly: i64| (lx - glx).abs().max((ly - gly).abs()) * ENTER_ROAD;
+    let heur = |lx: i64, ly: i64| (lx - glx).abs().max((ly - gly).abs()) * ENTER_PREFERRED;
 
     let mut dist = vec![i64::MAX; w * h];
     let mut came: Vec<i32> = vec![-1; w * h];
@@ -84,7 +86,7 @@ pub(crate) fn road_route(
             if done[ncell] {
                 continue;
             }
-            let enter = if cls(minx + nx, miny + ny) == class::ROAD { ENTER_ROAD } else { ENTER_OFF };
+            let enter = if cls(minx + nx, miny + ny) == prefer { ENTER_PREFERRED } else { ENTER_OFF };
             let ng = g.saturating_add(enter * fac / 10);
             if ng < dist[ncell] {
                 dist[ncell] = ng;

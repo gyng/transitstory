@@ -57,6 +57,40 @@ fn a_ferry_is_cheaper_and_faster_on_water_than_on_land() {
 }
 
 #[test]
+fn a_ferry_follows_the_water_channel_around_land() {
+    // A U-shaped WATER channel: up the left (x=0), across the top (y=2 km), down the right
+    // (x=4 km). Both terminals sit at the bottom ends — a straight line between them crosses LAND,
+    // so the ferry must navigate the channel (the water twin of the bus's U-shaped road).
+    let mut cells = Vec::new();
+    for cy in 0..=20 {
+        cells.push(BuildCell { x_mm: 0, y_mm: cy * 100_000, c: class::WATER });
+    }
+    for cx in 0..=40 {
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 2_000_000, c: class::WATER });
+    }
+    for cy in 0..=20 {
+        cells.push(BuildCell { x_mm: 40 * 100_000, y_mm: cy * 100_000, c: class::WATER });
+    }
+    let city = CityData {
+        id: "u".into(),
+        seed: 7,
+        buildability: BuildabilityGrid { cell_m: 100.0, cells },
+        demand: DemandGrid { cell_m: 200.0, cells: vec![] },
+        patience_ms: 0,
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // bottom-left terminal, on water
+    w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None }); // bottom-right terminal
+    w.apply(&Command::CreateLine { color: 0x009e73, name: None, loop_line: false, mode: 2 });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+
+    let max_y = w.lines[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
+    assert!(max_y > 1_000_000, "the ferry follows the water channel, not straight over land (max y {max_y})");
+}
+
+#[test]
 fn ferry_water_awareness_is_deterministic() {
     let build = || {
         let mut w = World::new(7, water_city());
