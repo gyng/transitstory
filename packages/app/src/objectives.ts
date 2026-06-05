@@ -16,6 +16,9 @@ export interface Scenario {
   title: string;
   blurb: string;
   goals: Goal[];
+  /** If set, this scenario is offered ONLY for that city id (e.g. the globe air board); scenarios
+   *  with no cityId are universal challenges shown for every city. */
+  cityId?: string;
   /** Win must happen before this much ELAPSED sim time (ms), else the scenario is lost. */
   deadlineMs?: number;
   /** Lose if cumulative left-behind (abandoned) exceeds this. */
@@ -68,6 +71,17 @@ export const SCENARIOS: Record<string, Scenario> = {
       { kind: "ridership", target: 8000, label: "Carry 8,000 riders" },
     ],
     deadlineMs: 45 * 60_000,
+  },
+  "globe-airline": {
+    id: "globe-airline",
+    title: "Global Airline",
+    blurb: "Span the planet by air — open routes between the world's metros and connect them all.",
+    cityId: "globe",
+    goals: [
+      { kind: "coverage", target: 50, label: "Connect the world (50 coverage)" },
+      { kind: "ridership", target: 20000, label: "Fly 20,000 intercity passengers" },
+    ],
+    deadlineMs: 60 * 60_000,
   },
 };
 

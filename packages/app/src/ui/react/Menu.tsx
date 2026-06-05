@@ -210,7 +210,12 @@ export function Menu({
               className={`ot-city${selected.id === c.id ? " sel" : ""}`}
               data-testid={`city-${c.id}`}
               style={{ animationDelay: `${0.24 + i * 0.05}s` }}
-              onClick={() => setSelected(c)}
+              onClick={() => {
+                setSelected(c);
+                // Drop a city-specific challenge that no longer applies to the new city.
+                const sc = scenario ? SCENARIOS[scenario] : null;
+                if (sc?.cityId && sc.cityId !== c.id) setScenario(null);
+              }}
             >
               <div style={{ font: "600 16px system-ui" }}>{c.name}</div>
               <div style={{ color: "#9aa3ad", fontSize: "12px", marginTop: "3px" }}>{c.blurb}</div>
@@ -245,7 +250,9 @@ export function Menu({
           >
             Free play
           </button>
-          {Object.values(SCENARIOS).map((sc) => (
+          {Object.values(SCENARIOS)
+            .filter((sc) => !sc.cityId || sc.cityId === selected.id)
+            .map((sc) => (
             <button
               key={sc.id}
               className={`ot-modebtn${scenario === sc.id ? " sel" : ""}`}
