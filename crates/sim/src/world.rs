@@ -402,7 +402,7 @@ impl World {
     /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Tunable.
     fn agent_population_target(&self) -> usize {
         let homes: f64 = self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum();
-        ((homes * 40.0) as usize).clamp(4_000, 120_000)
+        ((homes * 14.0) as usize).clamp(3_000, 60_000)
     }
 
     /// Total one-time construction capital across all lines.

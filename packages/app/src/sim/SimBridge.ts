@@ -6,7 +6,7 @@
 import { Sim } from "sim-wasm";
 import { CommandLog } from "../commands/log";
 import { encodeCommand } from "../commands/codec";
-import type { AccessLink, Command, Event, JourneyView, LineView, OdLink, StationView, Stats } from "../types";
+import type { AccessLink, Command, Event, FollowView, JourneyView, LineView, OdLink, StationView, Stats } from "../types";
 
 export class SimBridge {
   private sim: Sim;
@@ -116,6 +116,11 @@ export class SimBridge {
    *  gravity trip, with route + home/work. null if no one is waiting there. */
   sampleJourney(station: number, nth: number): JourneyView | null {
     return this.sim.sampleJourney(station, nth) as JourneyView | null;
+  }
+
+  /** Live state of a followed citizen, or null if they're not currently in transit. */
+  followCitizen(citizenId: number): FollowView | null {
+    return this.sim.followCitizen(citizenId) as FollowView | null;
   }
 
   /** Authoritative construction-cost ($, track only) for a hypothetical line — the build HUD's

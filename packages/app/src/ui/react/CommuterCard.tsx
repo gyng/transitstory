@@ -75,8 +75,28 @@ export function CommuterCard() {
           </div>
         ))}
       </div>
-      <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 5 }}>
-        destination: <b style={{ color: "#5a626b" }}>{j.dest}</b>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+        <span style={{ color: "#9aa3ad", fontSize: 11 }}>
+          → <b style={{ color: "#5a626b" }}>{j.dest}</b>
+        </span>
+        {!j.anonymous && j.citizenId !== 0xffffffff && (
+          <button
+            data-testid="commuter-follow"
+            onClick={() => game.setFollowed(j.citizenId)}
+            title="Follow this commuter's whole journey"
+            style={{
+              border: 0,
+              borderRadius: 7,
+              padding: "4px 10px",
+              font: "700 11px system-ui",
+              cursor: "pointer",
+              background: "linear-gradient(180deg,#1ab6f0,#0a8fcc)",
+              color: "#fff",
+            }}
+          >
+            👁 Follow
+          </button>
+        )}
       </div>
     </div>
   );

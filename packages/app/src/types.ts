@@ -132,6 +132,7 @@ export interface JourneyLeg {
   alight: string;
 }
 export interface JourneyView {
+  citizenId: number;
   name: string;
   anonymous: boolean;
   home: string;
@@ -143,6 +144,24 @@ export interface JourneyView {
   leg: number;
   waitMin: number;
   queueLen: number;
+}
+
+/** Live state of a followed citizen — where they are now + journey progress. null when not in
+ *  transit (arrived / not departed). Mirrors crates/sim journey::FollowView. */
+export interface FollowView {
+  name: string;
+  home: string;
+  work: string;
+  dest: string;
+  onboard: boolean;
+  at: string; // station name (waiting) or line name (onboard)
+  lineColor: number;
+  station: number; // waiting station id, else -1
+  vehicle: number; // onboard vehicle index, else -1
+  legs: JourneyLeg[];
+  leg: number;
+  waitMin: number;
+  journeyMin: number;
 }
 
 export interface LineView {

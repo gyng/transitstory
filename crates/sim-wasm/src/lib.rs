@@ -127,6 +127,14 @@ impl Sim {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Live state of a followed citizen (where they are now + journey progress), or null if they're
+    /// not currently in transit. Read on the ~3 Hz tick while a citizen is being followed.
+    #[wasm_bindgen(js_name = followCitizen)]
+    pub fn follow_citizen(&self, citizen_id: u32) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&sim::journey::follow(&self.world, citizen_id))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Construction-cost preview ($, track only — no trains) for a hypothetical line through
     /// `station_ids` in `mode`. The build HUD's authoritative figure (same core formula as a
     /// committed line). `loop_line` closes the route. Returns a plain JS number.

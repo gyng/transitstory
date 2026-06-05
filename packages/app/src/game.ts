@@ -298,6 +298,18 @@ export class Game {
     this.refresh();
   }
 
+  /** The citizen currently being followed (their live journey is shown + located), or null. */
+  followedCitizen: number | null = null;
+  setFollowed(citizenId: number): void {
+    this.followedCitizen = citizenId;
+    for (const cb of this.onChange) cb();
+  }
+  clearFollowed(): void {
+    if (this.followedCitizen === null) return;
+    this.followedCitizen = null;
+    for (const cb of this.onChange) cb();
+  }
+
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
     const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));

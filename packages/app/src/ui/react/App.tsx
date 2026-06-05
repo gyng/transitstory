@@ -25,6 +25,7 @@ import { ObjectivePanel } from "./Objectives";
 import { ServiceReport } from "./ServiceReport";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
+import { FollowCard } from "./FollowCard";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -163,6 +164,7 @@ export function App() {
       <ServiceReport />
       <DraftControls />
       <CommuterCard />
+      <FollowCard />
       <Toolbar />
     </GameProvider>
   );
