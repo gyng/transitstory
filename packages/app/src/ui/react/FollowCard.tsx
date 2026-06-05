@@ -4,15 +4,17 @@
 // the read-only follow query, re-renders on the ~3 Hz stats tick (NOT the render loop — the locator
 // updates at stats cadence, like the waiting halos). Located via map.project (the sanctioned anchor
 // read, same as DraftControls).
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { mmToLngLat, metersToLngLat } from "../../coords/geo";
 import { useGame, useStats } from "./GameContext";
 import { hex } from "./shared";
+import type { FollowView } from "../../types";
 
 export function FollowCard() {
   const game = useGame();
   useStats(); // live refresh on the 3 Hz snapshot
   const [, bump] = useReducer((n: number) => n + 1, 0);
+  const lastSeen = useRef<FollowView | null>(null); // last live state, to infer the trip's outcome
   useEffect(() => {
     game.onChange.push(bump);
     return () => {
@@ -24,16 +26,28 @@ export function FollowCard() {
   const id = game.followedCitizen;
   if (id === null) return null;
   const f = game.bridge.followCitizen(id);
+  if (f) lastSeen.current = f;
 
-  // Not in transit (arrived / between trips) — show a brief "arrived" state with a dismiss.
+  // Not in transit right now — infer the outcome from the last live state. A rider who vanished
+  // from a long queue gave up (reneged); otherwise they arrived. The card stays so when their next
+  // commute spawns, `followCitizen` finds them again and the live view resumes (the daily routine).
   if (!f) {
+    const prev = lastSeen.current;
+    const gaveUp = !!prev && !prev.onboard && prev.waitMin > 20;
     return (
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <b>🏁 Journey complete</b>
+          <b data-testid="follow-name">{gaveUp ? "😞" : "🏁"} {prev?.name ?? "Commuter"}</b>
           <Stop onClick={() => game.clearFollowed()} />
         </div>
-        <div style={{ color: "#5a626b", marginTop: 3 }}>They've arrived (or aren't travelling right now).</div>
+        <div data-testid="follow-status" style={{ fontWeight: 600, marginTop: 3, color: gaveUp ? "var(--ot-gauge-bad,#d62828)" : "#009e73" }}>
+          {gaveUp ? `gave up waiting at ${prev?.at}` : `✅ arrived at ${prev?.dest ?? "their destination"}`}
+        </div>
+        <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 3, lineHeight: 1.3 }}>
+          {gaveUp
+            ? "Service was too infrequent — a shorter headway or more capacity would keep them."
+            : "They'll set off again on their next commute."}
+        </div>
       </Card>
     );
   }
