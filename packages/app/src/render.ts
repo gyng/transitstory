@@ -2,7 +2,7 @@
 // conversion happened at the geo.ts boundary in Game). Layer array order IS the z-order
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
-import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { STARVED_WAITING } from "./config";
 
 export type Rgb = [number, number, number];
@@ -31,6 +31,11 @@ export interface VehicleDot {
   lng: number;
   lat: number;
   color: Rgb;
+  /** Heading in radians (0 = +x / east), from the sim's vehicleAngles buffer — drives the
+   *  directional triangle so you read which way each train is travelling. */
+  angle: number;
+  /** Load factor (onboard / capacity), 0..~1 — drives the crowding ring colour + train size. */
+  load: number;
 }
 export interface WaitingDot {
   lng: number;
@@ -280,21 +285,80 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
   return { below, above };
 }
 
-/** The per-frame vehicle layer (moving trains). Below stations so platforms stay clickable. */
-export function vehicleLayer(dots: VehicleDot[]): Layer {
-  return new ScatterplotLayer({
-    id: "vehicles",
-    data: dots,
-    getPosition: (d: VehicleDot) => [d.lng, d.lat],
-    getRadius: 5,
-    radiusUnits: "pixels",
-    radiusMinPixels: 4,
-    getFillColor: (d: VehicleDot) => d.color,
-    stroked: true,
-    getLineColor: [255, 255, 255, 230],
-    lineWidthMinPixels: 1.5,
-    // Pickable so hovering a moving train raises the train inspector (load factor + line).
-    // Above the line layer, below stations, so the pick hierarchy is train > station > line.
-    pickable: true,
-  });
+// A white triangle pointing +x (east) at angle 0, baked once to a data URL so the IconLayer can
+// rotate it by heading. `mask:true` makes it a tintable stencil so getColor carries line identity.
+function arrowIconUrl(): string {
+  const s = 64;
+  const c = document.createElement("canvas");
+  c.width = s;
+  c.height = s;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.moveTo(58, 32); // tip (east)
+  g.lineTo(14, 13);
+  g.lineTo(26, 32);
+  g.lineTo(14, 51);
+  g.closePath();
+  g.fill();
+  return c.toDataURL();
+}
+const ARROW_ICON = typeof document !== "undefined" ? arrowIconUrl() : "";
+const ARROW_MAPPING = { arrow: { x: 0, y: 0, width: 64, height: 64, mask: true, anchorX: 32, anchorY: 32 } };
+
+/** Crowding band for a moving train, mirroring loadPip / the waiting-ring language so "busy" and
+ *  "crush" read the same colour wherever they appear. Outline only — the body keeps line identity. */
+function loadRing(load: number): { color: [number, number, number, number]; width: number } {
+  if (load >= 0.9) return { color: [214, 40, 40, 240], width: 2.5 }; // crush — vermillion
+  if (load >= 0.6) return { color: [230, 159, 0, 230], width: 2 }; // busy — amber
+  return { color: [255, 255, 255, 230], width: 1.5 }; // healthy — white
+}
+
+/** The per-frame vehicle layers (moving trains): a line-coloured body whose radius grows and
+ *  whose outline shifts white→amber→red with load (identity + crowding, always visible against
+ *  the same-coloured track via its contrasting stroke), with a small WHITE triangle on top
+ *  rotated to the heading so you read which way each train is travelling. Both below stations so
+ *  platforms stay clickable. Returned as an array spliced into the z-order between topo below/above. */
+export function vehicleLayers(dots: VehicleDot[]): Layer[] {
+  return [
+    // Body: the crowding-aware dot. Line-colour fill = identity; radius + outline colour/width
+    // track load (white healthy → amber busy → red crush, the loadPip/waiting-ring language).
+    // Pickable, id "vehicles" so the train inspector (getTooltip dispatch on layer.id) still fires.
+    new ScatterplotLayer({
+      id: "vehicles",
+      data: dots,
+      getPosition: (d: VehicleDot) => [d.lng, d.lat],
+      getRadius: (d: VehicleDot) => 7 + d.load * 3,
+      radiusUnits: "pixels",
+      radiusMinPixels: 6,
+      getFillColor: (d: VehicleDot) => d.color,
+      stroked: true,
+      getLineColor: (d: VehicleDot) => loadRing(d.load).color,
+      getLineWidth: (d: VehicleDot) => loadRing(d.load).width,
+      lineWidthUnits: "pixels",
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+      updateTriggers: {
+        getRadius: dots.map((d) => Math.round(d.load * 10)).join(","),
+        getLineColor: dots.map((d) => loadRing(d.load).width).join(","),
+        getLineWidth: dots.map((d) => loadRing(d.load).width).join(","),
+      },
+    }),
+    // Direction: a small WHITE triangle rotated to the train's heading (deck getAngle is CCW
+    // degrees; our heading is CCW radians from +x → straight conversion). White so it reads on the
+    // line-coloured body; smaller than the dot so the identity colour still rings it. Not pickable.
+    new IconLayer({
+      id: "vehicle-dir",
+      data: dots,
+      getPosition: (d: VehicleDot) => [d.lng, d.lat],
+      getIcon: () => "arrow",
+      iconAtlas: ARROW_ICON,
+      iconMapping: ARROW_MAPPING,
+      getColor: [255, 255, 255, 235],
+      getAngle: (d: VehicleDot) => (d.angle * 180) / Math.PI,
+      getSize: (d: VehicleDot) => 9 + d.load * 3,
+      sizeUnits: "pixels",
+      sizeMinPixels: 7,
+    }),
+  ];
 }

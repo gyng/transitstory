@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayer, type DemandPoint, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -693,7 +693,7 @@ export class Game {
    *  them (catchment/lines/blueprint < vehicles < stations). Reused topo instances mean deck
    *  only re-uploads the small vehicle layer each frame. */
   composeAndSet(vehicles: VehicleDot[]): void {
-    this.overlay.setProps({ layers: [...this.below, vehicleLayer(vehicles), ...this.above] });
+    this.overlay.setProps({ layers: [...this.below, ...vehicleLayers(vehicles), ...this.above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */
@@ -701,17 +701,33 @@ export class Game {
     return this.bridge.linesView().map((l) => l.color);
   }
 
-  /** Current (non-interpolated) vehicle dots in lng/lat, tinted by line. */
-  currentVehicleDots(): VehicleDot[] {
-    const pos = this.bridge.vehiclePositions();
+  /** Build vehicle dots interpolated at `alpha` (0 = previous tick, →1 = current), each carrying
+   *  line tint + heading (directional triangle) + load factor (crowding ring). The single source
+   *  for both the per-frame GameLoop render and the on-refresh recompose, so they never drift. */
+  vehicleDotsAt(alpha: number): VehicleDot[] {
+    const cur = this.bridge.vehiclePositions();
+    if (cur.length === 0) return [];
+    const prev = this.bridge.vehiclePrevPositions();
     const lineIds = this.bridge.vehicleLineIds();
+    const angles = this.bridge.vehicleAngles();
+    const loads = this.bridge.vehicleLoads(); // interleaved [onboard, capacity] per vehicle
     const colors = this.lineColors();
     const dots: VehicleDot[] = [];
-    for (let i = 0; i < pos.length; i += 2) {
-      const [lng, lat] = metersToLngLat([pos[i], pos[i + 1]]);
-      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[i / 2]] ?? 0x444444) });
+    for (let i = 0; i < cur.length; i += 2) {
+      const vi = i / 2;
+      const x = prev[i] + (cur[i] - prev[i]) * alpha;
+      const y = prev[i + 1] + (cur[i + 1] - prev[i + 1]) * alpha;
+      const [lng, lat] = metersToLngLat([x, y]);
+      const cap = loads[vi * 2 + 1] ?? 0;
+      const load = cap > 0 ? (loads[vi * 2] ?? 0) / cap : 0;
+      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[vi]] ?? 0x444444), angle: angles[vi] ?? 0, load });
     }
     return dots;
+  }
+
+  /** Current (non-interpolated) vehicle dots — the on-refresh recompose before the loop runs. */
+  currentVehicleDots(): VehicleDot[] {
+    return this.vehicleDotsAt(1);
   }
 
   /** Pre-seed a real-world network (stations + lines) via the Command path. Stations are

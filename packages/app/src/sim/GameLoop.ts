@@ -3,8 +3,6 @@
 // previous and current sim snapshot by alpha = accumulator/dt. Render (rAF + wall-clock)
 // stays decoupled from the deterministic sim. Stats DOM lives on its own ~3 Hz throttle.
 import { TICK_MS } from "../config";
-import { metersToLngLat } from "../coords/geo";
-import { colorToRgb, type VehicleDot } from "../render";
 import type { Game } from "../game";
 
 export class GameLoop {
@@ -51,21 +49,8 @@ export class GameLoop {
   };
 
   private renderVehicles(alpha: number): void {
-    const cur = this.game.bridge.vehiclePositions();
-    if (cur.length === 0) {
-      this.game.composeAndSet([]);
-      return;
-    }
-    const prev = this.game.bridge.vehiclePrevPositions();
-    const lineIds = this.game.bridge.vehicleLineIds();
-    const colors = this.game.lineColors();
-    const dots: VehicleDot[] = [];
-    for (let i = 0; i < cur.length; i += 2) {
-      const x = prev[i] + (cur[i] - prev[i]) * alpha;
-      const y = prev[i + 1] + (cur[i + 1] - prev[i + 1]) * alpha;
-      const [lng, lat] = metersToLngLat([x, y]);
-      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[i / 2]] ?? 0x444444) });
-    }
-    this.game.composeAndSet(dots);
+    // Interpolation + dot assembly (line tint, heading, load) lives in Game.vehicleDotsAt so the
+    // per-frame loop and the on-refresh recompose share one source. composeAndSet handles empty.
+    this.game.composeAndSet(this.game.vehicleDotsAt(alpha));
   }
 }
