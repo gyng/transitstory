@@ -18,6 +18,7 @@ export interface GameUI {
   enabledModes: number[]; // sorted snapshot of the Set (stable array for render deps)
   showDemand: boolean;
   showReach: boolean;
+  showRoads: boolean;
   selectedLine: number | null;
   selectedStation: number | null;
   notice: string | null;
@@ -31,6 +32,7 @@ function snapUI(g: Game): GameUI {
     enabledModes: [...g.enabledModes].sort((a, b) => a - b),
     showDemand: g.showDemand,
     showReach: g.showReach,
+    showRoads: g.showRoads,
     selectedLine: g.selectedLine,
     selectedStation: g.selectedStation,
     notice: g.notice,
@@ -44,6 +46,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.transport === b.transport &&
     a.showDemand === b.showDemand &&
     a.showReach === b.showReach &&
+    a.showRoads === b.showRoads &&
     a.selectedLine === b.selectedLine &&
     a.selectedStation === b.selectedStation &&
     a.notice === b.notice &&

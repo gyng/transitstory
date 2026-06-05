@@ -69,6 +69,10 @@ export class Game {
   /** Accessibility "Reach" overlay toggle — when on + a station selected, shades reachable
    *  stations by transit travel time from it (the isochrone). Read via a pure core query. */
   showReach = false;
+  /** "Roads" overlay toggle — paints the ROAD corridors where buses run cheap + fast. Also
+   *  auto-shown while drawing a Bus line (so you see where to route it). Memoized lng/lat below. */
+  showRoads = false;
+  private roadCells: import("./render").RoadCell[] | null = null;
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
@@ -379,6 +383,26 @@ export class Game {
   setShowReach(on: boolean): void {
     this.showReach = on;
     this.refresh();
+  }
+
+  /** Toggle the "Roads" overlay (the ROAD corridors where buses are cheap + fast). */
+  setShowRoads(on: boolean): void {
+    this.showRoads = on;
+    this.refresh();
+  }
+
+  /** ROAD-cell centres in lng/lat for the overlay — derived once from the buildability raster
+   *  (the same data the cost/speed gate uses), memoized so it never recomputes per frame. */
+  private roadPoints(): import("./render").RoadCell[] {
+    if (this.roadCells === null) {
+      this.roadCells = this.build.loaded
+        ? this.build.cellsMm(BUILD.ROAD).map(([x, y]) => {
+            const [lng, lat] = mmToLngLat([x, y]);
+            return { lng, lat };
+          })
+        : [];
+    }
+    return this.roadCells;
   }
 
   selectStation(id: number | null): void {
@@ -818,11 +842,17 @@ export class Game {
       });
     }
 
+    // ROAD corridors: shown when the toggle is on, OR auto-revealed while drawing a Bus line
+    // (transport 1) so you can see where to route it cheap + fast. Empty otherwise (no overlay).
+    const showRoads = this.showRoads || (this.mode === "build" && this.tool === "line" && this.transport === 1);
+    const roads = showRoads ? this.roadPoints() : [];
+
     return {
       stations,
       lines,
       catchments,
       blueprint,
+      roads,
       vehicles: [],
       waiting,
       hazards,

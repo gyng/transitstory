@@ -70,6 +70,10 @@ export interface ReachDot {
   lat: number;
   ms: number; // transit travel time from the selected station → green/amber/red ring
 }
+export interface RoadCell {
+  lng: number;
+  lat: number; // a ROAD-class cell centre — where buses run cheap + fast (the "Roads" overlay)
+}
 export interface ControlHandle {
   lng: number;
   lat: number;
@@ -85,6 +89,7 @@ export interface RenderView {
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
+  roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
@@ -145,6 +150,19 @@ function reachBand(ms: number): 0 | 1 | 2 {
  *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
 export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] } {
   const below: Layer[] = [
+    // ROAD corridors (very back, under the network): the cells where a bus runs cheap + fast.
+    // Muted slate so it reads as ground truth, not network identity. Metre-radius so it scales
+    // with the map. updateTriggers unneeded — `roads` is a stable memoized array per city.
+    new ScatterplotLayer({
+      id: "roads",
+      data: view.roads,
+      getPosition: (d: RoadCell) => [d.lng, d.lat],
+      getRadius: 70,
+      radiusUnits: "meters",
+      radiusMinPixels: 2,
+      getFillColor: [90, 110, 130, 70],
+      stroked: false,
+    }),
     // Travel-demand heat (bottom of the stack so the network draws over it). Soft blue→red
     // additive blobs sized by demand weight — a "where do people want to go" map layer.
     new ScatterplotLayer({

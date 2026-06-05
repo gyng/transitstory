@@ -299,6 +299,16 @@ export function Toolbar() {
           }}
         />
 
+        <Button
+          label="🛣 Roads"
+          testid="layer-roads"
+          onClick={() => game.setShowRoads(!ui.showRoads)}
+          style={{
+            background: ui.showRoads ? "#0072b2" : "#fff",
+            color: ui.showRoads ? "#fff" : "#1c2024",
+          }}
+        />
+
         <Button label="⚙" testid="open-settings" onClick={() => setSettingsOpen((o) => !o)} />
         </div>
       </div>

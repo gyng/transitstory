@@ -32,6 +32,21 @@ export class Buildability {
     return this.classifyMm(x, y);
   }
 
+  /** Cell-centre mm positions of every cell of class `klass` (e.g. BUILD.ROAD) — for the map
+   *  overlay that shows where buses are cheap + fast. Computed once, memoized by the caller. */
+  cellsMm(klass: number): [number, number][] {
+    const half = this.cellMm / 2;
+    const out: [number, number][] = [];
+    for (const [k, c] of this.cells) {
+      if (c !== klass) continue;
+      const comma = k.indexOf(",");
+      const cx = Number(k.slice(0, comma));
+      const cy = Number(k.slice(comma + 1));
+      out.push([cx * this.cellMm + half, cy * this.cellMm + half]);
+    }
+    return out;
+  }
+
   get loaded(): boolean {
     return this.cells.size > 0;
   }
