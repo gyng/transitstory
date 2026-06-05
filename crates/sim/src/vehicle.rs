@@ -125,7 +125,7 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             continue;
         }
 
-        let spec = crate::trainset::spec_for_mode(line.mode);
+        let spec = line.vehicle_spec();
         // Loops always run forward (+1); out-and-back uses the stored direction.
         let dir = if line.loop_line { 1 } else { v.dir[i] as i64 };
         let s = v.s_mm[i];

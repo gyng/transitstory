@@ -49,7 +49,7 @@ pub fn vehicle_loads(w: &World) -> Vec<u16> {
         let cap = w
             .lines
             .get(v.line[i].index())
-            .map(|l| crate::trainset::spec_for_mode(l.mode).capacity)
+            .map(|l| l.vehicle_spec().capacity)
             .unwrap_or(0);
         out.push(v.onboard[i]);
         out.push(cap);

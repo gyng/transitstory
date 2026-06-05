@@ -2,7 +2,6 @@
 //! current leg ends here (re-queueing transferers for their next leg, or counting arrivals),
 //! then boards waiting riders whose current leg is on THIS line, FIFO up to capacity.
 use crate::routing::Leg;
-use crate::trainset::spec_for_mode;
 use crate::world::World;
 
 /// Load-dependent dwell: each boarding/alighting passenger adds time at the stop, capped. This is
@@ -105,7 +104,7 @@ pub(crate) fn board_alight(world: &mut World) {
             .get(line_id.index())
             .filter(|l| l.trainset.is_some())
             .map(|l| {
-                let spec = spec_for_mode(l.mode);
+                let spec = l.vehicle_spec();
                 (spec.capacity as usize, spec.dwell_ms)
             })
             .unwrap_or((0, 0));

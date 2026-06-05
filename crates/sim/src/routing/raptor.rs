@@ -10,7 +10,6 @@
 use super::{Footpaths, Leg, Router};
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
-use crate::trainset::spec_for_mode;
 
 /// Unreachable sentinel (kept well below i64::MAX so `+ wait` can't overflow).
 const INF: i64 = i64::MAX / 4;
@@ -71,7 +70,7 @@ fn build_routes(lines: &[Line]) -> Vec<DirRoute> {
             continue; // geometry not built yet — skip defensively
         }
         let line_id = LineId(li as u32);
-        let spec = spec_for_mode(line.mode);
+        let spec = line.vehicle_spec();
         let v = spec.v_max_mm_s;
         let dwell = spec.dwell_ms.max(0);
         let wait = line.headway_ms.max(0) / 2;

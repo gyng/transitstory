@@ -387,6 +387,38 @@ generalized, not duplicated). All sim-side + deterministic, no new data:
   bit-for-bit; determinism gate green. Browser-corroborated on Singapore — a ferry drew **21
   polyline vertices bending ~400 m around the islands at 0M** cost (rail: 11 verts, straight, 44M).
 
+## Air game — the globe + an aircraft roster (2026-06-05)
+
+The globe is a SECOND `World` of the SAME engine: cities are `Station`s, air routes are `Line`s of
+`mode=AIR`, demand is one cell per metro (origin/dest weight = population). Zero core changes beyond
+the globe-scale AIR vehicle preset.
+
+- **Globe content** (`scripts/build_globe.py`, pure data): 29 world hubs + 12 flagship air routes.
+  Re-runnable + deterministic; one demand cell per metro; stations carry lng/lat only (you don't
+  drill into air destinations).
+- **Air builds no right-of-way** (`world.rs line_cost_metrics`): AIR per-km cost = 0 — you buy
+  aircraft (capital) and burn fuel (opex), not track. The old metro-scale 1M/km was astronomical at
+  globe distances (cities thousands of km apart), so any air route was unaffordable.
+- **Aircraft roster** (`trainset.rs AIR_ROSTER` + `spec_for(mode, spec_id)`, `Line::vehicle_spec`):
+  the `AssignTrainset{spec}` seam made real. Four aircraft — Narrowbody (the locked **index-0
+  default**, byte-identical to the historical preset so the determinism hash never moves), Regional,
+  Widebody, Jumbo — a **non-dominated** capacity-vs-turnaround ladder (capacity 88<250<410<525,
+  dwell 45s<60s<90s<120s, so a bigger jet fills more per departure but sits longer, widening
+  effective headway). The one in-sim lever that bites today is dwell (the economy/price dimension
+  is the blocked follow-up). Resolved at all four clean reader sites (`pax`/`vehicle`/`render_buf`/
+  `raptor`) via `Line::vehicle_spec()`; `spec_id == 0` is always the mode default for every mode, so
+  every existing save replays bit-for-bit.
+- Verified: `aircraft.rs` (7 tests) — index-0 lock, spec-0==mode-default for all modes, non-dominated
+  ladder, OOB clamp, non-air modes ignore spec, a non-default aircraft (widebody) replays bit-for-bit,
+  assigned aircraft drives vehicle capacity. Full sim suite + determinism gate green.
+- **Deferred (blocked on contested files):** the player-facing **aircraft picker** (a roster mirror
+  in `shared.ts` + a selector in the Editor `Panels.tsx` + a `spec` arg on `game.assignTrainset` in
+  `game.ts`) and the load-factor display calc at `world.rs:465` (still on `spec_for_mode` — correct
+  for the default aircraft, needs `vehicle_spec()` once a non-default can be chosen). These live in
+  files under active rewrite (`game.ts`, `shared.ts`, `world.rs`); ready-to-apply, held to avoid
+  clobbering WIP. **Air economy depth (per-route P&L, fares, AI competitors)** remains a
+  Command/trait/CityData seam, blocked on the same core rewrite — not half-built.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

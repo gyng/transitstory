@@ -65,6 +65,14 @@ pub mod mode {
 }
 
 impl Line {
+    /// The concrete vehicle spec for this line: its assigned aircraft/trainset within the mode
+    /// roster (`trainset.spec`), or the mode default when unassigned. Spec id 0 is always the mode
+    /// default, so an unassigned or default-assigned line behaves exactly as before (determinism).
+    #[inline]
+    pub fn vehicle_spec(&self) -> crate::trainset::TrainsetSpec {
+        crate::trainset::spec_for(self.mode, self.trainset.map(|t| t.spec).unwrap_or(0))
+    }
+
     pub fn new(color: u32, default_headway_ms: i64) -> Self {
         Self {
             color,
