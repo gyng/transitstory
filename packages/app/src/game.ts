@@ -1034,9 +1034,54 @@ export class Game {
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
       this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * 60_000)));
     });
+    this.legalizeWaterCrossings(net);
     this.selectedStation = null;
     this.selectedLine = null;
     this.refresh();
+  }
+
+  /** A loaded real metro is EXISTING grade-separated infrastructure — where a land line crosses
+   *  water it does so on a tunnel/viaduct, not illegal surface track. Without this, those spans load
+   *  as surface-over-water and render as the red "fix me" warning instead of the line's true colour
+   *  (and the editor scolds pre-built reality). So tunnel each span that crosses water; ferry/air
+   *  (modes 2/3) cross water freely and are skipped. Span mode is a build attribute — no sim effect,
+   *  no determinism impact (it's a command on the same log). At boot the economy is off, so the
+   *  afford-gate never rejects it. A whole-line fallback covers any curve that dips into water where
+   *  the straight span didn't, so a loaded land line is never left painted red. */
+  private legalizeWaterCrossings(net: import("./sim/network").Network): void {
+    if (!this.build.loaded) return;
+    const TUNNEL = 2;
+    const crossesWater = (a: number, b: number): boolean => {
+      const sa = net.stations[a];
+      const sb = net.stations[b];
+      if (!sa || !sb) return false;
+      const [ax, ay] = lngLatToMm([sa.lng, sa.lat]);
+      const [bx, by] = lngLatToMm([sb.lng, sb.lat]);
+      const len = Math.hypot(bx - ax, by - ay);
+      const steps = Math.min(80, Math.max(1, Math.round(len / this.build.cellMm)));
+      for (let k = 0; k <= steps; k++) {
+        const x = ax + ((bx - ax) * k) / steps;
+        const y = ay + ((by - ay) * k) / steps;
+        if (this.build.classifyMm(x, y) === BUILD.WATER) return true;
+      }
+      return false;
+    };
+    net.lines.forEach((line, li) => {
+      const mode = line.mode ?? 0;
+      if (mode === 2 || mode === 3) return; // ferry/air cross water freely — leave on surface
+      const ids = line.stations;
+      for (let j = 0; j + 1 < ids.length; j++) {
+        if (crossesWater(ids[j], ids[j + 1])) this.bridge.apply(cmd.setSegmentMode(li, j, TUNNEL));
+      }
+      if (line.loop && ids.length > 2 && crossesWater(ids[ids.length - 1], ids[0])) {
+        this.bridge.apply(cmd.setSegmentMode(li, ids.length - 1, TUNNEL));
+      }
+    });
+    // Safety net: any line the core STILL flags (a curve crossing water the straight span missed)
+    // gets a whole-line tunnel, so a loaded land line never renders as the surface-over-water red.
+    for (const lv of this.bridge.linesView()) {
+      if (lv.crossesWaterSurface) this.bridge.apply(cmd.setSegmentMode(lv.id, WHOLE_LINE, TUNNEL));
+    }
   }
 
   /** The next palette colour for a new line (deterministic by line index). */
