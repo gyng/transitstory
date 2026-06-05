@@ -8,6 +8,16 @@ import { useTweenedNumber } from "./useTween";
 // Stable formatters (module-level so the tween hook's dep identity never changes per render).
 const fmtInt = (n: number): string => `${Math.round(n)}`;
 
+/** Sun/moon glyph for the hour — makes the time-of-day (and the day/night map wash) legible in TEXT,
+ *  not hue alone (recognition-over-recall, colour-blind-safe). Bands match the sky.ts palette. */
+function todGlyph(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  if (h < 6 || h >= 20) return "🌙";
+  if (h < 8) return "🌅";
+  if (h >= 18) return "🌇";
+  return "☀️";
+}
+
 export function StatsBar() {
   const s = useStats();
   // Rolling headline counters — the value eases toward each new ~3 Hz snapshot instead of snapping
@@ -63,6 +73,9 @@ export function StatsBar() {
       }}
     >
       <div>
+        <span data-testid="tod-glyph" title={s.period} style={{ marginRight: "5px" }}>
+          {todGlyph(s.simHour)}
+        </span>
         <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>
           {clock}
         </b>{" "}

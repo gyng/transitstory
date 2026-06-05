@@ -89,24 +89,29 @@ fn walk_dir(w: &World, citizen: u32, cell_of: impl Fn(&crate::agents::Citizen) -
 
 /// Build the peep dot buffers at interpolation `alpha` (0=prev tick .. 1=cur), `tick_ms` = the
 /// render tick length (so walk progress advances smoothly between ticks). Returns
-/// `(positions_metres_interleaved, rgba_u8)`. Pure read — touches no sim state, no hash.
-pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>) {
+/// `(positions_metres_interleaved, rgba_u8, citizen_ids)` — `citizen_ids[k]` is the citizen behind
+/// peep `k` (or `u32::MAX` for an anonymous gravity trip), so the frontend can map a clicked peep
+/// back to a rider and inspect/follow them. Pure read — touches no sim state, no hash.
+pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>, Vec<u32>) {
     let cap = MAX_VISIBLE_PEEPS;
     let mut xy: Vec<f32> = Vec::with_capacity(cap * 2);
     let mut col: Vec<u8> = Vec::with_capacity(cap * 4);
+    let mut cit: Vec<u32> = Vec::with_capacity(cap);
     let now = w.clock_ms as f32 + alpha * tick_ms;
 
     // Inline push via a macro (not a closure — a closure would hold a mutable borrow of xy/col and
-    // block the `n >= cap` capacity checks). `n` is the running peep count.
+    // block the `n >= cap` capacity checks). `n` is the running peep count. The 7th arg is the
+    // citizen id behind this peep (kept index-aligned with positions/colours for click-to-inspect).
     let mut n = 0usize;
     macro_rules! push {
-        ($x:expr, $y:expr, $r:expr, $g:expr, $b:expr, $a:expr) => {{
+        ($x:expr, $y:expr, $r:expr, $g:expr, $b:expr, $a:expr, $cit:expr) => {{
             xy.push($x);
             xy.push($y);
             col.push($r);
             col.push($g);
             col.push($b);
             col.push($a);
+            cit.push($cit);
             n += 1;
         }};
     }
@@ -126,7 +131,7 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>) {
             }
             let seed = peep_seed(pax);
             let (jx, jy) = jitter(seed, RIDE_M);
-            push!(vx + jx, vy + jy, lr, lg, lb, 235);
+            push!(vx + jx, vy + jy, lr, lg, lb, 235, pax.citizen_id);
         }
     }
 
@@ -152,10 +157,10 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>) {
                 let (dx, dy) = walk_dir(w, pax.citizen_id, |c| c.home_cell, (sx, sy), seed);
                 let back = STUB_M * (1.0 - prog);
                 let (jx, jy) = jitter(seed, FAN_M * 0.5);
-                push!(sx - dx * back + jx, sy - dy * back + jy, 92, 102, 116, (140.0 + 90.0 * prog) as u8);
+                push!(sx - dx * back + jx, sy - dy * back + jy, 92, 102, 116, (140.0 + 90.0 * prog) as u8, pax.citizen_id);
             } else {
                 let (jx, jy) = jitter(seed, FAN_M);
-                push!(sx + jx, sy + jy, 74, 84, 100, 220);
+                push!(sx + jx, sy + jy, 74, 84, 100, 220, pax.citizen_id);
             }
         }
     }
@@ -175,10 +180,10 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>) {
         let (dx, dy) = walk_dir(w, r.citizen, |c| c.work_cell, (sx, sy), r.citizen ^ r.station);
         let fwd = STUB_M * prog;
         let (jx, jy) = jitter(r.citizen ^ (r.station << 8), FAN_M * 0.5);
-        push!(sx + dx * fwd + jx, sy + dy * fwd + jy, 120, 130, 144, ((1.0 - prog) * 200.0) as u8);
+        push!(sx + dx * fwd + jx, sy + dy * fwd + jy, 120, 130, 144, ((1.0 - prog) * 200.0) as u8, r.citizen);
     }
 
-    (xy, col)
+    (xy, col, cit)
 }
 
 /// Stable cosmetic seed per passenger: the citizen id when known, else a hash of the spawn time

@@ -25,9 +25,13 @@ const TOOLS: [Tool, string][] = [
   ["bulldozer", "💥 Bulldoze"],
 ];
 
+// A doubling gear ladder (1×→8×) for fine control, plus a max fast-forward. The sim is a GameLoop
+// knob (loop.setSpeed), never a Command — speed never touches sim state.
 const SPEEDS: [number, string][] = [
   [1, "1×"],
-  [10, "10×"],
+  [2, "2×"],
+  [4, "4×"],
+  [8, "8×"],
   [100, "max"],
 ];
 

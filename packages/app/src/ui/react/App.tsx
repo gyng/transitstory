@@ -28,6 +28,7 @@ import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
 import { StatsDashboard } from "./StatsDashboard";
 import { StatsRecorder } from "./statsHistory";
+import { ContextMenu } from "./ContextMenu";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -173,6 +174,7 @@ export function App() {
       <FollowCard />
       <StatsRecorder />
       <DashboardControl />
+      <ContextMenu />
       <Toolbar />
     </GameProvider>
   );

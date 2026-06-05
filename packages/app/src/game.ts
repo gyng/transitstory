@@ -10,6 +10,7 @@ import { cmd } from "./commands/codec";
 import { colorToRgb, peepLayer, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ShedHex, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
+import { createSky, type Sky } from "./map/sky";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -55,6 +56,20 @@ const TOOLTIP_STYLE: Record<string, string> = {
   boxShadow: "0 2px 10px rgba(0,0,0,.18)",
   padding: "8px 10px",
 };
+
+const EMPTY_U32 = new Uint32Array(0);
+
+/** Right-click context-menu state (surfaced through the UI slice; rendered by <ContextMenu>). The
+ *  menu offers Inspect / Bulldoze on the resolved target — station, line, or empty-map view tools. */
+export interface ContextMenuState {
+  /** Screen position (≈ clientX/Y; the full-screen map sits at the viewport origin). */
+  x: number;
+  y: number;
+  lngLat: { lng: number; lat: number };
+  kind: "station" | "line" | "empty";
+  /** Station/line id; -1 for an empty-map menu. */
+  id: number;
+}
 
 export class Game {
   mode: Mode = "build";
@@ -106,8 +121,15 @@ export class Game {
   /** Spatial juice canvas (ripples / connect-flash / throbs). Client-side acknowledgement only —
    *  driven by the existing GameLoop rAF, never a deck rebuild or a sim tick. */
   effects!: Effects;
+  /** Day/night mood wash over the basemap (driven by sim hour off the ~3 Hz stats slice). */
+  readonly sky: Sky;
   /** Per-station boardings from the previous stats snapshot — to emit a board-burst on the delta. */
   private prevBoardings: Map<number, number> = new Map();
+  /** Cached last peep sweep (lng/lat interleaved + paired citizen ids) for click-to-inspect. */
+  private peepXY: Float32Array = new Float32Array(0);
+  private peepCit: Uint32Array = EMPTY_U32;
+  /** Right-click context-menu state, or null when closed (read by <ContextMenu> via the UI slice). */
+  contextMenu: ContextMenuState | null = null;
 
   /** Latest stats snapshot (refreshed on the ~3 Hz throttle); drives waiting-pax halos. */
   lastStats: Stats = EMPTY_STATS;
@@ -132,6 +154,7 @@ export class Game {
       getTooltip: (info: PickingInfo) => this.inspectTooltip(info),
     });
     this.effects = new Effects(map);
+    this.sky = createSky(map.getContainer());
   }
 
   /** Per-frame spatial-juice draw — called from the GameLoop rAF (build + run) with its timestamp.
@@ -479,12 +502,44 @@ export class Game {
   peepLayerAt(alpha: number): Layer | null {
     // Level-of-detail: peeps are micro-texture — hidden at the city-overview zoom (where they'd be a
     // swarm of flashing dots) and revealed only once zoomed in. Skips the buffer copy when hidden.
-    if (!this.showPeeps || this.mode !== "run" || this.map.getZoom() < DETAIL_ZOOM) return null;
+    if (!this.showPeeps || this.mode !== "run" || this.map.getZoom() < DETAIL_ZOOM) {
+      this.peepCit = EMPTY_U32; // not visible → not pickable
+      return null;
+    }
     const xy = this.bridge.peepPositions(alpha, TICK_MS); // interleaved metres (fresh each frame)
     const count = xy.length >> 1;
-    if (count === 0) return null;
+    if (count === 0) {
+      this.peepCit = EMPTY_U32;
+      return null;
+    }
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i); // metres→lng/lat in place
+    // Cache the (lng/lat) positions + paired citizen ids so a click can map to the nearest peep's
+    // rider (nearestPeep). Same sweep feeds the layer + the pick — they can't drift.
+    this.peepXY = xy;
+    this.peepCit = this.bridge.peepCitizens();
     return peepLayer(xy, this.bridge.peepColors(), count);
+  }
+
+  /** Citizen id of the nearest pickable (non-anonymous) peep within `maxPx` screen pixels of
+   *  (px,py), or null. Projects the cached last-sweep peep positions — keeps the peep layer
+   *  non-pickable (60fps budget); the loop only runs on a click/hover, not per frame. */
+  nearestPeep(px: number, py: number, maxPx = 12): number | null {
+    const xy = this.peepXY;
+    const cit = this.peepCit;
+    let best = -1;
+    let bestD2 = maxPx * maxPx;
+    for (let i = 0; i < cit.length; i++) {
+      if (cit[i] === 0xffffffff) continue; // anonymous gravity rider — not followable
+      const p = this.map.project([xy[i * 2], xy[i * 2 + 1]]);
+      const dx = p.x - px;
+      const dy = p.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    return best >= 0 ? cit[best] : null;
   }
 
   /** ROAD-cell centres in lng/lat for the overlay — derived once from the buildability raster
@@ -813,6 +868,66 @@ export class Game {
       if (this.selectedLine === ln) this.selectedLine = null;
       this.refresh();
     }
+  }
+
+  // --- right-click context menu (run/select only — build keeps its two-stage stop) ---
+
+  /** Open the context menu at (px,py), resolving the target precedence station → line → empty. */
+  openContextMenu(px: number, py: number, lngLat: { lng: number; lat: number }): void {
+    const st = this.nearestStation(px, py);
+    if (st !== null) this.contextMenu = { x: px, y: py, lngLat, kind: "station", id: st };
+    else {
+      const ln = this.nearestLine(px, py);
+      this.contextMenu = ln !== null ? { x: px, y: py, lngLat, kind: "line", id: ln } : { x: px, y: py, lngLat, kind: "empty", id: -1 };
+    }
+    for (const cb of this.onChange) cb();
+  }
+
+  closeContextMenu(): void {
+    if (this.contextMenu === null) return;
+    this.contextMenu = null;
+    for (const cb of this.onChange) cb();
+  }
+
+  /** Bulldoze a station by id (right-click → Bulldoze): the same undoable RemoveStation Command as
+   *  the bulldozer tool, reachable without arming the tool. Undo = rebuild from seed + log. */
+  removeStationById(id: number): void {
+    this.noteRejections(this.bridge.apply(cmd.removeStation(id)));
+    if (this.selectedStation === id) this.selectedStation = null;
+    this.refresh();
+  }
+
+  /** Bulldoze a line by id (its vehicles despawn) — one undoable RemoveLine Command. */
+  removeLineById(id: number): void {
+    this.noteRejections(this.bridge.apply(cmd.removeLine(id)));
+    if (this.selectedLine === id) this.selectedLine = null;
+    this.refresh();
+  }
+
+  /** Follow the nearest pickable rider to screen-centre (the empty-menu "watch a random rider").
+   *  Returns false if none is eligible (e.g. gravity demand has only anonymous trips). */
+  followRandomPeep(): boolean {
+    const c = this.map.getContainer();
+    const cid = this.nearestPeep(c.clientWidth / 2, c.clientHeight / 2, 1e9);
+    if (cid === null) return false;
+    this.setFollowed(cid);
+    return true;
+  }
+
+  /** Try to inspect (follow) the rider under (px,py). Returns true if a real citizen was picked;
+   *  on an anonymous-only hit, raises a one-shot nudge toward agent demand and returns false. */
+  inspectPeepAt(px: number, py: number): boolean {
+    const cid = this.nearestPeep(px, py);
+    if (cid !== null) {
+      this.setFollowed(cid);
+      return true;
+    }
+    // Nothing followable here. If peeps ARE present (anonymous gravity trips), nudge toward agents.
+    if (this.peepCit.length > 0 && !this.agentDemand) {
+      this.notice = "Anonymous trip — switch to Citizen (agent) demand in Settings to follow riders";
+      for (const cb of this.onChange) cb();
+    }
+    return false;
   }
 
   // --- rendering ---

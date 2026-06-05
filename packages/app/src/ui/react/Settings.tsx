@@ -74,6 +74,8 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
   const [agentDemand, setAgentDemand] = useState(game.agentDemand);
   // Sound is owned by the audio kit (persisted in localStorage); mirror it in local state.
   const [soundOn, setSoundOn] = useState(!audio.muted);
+  // Day/night map tint (default on); the sky module owns the actual divs.
+  const [dayNight, setDayNight] = useState(true);
 
   if (!open) return null;
 
@@ -146,6 +148,21 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
       <div style={{ color: "#9aa3ad", fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
         Trips come from a population with homes & jobs instead of gravity flow.
       </div>
+
+      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+        Display
+      </div>
+      <Toggle
+        label="🌗  Day / night tint"
+        testid="setting-daynight"
+        on={dayNight}
+        onToggle={() => {
+          const on = !dayNight;
+          setDayNight(on);
+          game.sky.setEnabled(on);
+          if (on) game.sky.set(stats.simHour); // re-apply now, don't wait for the next 3 Hz tick
+        }}
+      />
 
       <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
         Sound

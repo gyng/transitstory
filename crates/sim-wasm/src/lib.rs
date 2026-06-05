@@ -13,6 +13,9 @@ pub struct Sim {
     /// Scratch cache: the RGBA bytes produced alongside the last `peepPositions` sweep, handed back
     /// by the paired `peepColors()` call (so one sweep feeds both the position + colour attributes).
     peep_rgba: Vec<u8>,
+    /// Scratch cache: the citizen id per peep from the last sweep (paired `peepCitizens()`), so a
+    /// clicked peep maps back to a rider to inspect.
+    peep_cit: Vec<u32>,
 }
 
 #[wasm_bindgen]
@@ -26,6 +29,7 @@ impl Sim {
         Sim {
             world: World::new(seed as u64, city),
             peep_rgba: Vec::new(),
+            peep_cit: Vec::new(),
         }
     }
 
@@ -91,8 +95,9 @@ impl Sim {
     /// written). Capped at `MAX_VISIBLE_PEEPS`, so cost is bounded regardless of network size.
     #[wasm_bindgen(js_name = peepPositions)]
     pub fn peep_positions(&mut self, alpha: f32, tick_ms: f32) -> Vec<f32> {
-        let (xy, rgba) = sim::render_buf::fill_peeps(&self.world, alpha, tick_ms);
+        let (xy, rgba, cit) = sim::render_buf::fill_peeps(&self.world, alpha, tick_ms);
         self.peep_rgba = rgba;
+        self.peep_cit = cit;
         xy
     }
 
@@ -101,6 +106,14 @@ impl Sim {
     #[wasm_bindgen(js_name = peepColors)]
     pub fn peep_colors(&self) -> Vec<u8> {
         self.peep_rgba.clone()
+    }
+
+    /// Citizen id (Uint32Array, 1 per peep, index-aligned with `peepPositions`) behind each peep from
+    /// the LAST sweep, or `u32::MAX` for an anonymous gravity rider. Lets the frontend map a clicked
+    /// peep back to a rider to inspect/follow. Determinism-free (render-derived, no hashed state).
+    #[wasm_bindgen(js_name = peepCitizens)]
+    pub fn peep_citizens(&self) -> Vec<u32> {
+        self.peep_cit.clone()
     }
 
     // --- structured queries (wasm->ts query port; low frequency) ---

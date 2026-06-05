@@ -11,6 +11,7 @@
 //    (if nothing pending) leave the build tool (#4). The map pans on LEFT-drag, so right-click
 //    is free to use as cancel (it isn't camera-pan here).
 import type { Game } from "../game";
+import { DETAIL_ZOOM } from "../config";
 
 export function attachPointer(game: Game): void {
   const map = game.map;
@@ -51,6 +52,11 @@ export function attachPointer(game: Game): void {
       suppressClick = false;
       return; // this click trailed a drag press — the mousedown already acted
     }
+    // A left-click anywhere dismisses an open context menu (it doesn't also act).
+    if (game.contextMenu) {
+      game.closeContextMenu();
+      return;
+    }
     const px = e.point.x;
     const py = e.point.y;
     const oe = e.originalEvent;
@@ -74,10 +80,14 @@ export function attachPointer(game: Game): void {
       return;
     }
 
-    // Select tool (or run mode): pin the nearest station, or click-empty to deselect.
+    // Select tool (or run mode): pin the nearest station; else (running, with peeps revealed)
+    // "pick up" the nearest rider under the cursor → the FollowCard opens on them; else deselect.
+    // Stations stay the higher-priority, larger target — peep-pick never steals a station selection.
     const hit = game.nearestStation(px, py);
     if (hit !== null) game.selectStation(hit);
-    else game.clearSelection();
+    else if (game.mode === "run" && game.showPeeps && map.getZoom() >= DETAIL_ZOOM && game.inspectPeepAt(px, py)) {
+      // followed a rider (inspectPeepAt opened the FollowCard); nothing more to do
+    } else game.clearSelection();
   });
 
   // Double-click a control point removes it (straighten); otherwise commit the draft. Enter also
@@ -90,13 +100,20 @@ export function attachPointer(game: Game): void {
     }
   });
 
-  // Right-click = stop building/routing (two-stage). preventDefault suppresses the browser menu;
+  // Right-click. In BUILD it stays the two-stage "stop" (drop the draft, then leave the tool) — this
+  // branch is verbatim so draft-cancel is mechanically preserved. In run/select it opens the context
+  // menu at the cursor (resolved station → line → empty). preventDefault suppresses the browser menu;
   // pan is left-drag here, so right-click never fights the camera.
   map.on("contextmenu", (e) => {
-    if (game.mode !== "build") return;
     e.preventDefault?.();
-    game.stopBuilding();
+    if (game.mode === "build") {
+      game.stopBuilding();
+      return;
+    }
+    game.openContextMenu(e.point.x, e.point.y, e.lngLat);
   });
+  // Camera moves dismiss an open menu (it would otherwise float over a stale location).
+  map.on("movestart", () => game.closeContextMenu());
 
   map.on("mousemove", (e) => {
     // Bending a control point: move it under the cursor (sub-100 ms, client-side).

@@ -7,7 +7,7 @@
 // React NEVER touches the rAF render loop or the deck.gl overlay — those stay imperative in
 // GameLoop/Game. Commands still flow only through Game methods (which wrap SimBridge).
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Game } from "../../game";
+import type { ContextMenuState, Game } from "../../game";
 import type { GameLoop } from "../../sim/GameLoop";
 import type { Stats } from "../../types";
 import { audio } from "../../fx/audio";
@@ -24,6 +24,7 @@ export interface GameUI {
   selectedLine: number | null;
   selectedStation: number | null;
   notice: string | null;
+  contextMenu: ContextMenuState | null;
 }
 
 function snapUI(g: Game): GameUI {
@@ -39,6 +40,7 @@ function snapUI(g: Game): GameUI {
     selectedLine: g.selectedLine,
     selectedStation: g.selectedStation,
     notice: g.notice,
+    contextMenu: g.contextMenu,
   };
 }
 
@@ -54,6 +56,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.selectedLine === b.selectedLine &&
     a.selectedStation === b.selectedStation &&
     a.notice === b.notice &&
+    a.contextMenu === b.contextMenu &&
     a.enabledModes.length === b.enabledModes.length &&
     a.enabledModes.every((v, i) => v === b.enabledModes[i])
   );
@@ -98,6 +101,7 @@ export function GameProvider({
       const s = game.bridge.stats();
       setStats(s);
       game.setStats(s);
+      game.sky.set(s.simHour); // day/night mood wash (two-clocks: rides the 3 Hz slice, not rAF)
     }, 333);
 
     loop.start();

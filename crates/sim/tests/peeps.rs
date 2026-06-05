@@ -40,14 +40,15 @@ fn peeps_readout_is_determinism_free() {
 
     // Reading the peep buffer must NOT change the hashed state in any way.
     let before = w.state_hash();
-    let (xy, col) = render_buf::fill_peeps(&w, 0.5, 30.0);
+    let (xy, col, cit) = render_buf::fill_peeps(&w, 0.5, 30.0);
     let after = w.state_hash();
     assert_eq!(before, after, "fill_peeps is a pure read — it must not perturb state_hash");
 
-    // Buffer is well-formed: paired x/y and rgba, capped.
+    // Buffer is well-formed: paired x/y and rgba, capped, with one citizen id per peep.
     assert_eq!(xy.len() % 2, 0, "positions are interleaved [x,y,...]");
     assert_eq!(col.len() % 4, 0, "colours are RGBA");
     assert_eq!(xy.len() / 2, col.len() / 4, "one colour per peep");
+    assert_eq!(cit.len(), xy.len() / 2, "one citizen id per peep (index-aligned for click-to-inspect)");
     assert!(xy.len() / 2 <= render_buf::MAX_VISIBLE_PEEPS, "peep count is capped");
     assert!(xy.len() > 0, "a serviced, demand-fed network has in-transit peeps to draw");
 

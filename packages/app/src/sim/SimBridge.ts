@@ -100,6 +100,12 @@ export class SimBridge {
     return this.sim.peepColors();
   }
 
+  /** Citizen id per peep (index-aligned with the LAST `peepPositions()` sweep), `0xffffffff` for an
+   *  anonymous gravity rider — so a clicked peep maps back to a rider to inspect/follow. */
+  peepCitizens(): Uint32Array {
+    return this.sim.peepCitizens();
+  }
+
   stats(): Stats {
     return this.sim.stats() as Stats;
   }
