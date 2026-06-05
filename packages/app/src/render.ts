@@ -65,6 +65,16 @@ export interface DesireArc {
   to: [number, number]; // a destination it draws riders toward
   weight: number; // gravity pull, 0..1 normalized vs the strongest link → width + dest opacity
 }
+export interface ReachDot {
+  lng: number;
+  lat: number;
+  ms: number; // transit travel time from the selected station → green/amber/red ring
+}
+export interface ControlHandle {
+  lng: number;
+  lat: number;
+  kind: "waypoint" | "add"; // a draggable existing control point, or a "+" midpoint that adds one
+}
 
 export interface RenderView {
   stations: StationDot[];
@@ -76,7 +86,9 @@ export interface RenderView {
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
+  reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
+  controlHandles?: ControlHandle[]; // draggable draft control points (waypoints + "+" midpoints)
   pinnedLabel?: { lng: number; lat: number; text: string }; // deck label for the pinned station
   selectedLine?: number | null; // drives the wide selection casing under the selected line
 }
@@ -115,6 +127,17 @@ function waitRing(count: number): { color: [number, number, number, number]; wid
   if (band === 2) return { color: [214, 40, 40, 235], width: 3.5 }; // starved — vermillion
   if (band === 1) return { color: [230, 159, 0, 225], width: 2 }; // busy — amber
   return { color: [230, 159, 0, 130], width: 1.5 }; // a few waiting — faint amber
+}
+
+/** Accessibility band for the "Reach" isochrone: travel time (ms) from the selected station →
+ *  green (quick) / amber (medium) / red (slow). Bands so it reads as a stoplight, not a smear. */
+function reachColor(ms: number): [number, number, number, number] {
+  if (ms <= 6 * 60_000) return [0, 158, 115, 90]; // ≤6 min — green
+  if (ms <= 15 * 60_000) return [230, 159, 0, 90]; // ≤15 min — amber
+  return [213, 94, 0, 90]; // slower — vermillion
+}
+function reachBand(ms: number): 0 | 1 | 2 {
+  return ms <= 6 * 60_000 ? 0 : ms <= 15 * 60_000 ? 1 : 2;
 }
 
 /** Topology layers (rebuilt only on topology/selection change — cached by Game so they keep
@@ -253,6 +276,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
   }
 
   const above: Layer[] = [
+    // Accessibility isochrone ("Reach" overlay, opt-in): a soft green→amber→red filled halo behind
+    // each station reachable from the selected one, by transit travel time. Filled (not stroked) so
+    // it reads distinctly from the stroke-only waiting rings, and under the station dots so they
+    // stay on top + clickable. Empty unless the toggle is on AND a served station is pinned.
+    new ScatterplotLayer({
+      id: "reach",
+      data: view.reach,
+      getPosition: (d: ReachDot) => [d.lng, d.lat],
+      getRadius: 13,
+      radiusUnits: "pixels",
+      radiusMinPixels: 10,
+      stroked: false,
+      filled: true,
+      getFillColor: (d: ReachDot) => reachColor(d.ms),
+      updateTriggers: { getFillColor: view.reach.map((d) => reachBand(d.ms)).join(",") },
+    }),
     new ScatterplotLayer({
       id: "stations",
       data: view.stations,
@@ -334,6 +373,40 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       },
     }),
   ];
+
+  // Draggable control points for the in-progress line (top of the stack so they're grabbable):
+  // a faint "+" at each sub-segment midpoint (drag to bend the track there) and a solid dot per
+  // existing waypoint (drag to reshape; double-click to remove). Hit-tested in screen space by
+  // Game (not deck-picked), so they need no `pickable`.
+  const handles = view.controlHandles ?? [];
+  if (handles.length > 0) {
+    above.push(
+      new ScatterplotLayer({
+        id: "control-add",
+        data: handles.filter((h) => h.kind === "add"),
+        getPosition: (h: ControlHandle) => [h.lng, h.lat],
+        getRadius: 5,
+        radiusUnits: "pixels",
+        radiusMinPixels: 4,
+        getFillColor: [255, 255, 255, 200],
+        stroked: true,
+        getLineColor: [120, 124, 130, 230],
+        lineWidthMinPixels: 1.5,
+      }),
+      new ScatterplotLayer({
+        id: "control-waypoint",
+        data: handles.filter((h) => h.kind === "waypoint"),
+        getPosition: (h: ControlHandle) => [h.lng, h.lat],
+        getRadius: 6,
+        radiusUnits: "pixels",
+        radiusMinPixels: 5,
+        getFillColor: [0, 114, 178, 235],
+        stroked: true,
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2,
+      }),
+    );
+  }
 
   return { below, above };
 }

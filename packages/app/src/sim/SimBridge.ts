@@ -6,7 +6,7 @@
 import { Sim } from "sim-wasm";
 import { CommandLog } from "../commands/log";
 import { encodeCommand } from "../commands/codec";
-import type { Command, Event, LineView, OdLink, StationView, Stats } from "../types";
+import type { AccessLink, Command, Event, LineView, OdLink, StationView, Stats } from "../types";
 
 export class SimBridge {
   private sim: Sim;
@@ -104,6 +104,12 @@ export class SimBridge {
    *  computed on demand). Empty unless the station is operational + served. */
   stationOd(id: number): OdLink[] {
     return this.sim.stationOd(id) as OdLink[];
+  }
+
+  /** Accessibility isochrone for a selected station — reachable stations + transit travel time
+   *  (read-only, computed on demand). Empty unless the station is operational + served. */
+  stationAccess(id: number): AccessLink[] {
+    return this.sim.stationAccess(id) as AccessLink[];
   }
 
   /** Authoritative construction-cost ($, track only) for a hypothetical line — the build HUD's

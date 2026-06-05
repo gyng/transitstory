@@ -111,6 +111,15 @@ export interface OdLink {
   weight: number;
 }
 
+/** One reachable station in the accessibility isochrone from a selected origin: transit travel
+ *  time `ms` (wait + ride + transfers). For the opt-in "Reach" overlay. */
+export interface AccessLink {
+  station: number;
+  xMm: number;
+  yMm: number;
+  ms: number;
+}
+
 export interface LineView {
   id: number;
   name: string;

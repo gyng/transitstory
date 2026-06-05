@@ -14,8 +14,43 @@ import type { Game } from "../game";
 
 export function attachPointer(game: Game): void {
   const map = game.map;
+  // Drag state for the line tool: 'handle' = bending a control point, 'draw' = chaining stations
+  // by dragging. suppressClick eats the click that fires after a drag press (so it never re-adds).
+  let dragging: "handle" | "draw" | null = null;
+  let suppressClick = false;
+
+  // Line-tool press: grab/create a control point on the ghost, else begin a drag-to-draw chain.
+  map.on("mousedown", (e) => {
+    if (game.mode !== "build" || game.tool !== "line") return;
+    const px = e.point.x;
+    const py = e.point.y;
+    // Control point on the in-progress ghost (only once there's a span to bend).
+    if (game.draft.length >= 2 && game.startHandleDrag(px, py, e.lngLat.lng, e.lngLat.lat)) {
+      dragging = "handle";
+      suppressClick = true;
+      e.preventDefault(); // don't pan
+      return;
+    }
+    // Otherwise pressing a station starts the route; dragging through stations chains them.
+    const id = game.nearestStation(px, py);
+    if (id !== null) {
+      game.extendDraft(id);
+      dragging = "draw";
+      suppressClick = true;
+      e.preventDefault();
+    }
+  });
+
+  map.on("mouseup", () => {
+    if (dragging === "handle") game.endHandleDrag();
+    dragging = null;
+  });
 
   map.on("click", (e) => {
+    if (suppressClick) {
+      suppressClick = false;
+      return; // this click trailed a drag press — the mousedown already acted
+    }
     const px = e.point.x;
     const py = e.point.y;
     const oe = e.originalEvent;
@@ -29,8 +64,8 @@ export function attachPointer(game: Game): void {
     }
 
     if (game.mode === "build" && game.tool === "line") {
-      const id = game.nearestStation(px, py);
-      if (id !== null) game.extendDraft(id);
+      // Station chaining + control points are handled on mousedown/drag now; nothing to do here
+      // (and crucially, don't fall through to Select and clear the draft).
       return;
     }
 
@@ -45,10 +80,12 @@ export function attachPointer(game: Game): void {
     else game.clearSelection();
   });
 
-  // Double-click / Enter commits a line draft; Escape / right-click cancel (T11).
+  // Double-click a control point removes it (straighten); otherwise commit the draft. Enter also
+  // commits; Escape / right-click cancel (T11).
   map.on("dblclick", (e) => {
     if (game.tool === "line" && game.draft.length >= 2) {
       e.preventDefault();
+      if (game.removeHandleAt(e.point.x, e.point.y)) return; // straighten this bend, keep drawing
       game.commitDraft();
     }
   });
@@ -62,6 +99,19 @@ export function attachPointer(game: Game): void {
   });
 
   map.on("mousemove", (e) => {
+    // Bending a control point: move it under the cursor (sub-100 ms, client-side).
+    if (dragging === "handle") {
+      game.dragHandle(e.lngLat.lng, e.lngLat.lat);
+      return;
+    }
+    // Drag-to-draw: chain any station the cursor reaches, rubber-banding to the cursor.
+    if (dragging === "draw") {
+      const id = game.nearestStation(e.point.x, e.point.y);
+      if (id !== null) game.extendDraft(id);
+      game.cursor = [e.lngLat.lng, e.lngLat.lat];
+      game.refresh();
+      return;
+    }
     // Live blueprint cursor while drawing.
     if (game.tool === "line" && game.draft.length >= 1) {
       game.cursor = [e.lngLat.lng, e.lngLat.lat];

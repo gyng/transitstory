@@ -289,6 +289,16 @@ export function Toolbar() {
           }}
         />
 
+        <Button
+          label="🕐 Reach"
+          testid="layer-reach"
+          onClick={() => game.setShowReach(!ui.showReach)}
+          style={{
+            background: ui.showReach ? "#0072b2" : "#fff",
+            color: ui.showReach ? "#fff" : "#1c2024",
+          }}
+        />
+
         <Button label="⚙" testid="open-settings" onClick={() => setSettingsOpen((o) => !o)} />
         </div>
       </div>

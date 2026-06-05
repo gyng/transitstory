@@ -28,6 +28,7 @@ declare global {
       setTransport(mode: number): void;
       setModeEnabled(mode: number, on: boolean): void;
       setShowDemand(on: boolean): void;
+      setShowReach(on: boolean): void;
       stationTip(id: number): import("./ui/react/shared").StationTip | null;
       lineTip(id: number): import("./ui/react/shared").LineTip | null;
       vehicleTip(index: number): import("./ui/react/shared").VehicleTip | null;

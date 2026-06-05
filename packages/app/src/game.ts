@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -66,6 +66,9 @@ export class Game {
   /** Demand-heat map layer toggle + its source points (lng/lat + weight), set at boot. */
   showDemand = false;
   demandHeat: import("./render").DemandPoint[] = [];
+  /** Accessibility "Reach" overlay toggle — when on + a station selected, shades reachable
+   *  stations by transit travel time from it (the isochrone). Read via a pure core query. */
+  showReach = false;
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
@@ -75,6 +78,12 @@ export class Game {
   /** In-progress line draft (ordered station ids) + live cursor lng/lat (T11). */
   draft: number[] = [];
   cursor: [number, number] | null = null;
+  /** Per-span control points (waypoints) that BEND the draft's track, in mm. `draftWaypoints[i]`
+   *  shapes the span between draft stop i and i+1; client-side while drawing, then committed as a
+   *  SetLineWaypoints command. Kept length-aligned to the spans (draft.length - 1). */
+  draftWaypoints: [number, number][][] = [];
+  /** The control point currently being dragged (span + index into `draftWaypoints[span]`). */
+  draggingHandle: { span: number; index: number } | null = null;
 
   /** Listeners notified after each refresh (panels/stats bind here). */
   onChange: (() => void)[] = [];
@@ -365,6 +374,13 @@ export class Game {
     this.refresh();
   }
 
+  /** Toggle the accessibility "Reach" overlay (shades reachable stations by travel time from the
+   *  selected one). Opt-in so it never piles onto the default selection overlay. */
+  setShowReach(on: boolean): void {
+    this.showReach = on;
+    this.refresh();
+  }
+
   selectStation(id: number | null): void {
     this.selectedStation = id;
     this.selectedLine = null;
@@ -379,35 +395,165 @@ export class Game {
 
   cancelDraft(): void {
     this.draft = [];
+    this.draftWaypoints = [];
+    this.draggingHandle = null;
     this.cursor = null;
     this.map.dragPan.enable();
   }
 
   // --- interactive line drawing (snap → blueprint → commit) ---
 
-  /** Append a snapped station to the in-progress line; disables dragPan on first point. */
+  /** Append a snapped station to the in-progress line; disables dragPan on first point. Each new
+   *  stop opens a fresh (initially straight) span for control points. */
   extendDraft(stationId: number): void {
     if (this.draft.length === 0) this.map.dragPan.disable();
-    if (this.draft[this.draft.length - 1] !== stationId) this.draft.push(stationId);
+    if (this.draft[this.draft.length - 1] !== stationId) {
+      if (this.draft.length >= 1) this.draftWaypoints.push([]); // new span: stop n-1 → n
+      this.draft.push(stationId);
+    }
     this.refresh();
   }
 
-  /** Commit the blueprint as one line (re-enables dragPan). Needs >= 2 stops. */
+  /** Commit the blueprint as one line (re-enables dragPan). Needs >= 2 stops; any bent spans go
+   *  out as a single SetLineWaypoints right after the line is created (so undo is one step). */
   commitDraft(): void {
     const ids = [...this.draft];
+    const wps = this.draftWaypoints.map((span) => span.map(([x, y]) => [x, y] as [number, number]));
     this.map.dragPan.enable();
     this.cursor = null;
     this.draft = [];
-    if (ids.length >= 2) this.drawLineByIds(ids);
-    else this.refresh();
+    this.draftWaypoints = [];
+    this.draggingHandle = null;
+    if (ids.length >= 2) {
+      const lineId = this.drawLineByIds(ids);
+      if (lineId >= 0 && wps.some((s) => s.length > 0)) {
+        this.noteRejections(this.bridge.apply(cmd.setLineWaypoints(lineId, wps)));
+        this.refresh();
+      }
+    } else {
+      this.refresh();
+    }
   }
 
-  /** Undo the last placed waypoint in the in-progress route (Backspace). */
+  /** Undo the last placed stop in the in-progress route (Backspace), with its span's waypoints. */
   popDraft(): void {
     if (this.draft.length === 0) return;
     this.draft.pop();
+    this.draftWaypoints.pop(); // drop the span that ended at the removed stop
     if (this.draft.length === 0) this.map.dragPan.enable();
     this.refresh();
+  }
+
+  // --- control points (freeform waypoints that bend the draft's track) ---
+
+  /** Screen-pixel hit radius for grabbing a control-point handle. */
+  private static readonly HANDLE_PX = 11;
+
+  /** Ordered mm points of the in-progress route threaded through its waypoints: stop0, wp…, stop1,
+   *  wp…, plus the live cursor leg. The ghost, water-check and length all read this. */
+  draftPointsMm(includeCursor = true): [number, number][] {
+    const sv = this.bridge.stationsView();
+    const pts: [number, number][] = [];
+    for (let i = 0; i < this.draft.length; i++) {
+      const s = sv[this.draft[i]];
+      if (s) pts.push([s.xMm, s.yMm]);
+      if (i + 1 < this.draft.length) for (const w of this.draftWaypoints[i] ?? []) pts.push(w);
+    }
+    if (includeCursor && this.cursor && pts.length >= 1) pts.push(lngLatToMm(this.cursor));
+    return pts;
+  }
+
+  /** The draggable control-point handles for the current draft: a solid dot per existing waypoint,
+   *  and a faint "+" at every sub-segment midpoint (drag it to bend the track there). lng/lat for
+   *  the deck layer; `span`/`index` address `draftWaypoints` (for 'add', the splice index). */
+  controlHandles(): { lng: number; lat: number; kind: "waypoint" | "add"; span: number; index: number }[] {
+    if (this.tool !== "line" || this.draft.length < 2) return [];
+    const sv = this.bridge.stationsView();
+    const out: { lng: number; lat: number; kind: "waypoint" | "add"; span: number; index: number }[] = [];
+    for (let span = 0; span < this.draft.length - 1; span++) {
+      const a = sv[this.draft[span]];
+      const b = sv[this.draft[span + 1]];
+      if (!a || !b) continue;
+      const wps = this.draftWaypoints[span] ?? [];
+      // The span's full point sequence: stopA, waypoints…, stopB.
+      const seq: [number, number][] = [[a.xMm, a.yMm], ...wps, [b.xMm, b.yMm]];
+      for (let i = 0; i < wps.length; i++) {
+        const [lng, lat] = mmToLngLat(wps[i]);
+        out.push({ lng, lat, kind: "waypoint", span, index: i });
+      }
+      // "+" handle at each sub-segment midpoint; dragging splices a new waypoint at index j.
+      for (let j = 0; j < seq.length - 1; j++) {
+        const mx = (seq[j][0] + seq[j + 1][0]) / 2;
+        const my = (seq[j][1] + seq[j + 1][1]) / 2;
+        const [lng, lat] = mmToLngLat([mx, my]);
+        out.push({ lng, lat, kind: "add", span, index: j });
+      }
+    }
+    return out;
+  }
+
+  /** Begin dragging a control point at a screen pixel. Grabs an existing waypoint, or (on a "+"
+   *  midpoint) splices a new one there. Returns true if a handle was grabbed (drawing is paused). */
+  startHandleDrag(px: number, py: number, lng: number, lat: number): boolean {
+    let best: { kind: "waypoint" | "add"; span: number; index: number } | null = null;
+    let bestD = Game.HANDLE_PX;
+    for (const h of this.controlHandles()) {
+      const p = this.map.project([h.lng, h.lat]);
+      const d = Math.hypot(p.x - px, p.y - py);
+      // Prefer an existing waypoint over a coincident "+" so you grab, not duplicate.
+      if (d <= bestD || (d <= Game.HANDLE_PX && h.kind === "waypoint" && best?.kind === "add")) {
+        bestD = Math.min(bestD, d);
+        best = { kind: h.kind, span: h.span, index: h.index };
+      }
+    }
+    if (!best) return false;
+    if (best.kind === "add") {
+      (this.draftWaypoints[best.span] ??= []).splice(best.index, 0, lngLatToMm([lng, lat]));
+      this.draggingHandle = { span: best.span, index: best.index };
+    } else {
+      this.draggingHandle = { span: best.span, index: best.index };
+    }
+    this.map.dragPan.disable();
+    this.refresh();
+    return true;
+  }
+
+  /** Move the control point under drag to a new lng/lat (bends the ghost live, sub-100 ms). */
+  dragHandle(lng: number, lat: number): void {
+    const h = this.draggingHandle;
+    if (!h) return;
+    const span = this.draftWaypoints[h.span];
+    if (span && span[h.index]) {
+      span[h.index] = lngLatToMm([lng, lat]);
+      this.refresh();
+    }
+  }
+
+  /** Release the dragged control point (drawing resumes; dragPan stays off while drafting). */
+  endHandleDrag(): void {
+    this.draggingHandle = null;
+  }
+
+  /** Append a control point to a draft span (the camera-independent equivalent of a "+"-handle
+   *  drag — used by the test hook). `span` indexes the gap between draft stop `span` and `span+1`. */
+  addDraftWaypoint(span: number, lng: number, lat: number): void {
+    if (span < 0 || span >= this.draft.length - 1) return;
+    (this.draftWaypoints[span] ??= []).push(lngLatToMm([lng, lat]));
+    this.refresh();
+  }
+
+  /** Remove the control point at a screen pixel (double-click) → straightens that bend. */
+  removeHandleAt(px: number, py: number): boolean {
+    for (const h of this.controlHandles()) {
+      if (h.kind !== "waypoint") continue;
+      const p = this.map.project([h.lng, h.lat]);
+      if (Math.hypot(p.x - px, p.y - py) <= Game.HANDLE_PX) {
+        this.draftWaypoints[h.span]?.splice(h.index, 1);
+        this.refresh();
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Esc / right-click: a two-stage "stop" — first abandon the in-progress route, then (if
@@ -432,9 +578,7 @@ export class Game {
    *  crossing water. Ferry/air cross water freely. Drives the red ghost + the build readout. */
   draftInvalid(): boolean {
     if (this.transport >= 2 || !this.build.loaded || this.draft.length < 1) return false;
-    const sv = this.bridge.stationsView();
-    const pts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
-    if (this.cursor) pts.push(lngLatToMm(this.cursor));
+    const pts = this.draftPointsMm(); // threaded through waypoints — a bend can route over water
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1];
       const [bx, by] = pts[i];
@@ -453,14 +597,21 @@ export class Game {
    *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
    *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
   draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean } {
+    const len = (pts: [number, number][]) => {
+      let mm = 0;
+      for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      return mm;
+    };
     const sv = this.bridge.stationsView();
-    const pts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
-    if (this.cursor) pts.push(lngLatToMm(this.cursor));
-    let mm = 0;
-    for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    // Authoritative construction cost (track only) from the core, in $millions; 0 until 2 stops.
-    const cost = this.draft.length >= 2 ? this.bridge.previewLineCost(this.draft, this.transport, false) : 0;
-    return { stops: this.draft.length, lengthKm: mm / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid() };
+    const stopPts: [number, number][] = this.draft.map((id) => [sv[id].xMm, sv[id].yMm]);
+    if (this.cursor) stopPts.push(lngLatToMm(this.cursor));
+    const straight = len(stopPts); // stops (+cursor), no waypoints
+    const bent = len(this.draftPointsMm()); // threaded through the waypoints + cursor
+    // Authoritative straight-stop cost from the core, scaled by the bend ratio so the live readout
+    // tracks a detour (the exact bent cost is recomputed by the core on commit). 0 until 2 stops.
+    let cost = this.draft.length >= 2 ? this.bridge.previewLineCost(this.draft, this.transport, false) : 0;
+    if (cost > 0 && straight > 0) cost = (cost * bent) / straight;
+    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid() };
   }
 
   // --- geometry helpers ---
@@ -587,12 +738,8 @@ export class Game {
         mode: l.mode, // heavy/high-speed rail (4) gets distinct mainline styling
       }));
 
-    // Blueprint: draft station positions + live cursor (T11 populates draft).
-    const blueprint: [number, number][] = this.draft.map((id) => {
-      const s = stationsV[id];
-      return mmToLngLat([s.xMm, s.yMm]);
-    });
-    if (this.cursor && blueprint.length >= 1) blueprint.push(this.cursor);
+    // Blueprint: the draft threaded through its control points (so bends render live) + cursor leg.
+    const blueprint: [number, number][] = this.draftPointsMm().map((p) => mmToLngLat(p));
 
     // Live build-conflict dots along the blueprint (amber built/park, red water) — so the
     // player sees they can't just run surface rail over stuff as they draw.
@@ -646,8 +793,10 @@ export class Game {
 
     // OD desire lines from the selected station (on-demand → no mud): where its riders are drawn.
     // Empty unless a served station is pinned (the core query returns [] for orphaned/unserved).
+    // Suppressed while the Reach overlay is on — desire vs reach are alternative lenses on the
+    // pinned station (where demand pulls / how fast you get there), shown one at a time, not stacked.
     let desire: DesireArc[] = [];
-    if (this.selectedStation !== null) {
+    if (this.selectedStation !== null && !this.showReach) {
       const sv0 = stationsV[this.selectedStation];
       if (sv0 && !sv0.removed) {
         const from = mmToLngLat([sv0.xMm, sv0.yMm]);
@@ -657,6 +806,16 @@ export class Game {
           weight: o.weight,
         }));
       }
+    }
+
+    // Accessibility isochrone (opt-in "Reach" toggle): shade stations reachable from the selected
+    // one by transit travel time. Off by default so it never piles onto the selection overlay.
+    let reach: ReachDot[] = [];
+    if (this.showReach && this.selectedStation !== null) {
+      reach = this.bridge.stationAccess(this.selectedStation).map((a) => {
+        const [lng, lat] = mmToLngLat([a.xMm, a.yMm]);
+        return { lng, lat, ms: a.ms };
+      });
     }
 
     return {
@@ -669,7 +828,9 @@ export class Game {
       hazards,
       demand,
       desire,
+      reach,
       blueprintInvalid: this.draftInvalid(),
+      controlHandles: this.controlHandles(),
       pinnedLabel,
       selectedLine: this.selectedLine,
     };
