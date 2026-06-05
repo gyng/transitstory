@@ -33,6 +33,21 @@ pub fn work_bias(hour: f64) -> f32 {
     (0.5 + 0.5 * am - 0.5 * pm).clamp(0.0, 1.0) as f32
 }
 
+/// Road congestion factor (%), an INTEGER step over the in-game hour: a bus on a `class::ROAD`
+/// cell runs at this fraction of its speed (sharing the road with traffic). Worst at the rush
+/// peaks, clear overnight. Pure integer over the clock — unlike `demand_multiplier` (f64), this
+/// can scale HASHED vehicle motion without introducing float drift into the determinism gate.
+pub fn congestion_pct(clock_ms: i64) -> i64 {
+    let hour = (6 + clock_ms.div_euclid(HOUR_MS)).rem_euclid(24);
+    match hour {
+        7 | 8 | 9 => 55,    // AM rush — heavy
+        17 | 18 | 19 => 55, // PM rush — heavy
+        10..=16 => 80,      // daytime — moderate
+        20 | 21 | 22 => 90, // evening — light
+        _ => 100,           // 23 + 0..6 — clear
+    }
+}
+
 pub fn period_label(hour: f64) -> &'static str {
     if !(5.0..23.0).contains(&hour) {
         "Night"

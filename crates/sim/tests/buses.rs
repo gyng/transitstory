@@ -58,6 +58,50 @@ fn a_bus_is_cheaper_and_faster_on_a_road_than_off_road() {
 }
 
 #[test]
+fn buses_slow_in_peak_traffic() {
+    // The congestion factor is a pure integer of the clock: worst at the peaks, none overnight.
+    let peak = sim::tod::congestion_pct(120_000); // hour 8 (AM rush)
+    let night = sim::tod::congestion_pct(1_200_000); // hour 2 (night)
+    assert!(peak < night, "peak traffic is worse than night: {peak} < {night}");
+    assert_eq!(night, 100, "no congestion overnight");
+    assert!(peak >= 1 && peak <= 100, "congestion factor in (0, 100]");
+
+    // A bus cruising a long ROAD moves slower once the AM peak hits.
+    let mut cells = Vec::new();
+    for cx in -1000..1000 {
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 0, c: class::ROAD });
+    }
+    let city = CityData {
+        id: "c".into(),
+        seed: 7,
+        buildability: BuildabilityGrid { cell_m: 100.0, cells },
+        demand: DemandGrid { cell_m: 200.0, cells: vec![] },
+        patience_ms: 0,
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: -90_000_000, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 90_000_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 600_000 });
+    w.apply(&Command::SetRunning { running: true });
+
+    for _ in 0..600 {
+        w.tick(50); // → clock 30 s (hour 6, night): cruising at full speed
+    }
+    let v_night = w.vehicles.v_mm_s[0];
+    for _ in 0..1800 {
+        w.tick(50); // → clock 120 s (hour 8, AM peak)
+    }
+    let v_peak = w.vehicles.v_mm_s[0];
+    assert!(v_peak < v_night, "the bus cruises slower in peak traffic: peak {v_peak} < night {v_night}");
+    assert!(v_peak > 0, "but it still moves");
+}
+
+#[test]
 fn bus_road_awareness_is_deterministic() {
     let build = || {
         let mut w = World::new(7, road_city());

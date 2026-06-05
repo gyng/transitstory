@@ -133,9 +133,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             let key = (cx.div_euclid(build_cell_mm) as i32, cy.div_euclid(build_cell_mm) as i32);
             let cell = build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN);
             if line.mode == crate::trainset::tmode::BUS {
-                // Buses run with traffic on a ROAD cell (full speed); off-road they crawl.
                 if cell != crate::city::class::ROAD {
-                    vmax_eff = vmax_eff.min(OFF_ROAD_BUS_MM_S);
+                    vmax_eff = vmax_eff.min(OFF_ROAD_BUS_MM_S); // off-road: crawl, no road
+                } else {
+                    // On a road, share it with traffic: peak congestion scales the speed down.
+                    // Integer factor over the clock → hash-safe (never the f64 demand multiplier).
+                    vmax_eff = vmax_eff * crate::tod::congestion_pct(clock) / 100;
                 }
             } else if cell == crate::city::class::BUILT {
                 vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);
