@@ -88,6 +88,9 @@ const STREET_SPEED_MM_S: i64 = 12_000;
 /// A bus OFF the road network crawls (no road to run on) — ~25 km/h. On a `class::ROAD` cell it
 /// runs at its full spec speed (subject to congestion). This is the bus's road-bound identity.
 const OFF_ROAD_BUS_MM_S: i64 = 7_000;
+/// A ferry forced OFF the water (over land) barely moves — its identity is water-bound, so the
+/// geometry keeps it on `class::WATER`; this is the penalty for any leg that strays onto land.
+const OFF_WATER_FERRY_MM_S: i64 = 3_000;
 
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
@@ -162,6 +165,11 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                     }
                     let occ = bus_load.get(&key).copied().unwrap_or(0) as i64;
                     vmax_eff = vmax_eff * crate::tod::congestion_at(clock, built, occ) / 100;
+                }
+            } else if line.mode == crate::trainset::tmode::FERRY {
+                // Ferries are water-bound: full speed on open WATER, barely moving on land.
+                if cell != crate::city::class::WATER {
+                    vmax_eff = vmax_eff.min(OFF_WATER_FERRY_MM_S);
                 }
             } else if cell == crate::city::class::BUILT {
                 vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);

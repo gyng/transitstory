@@ -287,7 +287,8 @@ impl World {
             let per_km = match tm {
                 // Buses ride the existing ROAD network for free; off-road they build a busway.
                 tmode::BUS => if c == class::ROAD { 0 } else { 3_000_000 },
-                tmode::FERRY => 5_000_000,
+                // Ferries cross open WATER for free (just terminals); forced over land they'd dig.
+                tmode::FERRY => if c == class::WATER { 0 } else { 5_000_000 },
                 tmode::AIR => 1_000_000,
                 tmode::HEAVY => match m {
                     mode::ELEVATED => PER_KM_HSR_ELEVATED,
