@@ -310,9 +310,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       data: view.lines,
       getPath: (d: LinePath) => d.path,
       getColor: (d: LinePath) => d.color,
-      getWidth: (d: LinePath) => (d.mode === HEAVY_RAIL ? 8 : 6),
+      getWidth: (d: LinePath) => (d.mode === HEAVY_RAIL ? 9 : 7),
       widthUnits: "pixels",
-      widthMinPixels: 4,
+      // The network is the FIGURE — keep the coloured ribbon wider than the station/vehicle dots
+      // (~4px) so it reads as a continuous line, not a string of beads under the dot field.
+      widthMinPixels: 5,
       capRounded: true,
       jointRounded: true,
       // Pickable so hovering the track raises the line inspector (under stations + trains in
@@ -392,19 +394,20 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "stations",
       data: view.stations,
       getPosition: (d: StationDot) => [d.lng, d.lat],
-      // Radius grows with cumulative boardings (sqrt, capped +6px) so the static dot field becomes
-      // a usage heatmap — busy stations swell. Selected adds a bump on top.
-      getRadius: (d: StationDot) => (d.selected ? 9 : 7) + Math.min(6, Math.sqrt(d.boardings) * 0.4),
+      // Radius grows with cumulative boardings (sqrt, capped) so the static dot field becomes a
+      // usage heatmap — busy stations swell. Selected adds a bump. Kept SMALLER than the line width
+      // so 177 stops read as ticks ON the ribbon, not a swarm of beads obscuring it.
+      getRadius: (d: StationDot) => (d.selected ? 7 : 4) + Math.min(4, Math.sqrt(d.boardings) * 0.35),
       radiusUnits: "pixels",
-      radiusMinPixels: 5,
+      radiusMinPixels: 3,
       // Selected fill = selection blue (ties to its blue catchment ring). Otherwise an ORPHANED
       // station (no operational line serving it) is muted grey and a SERVED one is near-black, so
       // stations visibly "light up" as you connect + run them (place→draw→assign cause→effect).
       getFillColor: (d: StationDot) =>
         d.selected ? [0, 114, 178] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
       stroked: true,
-      getLineColor: [255, 255, 255],
-      lineWidthMinPixels: 2,
+      getLineColor: [255, 255, 255, 230],
+      lineWidthMinPixels: 1,
       pickable: true,
       updateTriggers: {
         getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}`).join(","),
@@ -420,7 +423,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "waiting",
       data: view.waiting,
       getPosition: (d: WaitingDot) => [d.lng, d.lat],
-      getRadius: (d: WaitingDot) => 8 + Math.min(16, Math.sqrt(d.count) * 2.5),
+      // Capped well below the old 8–24px: these only show zoomed-in now (LOD), so a tight 5–12px
+      // ring is plenty to read the queue without ballooning into the dominant on-map mark.
+      getRadius: (d: WaitingDot) => 5 + Math.min(7, Math.sqrt(d.count) * 1.5),
       radiusUnits: "pixels",
       stroked: true,
       filled: false,
