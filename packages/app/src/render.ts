@@ -73,6 +73,30 @@ export interface ReachDot {
 export interface RoadCell {
   lng: number;
   lat: number; // a ROAD-class cell centre — where buses run cheap + fast (the "Roads" overlay)
+  density: number; // BUILT cells in its 3×3 (0..9) — drives live congestion colour with the hour
+}
+
+/** MIRROR of sim `tod::congestion_at` (keep in sync): the on-road congestion % (50 jammed … 100
+ *  flowing) at a given in-game hour + local built-up density. Visual hint only. */
+function congestionPct(hour: number, density: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  const timePen =
+    h === 7 || h === 8 || h === 9 || h === 17 || h === 18 || h === 19
+      ? 35
+      : h >= 10 && h <= 16
+        ? 15
+        : h >= 20 && h <= 22
+          ? 8
+          : 0;
+  return Math.max(50, Math.min(100, 100 - timePen - Math.min(9, density) * 4));
+}
+
+/** Road congestion colour: green (flowing) → amber → red (gridlocked). */
+function roadColor(hour: number, density: number): [number, number, number, number] {
+  const c = congestionPct(hour, density); // 50 (jammed) … 100 (flowing)
+  if (c >= 82) return [70, 160, 95, 85]; // flowing — green
+  if (c >= 62) return [225, 165, 45, 105]; // slowing — amber
+  return [212, 70, 60, 125]; // jammed — red
 }
 export interface ControlHandle {
   lng: number;
@@ -90,6 +114,7 @@ export interface RenderView {
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
+  roadHour: number; // current in-game hour → recolours the roads overlay by live congestion
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
@@ -160,8 +185,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getRadius: 70,
       radiusUnits: "meters",
       radiusMinPixels: 2,
-      getFillColor: [90, 110, 130, 70],
+      // Live congestion: green (flowing) → amber → red (jammed), from the cell's built-up density
+      // and the current hour. Stable data identity; recolours only when the hour ticks over.
+      getFillColor: (d: RoadCell) => roadColor(view.roadHour, d.density),
       stroked: false,
+      updateTriggers: { getFillColor: view.roadHour },
     }),
     // Travel-demand heat (bottom of the stack so the network draws over it). Soft blue→red
     // additive blobs sized by demand weight — a "where do people want to go" map layer.

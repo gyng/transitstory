@@ -395,10 +395,16 @@ export class Game {
    *  (the same data the cost/speed gate uses), memoized so it never recomputes per frame. */
   private roadPoints(): import("./render").RoadCell[] {
     if (this.roadCells === null) {
+      const cm = this.build.cellMm;
       this.roadCells = this.build.loaded
         ? this.build.cellsMm(BUILD.ROAD).map(([x, y]) => {
+            // Local built-up density (BUILT cells in the 3×3) — mirrors the sim's congestion input.
+            let density = 0;
+            for (let ddx = -1; ddx <= 1; ddx++)
+              for (let ddy = -1; ddy <= 1; ddy++)
+                if (this.build.classifyMm(x + ddx * cm, y + ddy * cm) === BUILD.BUILT) density++;
             const [lng, lat] = mmToLngLat([x, y]);
-            return { lng, lat };
+            return { lng, lat, density };
           })
         : [];
     }
@@ -846,6 +852,7 @@ export class Game {
     // (transport 1) so you can see where to route it cheap + fast. Empty otherwise (no overlay).
     const showRoads = this.showRoads || (this.mode === "build" && this.tool === "line" && this.transport === 1);
     const roads = showRoads ? this.roadPoints() : [];
+    const roadHour = Math.floor(this.lastStats.simHour); // drives the live congestion recolour
 
     return {
       stations,
@@ -853,6 +860,7 @@ export class Game {
       catchments,
       blueprint,
       roads,
+      roadHour,
       vehicles: [],
       waiting,
       hazards,
