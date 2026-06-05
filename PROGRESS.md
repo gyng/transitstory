@@ -281,6 +281,49 @@ not deck picking, so making layers pickable only adds tooltip hits.
   serves a stale `.wasm` (lacks `vehicleLoads`) until restarted — the production build / a dev restart
   is correct (the committed source + regenerated pkg include it).
 
+## Demand & traffic visibility — the sim made legible (2026-06-05)
+
+Audited what the core *computes* vs what the player *sees* (4 parallel readers over sim/buffers/
+deck/UI) and closed the gap across five tracks. Guiding rule: hue stays line identity (load rides
+brightness/outline, never hue); flows are on-demand (selected station only → no mud); everything
+rides the existing copy-out / ~3 Hz / per-frame-vehicle paths — no new sim tick, no per-frame
+rebuild. New player-facing **readouts only** — zero new Commands, zero behaviour change.
+
+- **Sim core readouts** (`StationStat` += `demandOrigin/demandDest` (captured gravity weight),
+  `serving` (operational line count; 0 = orphaned), `denied/abandoned` bucketed PER STATION). New
+  `World.denied_at/abandoned_at` counters incremented at the existing renege + full-train-pass-by
+  sites, **folded into `state_hash`** → `pressure_buckets.rs` asserts Σ per-station == the global
+  totals AND replays bit-for-bit. Determinism gate green.
+- **Traffic** — trains were uniform dots. Now: a white triangle rotated to the sim heading (the
+  `vehicleAngles` buffer was exported and thrown away; an `IconLayer` consumes it — white so it
+  reads on same-coloured track), and a crowding outline white→amber→red + radius ∝ load (the
+  `loadPip`/waiting-ring language) via the existing `vehicleLoads`. Interp consolidated into
+  `Game.vehicleDotsAt(alpha)` (one source for the loop + on-refresh recompose). Arrow angle
+  screenshot-verified (points along travel).
+- **Peeps** — station dot radius grows with boardings (a usage heatmap); orphaned stations render
+  muted and brighten when served; the waiting ring gained a 3rd band (faint → amber BUSY → red
+  STARVED); the inspect tooltip gained a per-platform "N passed by · N gave up" loss line.
+- **Demand** — the selected station's catchment fill alpha scales with its captured demand
+  (self-calibrated vs the busiest station, so city-scale-independent) + a "serves ~N demand" /
+  "⚠ no service yet" tooltip line.
+- **Sim legibility** — StatsBar gained a compact network-load pip (`avgLoadFactor` + `vehicleCount`
+  in tooltip, run-only so never dead chrome); the roster gained a "N stops · N trains · every N min"
+  subline. Global `buildDifficulty` **deliberately NOT** surfaced — the StatsBar's locked decision
+  keeps build impact a build-time per-line concern (EditorPanel `line-impact`); respected, not relitigated.
+- **Flows** — OD "desire lines": selecting a station draws curved `ArcLayer` arcs to where its riders
+  are drawn (gravity attractiveness × accessibility). `demand::od_weights` factors the SAME weights
+  `pick_dest` samples (minus the RNG baseline); `World::station_od` sorts/top-10/normalizes →
+  `OdLink`; facade `stationOd`. **Pure read** — solves accessibility fresh, mutates nothing (`od.rs`
+  asserts `state_hash` unchanged across calls; orphaned origins → `[]`). On-selection only.
+- Verified: `cargo test --workspace` green (determinism + new `pressure_buckets.rs`/`od.rs`), tsc
+  clean, vitest **21**, e2e render-path specs (slice/network/modes/assign/deck) green; every track
+  screenshot-corroborated on the live Singapore network, zero console errors. (`vehicle-move.spec`
+  checks `vehicleCount()` with no tick guarantee — passes on slower CI/dev, races the first tick on a
+  fast local preview; confirmed dispatch is intact: 0 immediate → 3 after 120 ms. Pre-existing
+  fragility, not touched.) NOTE the same stale-`.wasm`-on-an-unrestarted-dev-server caveat applies.
+- **Deferred (clean follow-on):** accessibility **isochrone** shading — reuses the very
+  `Router::reachable` port `od_weights` now calls, so it slots in behind the same seam.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
