@@ -23,6 +23,7 @@ import { Toolbar } from "./Toolbar";
 import { OnboardingCoach } from "./Onboarding";
 import { ObjectivePanel } from "./Objectives";
 import { ServiceReport } from "./ServiceReport";
+import { DraftControls } from "./DraftControls";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -159,6 +160,7 @@ export function App() {
       {scenario && <ObjectivePanel scenario={scenario} />}
       <Panels />
       <ServiceReport />
+      <DraftControls />
       <Toolbar />
     </GameProvider>
   );
