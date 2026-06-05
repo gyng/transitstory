@@ -285,7 +285,8 @@ impl World {
             }
             // Capital per metre by transport mode (rail/heavy also by build-mode).
             let per_km = match tm {
-                tmode::BUS => 3_000_000,
+                // Buses ride the existing ROAD network for free; off-road they build a busway.
+                tmode::BUS => if c == class::ROAD { 0 } else { 3_000_000 },
                 tmode::FERRY => 5_000_000,
                 tmode::AIR => 1_000_000,
                 tmode::HEAVY => match m {

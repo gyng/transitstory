@@ -85,6 +85,9 @@ fn next_stop_index(arc: &[i64], s: i64, dir: i64) -> usize {
 /// Street-running surface track through built-up land is slow (tram-like) — a real downside
 /// of NOT grade-separating in the dense core (mm/s ~ 43 km/h).
 const STREET_SPEED_MM_S: i64 = 12_000;
+/// A bus OFF the road network crawls (no road to run on) — ~25 km/h. On a `class::ROAD` cell it
+/// runs at its full spec speed (subject to congestion). This is the bus's road-bound identity.
+const OFF_ROAD_BUS_MM_S: i64 = 7_000;
 
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
@@ -122,12 +125,19 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         let vcur = v.v_mm_s[i];
         // Effective top speed = min(trainset vmax, local curve speed cap, street-running cap).
         let mut vmax_eff = spec.v_max_mm_s.min(line.speed_cap_at(s));
-        // Street-running: a Surface span over built-up land caps speed (tram-like).
+        // Surface speed depends on the ground class (the buildability raster). Buses are road-bound;
+        // rail/heavy are tram-capped only through dense built-up land.
         let span = line.span_of(s);
         if line.span_mode.get(span).copied().unwrap_or(0) == crate::line::mode::SURFACE {
             let (cx, cy) = line.point_at(s);
             let key = (cx.div_euclid(build_cell_mm) as i32, cy.div_euclid(build_cell_mm) as i32);
-            if build_lookup.get(&key).copied().unwrap_or(0) == crate::city::class::BUILT {
+            let cell = build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN);
+            if line.mode == crate::trainset::tmode::BUS {
+                // Buses run with traffic on a ROAD cell (full speed); off-road they crawl.
+                if cell != crate::city::class::ROAD {
+                    vmax_eff = vmax_eff.min(OFF_ROAD_BUS_MM_S);
+                }
+            } else if cell == crate::city::class::BUILT {
                 vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);
             }
         }
