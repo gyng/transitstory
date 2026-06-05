@@ -49,6 +49,13 @@ export interface StationTip {
   boardings: number;
   alightings: number;
   verdict: "starved" | "busy" | "healthy" | null;
+  /** Captured gravity demand (origin + dest weight) — how much travel demand this station grabs. */
+  demand: number;
+  /** Operational lines serving the station; 0 = orphaned (placed but not yet in service). */
+  serving: number;
+  /** Cumulative pressure here: full-train pass-bys (denied) + give-ups (abandoned). */
+  denied: number;
+  abandoned: number;
   /** `load` = this line's mean load factor (0..1), undefined in Build / before it has vehicles. */
   lines: { id: number; color: number; name: string; load?: number }[];
 }
@@ -79,6 +86,30 @@ function lineSwatches(tip: StationTip): string {
     .join("");
 }
 
+/** Captured-demand readout: "serves ~N demand" — how much travel demand the catchment grabs. */
+function demandLine(tip: StationTip): string {
+  if (tip.demand <= 0) return "";
+  return `<div data-testid="station-tip-demand" style="color:#5a626b">◎ serves ~${Math.round(tip.demand)} demand</div>`;
+}
+
+/** Orphaned warning (placed but no operational line serving it) — the "connect me" nudge. */
+function orphanLine(tip: StationTip): string {
+  if (tip.serving > 0) return "";
+  return `<div data-testid="station-tip-orphan" style="color:#e69f00;font-weight:600">⚠ no service yet</div>`;
+}
+
+/** Cumulative loss AT THIS STATION: full-train pass-bys + give-ups. The per-platform failure
+ *  signal — shown only when there's loss, so a healthy station stays uncluttered. */
+function pressureLine(tip: StationTip): string {
+  const denied = Math.round(tip.denied);
+  const abandoned = Math.round(tip.abandoned);
+  if (denied + abandoned <= 0) return "";
+  const parts: string[] = [];
+  if (denied > 0) parts.push(`<span data-testid="station-tip-denied">${denied}</span> passed by`);
+  if (abandoned > 0) parts.push(`<span data-testid="station-tip-abandoned">${abandoned}</span> gave up`);
+  return `<div style="color:#d62828">⊘ ${parts.join(" · ")}</div>`;
+}
+
 /** Render a StationTip to the deck tooltip HTML (carries the station-tip* testid contract). */
 export function stationTipHtml(tip: StationTip): string {
   const lines = `<div data-testid="station-tip-lines" style="margin-top:5px">${lineSwatches(tip)}</div>`;
@@ -86,7 +117,7 @@ export function stationTipHtml(tip: StationTip): string {
   if (!tip.hasData) {
     return (
       `<div data-testid="station-tip" style="font:12px system-ui">${head}` +
-      `<div style="color:#7a818a">covers ~500 m</div>${lines}</div>`
+      `<div style="color:#7a818a">covers ~500 m</div>${demandLine(tip)}${orphanLine(tip)}${lines}</div>`
     );
   }
   const v = tip.verdict ?? "healthy";
@@ -95,7 +126,8 @@ export function stationTipHtml(tip: StationTip): string {
     `<div style="margin-top:3px"><b data-testid="station-tip-waiting">${Math.round(tip.waiting)}</b> waiting ` +
     `<span data-testid="station-tip-verdict" style="color:${VERDICT_COLOR[v]};font-weight:700">${v.toUpperCase()}</span></div>` +
     `<div style="color:#5a626b">▲ <span data-testid="station-tip-boardings">${Math.round(tip.boardings)}</span> boarded · ` +
-    `▼ <span data-testid="station-tip-alightings">${Math.round(tip.alightings)}</span> off</div>${lines}</div>`
+    `▼ <span data-testid="station-tip-alightings">${Math.round(tip.alightings)}</span> off</div>` +
+    `${demandLine(tip)}${pressureLine(tip)}${orphanLine(tip)}${lines}</div>`
   );
 }
 

@@ -3,7 +3,7 @@
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
-import { STARVED_WAITING } from "./config";
+import { BUSY_WAITING, STARVED_WAITING } from "./config";
 
 export type Rgb = [number, number, number];
 
@@ -13,6 +13,10 @@ export interface StationDot {
   lat: number;
   name: string;
   selected: boolean;
+  /** Cumulative boardings — scales the dot radius so busy stations visibly grow (throughput map). */
+  boardings: number;
+  /** Operational lines serving this station; 0 = orphaned → muted fill until it gets service. */
+  serving: number;
 }
 export interface LinePath {
   id: number;
@@ -26,6 +30,9 @@ export interface CatchmentCircle {
   radiusM: number;
   /** true = transient hover peek (stroke-only, fainter); false/undefined = pinned (filled). */
   peek?: boolean;
+  /** Captured-demand strength 0..1 — scales the pinned fill alpha so a station sitting on a lot
+   *  of demand reads denser than one on empty land (which stations actually grab riders). */
+  demand?: number;
 }
 export interface VehicleDot {
   lng: number;
@@ -90,6 +97,20 @@ function demandColor(w: number, served?: boolean): [number, number, number, numb
   return [r, g, b, a];
 }
 
+/** Waiting-queue band: 0 = a few waiting (faint), 1 = BUSY (amber, watch), 2 = STARVED (red, fix).
+ *  Single source for the ring colour/width + its updateTrigger, mirroring the loadPip language. */
+function waitBand(count: number): 0 | 1 | 2 {
+  if (count >= STARVED_WAITING) return 2;
+  if (count >= BUSY_WAITING) return 1;
+  return 0;
+}
+function waitRing(count: number): { color: [number, number, number, number]; width: number } {
+  const band = waitBand(count);
+  if (band === 2) return { color: [214, 40, 40, 235], width: 3.5 }; // starved — vermillion
+  if (band === 1) return { color: [230, 159, 0, 225], width: 2 }; // busy — amber
+  return { color: [230, 159, 0, 130], width: 1.5 }; // a few waiting — faint amber
+}
+
 /** Topology layers (rebuilt only on topology/selection change — cached by Game so they keep
  *  a stable identity across frames). Split into below/above the vehicle layer to preserve the
  *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
@@ -116,14 +137,17 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getPosition: (d: CatchmentCircle) => [d.lng, d.lat],
       getRadius: (d: CatchmentCircle) => d.radiusM,
       radiusUnits: "meters",
-      // Pinned (selected) station = filled + solid stroke; hover peek = stroke-only, fainter,
-      // so a peek reads as provisional and never greys out what's under it.
-      getFillColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 0] : [0, 114, 178, 38]),
+      // Pinned (selected) station = filled + solid stroke; hover peek = stroke-only, fainter, so a
+      // peek reads as provisional and never greys out what's under it. The pinned fill alpha scales
+      // with captured demand (28..96) so a station on heavy demand reads denser than one on empty
+      // land — the "which stations actually grab riders" signal, surfaced where you're looking.
+      getFillColor: (d: CatchmentCircle) =>
+        d.peek ? [0, 114, 178, 0] : [0, 114, 178, Math.round(28 + Math.min(1, d.demand ?? 0) * 68)],
       stroked: true,
-      getLineColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 110] : [0, 114, 178, 170]),
+      getLineColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 110] : [0, 114, 178, 180]),
       lineWidthMinPixels: 1.5,
       updateTriggers: {
-        getFillColor: view.catchments.map((c) => !!c.peek).join(","),
+        getFillColor: view.catchments.map((c) => `${!!c.peek}:${Math.round((c.demand ?? 0) * 10)}`).join(","),
         getLineColor: view.catchments.map((c) => !!c.peek).join(","),
       },
     }),
@@ -207,26 +231,30 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "stations",
       data: view.stations,
       getPosition: (d: StationDot) => [d.lng, d.lat],
-      getRadius: (d: StationDot) => (d.selected ? 9 : 7),
+      // Radius grows with cumulative boardings (sqrt, capped +6px) so the static dot field becomes
+      // a usage heatmap — busy stations swell. Selected adds a bump on top.
+      getRadius: (d: StationDot) => (d.selected ? 9 : 7) + Math.min(6, Math.sqrt(d.boardings) * 0.4),
       radiusUnits: "pixels",
       radiusMinPixels: 5,
-      // Selected fill = selection blue (ties to its blue catchment ring); deliberately NOT the
-      // old [214,94,0] orange, which collided with the Bus identity colour + gauge-bad. The
-      // radius bump + white stroke are the colour-blind-safe channels.
-      getFillColor: (d: StationDot) => (d.selected ? [0, 114, 178] : [28, 32, 36]),
+      // Selected fill = selection blue (ties to its blue catchment ring). Otherwise an ORPHANED
+      // station (no operational line serving it) is muted grey and a SERVED one is near-black, so
+      // stations visibly "light up" as you connect + run them (place→draw→assign cause→effect).
+      getFillColor: (d: StationDot) =>
+        d.selected ? [0, 114, 178] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
       stroked: true,
       getLineColor: [255, 255, 255],
       lineWidthMinPixels: 2,
       pickable: true,
       updateTriggers: {
-        getFillColor: view.stations.map((s) => s.selected).join(","),
-        getRadius: view.stations.map((s) => s.selected).join(","),
+        getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}`).join(","),
+        getRadius: view.stations.map((s) => `${s.selected}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
       },
     }),
-    // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is
-    // always visible). Stroked-only so it doesn't occlude the station dot. Amber while merely
-    // busy; flips to thick vermillion once the queue is STARVED — pointing at the headway fix.
-    // updateTriggers on the starved-id SET (a membership string), never per frame.
+    // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is always
+    // visible). Stroked-only so it doesn't occlude the station dot. Three bands so "filling up"
+    // reads BEFORE "starved": a faint thin ring under BUSY (a few people, fine), solid amber once
+    // BUSY (watch this), thick vermillion once STARVED (fix the headway). updateTriggers on the
+    // band membership (a string), never per frame.
     new ScatterplotLayer({
       id: "waiting",
       data: view.waiting,
@@ -235,15 +263,14 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       radiusUnits: "pixels",
       stroked: true,
       filled: false,
-      getLineColor: (d: WaitingDot) =>
-        d.count >= STARVED_WAITING ? [214, 40, 40, 235] : [230, 159, 0, 220],
-      getLineWidth: (d: WaitingDot) => (d.count >= STARVED_WAITING ? 3.5 : 2),
+      getLineColor: (d: WaitingDot) => waitRing(d.count).color,
+      getLineWidth: (d: WaitingDot) => waitRing(d.count).width,
       lineWidthUnits: "pixels",
-      lineWidthMinPixels: 2,
+      lineWidthMinPixels: 1.5,
       updateTriggers: {
         getRadius: view.waiting.map((w) => w.count).join(","),
-        getLineColor: view.waiting.map((w) => w.count >= STARVED_WAITING).join(","),
-        getLineWidth: view.waiting.map((w) => w.count >= STARVED_WAITING).join(","),
+        getLineColor: view.waiting.map((w) => waitBand(w.count)).join(","),
+        getLineWidth: view.waiting.map((w) => waitBand(w.count)).join(","),
       },
     }),
     // Live build-conflict dots along the in-progress blueprint (amber built/park, red water).

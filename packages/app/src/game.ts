@@ -185,6 +185,10 @@ export class Game {
       boardings: ps?.boardings ?? 0,
       alightings: ps?.alightings ?? 0,
       verdict: hasData ? this.starvation(waiting) : null,
+      demand: ps ? ps.demandOrigin + ps.demandDest : 0,
+      serving: ps?.serving ?? lines.length,
+      denied: ps?.denied ?? 0,
+      abandoned: ps?.abandoned ?? 0,
       lines,
     };
   }
@@ -539,11 +543,29 @@ export class Game {
       .filter((s) => !s.removed)
       .map((s) => {
         const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-        return { id: s.id, lng, lat, name: s.name, selected: s.id === this.selectedStation };
+        const ps = this.perStationById.get(s.id);
+        return {
+          id: s.id,
+          lng,
+          lat,
+          name: s.name,
+          selected: s.id === this.selectedStation,
+          boardings: ps?.boardings ?? 0, // throughput → dot radius
+          serving: ps?.serving ?? 0, // 0 = orphaned → muted fill
+        };
       });
 
-    // A pinned (selected) station gets the filled catchment; a mere hover peek gets the
-    // stroke-only fainter one (render.ts splits on `peek`).
+    // Captured demand, self-calibrated against the busiest station so the catchment-fill density
+    // reads comparatively regardless of a city's absolute demand weights.
+    const stationDemand = (id: number): number => {
+      const ps = this.perStationById.get(id);
+      return ps ? ps.demandOrigin + ps.demandDest : 0;
+    };
+    let maxDemand = 0;
+    for (const ps of this.lastStats.perStation) maxDemand = Math.max(maxDemand, ps.demandOrigin + ps.demandDest);
+
+    // A pinned (selected) station gets the filled catchment (alpha ∝ its captured demand); a mere
+    // hover peek gets the stroke-only fainter one (render.ts splits on `peek`).
     const peeking = this.selectedStation === null;
     const catchments =
       highlight === null
@@ -552,7 +574,7 @@ export class Game {
             .filter((s) => s.id === highlight)
             .map((s) => {
               const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-              return { lng, lat, radiusM: CATCHMENT_M, peek: peeking };
+              return { lng, lat, radiusM: CATCHMENT_M, peek: peeking, demand: maxDemand > 0 ? stationDemand(s.id) / maxDemand : 0 };
             });
 
     const lines = linesV
