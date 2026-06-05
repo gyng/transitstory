@@ -68,6 +68,11 @@ pub struct World {
     pub waiting: Vec<VecDeque<crate::pax::Pax>>,
     /// Per-station lines serving it (operational only); rebuilt by the dispatcher for routing.
     pub serving: Vec<Vec<LineId>>,
+    /// Inter-station footpaths: per station, the nearby stations reachable on foot within
+    /// `FOOTPATH_MM`, each with its integer walk time (ms). Derived from positions, rebuilt with
+    /// the catchment when stations change. Lets RAPTOR transfer between unconnected lines whose
+    /// stops are close (an interchange by foot); board_alight delays the rider by the walk time.
+    pub footpaths: Vec<Vec<(u32, i64)>>,
     /// Route cache (origin,dest)->legs, so BFS isn't rerun per spawn on large networks.
     /// A derived cache (not hashed); cleared when the network changes. Lookup-only, so no
     /// HashMap-iteration determinism hazard.
@@ -202,6 +207,7 @@ impl World {
             denied_at: Vec::new(),
             abandoned_at: Vec::new(),
             serving: Vec::new(),
+            footpaths: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             access_cache: rustc_hash::FxHashMap::default(),
             build_lookup,
@@ -844,7 +850,7 @@ impl World {
         }
         let access = self
             .router
-            .reachable(&self.lines, &self.serving, StationId(origin), self.max_legs);
+            .reachable(&self.lines, &self.serving, &self.footpaths, StationId(origin), self.max_legs);
         if access.is_empty() {
             return Vec::new();
         }

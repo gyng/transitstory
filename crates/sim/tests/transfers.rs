@@ -63,7 +63,7 @@ fn router_trait_matches_the_free_function() {
     let mut w = two_line_world();
     w.tick(50);
     let router = BfsRouter;
-    let via_trait = Router::plan(&router, &w.lines, &w.serving, StationId(0), StationId(8), 4);
+    let via_trait = Router::plan(&router, &w.lines, &w.serving, &w.footpaths, StationId(0), StationId(8), 4);
     let via_fn = plan_route(&w.lines, &w.serving, StationId(0), StationId(8), 4);
     assert_eq!(via_trait, via_fn, "the trait impl and the free function agree");
     assert_eq!(via_trait.expect("route").len(), 2);

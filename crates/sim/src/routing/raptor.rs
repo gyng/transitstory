@@ -7,7 +7,7 @@
 //! are untouched), and fully deterministic — integer ms throughout, index-ordered iteration, no
 //! HashMap iteration. No real timetable exists (vehicles are headway-dispatched, positions
 //! emergent), so the honest model is frequency-based: wait = headway/2, ride = mode speed.
-use super::{Leg, Router};
+use super::{Footpaths, Leg, Router};
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use crate::trainset::spec_for_mode;
@@ -29,15 +29,16 @@ impl Router for RaptorRouter {
         &self,
         lines: &[Line],
         serving: &[Vec<LineId>],
+        footpaths: &Footpaths,
         origin: StationId,
         dest: StationId,
         max_legs: usize,
     ) -> Option<Vec<Leg>> {
-        plan_raptor(lines, serving, origin, dest, max_legs)
+        plan_raptor(lines, serving, footpaths, origin, dest, max_legs)
     }
 
-    fn reachable(&self, lines: &[Line], serving: &[Vec<LineId>], origin: StationId, max_legs: usize) -> Vec<i64> {
-        reachable_raptor(lines, serving, origin, max_legs)
+    fn reachable(&self, lines: &[Line], serving: &[Vec<LineId>], footpaths: &Footpaths, origin: StationId, max_legs: usize) -> Vec<i64> {
+        reachable_raptor(lines, serving, footpaths, origin, max_legs)
     }
 }
 
@@ -121,6 +122,7 @@ fn build_routes(lines: &[Line]) -> Vec<DirRoute> {
 fn plan_raptor(
     lines: &[Line],
     serving: &[Vec<LineId>],
+    footpaths: &Footpaths,
     origin: StationId,
     dest: StationId,
     max_legs: usize,
@@ -130,11 +132,11 @@ fn plan_raptor(
     if oi >= n || di >= n || oi == di || max_legs == 0 {
         return None;
     }
-    let (best, parent) = raptor_labels(lines, serving, oi, max_legs);
+    let (best, parent, walk_src) = raptor_labels(lines, serving, footpaths, oi, max_legs);
     if best[di] >= INF {
         return None;
     }
-    reconstruct(&parent, oi, di, max_legs)
+    reconstruct(&parent, &walk_src, oi, di, max_legs)
 }
 
 /// One-to-all earliest-arrival labels (ms) from `origin` to every station, plus the parent
@@ -143,9 +145,10 @@ fn plan_raptor(
 fn raptor_labels(
     lines: &[Line],
     serving: &[Vec<LineId>],
+    footpaths: &Footpaths,
     oi: usize,
     max_legs: usize,
-) -> (Vec<i64>, Vec<Option<(StationId, LineId)>>) {
+) -> (Vec<i64>, Vec<Option<(StationId, LineId)>>, Vec<Option<StationId>>) {
     let n = serving.len();
     let routes = build_routes(lines);
     let nlines = lines.len();
@@ -153,6 +156,9 @@ fn raptor_labels(
     let mut best = vec![INF; n]; // earliest arrival at each station (min over rounds)
     let mut prev = vec![INF; n]; // arrival snapshot at the START of the current round (for boarding)
     let mut parent: Vec<Option<(StationId, LineId)>> = vec![None; n];
+    // For a station reached by WALKING this round: the station walked FROM (which was reached by a
+    // ride). reconstruct uses it to make consecutive ride legs straddle a footpath gap.
+    let mut walk_src: Vec<Option<StationId>> = vec![None; n];
     best[oi] = 0;
     prev[oi] = 0;
 
@@ -216,6 +222,38 @@ fn raptor_labels(
             }
         }
 
+        // Footpath relaxation: from each station improved by TRANSIT this round (it has a transit
+        // parent), relax its walkable neighbours. Only transit-reached stations propagate on foot,
+        // so a journey never starts or ends with a walk — the first leg boards at the origin and
+        // board_alight's transfer stays the only walk site. A walked-to station is marked so the
+        // NEXT round can board a line there; the walk is recorded in walk_src (parent stays a ride).
+        let transit_count = improved.len();
+        let mut k = 0;
+        while k < transit_count {
+            let s = improved[k];
+            k += 1;
+            if parent[s].is_none() || s >= footpaths.len() {
+                continue; // origin / walk-reached → don't propagate footpaths (one hop, ride→walk→ride)
+            }
+            let arr_s = best[s];
+            for &(w, wms) in &footpaths[s] {
+                let wi = w as usize;
+                if wi >= n {
+                    continue;
+                }
+                let cand = arr_s.saturating_add(wms);
+                if cand < best[wi] {
+                    best[wi] = cand;
+                    walk_src[wi] = Some(StationId(s as u32));
+                    parent[wi] = None; // reached on foot, not by a ride
+                    if !in_improved[wi] {
+                        in_improved[wi] = true;
+                        improved.push(wi);
+                    }
+                }
+            }
+        }
+
         if improved.is_empty() {
             break; // no station got closer → fixpoint, further rounds add nothing
         }
@@ -227,26 +265,30 @@ fn raptor_labels(
         marked = improved;
     }
 
-    (best, parent)
+    (best, parent, walk_src)
 }
 
 /// One-to-all travel-time vector (ms) from `origin` to every station; `i64::MAX` = unreachable
 /// within `max_legs`. The demand model weights destination attractiveness by this so that
 /// well-connected places (short transit time) draw more trips than far/slow ones — the network
 /// shapes the demand. RAPTOR already computes the whole label vector, so this is near-free.
-fn reachable_raptor(lines: &[Line], serving: &[Vec<LineId>], origin: StationId, max_legs: usize) -> Vec<i64> {
+fn reachable_raptor(lines: &[Line], serving: &[Vec<LineId>], footpaths: &Footpaths, origin: StationId, max_legs: usize) -> Vec<i64> {
     let n = serving.len();
     let oi = origin.index();
     if oi >= n || max_legs == 0 {
         return Vec::new();
     }
-    let (best, _) = raptor_labels(lines, serving, oi, max_legs);
+    let (best, _, _) = raptor_labels(lines, serving, footpaths, oi, max_legs);
     best.into_iter().map(|t| if t >= INF { i64::MAX } else { t }).collect()
 }
 
-/// Walk parent pointers from `dest` back to `origin` into an ordered leg list.
+/// Walk parent pointers from `dest` back to `origin` into an ordered leg list. Legs are ride-only;
+/// a footpath shows up as a GAP where one leg's `alight` differs from the next leg's `board` (the
+/// rider walks it). When a leg's boarding station was itself reached on foot (`walk_src`), the
+/// PREVIOUS leg alighted at the station walked from — so we step `cur` back to there.
 fn reconstruct(
     parent: &[Option<(StationId, LineId)>],
+    walk_src: &[Option<StationId>],
     oi: usize,
     di: usize,
     max_legs: usize,
@@ -256,7 +298,12 @@ fn reconstruct(
     for _ in 0..max_legs + 1 {
         let (board, line) = parent[cur]?;
         legs.push(Leg { line, board, alight: StationId(cur as u32) });
-        cur = board.index();
+        // Did the rider walk in to `board`? If so, the previous leg alighted at the walked-from
+        // station (the footpath gap); otherwise the previous leg alighted right at `board`.
+        cur = match walk_src.get(board.index()).copied().flatten() {
+            Some(src) => src.index(),
+            None => board.index(),
+        };
         if cur == oi {
             legs.reverse();
             return Some(legs);

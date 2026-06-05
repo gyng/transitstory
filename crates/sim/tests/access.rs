@@ -35,7 +35,7 @@ fn reachable_returns_ordered_one_to_all_times() {
     w.apply(&Command::SetRunning { running: true });
     w.tick(50);
 
-    let acc = RaptorRouter.reachable(&w.lines, &w.serving, StationId(0), 4);
+    let acc = RaptorRouter.reachable(&w.lines, &w.serving, &w.footpaths, StationId(0), 4);
     assert_eq!(acc.len(), w.serving.len(), "one entry per station");
     assert_eq!(acc[0], 0, "the origin reaches itself at t=0");
     assert!(acc[1] > 0 && acc[1] < i64::MAX, "P is reachable");
@@ -53,8 +53,8 @@ fn the_default_router_exposes_accessibility() {
     line(&mut w, 0, &[0, 1], 120_000);
     w.apply(&Command::SetRunning { running: true });
     w.tick(50);
-    assert!(BfsRouter.reachable(&w.lines, &w.serving, StationId(0), 4).is_empty(), "BFS exposes no accessibility");
-    assert!(!RaptorRouter.reachable(&w.lines, &w.serving, StationId(0), 4).is_empty(), "RAPTOR (default) does");
+    assert!(BfsRouter.reachable(&w.lines, &w.serving, &w.footpaths, StationId(0), 4).is_empty(), "BFS exposes no accessibility");
+    assert!(!RaptorRouter.reachable(&w.lines, &w.serving, &w.footpaths, StationId(0), 4).is_empty(), "RAPTOR (default) does");
 }
 
 /// Two equally-attractive job clusters equidistant from a residential origin, but one (P) is on a

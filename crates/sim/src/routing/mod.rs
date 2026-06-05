@@ -3,8 +3,10 @@
 //! travel time over K=`max_legs` rounds) and `BfsRouter` (minimum-transfer BFS, kept as the
 //! simple reference + comparison baseline). The upgrade was a clean drop-in exactly as the
 //! architecture intends — a new `impl Router` in a sibling module, no change to `World::apply`'s
-//! signature or the demand call shape, same `Vec<Leg>` output so `Pax`/board_alight are untouched.
-//! Still deferred behind this same seam: inter-station footpaths and a real departure timetable.
+//! signature or the demand call shape, same `Vec<Leg>` output so `Pax`/board_alight stay thin.
+//! Inter-station footpaths now ship: a `footpaths` adjacency lets a router transfer on foot
+//! between unconnected lines whose stops are close (legs stay ride-only with a walk GAP). Still
+//! deferred behind this same seam: a real departure timetable.
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 
@@ -27,11 +29,17 @@ pub struct Leg {
 /// unreachable within `max_legs`. `serving[station]` = lines stopping at that station.
 /// Implementations MUST be deterministic (index-ordered iteration only) — the determinism gate
 /// depends on it.
+/// Footpath adjacency: `footpaths[station]` = nearby stations reachable on foot, each with its
+/// walk time (ms). Lets a router transfer between unconnected lines whose stops are close. An
+/// empty slice (or empty per-station list) means "no walking" — pure transit routing.
+pub type Footpaths = [Vec<(u32, i64)>];
+
 pub trait Router {
     fn plan(
         &self,
         lines: &[Line],
         serving: &[Vec<LineId>],
+        footpaths: &Footpaths,
         origin: StationId,
         dest: StationId,
         max_legs: usize,
@@ -42,7 +50,7 @@ pub trait Router {
     /// returns an empty vec — "no accessibility data" — so callers fall back to a geometric
     /// model; `RaptorRouter` overrides it with real earliest-arrival labels (near-free, since
     /// RAPTOR computes the whole vector anyway). Must be deterministic (index-ordered) too.
-    fn reachable(&self, _lines: &[Line], _serving: &[Vec<LineId>], _origin: StationId, _max_legs: usize) -> Vec<i64> {
+    fn reachable(&self, _lines: &[Line], _serving: &[Vec<LineId>], _footpaths: &Footpaths, _origin: StationId, _max_legs: usize) -> Vec<i64> {
         Vec::new()
     }
 }

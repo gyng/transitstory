@@ -19,6 +19,17 @@ const DEST_DECAY_MM: f64 = 3_000_000.0;
 /// Accessibility-decay scale (ms): a destination's pull halves at ~this transit travel time, so
 /// well-connected (fast-to-reach) places draw proportionally more trips. ~15 min.
 const ACCESS_DECAY_MS: f64 = 900_000.0;
+/// Max walking-transfer distance (mm) between two stations — ~400 m, a generous interchange walk
+/// shed. Stops closer than this form a footpath interchange even on unconnected lines.
+pub(crate) const FOOTPATH_MM: i64 = 400_000;
+/// Walking speed (mm/s) for the footpath time estimate (~1.4 m/s). Integer ms throughout.
+pub(crate) const WALK_SPEED_MM_S: i64 = 1_400;
+
+/// Integer walk time (ms) for a footpath of `dist_mm`: dist / speed, with the mm/s → ms ×1000.
+#[inline]
+pub(crate) fn walk_ms(dist_mm: i64) -> i64 {
+    dist_mm.max(0).saturating_mul(1000) / WALK_SPEED_MM_S
+}
 
 /// Recompute per-station captured origin/destination weight from the demand grid. Each
 /// cell's weight is distributed across in-range stations by normalized decay, so the total
@@ -63,6 +74,25 @@ pub(crate) fn prepare(world: &mut World) {
         }
     }
 
+    // Footpath edges: nearby station pairs walkable on foot (an interchange by foot), with their
+    // integer walk time. O(n²) but only on a station change. Index-ordered → deterministic.
+    let mut footpaths: Vec<Vec<(u32, i64)>> = vec![Vec::new(); n];
+    for i in 0..n {
+        if stations[i].removed {
+            continue;
+        }
+        for j in 0..n {
+            if i == j || stations[j].removed {
+                continue;
+            }
+            let d = stations[i].pos.dist_mm(&stations[j].pos);
+            if d <= FOOTPATH_MM {
+                footpaths[i].push((j as u32, walk_ms(d)));
+            }
+        }
+    }
+    world.footpaths = footpaths;
+
     world.captured_origin = origin;
     world.captured_dest = dest;
     world.spawn_accum.resize(n, 0.0);
@@ -91,6 +121,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         ref stations,
         ref lines,
         ref serving,
+        ref footpaths,
         ref captured_origin,
         ref captured_dest,
         ref mut spawn_accum,
@@ -122,7 +153,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         // One-to-all transit travel time from this origin, cached until the network changes.
         let access = access_cache
             .entry(s as u32)
-            .or_insert_with(|| router.reachable(lines, serving, StationId(s as u32), max_legs));
+            .or_insert_with(|| router.reachable(lines, serving, footpaths, StationId(s as u32), max_legs));
         while spawn_accum[s] >= 1.0 {
             spawn_accum[s] -= 1.0;
             if let Some(dest) =
@@ -131,7 +162,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
                 // Route across the network (transfers at interchanges), cached per O/D pair.
                 let entry = route_cache
                     .entry((s as u32, dest.0))
-                    .or_insert_with(|| router.plan(lines, serving, StationId(s as u32), dest, max_legs));
+                    .or_insert_with(|| router.plan(lines, serving, footpaths, StationId(s as u32), dest, max_legs));
                 if let Some(legs) = entry {
                     if !legs.is_empty() {
                         waiting[s].push_back(Pax {
@@ -160,7 +191,7 @@ pub fn od_weights(world: &World, origin: usize) -> Vec<(u32, f64)> {
     let bias = crate::tod::work_bias(crate::tod::hour_of_day(world.clock_ms));
     let access = world
         .router
-        .reachable(&world.lines, &world.serving, StationId(origin as u32), world.max_legs);
+        .reachable(&world.lines, &world.serving, &world.footpaths, StationId(origin as u32), world.max_legs);
     let use_access = !access.is_empty();
     let opos = world.stations[origin].pos;
     let mut out: Vec<(u32, f64)> = Vec::new();

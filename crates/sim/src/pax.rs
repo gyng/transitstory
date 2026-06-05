@@ -70,6 +70,7 @@ pub(crate) fn renege(world: &mut World) {
 
 pub(crate) fn board_alight(world: &mut World) {
     let World {
+        ref stations,
         ref lines,
         ref mut vehicles,
         ref mut waiting,
@@ -122,9 +123,19 @@ pub(crate) fn board_alight(world: &mut World) {
                     *journey_samples += 1;
                 } else {
                     let mut p = pax;
-                    p.leg += 1; // transfer: next leg boards here
-                    p.t_wait_ms = clock_ms; // starts waiting for the next leg now
-                    waiting[s].push_back(p);
+                    p.leg += 1; // transfer: advance to the next leg
+                    let b = p.cur().board.index(); // where the next leg boards
+                    if b == s {
+                        // Same-station interchange (shared stop): re-queue here, no walk.
+                        p.t_wait_ms = clock_ms;
+                        waiting[s].push_back(p);
+                    } else if b < waiting.len() {
+                        // Footpath interchange: walk s→b. `t_wait_ms` is set to the arrival time at b,
+                        // so the rider is "still walking" (and unboardable) until the clock reaches it.
+                        let d = stations[s].pos.dist_mm(&stations[b].pos);
+                        p.t_wait_ms = clock_ms.saturating_add(crate::demand::walk_ms(d));
+                        waiting[b].push_back(p);
+                    }
                 }
             } else {
                 still_aboard.push(pax);
@@ -138,7 +149,10 @@ pub(crate) fn board_alight(world: &mut World) {
         let mut requeue = std::collections::VecDeque::with_capacity(waiting[s].len());
         while let Some(pax) = waiting[s].pop_front() {
             let wants_this = pax.cur().line == line_id;
-            if wants_this && vehicles.onboard_pax[i].len() < cap {
+            // A rider whose `t_wait_ms` is in the future is still WALKING in over a footpath — not
+            // yet on the platform, so it can neither board nor be counted as passed-by.
+            let ready = pax.t_wait_ms <= clock_ms;
+            if wants_this && ready && vehicles.onboard_pax[i].len() < cap {
                 // Boarded: fold platform wait time into the running average.
                 *total_wait_ms += (clock_ms - pax.t_wait_ms).max(0) as u64;
                 *wait_samples += 1;
@@ -149,8 +163,9 @@ pub(crate) fn board_alight(world: &mut World) {
                     boardings[s] += 1;
                 }
             } else {
-                // A rider who wanted THIS line but found it full was left behind (real pressure).
-                if wants_this {
+                // A rider who wanted THIS line, was on the platform, but found it full was left
+                // behind (real pressure). Still-walking riders are skipped, not denied.
+                if wants_this && ready {
                     *denied_boardings += 1;
                     if let Some(slot) = denied_at.get_mut(s) {
                         *slot += 1; // bucket the full-train pass-by to this station

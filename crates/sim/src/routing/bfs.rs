@@ -2,7 +2,7 @@
 //! any serving line to any of that line's stops (one leg), then transfer at a shared station.
 //! Returns the fewest-leg path; direct single-line trips fall out as a 1-leg result.
 //! Deterministic: index-ordered iteration only (no HashMap iteration).
-use super::{Leg, Router};
+use super::{Footpaths, Leg, Router};
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use std::collections::VecDeque;
@@ -12,10 +12,12 @@ use std::collections::VecDeque;
 pub struct BfsRouter;
 
 impl Router for BfsRouter {
+    /// Transit-only baseline: footpaths are ignored (walking transfers are a RAPTOR feature).
     fn plan(
         &self,
         lines: &[Line],
         serving: &[Vec<LineId>],
+        _footpaths: &Footpaths,
         origin: StationId,
         dest: StationId,
         max_legs: usize,

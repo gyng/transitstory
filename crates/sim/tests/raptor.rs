@@ -60,12 +60,12 @@ fn trainset_mode_heavy() -> u8 {
 fn raptor_prefers_the_faster_line_where_bfs_is_indifferent() {
     let w = two_direct_world();
     // BFS (min legs): both options are 1 leg; it returns the first-scanned line (the slow bus).
-    let bfs = BfsRouter.plan(&w.lines, &w.serving, StationId(0), StationId(1), 4).expect("bfs route");
+    let bfs = BfsRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(1), 4).expect("bfs route");
     assert_eq!(bfs.len(), 1);
     assert_eq!(bfs[0].line, LineId(0), "BFS is time-blind — returns the first single-leg line");
 
     // RAPTOR (min time): picks the fast heavy-rail line, still a single leg.
-    let rap = RaptorRouter.plan(&w.lines, &w.serving, StationId(0), StationId(1), 4).expect("raptor route");
+    let rap = RaptorRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(1), 4).expect("raptor route");
     check_path(&rap, 0, 1);
     assert_eq!(rap.len(), 1, "the faster option is still a direct single leg");
     assert_eq!(rap[0].line, LineId(1), "RAPTOR routes over the faster (heavy-rail) line");
@@ -91,12 +91,12 @@ fn slow_direct_vs_fast_transfer_world() -> World {
 fn raptor_takes_a_transfer_when_frequency_and_speed_make_it_faster() {
     let w = slow_direct_vs_fast_transfer_world();
     // BFS: the direct line is a single leg, so it wins on transfer count regardless of time.
-    let bfs = BfsRouter.plan(&w.lines, &w.serving, StationId(0), StationId(1), 4).expect("bfs route");
+    let bfs = BfsRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(1), 4).expect("bfs route");
     assert_eq!(bfs.len(), 1, "BFS minimises transfers — one slow direct leg");
     assert_eq!(bfs[0].line, LineId(0));
 
     // RAPTOR: two fast frequent legs beat one slow infrequent leg.
-    let rap = RaptorRouter.plan(&w.lines, &w.serving, StationId(0), StationId(1), 4).expect("raptor route");
+    let rap = RaptorRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(1), 4).expect("raptor route");
     check_path(&rap, 0, 1);
     assert_eq!(rap.len(), 2, "RAPTOR accepts a transfer to ride the fast frequent corridor");
     assert_eq!(rap[0].line, LineId(1));
@@ -123,10 +123,10 @@ fn three_leg_chain_world() -> World {
 fn raptor_respects_the_max_legs_bound() {
     let w = three_leg_chain_world();
     assert!(
-        RaptorRouter.plan(&w.lines, &w.serving, StationId(0), StationId(3), 2).is_none(),
+        RaptorRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(3), 2).is_none(),
         "a 3-leg-only trip is unreachable within max_legs=2",
     );
-    let ok = RaptorRouter.plan(&w.lines, &w.serving, StationId(0), StationId(3), 3).expect("reachable in 3 legs");
+    let ok = RaptorRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(0), StationId(3), 3).expect("reachable in 3 legs");
     check_path(&ok, 0, 3);
     assert_eq!(ok.len(), 3, "the chain needs exactly three legs");
 }
@@ -137,8 +137,8 @@ fn raptor_reaches_everything_bfs_can() {
     // (it may differ in which legs, but it is never less connective).
     let w = slow_direct_vs_fast_transfer_world();
     for (o, d) in [(0u32, 1u32), (0, 2), (2, 1), (1, 0)] {
-        let bfs = BfsRouter.plan(&w.lines, &w.serving, StationId(o), StationId(d), 4);
-        let rap = RaptorRouter.plan(&w.lines, &w.serving, StationId(o), StationId(d), 4);
+        let bfs = BfsRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(o), StationId(d), 4);
+        let rap = RaptorRouter.plan(&w.lines, &w.serving, &w.footpaths, StationId(o), StationId(d), 4);
         assert_eq!(bfs.is_some(), rap.is_some(), "RAPTOR reachability matches BFS for {o}->{d}");
         if let Some(legs) = rap {
             check_path(&legs, o, d);
