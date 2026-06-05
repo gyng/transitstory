@@ -6,6 +6,7 @@
 //! determinism contract, re-gated at every commit). See AGENTS.md.
 #![forbid(unsafe_code)]
 
+pub mod agents;
 pub mod city;
 pub mod command;
 mod demand;
