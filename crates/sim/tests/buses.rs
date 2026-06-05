@@ -181,6 +181,56 @@ fn congestion_is_worse_in_built_up_areas() {
     assert!(v(downtown) > 0, "but it still moves");
 }
 
+/// `n` identical bus lines sharing one long open ROAD (so their vehicles run in lockstep on the
+/// same cells — maximal self-traffic). No built-up land, night clock → only self-congestion bites.
+fn shared_road_world(n: u32) -> World {
+    let mut cells = Vec::new();
+    for cx in -200..200 {
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 0, c: class::ROAD });
+    }
+    let mut w = World::new(7, CityData {
+        id: "shared".into(),
+        seed: 7,
+        buildability: BuildabilityGrid { cell_m: 100.0, cells },
+        demand: DemandGrid { cell_m: 200.0, cells: vec![] },
+        patience_ms: 0,
+        ..Default::default()
+    });
+    w.apply(&Command::PlaceStation { x_mm: -10_000_000, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 10_000_000, y_mm: 0, name: None });
+    for li in 0..n {
+        w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+        w.apply(&Command::AddStop { line: LineId(li), station: StationId(0), after: None });
+        w.apply(&Command::AddStop { line: LineId(li), station: StationId(1), after: None });
+        w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 1 });
+        w.apply(&Command::SetHeadway { line: LineId(li), headway_ms: 600_000 });
+    }
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+#[test]
+fn buses_congest_their_own_corridor() {
+    let mut one = shared_road_world(1);
+    let mut many = shared_road_world(6);
+    for _ in 0..800 {
+        one.tick(50);
+        many.tick(50);
+    }
+    let cruise = |w: &World| w.vehicles.v_mm_s[0];
+    assert!(cruise(&many) < cruise(&one), "a corridor packed with buses self-congests: {} < {}", cruise(&many), cruise(&one));
+    assert!(cruise(&many) > 0, "but traffic still crawls along");
+
+    // deterministic with the self-traffic feedback
+    let mut a = shared_road_world(6);
+    let mut b = shared_road_world(6);
+    for _ in 0..800 {
+        a.tick(50);
+        b.tick(50);
+    }
+    assert_eq!(a.state_hash(), b.state_hash(), "self-induced congestion replays bit-for-bit");
+}
+
 #[test]
 fn bus_road_awareness_is_deterministic() {
     let build = || {

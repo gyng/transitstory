@@ -52,12 +52,16 @@ pub fn congestion_pct(clock_ms: i64) -> i64 {
     100 - time_penalty(clock_ms)
 }
 
-/// Road congestion factor (%) at a cell, combining time-of-day with LOCAL built-up density:
-/// background traffic is heavier where the surroundings are dense (`built_neighbours` = BUILT cells
-/// in the 3×3 around the road). So a downtown arterial gridlocks at rush hour while an open road
-/// keeps flowing. Floored at 50 so a fully-jammed road is never slower than going off-road.
-pub fn congestion_at(clock_ms: i64, built_neighbours: i64) -> i64 {
-    (congestion_pct(clock_ms) - built_neighbours.clamp(0, 9) * 4).clamp(50, 100)
+/// Road congestion factor (%) at a cell, from three road-user sources:
+///   • time-of-day background traffic (`congestion_pct`),
+///   • structural background — denser surroundings carry more cars (`built_neighbours` = BUILT
+///     cells in the 3×3 around the road),
+///   • the player's OWN buses sharing the cell (`bus_traffic`) — a corridor packed with bus lines
+///     jams ITSELF, so service has to spread out (the first bus is free; each extra one adds jam).
+/// Floored at 50 so a fully-jammed road is never slower than going off-road.
+pub fn congestion_at(clock_ms: i64, built_neighbours: i64, bus_traffic: i64) -> i64 {
+    let self_pen = bus_traffic.saturating_sub(1).clamp(0, 6) * 8;
+    (congestion_pct(clock_ms) - built_neighbours.clamp(0, 9) * 4 - self_pen).clamp(50, 100)
 }
 
 pub fn period_label(hour: f64) -> &'static str {

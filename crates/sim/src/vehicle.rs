@@ -96,6 +96,17 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
 
+    // Self-induced congestion: count BUSES per road cell at the START of the tick (the player's own
+    // service is a road user). Transient (not hashed); built by iterating the ordered vehicle Vec
+    // and read only via get() — no HashMap iteration, so it stays deterministic.
+    let mut bus_load: rustc_hash::FxHashMap<(i32, i32), u16> = rustc_hash::FxHashMap::default();
+    for i in 0..v.len() {
+        if lines[v.line[i].index()].mode == crate::trainset::tmode::BUS {
+            let key = (v.x_mm[i].div_euclid(build_cell_mm) as i32, v.y_mm[i].div_euclid(build_cell_mm) as i32);
+            *bus_load.entry(key).or_insert(0) += 1;
+        }
+    }
+
     for i in 0..v.len() {
         v.prev_s_mm[i] = v.s_mm[i];
         v.prev_x_mm[i] = v.x_mm[i];
@@ -149,7 +160,8 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                             }
                         }
                     }
-                    vmax_eff = vmax_eff * crate::tod::congestion_at(clock, built) / 100;
+                    let occ = bus_load.get(&key).copied().unwrap_or(0) as i64;
+                    vmax_eff = vmax_eff * crate::tod::congestion_at(clock, built, occ) / 100;
                 }
             } else if cell == crate::city::class::BUILT {
                 vmax_eff = vmax_eff.min(STREET_SPEED_MM_S);
