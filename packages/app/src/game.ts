@@ -477,7 +477,10 @@ export class Game {
     this.draggingHandle = null;
     if (ids.length >= 2) {
       const lineId = this.drawLineByIds(ids);
-      if (lineId >= 0 && wps.some((s) => s.length > 0)) {
+      // Only attach waypoints if EVERY drafted stop survived — the afford-gate can reject some
+      // AddStops, leaving fewer spans, which would shift the per-span waypoints onto wrong spans.
+      const committedStops = lineId >= 0 ? this.bridge.linesView()[lineId]?.stops.length ?? 0 : 0;
+      if (lineId >= 0 && committedStops === ids.length && wps.some((s) => s.length > 0)) {
         this.noteRejections(this.bridge.apply(cmd.setLineWaypoints(lineId, wps)));
         this.refresh();
       }

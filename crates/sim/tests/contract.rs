@@ -31,13 +31,15 @@ fn command_variant_tags_match_the_frontend_mirror() {
         Command::SetEconomy { enabled: false },
         Command::SetLineWaypoints { line: LineId(0), waypoints: vec![] },
         Command::SetDemandMode { agents: false },
+        Command::RemoveStation { station: StationId(0) },
+        Command::RemoveLine { line: LineId(0) },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
     tags.sort();
     // Mirror: packages/app/src/types.ts `Command` + codec.ts `cmd.*`.
     let expected = sorted(vec![
-        "AddStop", "AssignTrainset", "CreateLine", "PlaceStation", "SetDemandMode",
-        "SetEconomy", "SetHeadway", "SetLineWaypoints", "SetRunning", "SetSegmentMode",
+        "AddStop", "AssignTrainset", "CreateLine", "PlaceStation", "RemoveLine", "RemoveStation",
+        "SetDemandMode", "SetEconomy", "SetHeadway", "SetLineWaypoints", "SetRunning", "SetSegmentMode",
     ]);
     assert_eq!(tags, expected, "Command vocabulary drifted from the frontend mirror");
 }
@@ -55,14 +57,16 @@ fn event_variant_tags_match_the_frontend_mirror() {
         Event::EconomySet { enabled: false },
         Event::WaypointsSet { line: LineId(0) },
         Event::DemandModeSet { agents: false },
+        Event::StationRemoved { station: StationId(0) },
+        Event::LineRemoved { line: LineId(0) },
         Event::Rejected { reason: String::new() },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
     tags.sort();
     // Mirror: packages/app/src/types.ts `Event`.
     let expected = sorted(vec![
-        "DemandModeSet", "EconomySet", "HeadwaySet", "LineCreated", "Rejected", "RunningSet",
-        "SegmentModeSet", "StationPlaced", "StopAdded", "TrainsetAssigned", "WaypointsSet",
+        "DemandModeSet", "EconomySet", "HeadwaySet", "LineCreated", "LineRemoved", "Rejected", "RunningSet",
+        "SegmentModeSet", "StationPlaced", "StationRemoved", "StopAdded", "TrainsetAssigned", "WaypointsSet",
     ]);
     assert_eq!(tags, expected, "Event vocabulary drifted from the frontend mirror");
 }

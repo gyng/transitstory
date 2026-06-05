@@ -71,8 +71,12 @@ impl Population {
     /// Spawn the trips whose departure bucket the clock crossed this tick — O(departures), not O(N).
     /// Mirrors `demand::spawn`'s route-and-queue, so the downstream load is identical to gravity's.
     pub fn spawn_trips(&mut self, world: &mut World, dt_ms: i64) {
-        if self.cell_station.len() != world.city.demand.cells.len() {
+        // Refresh the nearest-served-station map when the grid size changes OR the network changed
+        // (the served set moves under us as the player builds/bulldozes — dispatch flags it). Without
+        // the dirty check this was built once and went stale (agents routed to dead/old stations).
+        if self.cell_station.len() != world.city.demand.cells.len() || world.cell_station_dirty {
             self.rebuild_cell_station(world);
+            world.cell_station_dirty = false;
         }
         let now = world.clock_ms;
         let max_legs = world.max_legs;
@@ -83,17 +87,20 @@ impl Population {
             return; // no departure bucket boundary crossed this tick
         }
         let World { ref lines, ref serving, ref footpaths, ref mut waiting, ref mut route_cache, ref router, .. } = *world;
+        // Bounds-safe cell→station lookup: a cell with no served station in range (or a map not yet
+        // built — e.g. an empty demand grid) reads as -1, which push_trip treats as "no trip".
+        let station_of = |cell: u32| self.cell_station.get(cell as usize).copied().unwrap_or(-1);
         for ab in (last_abs + 1)..=cur_abs {
             let b = ab.rem_euclid(BUCKETS as i64) as usize;
             for &ci in &self.am[b] {
-                let c = &self.citizens[ci as usize];
-                let (o, d) = (self.cell_station[c.home_cell as usize], self.cell_station[c.work_cell as usize]);
-                push_trip(o, d, ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                if let Some(c) = self.citizens.get(ci as usize) {
+                    push_trip(station_of(c.home_cell), station_of(c.work_cell), ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                }
             }
             for &ci in &self.pm[b] {
-                let c = &self.citizens[ci as usize];
-                let (o, d) = (self.cell_station[c.work_cell as usize], self.cell_station[c.home_cell as usize]);
-                push_trip(o, d, ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                if let Some(c) = self.citizens.get(ci as usize) {
+                    push_trip(station_of(c.work_cell), station_of(c.home_cell), ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                }
             }
         }
     }

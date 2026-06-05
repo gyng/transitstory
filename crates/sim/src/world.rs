@@ -125,6 +125,9 @@ pub struct World {
     /// The seed-derived citizen population (Some when agent demand is on). NOT folded into
     /// state_hash — it is a pure function of (seed, grid), regenerated on enable / replay.
     pub population: Option<crate::agents::Population>,
+    /// Set when the served-station set changes (dispatch rebuild) so the agent population refreshes
+    /// its cell→nearest-station map. Derived/transient (not hashed), like `dispatch_dirty`.
+    pub cell_station_dirty: bool,
 }
 
 /// Borrowed canonical view hashed for determinism. Field order = hash order (stable).
@@ -226,6 +229,7 @@ impl World {
             max_legs,
             agent_demand: false,
             population: None,
+            cell_station_dirty: true,
         }
     }
 
@@ -402,7 +406,8 @@ impl World {
     /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Tunable.
     fn agent_population_target(&self) -> usize {
         let homes: f64 = self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum();
-        ((homes * 14.0) as usize).clamp(3_000, 60_000)
+        // Floor kept low so a tiny/sparse city isn't swamped by agents it can't justify.
+        ((homes * 14.0) as usize).clamp(1_000, 60_000)
     }
 
     /// Total one-time construction capital across all lines.

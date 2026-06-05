@@ -181,6 +181,56 @@ fn agent_demand_mode_via_command_develops_ridership_and_replays() {
 }
 
 #[test]
+fn agent_demand_survives_an_empty_demand_grid() {
+    // Empty grid (no cells) + agent demand must NOT panic in tick() — the cell_station map is never
+    // length-rebuilt, so the lookup path has to be bounds-safe (regression: index-OOB panic).
+    let mut w = World::new(7, CityData { id: "e".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells: vec![] }, ..Default::default() });
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 });
+    w.apply(&Command::SetDemandMode { agents: true });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..3000 {
+        w.tick(50); // must not panic
+    }
+    assert_eq!(w.stats_snapshot().ridership_total, 0.0, "no demand grid ⇒ no agent trips (but no panic)");
+}
+
+#[test]
+fn agent_demand_picks_up_a_network_built_after_it_is_enabled() {
+    // Enable agents BEFORE any line exists, then build — the cell→nearest-served-station map must
+    // REFRESH on the network change (regression: it was frozen at "all unserved" → zero trips ever).
+    let cells = vec![
+        DemandCell { x_mm: 0, y_mm: 0, origin_w: 20.0, dest_w: 2.0 }, // homes near station 0
+        DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 20.0 }, // jobs near station 1
+    ];
+    let mut w = World::new(7, CityData { id: "n".into(), seed: 7, demand: DemandGrid { cell_m: 500.0, cells }, ..Default::default() });
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None });
+    w.apply(&Command::SetDemandMode { agents: true });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..600 {
+        w.tick(50); // no served stations yet → cell_station all -1 → no trips
+    }
+    assert_eq!(w.stats_snapshot().ridership_total, 0.0, "no lines yet ⇒ no agent trips");
+    // Build a SHORT, frequently-served line connecting home↔job AFTER agents were enabled — the
+    // cell_station map must refresh (a long line wouldn't cycle a train back within the test window).
+    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 4 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 60_000 });
+    for _ in 0..8000 {
+        w.tick(50);
+    }
+    assert!(w.stats_snapshot().ridership_total > 0.0, "agents pick up the network built AFTER enabling (cell_station refreshed)");
+}
+
+#[test]
 fn journey_inspector_names_an_agent_commuter() {
     let mut w = build_small();
     w.apply(&Command::SetDemandMode { agents: true });

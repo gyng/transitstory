@@ -12,6 +12,7 @@ pub(crate) fn dispatch(world: &mut World) {
     world.dispatch_dirty = false;
     world.route_cache.clear(); // network changed; routes may differ
     world.access_cache.clear(); // …and so does destination accessibility
+    world.cell_station_dirty = true; // …and the agent population's nearest-served-station map
 
     // Rebuild the per-station serving-lines map (operational lines only) for routing.
     let nstations = world.stations.len();

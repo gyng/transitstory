@@ -11,6 +11,8 @@ const COMMAND_TAGS = [
   "CreateLine",
   "PlaceStation",
   "SetEconomy",
+  "RemoveLine",
+  "RemoveStation",
   "SetDemandMode",
   "SetHeadway",
   "SetLineWaypoints",
@@ -31,6 +33,8 @@ describe("command wire contract", () => {
       cmd.setEconomy(false),
       cmd.setLineWaypoints(0, []),
       cmd.setDemandMode(false),
+      cmd.removeStation(0),
+      cmd.removeLine(0),
     ];
     const tags = builders
       .map((c) => {
