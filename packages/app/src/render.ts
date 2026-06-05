@@ -2,7 +2,7 @@
 // conversion happened at the geo.ts boundary in Game). Layer array order IS the z-order
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
-import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { ArcLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 
 export type Rgb = [number, number, number];
@@ -60,6 +60,11 @@ export interface DemandPoint {
   weight: number; // travel demand at this grid cell (origin+dest)
   served?: boolean; // within the catchment union of placed stations → faded; else unmet → glows
 }
+export interface DesireArc {
+  from: [number, number]; // selected origin station (lng/lat)
+  to: [number, number]; // a destination it draws riders toward
+  weight: number; // gravity pull, 0..1 normalized vs the strongest link → width + dest opacity
+}
 
 export interface RenderView {
   stations: StationDot[];
@@ -70,6 +75,7 @@ export interface RenderView {
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
+  desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
   pinnedLabel?: { lng: number; lat: number; text: string }; // deck label for the pinned station
   selectedLine?: number | null; // drives the wide selection casing under the selected line
@@ -204,6 +210,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       widthMinPixels: 1,
       capRounded: true,
       jointRounded: true,
+    }),
+    // OD "desire lines" from the SELECTED station only (on-demand → never mud): curved arcs to the
+    // destinations its riders are drawn toward. Origin = selection blue, destination = warm, with
+    // width + dest opacity scaling with the gravity pull — "where do people here want to go". Over
+    // the network lines, under vehicles/stations so the live network + dots stay on top + clickable.
+    new ArcLayer({
+      id: "desire",
+      data: view.desire,
+      getSourcePosition: (d: DesireArc) => d.from,
+      getTargetPosition: (d: DesireArc) => d.to,
+      getSourceColor: [0, 114, 178, 150],
+      getTargetColor: (d: DesireArc) => [214, 110, 0, Math.round(70 + d.weight * 150)],
+      getWidth: (d: DesireArc) => 1.5 + d.weight * 5,
+      widthUnits: "pixels",
+      widthMinPixels: 1.5,
+      getHeight: 0.4,
+      updateTriggers: {
+        getTargetColor: view.desire.map((d) => Math.round(d.weight * 10)).join(","),
+        getWidth: view.desire.map((d) => Math.round(d.weight * 10)).join(","),
+      },
     }),
   ];
 

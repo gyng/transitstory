@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -643,6 +643,22 @@ export class Game {
     }
 
     const demand = this.demandPoints();
+
+    // OD desire lines from the selected station (on-demand → no mud): where its riders are drawn.
+    // Empty unless a served station is pinned (the core query returns [] for orphaned/unserved).
+    let desire: DesireArc[] = [];
+    if (this.selectedStation !== null) {
+      const sv0 = stationsV[this.selectedStation];
+      if (sv0 && !sv0.removed) {
+        const from = mmToLngLat([sv0.xMm, sv0.yMm]);
+        desire = this.bridge.stationOd(this.selectedStation).map((o) => ({
+          from,
+          to: mmToLngLat([o.xMm, o.yMm]),
+          weight: o.weight,
+        }));
+      }
+    }
+
     return {
       stations,
       lines,
@@ -652,6 +668,7 @@ export class Game {
       waiting,
       hazards,
       demand,
+      desire,
       blueprintInvalid: this.draftInvalid(),
       pinnedLabel,
       selectedLine: this.selectedLine,

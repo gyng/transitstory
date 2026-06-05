@@ -9,7 +9,7 @@ use crate::hash::fnv1a;
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use crate::station::Station;
-use crate::stats::{LineStat, LineView, StationStat, StatsSnapshot, StationView};
+use crate::stats::{LineStat, LineView, OdLink, StationStat, StatsSnapshot, StationView};
 use crate::tick;
 use crate::trainset::TrainsetAssignment;
 use crate::vehicle::VehicleSoA;
@@ -808,6 +808,27 @@ impl World {
                 y_mm: s.pos.y_mm as f64,
                 name: s.name.clone(),
                 removed: s.removed,
+            })
+            .collect()
+    }
+
+    /// OD "desire lines" from a selected origin station: the top `top_k` destinations its riders
+    /// are drawn toward (gravity attractiveness × accessibility), for the on-selection flow overlay.
+    /// Read-only — solves accessibility fresh and mutates nothing. `weight` is normalized 0..1 vs
+    /// the strongest link; empty if the origin isn't an operational, served station.
+    pub fn station_od(&self, origin: u32, top_k: usize) -> Vec<OdLink> {
+        let mut w = crate::demand::od_weights(self, origin as usize);
+        if w.is_empty() {
+            return Vec::new();
+        }
+        // Descending by pull; partial_cmp fallback keeps it total-ordered (weights are finite).
+        w.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let max = w.first().map(|(_, x)| *x).unwrap_or(1.0).max(1e-9);
+        w.into_iter()
+            .take(top_k)
+            .map(|(d, wt)| {
+                let p = self.stations[d as usize].pos;
+                OdLink { dest: d, x_mm: p.x_mm as f64, y_mm: p.y_mm as f64, weight: (wt / max) as f32 }
             })
             .collect()
     }

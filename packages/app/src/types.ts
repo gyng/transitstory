@@ -102,6 +102,15 @@ export interface StationView {
   removed: boolean;
 }
 
+/** One OD "desire line" from a selected origin station to a destination it draws riders toward
+ *  (gravity pull); `weight` is normalized 0..1 vs the strongest link. For the flow ArcLayer. */
+export interface OdLink {
+  dest: number;
+  xMm: number;
+  yMm: number;
+  weight: number;
+}
+
 export interface LineView {
   id: number;
   name: string;

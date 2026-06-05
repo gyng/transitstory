@@ -6,7 +6,7 @@
 import { Sim } from "sim-wasm";
 import { CommandLog } from "../commands/log";
 import { encodeCommand } from "../commands/codec";
-import type { Command, Event, LineView, StationView, Stats } from "../types";
+import type { Command, Event, LineView, OdLink, StationView, Stats } from "../types";
 
 export class SimBridge {
   private sim: Sim;
@@ -98,6 +98,12 @@ export class SimBridge {
 
   linesView(): LineView[] {
     return this.sim.linesView() as LineView[];
+  }
+
+  /** OD "desire lines" for a selected station — its top destinations by gravity pull (read-only,
+   *  computed on demand). Empty unless the station is operational + served. */
+  stationOd(id: number): OdLink[] {
+    return this.sim.stationOd(id) as OdLink[];
   }
 
   /** Authoritative construction-cost ($, track only) for a hypothetical line — the build HUD's

@@ -147,6 +147,50 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
     }
 }
 
+/// Expected destination weights from `origin` over all served stations — the SAME gravity
+/// (attractiveness × accessibility-decay) weights `pick_dest` samples from, minus the `+1` RNG
+/// baseline, so the OD "desire line" overlay shows where riders from here are actually drawn.
+/// Pure read: solves accessibility fresh (no cache mutation). Returns `(dest_index, weight)` for
+/// served, non-removed destinations with positive pull; unsorted. Empty if `origin` isn't served.
+pub fn od_weights(world: &World, origin: usize) -> Vec<(u32, f64)> {
+    let n = world.stations.len();
+    if origin >= n || world.serving.get(origin).map(|v| v.is_empty()).unwrap_or(true) {
+        return Vec::new();
+    }
+    let bias = crate::tod::work_bias(crate::tod::hour_of_day(world.clock_ms));
+    let access = world
+        .router
+        .reachable(&world.lines, &world.serving, StationId(origin as u32), world.max_legs);
+    let use_access = !access.is_empty();
+    let opos = world.stations[origin].pos;
+    let mut out: Vec<(u32, f64)> = Vec::new();
+    for d in 0..n {
+        if d == origin
+            || world.stations[d].removed
+            || world.serving.get(d).map(|v| v.is_empty()).unwrap_or(true)
+        {
+            continue;
+        }
+        let cd = world.captured_dest.get(d).copied().unwrap_or(0.0);
+        let cor = world.captured_origin.get(d).copied().unwrap_or(0.0);
+        let attract = (bias * cd + (1.0 - bias) * cor) as f64;
+        let decay = if use_access {
+            match access.get(d).copied() {
+                Some(t) if t < i64::MAX => ACCESS_DECAY_MS / (ACCESS_DECAY_MS + t as f64),
+                _ => 0.0,
+            }
+        } else {
+            let dist = opos.dist_mm(&world.stations[d].pos).max(1) as f64;
+            1.0 / (1.0 + dist / DEST_DECAY_MM)
+        };
+        let w = attract * decay;
+        if w > 0.0 {
+            out.push((d as u32, w));
+        }
+    }
+    out
+}
+
 /// Pick a network-wide destination among ALL served stations, weighted by attractiveness
 /// (AM→jobs, PM→homes) × **accessibility-decay** — how fast transit reaches it (wait + ride),
 /// not crow-flies metres — so a good network induces demand toward the places it connects well.

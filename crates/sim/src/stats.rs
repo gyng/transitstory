@@ -84,6 +84,18 @@ pub struct LineStat {
     pub load_factor: f32,
 }
 
+/// One OD "desire line" from a selected origin station to a destination it draws riders toward
+/// (gravity pull). `weight` is normalized 0..1 against the strongest link, for the on-selection
+/// ArcLayer overlay ("where do people here want to go"). mm coords as f64 (no BigInt; geo.ts maps).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OdLink {
+    pub dest: u32,
+    pub x_mm: f64,
+    pub y_mm: f64,
+    pub weight: f32,
+}
+
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,
 // no BigInt at the boundary); the frontend converts mm -> lng/lat in coords/geo.ts.
 #[derive(Clone, Debug, Serialize, Deserialize)]

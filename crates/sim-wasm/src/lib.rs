@@ -103,6 +103,14 @@ impl Sim {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// OD "desire lines" for a selected station — its top destinations by gravity pull, for the
+    /// on-selection flow overlay (read-only). Returns up to 10 `OdLink`s as a JS array.
+    #[wasm_bindgen(js_name = stationOd)]
+    pub fn station_od(&self, origin: u32) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.station_od(origin, 10))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Construction-cost preview ($, track only — no trains) for a hypothetical line through
     /// `station_ids` in `mode`. The build HUD's authoritative figure (same core formula as a
     /// committed line). `loop_line` closes the route. Returns a plain JS number.
