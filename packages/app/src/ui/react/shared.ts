@@ -49,7 +49,8 @@ export interface StationTip {
   boardings: number;
   alightings: number;
   verdict: "starved" | "busy" | "healthy" | null;
-  lines: { id: number; color: number; name: string }[];
+  /** `load` = this line's mean load factor (0..1), undefined in Build / before it has vehicles. */
+  lines: { id: number; color: number; name: string; load?: number }[];
 }
 
 const VERDICT_COLOR = { starved: "#d62828", busy: "#e69f00", healthy: "#009e73" } as const;
@@ -60,14 +61,21 @@ function esc(s: string): string {
 
 function lineSwatches(tip: StationTip): string {
   if (tip.lines.length === 0) return `<span style="color:#7a818a">(no lines yet)</span>`;
-  // Same hex() path as the deck PathLayer, so the swatch never drifts from the line colour.
+  // One row per serving line: colour swatch (same hex() path as the deck PathLayer, so it never
+  // drifts) + name + a load pip so an interchange shows AT A GLANCE which of its lines is the
+  // crush one. The pip only appears once the line has running data (load !== undefined).
   return tip.lines
-    .map(
-      (l) =>
-        `<span data-testid="station-tip-line-${l.id}" title="${esc(l.name)}" ` +
-        `style="display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:3px;` +
-        `vertical-align:-1px;background:${hex(l.color)}"></span>`,
-    )
+    .map((l) => {
+      const pip = l.load !== undefined ? loadPip(l.load) : null;
+      const tail = pip
+        ? `<span style="margin-left:auto;color:${pip.color};font-weight:700">${pip.glyph} ${pip.pct}%</span>`
+        : "";
+      return (
+        `<div data-testid="station-tip-line-${l.id}" style="display:flex;align-items:center;gap:4px;margin-top:2px">` +
+        `<span style="display:inline-block;width:11px;height:11px;border-radius:3px;flex:none;background:${hex(l.color)}"></span>` +
+        `<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">${esc(l.name)}</span>${tail}</div>`
+      );
+    })
     .join("");
 }
 

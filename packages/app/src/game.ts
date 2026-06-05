@@ -174,7 +174,7 @@ export class Game {
     const lines = this.bridge
       .linesView()
       .filter((l) => !l.removed && l.stops.includes(id))
-      .map((l) => ({ id: l.id, color: l.color, name: l.name }));
+      .map((l) => ({ id: l.id, color: l.color, name: l.name, load: this.perLineById.get(l.id)?.loadFactor }));
     const hasData = this.mode === "run" && ps !== undefined;
     const waiting = ps?.waiting ?? 0;
     return {
