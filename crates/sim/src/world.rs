@@ -301,7 +301,9 @@ impl World {
                 tmode::BUS => if c == class::ROAD { 0 } else { 3_000_000 },
                 // Ferries cross open WATER for free (just terminals); forced over land they'd dig.
                 tmode::FERRY => if c == class::WATER { 0 } else { 5_000_000 },
-                tmode::AIR => 1_000_000,
+                // Air builds NO right-of-way — you buy aircraft (capital, added separately) and burn
+                // fuel (opex). A per-km track charge would be astronomical at globe distances.
+                tmode::AIR => 0,
                 tmode::HEAVY => match m {
                     mode::ELEVATED => PER_KM_HSR_ELEVATED,
                     mode::TUNNEL => PER_KM_HSR_TUNNEL,
