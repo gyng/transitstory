@@ -176,18 +176,26 @@ impl Line {
     /// Rebuild the smoothed polyline + arc-length tables from the ordered stop positions.
     /// For a loop the path is closed (first stop appended) so trains run a full circuit.
     pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
+        let wps = self.waypoints.clone();
+        self.rebuild_with_span_points(stop_pts, &wps);
+    }
+
+    /// As `rebuild_from_points`, but the per-span shaping points are supplied EXTERNALLY rather
+    /// than read from `self.waypoints` — so a bus line can be threaded along an auto-computed road
+    /// route while a rail line uses the player's waypoints. `span_points[i]` shapes the span after
+    /// stop i (pass-through, not halts).
+    pub fn rebuild_with_span_points(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>]) {
         // Interleave each stop with its span's control points so the curve threads
-        // stop0, wp[0]…, stop1, wp[1]…, stop2, … — letting the player BEND the track between
-        // stations. Only stops are halts (recorded in stop_arclen_mm); waypoints just shape.
+        // stop0, wp[0]…, stop1, wp[1]…, stop2, …. Only stops are halts (recorded in stop_arclen_mm).
         let n = stop_pts.len();
         let mut pts: Vec<PointMm> = Vec::with_capacity(n);
         let mut is_stop: Vec<bool> = Vec::with_capacity(n);
         for i in 0..n {
             pts.push(stop_pts[i]);
             is_stop.push(true);
-            // Waypoints for the span AFTER stop i (skip on the open end of a non-loop line).
+            // Shaping points for the span AFTER stop i (skip on the open end of a non-loop line).
             if i + 1 < n || self.loop_line {
-                if let Some(span_wps) = self.waypoints.get(i) {
+                if let Some(span_wps) = span_points.get(i) {
                     for &wp in span_wps {
                         pts.push(wp);
                         is_stop.push(false);

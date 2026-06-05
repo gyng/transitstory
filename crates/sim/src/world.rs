@@ -553,8 +553,17 @@ impl World {
         // rebuild the smoothed (curved) polyline + arc-length tables.
         if let Some(l) = self.lines.get(line.index()) {
             let pts: Vec<PointMm> = l.stops.iter().map(|&s| self.station_pos(s)).collect();
+            // Buses follow the ROAD raster between stops (auto-routed, A* over the grid); other
+            // modes use the player's hand-placed waypoints. Both are pass-through shaping points.
+            let span_points: Vec<Vec<PointMm>> = if l.mode == crate::trainset::tmode::BUS {
+                (0..pts.len().saturating_sub(1))
+                    .map(|i| crate::roadnav::road_route(&self.build_lookup, self.build_cell_mm, pts[i], pts[i + 1]))
+                    .collect()
+            } else {
+                l.waypoints.clone()
+            };
             if let Some(l) = self.lines.get_mut(line.index()) {
-                l.rebuild_from_points(&pts);
+                l.rebuild_with_span_points(&pts, &span_points);
             }
         }
     }

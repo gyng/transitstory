@@ -16,6 +16,7 @@ pub mod ids;
 pub mod line;
 pub mod pax;
 pub mod render_buf;
+pub mod roadnav;
 pub mod routing;
 pub mod station;
 pub mod stats;

@@ -102,6 +102,53 @@ fn buses_slow_in_peak_traffic() {
 }
 
 #[test]
+fn a_bus_follows_the_road_between_stops() {
+    // A U-shaped road: up the left wall (x=0), across the top (y=2 km), down the right wall
+    // (x=4 km). Both stops sit at the bottom ends — a straight line between them is OPEN land, so
+    // the only ROAD route detours up and over. The bus geometry must follow it.
+    let mut cells = Vec::new();
+    for cy in 0..=20 {
+        cells.push(BuildCell { x_mm: 0, y_mm: cy * 100_000, c: class::ROAD }); // left wall
+    }
+    for cx in 0..=40 {
+        cells.push(BuildCell { x_mm: cx * 100_000, y_mm: 2_000_000, c: class::ROAD }); // top
+    }
+    for cy in 0..=20 {
+        cells.push(BuildCell { x_mm: 40 * 100_000, y_mm: cy * 100_000, c: class::ROAD }); // right wall
+    }
+    let city = CityData {
+        id: "u".into(),
+        seed: 7,
+        buildability: BuildabilityGrid { cell_m: 100.0, cells },
+        demand: DemandGrid { cell_m: 200.0, cells: vec![] },
+        patience_ms: 0,
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // bottom-left, on the road
+    w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None }); // bottom-right, on the road
+    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+
+    // A straight line stays at y≈0; routing the U-shaped road climbs to ~2 km.
+    let max_y = w.lines[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
+    assert!(max_y > 1_000_000, "the bus routes along the U-shaped road, not straight (max y {max_y})");
+
+    // …and it stays deterministic.
+    let mut a = w;
+    let mut b = World::new(7, a.city.clone());
+    for c in a.cmd_log.clone() {
+        b.apply(&c);
+    }
+    for _ in 0..400 {
+        a.tick(50);
+        b.tick(50);
+    }
+    assert_eq!(a.state_hash(), b.state_hash(), "road-followed bus geometry replays bit-for-bit");
+}
+
+#[test]
 fn bus_road_awareness_is_deterministic() {
     let build = || {
         let mut w = World::new(7, road_city());
