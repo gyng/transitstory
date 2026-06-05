@@ -4,9 +4,10 @@
 // live preview label (local useState) — never an optimistic self-render of sim state.
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
-import type { PerLine } from "../../types";
+import type { PerLine, Stats } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
 import { PANEL_STYLE, hex, loadPip, modeIcon } from "./shared";
+import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
 // duplicated literals) while remaining cssText-equivalent in JSX.
@@ -44,9 +45,11 @@ const EDITOR_STYLE: CSSProperties = {
   padding: "12px",
 };
 
-function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
+function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }) {
   const game = useGame();
   const pip = l.trains > 0 ? loadPip(l.loadFactor) : null;
+  const sat = lineSatisfaction(l); // rider happiness (crowding + wait); null with no trains
+  const pnl = linePnl(l, s); // lifetime P&L: cumulative fares − capital
   // Frequency subline: surfaces stops · trains · headway in the roster so a player reads a line's
   // service shape without selecting it (those used to live only in the Editor). headway only once
   // trains run (it's meaningless with no fleet).
@@ -85,6 +88,15 @@ function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
         >
           {l.name || `Line ${l.lineId + 1}`}
         </span>
+        {sat && (
+          <span
+            data-testid={`line-sat-${l.lineId}`}
+            title={`Rider satisfaction ${sat.score}% — ${sat.word}`}
+            style={{ flex: "0 0 auto", fontSize: "12px", lineHeight: 1 }}
+          >
+            {sat.glyph}
+          </span>
+        )}
         {pip && (
           <span
             data-testid={`line-load-pip-${l.lineId}`}
@@ -94,12 +106,30 @@ function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
             {pip.glyph}
           </span>
         )}
-        <span data-testid={`line-ridership-${l.lineId}`} style={{ color: "#7a818a" }}>
+        <span data-testid={`line-ridership-${l.lineId}`} title="riders carried" style={{ color: "#7a818a" }}>
           {Math.round(l.ridership)}
         </span>
       </div>
       <div data-testid={`line-meta-${l.lineId}`} style={{ marginLeft: "22px", marginTop: "2px", fontSize: "11px", color: "#9aa1a9" }}>
         {freq}
+      </div>
+      {/* P&L + satisfaction: the gamey readouts. P&L = cumulative fares − build cost (green once
+          the line earns back what it cost). Satisfaction word pairs with the face glyph above. */}
+      <div
+        style={{ marginLeft: "22px", marginTop: "2px", fontSize: "11px", display: "flex", gap: "8px", alignItems: "center" }}
+      >
+        <span
+          data-testid={`line-pnl-${l.lineId}`}
+          title={`Fares earned $${Math.round(pnl.revenue).toLocaleString()} − build cost $${Math.round(pnl.capital).toLocaleString()}`}
+          style={{ color: pnl.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)", fontWeight: 700 }}
+        >
+          {pnl.inBlack ? "▲" : "▼"} {fmtSignedMoney(pnl.net)}
+        </span>
+        {sat && (
+          <span data-testid={`line-sat-word-${l.lineId}`} style={{ color: sat.color }}>
+            {sat.word} {sat.score}%
+          </span>
+        )}
       </div>
     </div>
   );
@@ -107,14 +137,15 @@ function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
 
 function LineList() {
   const ui = useGameUI();
-  const lines = useStats().perLine;
+  const stats = useStats();
+  const lines = stats.perLine;
   return (
     <div id="line-list" data-testid="line-list" style={LIST_STYLE}>
       <div style={{ fontWeight: 700, marginBottom: "6px" }}>Lines</div>
       {lines.length === 0 ? (
         <div style={{ color: "#7a818a" }}>No lines yet — draw one with the ╱ Line tool.</div>
       ) : (
-        lines.map((l) => <LineRow key={l.lineId} l={l} selected={ui.selectedLine === l.lineId} />)
+        lines.map((l) => <LineRow key={l.lineId} l={l} s={stats} selected={ui.selectedLine === l.lineId} />)
       )}
     </div>
   );
