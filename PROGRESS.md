@@ -369,6 +369,24 @@ are the road-bound mode, all sim-side + deterministic, no new data (chosen A+B+C
   corridors so buses build where they're cheap — the CARTO basemap is a proxy today). Frontend overlay
   left out to avoid colliding with in-flight frontend edits.
 
+## Ferries become the water mode (2026-06-05)
+
+The water twin of road-bound buses, reusing the same machinery (the bus's corridor A* was
+generalized, not duplicated). All sim-side + deterministic, no new data:
+
+- **A — water-aware speed** (`vehicle.rs`): a ferry runs full spec speed on a `class::WATER`
+  cell and barely moves (`OFF_WATER_FERRY_MM_S`) if forced onto land.
+- **B — free water** (`world.rs line_cost_metrics`): an open-water ferry leg lays NO capital
+  (just terminals); off-water it pays 5M/km.
+- **C — water-following geometry**: `roadnav::road_route` → `class_route(prefer)` — the same
+  integer grid A* now follows ANY preferred class. `rebuild_line_geometry` routes BUS spans over
+  ROAD and FERRY spans over WATER, so a ferry navigates channels + around islands instead of
+  cutting straight over land.
+- No congestion (water has no traffic), no overlay (water's obvious on the basemap).
+- Verified: `ferries.rs` (3 tests) — on-water cheaper+faster, follows a U-shaped channel, replays
+  bit-for-bit; determinism gate green. Browser-corroborated on Singapore — a ferry drew **21
+  polyline vertices bending ~400 m around the islands at 0M** cost (rail: 11 verts, straight, 44M).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
