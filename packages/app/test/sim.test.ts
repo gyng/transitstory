@@ -58,6 +58,19 @@ describe("SimBridge (wasm-in-node)", () => {
     expect(moved).toBe(true); // a vehicle advanced along the line
   });
 
+  it("exposes per-vehicle [onboard, capacity] for the train inspector", () => {
+    const b = build(); // 3 rail trains running
+    const loads = b.vehicleLoads();
+    expect(loads).toBeInstanceOf(Uint16Array);
+    expect(loads.length).toBe(b.vehicleCount() * 2); // interleaved [onboard, cap] per vehicle
+    for (let i = 0; i < b.vehicleCount(); i++) {
+      const onboard = loads[i * 2];
+      const cap = loads[i * 2 + 1];
+      expect(cap).toBe(200); // the rail (mode 0) vehicle spec capacity — single source from the core
+      expect(onboard).toBeLessThanOrEqual(cap); // never over capacity
+    }
+  });
+
   it("rejects invalid commands without throwing", () => {
     const b = new SimBridge(0, "{}");
     const events = b.apply(cmd.addStop(9, 9)); // no such line/station

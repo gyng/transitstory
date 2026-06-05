@@ -161,6 +161,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       widthMinPixels: 4,
       capRounded: true,
       jointRounded: true,
+      // Pickable so hovering the track raises the line inspector (under stations + trains in
+      // z-order, so it only fires on bare track). The pick hit-area widens with pickingRadius.
+      pickable: true,
     }),
     new PathLayer({
       id: "lines-heavy-centre",
@@ -290,5 +293,8 @@ export function vehicleLayer(dots: VehicleDot[]): Layer {
     stroked: true,
     getLineColor: [255, 255, 255, 230],
     lineWidthMinPixels: 1.5,
+    // Pickable so hovering a moving train raises the train inspector (load factor + line).
+    // Above the line layer, below stations, so the pick hierarchy is train > station > line.
+    pickable: true,
   });
 }

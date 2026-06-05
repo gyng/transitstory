@@ -17,6 +17,8 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
     setModeEnabled: (mode, on) => game.setModeEnabled(mode, on),
     setShowDemand: (on) => game.setShowDemand(on),
     stationTip: (id) => game.stationTip(id),
+    lineTip: (id) => game.lineTip(id),
+    vehicleTip: (index) => game.vehicleTip(index),
     stats: () => game.bridge.stats(),
   };
 }

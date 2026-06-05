@@ -38,3 +38,21 @@ pub fn vehicle_angles(w: &World) -> Vec<f32> {
 pub fn vehicle_line_ids(w: &World) -> Vec<u32> {
     w.vehicles.line.iter().map(|l| l.0).collect()
 }
+
+/// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — drives the train inspector's
+/// load-factor readout. Capacity is the line's per-mode vehicle spec (single source: trainset.rs),
+/// so the UI never re-derives it and can't drift.
+pub fn vehicle_loads(w: &World) -> Vec<u16> {
+    let v = &w.vehicles;
+    let mut out = Vec::with_capacity(v.len() * 2);
+    for i in 0..v.len() {
+        let cap = w
+            .lines
+            .get(v.line[i].index())
+            .map(|l| crate::trainset::spec_for_mode(l.mode).capacity)
+            .unwrap_or(0);
+        out.push(v.onboard[i]);
+        out.push(cap);
+    }
+    out
+}

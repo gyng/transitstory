@@ -83,6 +83,11 @@ export class SimBridge {
     return this.sim.vehicleLineIds();
   }
 
+  /** Interleaved `[onboard0,cap0, onboard1,cap1, ...]` per vehicle — the train inspector's load. */
+  vehicleLoads(): Uint16Array {
+    return this.sim.vehicleLoads();
+  }
+
   stats(): Stats {
     return this.sim.stats() as Stats;
   }

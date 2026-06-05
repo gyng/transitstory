@@ -101,6 +101,64 @@ export function loadPip(lf: number): { glyph: string; color: string; word: strin
   return { glyph: "○", color: "var(--ot-gauge-good)", word: "healthy", pct };
 }
 
+// --- Train inspect (hover tooltip) -------------------------------------------------------
+// A moving vehicle's readout: which line it serves + how full it is. Same loadPip shape/colour
+// channel as the line roster, so "crush/busy/healthy" reads identically wherever it appears.
+
+export interface VehicleTip {
+  lineName: string;
+  lineColor: number;
+  modeIcon: string;
+  onboard: number;
+  capacity: number;
+}
+
+export function vehicleTipHtml(t: VehicleTip): string {
+  const lf = t.capacity > 0 ? t.onboard / t.capacity : 0;
+  const pip = loadPip(lf);
+  const swatch =
+    `<span style="display:inline-block;width:11px;height:11px;border-radius:3px;` +
+    `vertical-align:-1px;background:${hex(t.lineColor)}"></span>`;
+  return (
+    `<div data-testid="vehicle-tip" style="font:12px system-ui">` +
+    `<b data-testid="vehicle-tip-line">${t.modeIcon} ${swatch} ${esc(t.lineName)}</b>` +
+    `<div style="margin-top:3px">` +
+    `<span data-testid="vehicle-tip-load" style="color:${pip.color};font-weight:700">${pip.glyph} ${pip.word}</span> ` +
+    `<span style="color:#5a626b">${t.onboard}/${t.capacity} aboard (${pip.pct}%)</span></div></div>`
+  );
+}
+
+// --- Line inspect (hover tooltip) --------------------------------------------------------
+// Hovering a line's track shows its at-a-glance stats without having to select it (the Editor
+// stays the place to *edit*). Built from the same Stats snapshot the panels read, so they agree.
+
+export interface LineTip {
+  name: string;
+  color: number;
+  modeIcon: string;
+  modeName: string;
+  ridership: number;
+  loadFactor: number;
+  stops: number;
+  trains: number;
+  headwayMin: number;
+}
+
+export function lineTipHtml(t: LineTip): string {
+  const pip = loadPip(t.loadFactor);
+  const swatch =
+    `<span style="display:inline-block;width:11px;height:11px;border-radius:3px;` +
+    `vertical-align:-1px;margin-right:3px;background:${hex(t.color)}"></span>`;
+  return (
+    `<div data-testid="line-tip" style="font:12px system-ui;min-width:150px">` +
+    `<b data-testid="line-tip-name">${swatch}${esc(t.name)}</b> ` +
+    `<span style="color:#7a818a">${t.modeIcon} ${esc(t.modeName)}</span>` +
+    `<div style="margin-top:4px;color:#5a626b"><b data-testid="line-tip-ridership">${Math.round(t.ridership)}</b> riders · ` +
+    `<span style="color:${pip.color};font-weight:700">${pip.glyph} ${pip.word} ${pip.pct}%</span></div>` +
+    `<div style="color:#7a818a;margin-top:2px">${t.stops} stops · ${t.trains} trains · every ${t.headwayMin} min</div></div>`
+  );
+}
+
 /** Money formatter: $1.23B / $45M / $678k. */
 export function fmtMoney(d: number): string {
   const a = Math.abs(d);

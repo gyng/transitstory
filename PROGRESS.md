@@ -257,6 +257,30 @@ the ~3 Hz `stats` slice, issues no Commands, new testids only (existing contract
   served 94, 1022 waiting), no layout collisions (Toolbar is bottom-centre, this is bottom-left), and
   the e2e suite is unaffected (specs are camera-independent — hook + testids, no raw canvas clicks).
 
+## Inspector: trains + lines become hoverable (2026-06-05)
+
+Generalised the station-only hover tooltip into a unified **inspector** over the same deck
+`getTooltip` seam — now stations, **trains**, and **lines** all raise a readout, dispatched by
+which pickable layer was hit. Z-order makes the hierarchy natural (a station on top, else a train
+between stops, else the line's own track). Pointer/snapping is untouched — it uses `nearestStation`,
+not deck picking, so making layers pickable only adds tooltip hits.
+
+- **Trains** (new — were not inspectable at all): hover a moving vehicle → its line (swatch + mode
+  icon) + live **load factor** (○/◐/● healthy/busy/crush, the same pip as the roster) + `N/cap aboard`.
+  Needs per-vehicle load: added one sanctioned copy-out buffer `vehicle_loads` = interleaved
+  `[onboard, capacity]` (capacity from the core's `spec_for_mode`, single source — the UI never
+  re-derives it). `render_buf.rs` → `sim-wasm` `vehicleLoads()` → `SimBridge` → `game.vehicleTip(index)`.
+- **Lines** (new — previously only via selecting → Editor): hover the track → name swatch, mode,
+  ridership, load, stops, trains, headway. Built from the same `Stats` snapshot the panels read
+  (a `perLineById` index, mirroring `perStationById`), so the readout agrees with the roster.
+- Tip HTML builders (`vehicleTipHtml`/`lineTipHtml`) live in `shared.ts` beside `stationTipHtml`,
+  reusing `loadPip`/`hex`/`esc`. New `__ot_test.lineTip`/`vehicleTip` hooks + `global.d.ts` types.
+- Verified: tsc clean, vitest **21** (added a wasm-in-node assertion that `vehicleLoads` marshals
+  `[onboard,cap]` with cap=200 and onboard≤cap), sim 53. `lineTip` browser-corroborated on the live
+  Singapore network (real names, load, headway). NOTE: a dev server started before the wasm rebuild
+  serves a stale `.wasm` (lacks `vehicleLoads`) until restarted — the production build / a dev restart
+  is correct (the committed source + regenerated pkg include it).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

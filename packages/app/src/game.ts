@@ -11,8 +11,8 @@ import { colorToRgb, topoLayers, vehicleLayer, type DemandPoint, type HazardDot,
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
-import type { Event, PerStation, Stats } from "./types";
-import { stationTipHtml, type StationTip } from "./ui/react/shared";
+import type { Event, PerLine, PerStation, Stats } from "./types";
+import { lineTipHtml, MODES, modeIcon, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
 
 const EMPTY_STATS: Stats = {
   simClockMs: 0,
@@ -44,6 +44,15 @@ const EMPTY_STATS: Stats = {
 
 export type Mode = "build" | "run";
 export type Tool = "select" | "station" | "line" | "bulldozer";
+
+/** Shared card style for every inspector hover tooltip (station / train / line). */
+const TOOLTIP_STYLE: Record<string, string> = {
+  background: "rgba(255,255,255,.97)",
+  color: "#1c2024",
+  borderRadius: "8px",
+  boxShadow: "0 2px 10px rgba(0,0,0,.18)",
+  padding: "8px 10px",
+};
 
 export class Game {
   mode: Mode = "build";
@@ -79,6 +88,8 @@ export class Game {
   /** Per-station snapshot indexed by station id (perStation is filtered, NOT index-aligned),
    *  rebuilt once per snapshot — O(1) lookups for the hover tooltip (no .find in the handler). */
   perStationById: Map<number, PerStation> = new Map();
+  /** Per-line snapshot indexed by line id — O(1) lookups for the line + train hover tooltips. */
+  perLineById: Map<number, PerLine> = new Map();
 
   constructor(
     readonly bridge: SimBridge,
@@ -92,27 +103,64 @@ export class Game {
     // from the raw pick coordinates.
     this.overlay.setProps({
       pickingRadius: SNAP_PX,
-      getTooltip: (info: PickingInfo) => this.stationTooltip(info),
+      getTooltip: (info: PickingInfo) => this.inspectTooltip(info),
     });
   }
 
-  /** deck getTooltip handler — only the pickable `stations` layer raises it; content is built
-   *  from the snapshot (not the raw pick), so the readout matches what the panels show. */
-  private stationTooltip(info: PickingInfo): { html: string; style: Record<string, string> } | null {
-    if (!info || info.layer?.id !== "stations") return null;
-    const obj = info.object as { id?: number } | undefined;
-    if (!obj || typeof obj.id !== "number") return null;
-    const tip = this.stationTip(obj.id);
-    if (!tip) return null;
+  /** deck getTooltip handler — the unified inspector. Dispatches on which pickable layer was hit
+   *  (stations / vehicles / lines), building content from the snapshot (not the raw pick) so each
+   *  readout matches what the panels show. Z-order makes the hierarchy natural: a station on top,
+   *  else a train between stops, else the line's own track. */
+  private inspectTooltip(info: PickingInfo): { html: string; style: Record<string, string> } | null {
+    if (!info || !info.layer) return null;
+    let html: string | null = null;
+    if (info.layer.id === "stations") {
+      const obj = info.object as { id?: number } | undefined;
+      const tip = obj && typeof obj.id === "number" ? this.stationTip(obj.id) : null;
+      if (tip) html = stationTipHtml(tip);
+    } else if (info.layer.id === "vehicles") {
+      const tip = this.vehicleTip(info.index);
+      if (tip) html = vehicleTipHtml(tip);
+    } else if (info.layer.id === "lines") {
+      const obj = info.object as { id?: number } | undefined;
+      const tip = obj && typeof obj.id === "number" ? this.lineTip(obj.id) : null;
+      if (tip) html = lineTipHtml(tip);
+    }
+    return html === null ? null : { html, style: TOOLTIP_STYLE };
+  }
+
+  /** Inspect a moving train (by its index in the vehicle SoA) — its line + live load factor.
+   *  Onboard/capacity come from the `vehicleLoads` copy-out; the line's identity from the snapshot. */
+  vehicleTip(index: number): VehicleTip | null {
+    const lineIds = this.bridge.vehicleLineIds();
+    if (index < 0 || index >= lineIds.length) return null;
+    const lineId = lineIds[index];
+    const ls = this.perLineById.get(lineId);
+    const loads = this.bridge.vehicleLoads();
     return {
-      html: stationTipHtml(tip),
-      style: {
-        background: "rgba(255,255,255,.97)",
-        color: "#1c2024",
-        borderRadius: "8px",
-        boxShadow: "0 2px 10px rgba(0,0,0,.18)",
-        padding: "8px 10px",
-      },
+      lineName: ls?.name || `Line ${lineId + 1}`,
+      lineColor: ls?.color ?? 0x888888,
+      modeIcon: modeIcon(ls?.mode ?? 0),
+      onboard: loads[index * 2] ?? 0,
+      capacity: loads[index * 2 + 1] ?? 0,
+    };
+  }
+
+  /** Inspect a line by id — its mode, ridership, load, and service shape from the snapshot. */
+  lineTip(id: number): LineTip | null {
+    const lv = this.bridge.linesView()[id];
+    if (!lv || lv.removed) return null;
+    const ls = this.perLineById.get(id);
+    return {
+      name: lv.name || `Line ${id + 1}`,
+      color: lv.color,
+      modeIcon: modeIcon(lv.mode),
+      modeName: MODES[lv.mode]?.name ?? "Line",
+      ridership: ls?.ridership ?? 0,
+      loadFactor: ls?.loadFactor ?? 0,
+      stops: ls?.stops ?? lv.stops.length,
+      trains: ls?.trains ?? 0,
+      headwayMin: ls ? Math.round(ls.headwayMs / 60000) : 0,
     };
   }
 
@@ -627,6 +675,7 @@ export class Game {
   setStats(s: Stats): void {
     this.lastStats = s;
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
+    this.perLineById = new Map(s.perLine.map((l) => [l.lineId, l]));
     this.refresh();
   }
 

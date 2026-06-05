@@ -75,6 +75,12 @@ impl Sim {
         sim::render_buf::vehicle_line_ids(&self.world)
     }
 
+    /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
+    #[wasm_bindgen(js_name = vehicleLoads)]
+    pub fn vehicle_loads(&self) -> Vec<u16> {
+        sim::render_buf::vehicle_loads(&self.world)
+    }
+
     // --- structured queries (wasm->ts query port; low frequency) ---
 
     /// Stats readout for the bottom bar / panels (camelCase JS object, numbers not BigInt).
