@@ -123,6 +123,14 @@ export interface AccessLink {
   ms: number;
 }
 
+/** One buildability cell a selected station reaches on foot (the lopsided walk-shed overlay):
+ *  cell centre in mm + distance-decay `intensity` 0..1 (→ fill alpha). Mirrors sim ShedCell. */
+export interface ShedCell {
+  xMm: number;
+  yMm: number;
+  intensity: number;
+}
+
 /** A waiting rider's trip, for the Commuter card. Named home/work commuter under agent demand;
  *  anonymous (just the route) under gravity. Mirrors crates/sim journey::JourneyView. */
 export interface JourneyLeg {

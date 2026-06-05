@@ -43,6 +43,8 @@ pub(crate) fn prepare(world: &mut World) {
 
     let stations = &world.stations;
     let cells = &world.city.demand.cells;
+    let build_lookup = &world.build_lookup;
+    let build_cell_mm = world.build_cell_mm;
     let r = CATCHMENT_MM as f64;
     let mut origin = vec![0f32; n];
     let mut dest = vec![0f32; n];
@@ -51,19 +53,21 @@ pub(crate) fn prepare(world: &mut World) {
     for cell in cells {
         in_range.clear();
         let mut sum_w = 0.0;
+        let cell_pos = crate::geo_local::PointMm::new(cell.x_mm, cell.y_mm);
         for (si, st) in stations.iter().enumerate() {
             if st.removed {
                 continue; // a bulldozed station captures nothing; its share frees up for neighbours
             }
-            let dx = (st.pos.x_mm - cell.x_mm) as f64;
-            let dy = (st.pos.y_mm - cell.y_mm) as f64;
-            let d = (dx * dx + dy * dy).sqrt();
-            if d <= r {
-                let t = d / r;
-                let w = (-(t * t)).exp(); // gaussian-ish decay, > 0 within range
-                in_range.push((si, w));
-                sum_w += w;
-            }
+            // Walk-shed distance, not crow-flies: water severs the share entirely and a crossed
+            // road/rail corridor inflates it (a None drops the cell from this station's shed).
+            let eff = match crate::walkshed::effective_walk_dist(build_lookup, build_cell_mm, st.pos, cell_pos, r) {
+                Some(e) => e,
+                None => continue,
+            };
+            let t = eff / r;
+            let w = (-(t * t)).exp(); // gaussian-ish decay, > 0 within range
+            in_range.push((si, w));
+            sum_w += w;
         }
         if sum_w > 0.0 {
             for &(si, w) in &in_range {

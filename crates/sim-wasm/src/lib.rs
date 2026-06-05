@@ -119,6 +119,15 @@ impl Sim {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Walk shed for a selected station — the buildability cells it actually reaches on foot
+    /// (water severs, crossed corridors pinch), each with a decay intensity, for the lopsided
+    /// catchment overlay (read-only). Empty when the city has no raster. Returns `ShedCell[]`.
+    #[wasm_bindgen(js_name = stationWalkshed)]
+    pub fn station_walkshed(&self, origin: u32) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.world.station_walkshed(origin))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Inspect the `nth` waiting rider at a station — a named commuter (agent demand) or anonymous
     /// gravity trip, with their route + home/work. Returns a `JourneyView` (or null if none).
     #[wasm_bindgen(js_name = sampleJourney)]

@@ -108,6 +108,18 @@ pub struct AccessLink {
     pub ms: f64,
 }
 
+/// One buildability cell reachable on foot from a selected station, for the lopsided walk-shed
+/// overlay (cell centre in mm; `intensity` 0..1 is the distance-decay weight → fill alpha, so the
+/// shed fades out toward its edge). Barriers (water, crossed corridors) simply omit cells, so the
+/// rendered hexagon set IS the real catchment — not a circle. Empty when the city has no raster.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShedCell {
+    pub x_mm: f64,
+    pub y_mm: f64,
+    pub intensity: f32,
+}
+
 // Geometry views (wasm->ts query port). mm coords are f64 (exact for city-scale ints,
 // no BigInt at the boundary); the frontend converts mm -> lng/lat in coords/geo.ts.
 #[derive(Clone, Debug, Serialize, Deserialize)]

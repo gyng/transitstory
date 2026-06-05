@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
 import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ShedHex, type VehicleDot, type WaitingDot } from "./render";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -784,6 +784,10 @@ export class Game {
               return { lng, lat, radiusM: CATCHMENT_M, peek: peeking, demand: maxDemand > 0 ? stationDemand(s.id) / maxDemand : 0 };
             });
 
+    // The lopsided walk shed of the highlighted station (hexagons over its reachable cells). The
+    // catchment ring above drops to a nominal-reach outline whenever this is non-empty.
+    const shed = highlight === null ? [] : this.shedFor(highlight, stationsV[highlight]);
+
     const lines = linesV
       .filter((l) => !l.removed)
       .map((l) => ({
@@ -884,6 +888,7 @@ export class Game {
       stations,
       lines,
       catchments,
+      shed,
       blueprint,
       roads,
       roadHour,
@@ -900,6 +905,26 @@ export class Game {
       pinnedLabel,
       selectedLine: this.selectedLine,
     };
+  }
+
+  private shedKey: string | null = null;
+  private shedView: ShedHex[] = [];
+  /** Walk-shed hexagons for the highlighted station — the lopsided set of reachable cells from the
+   *  core (water severs, motorways pinch). Pure geography (a static raster), so it's memoized and
+   *  recomputed only when the highlight changes — never per frame. Keyed on id + POSITION (not id
+   *  alone): an undo/load rebuilds the World and can rebind an id to a new station, so the position
+   *  in the key forces a recompute then. Empty for cities with no buildability raster (the catchment
+   *  ring then renders its classic filled disc). */
+  private shedFor(id: number, sv: { xMm: number; yMm: number; removed?: boolean } | undefined): ShedHex[] {
+    if (!sv || sv.removed) return [];
+    const key = `${id}:${sv.xMm},${sv.yMm}`;
+    if (key === this.shedKey) return this.shedView;
+    this.shedKey = key;
+    this.shedView = this.bridge.stationWalkshed(id).map((c) => {
+      const [lng, lat] = mmToLngLat([c.xMm, c.yMm]);
+      return { lng, lat, intensity: c.intensity };
+    });
+    return this.shedView;
   }
 
   /** Travel-demand heat points with a SERVED flag (inside the catchment union of placed

@@ -26,6 +26,7 @@ mod tick;
 pub mod tod;
 pub mod trainset;
 pub mod vehicle;
+pub mod walkshed;
 pub mod world;
 
 pub use city::{BuildCell, BuildabilityGrid, CityData, DemandCell, DemandGrid};
@@ -36,7 +37,7 @@ pub use line::Line;
 pub use pax::Pax;
 pub use routing::{plan_route, BfsRouter, Leg, RaptorRouter, Router, DEFAULT_MAX_LEGS};
 pub use station::Station;
-pub use stats::{LineStat, StationStat, StatsSnapshot};
+pub use stats::{LineStat, ShedCell, StationStat, StatsSnapshot};
 pub use trainset::{TrainsetAssignment, TrainsetSpec};
 pub use vehicle::VehicleSoA;
 pub use world::{

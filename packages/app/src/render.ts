@@ -34,6 +34,12 @@ export interface CatchmentCircle {
    *  of demand reads denser than one on empty land (which stations actually grab riders). */
   demand?: number;
 }
+export interface ShedHex {
+  lng: number;
+  lat: number;
+  /** Distance-decay weight 0..1 from the station → fill alpha (the shed fades toward its edge). */
+  intensity: number;
+}
 export interface VehicleDot {
   lng: number;
   lat: number;
@@ -110,6 +116,7 @@ export interface RenderView {
   stations: StationDot[];
   lines: LinePath[];
   catchments: CatchmentCircle[];
+  shed: ShedHex[]; // lopsided walk-shed of the highlighted station (hexagons over reachable cells)
   blueprint: [number, number][]; // in-progress line being drawn (T11)
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
@@ -228,6 +235,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // identity is stable across frames; this trigger guards the in-place served recolor.
       updateTriggers: { getFillColor: view.demand.map((d) => (d.served ? 1 : 0)).join("") },
     }),
+    // Walk shed (hexagons over the reachable buildability cells): the REAL, lopsided catchment —
+    // water severs it, a crossed motorway pinches it. Catchment blue, alpha fading with the
+    // distance-decay intensity. Empty for grid-less cities (then the ring below carries the fill).
+    new ColumnLayer({
+      id: "walkshed",
+      data: view.shed,
+      diskResolution: 6, // hexagon
+      extruded: false, // flat fill
+      radius: hexRadius(view.roadCellM), // the shed cells ARE buildability cells → road-grid pitch
+      radiusUnits: "meters",
+      getPosition: (d: ShedHex) => [d.lng, d.lat],
+      getFillColor: (d: ShedHex) => [0, 114, 178, Math.round(48 + Math.min(1, d.intensity) * 120)],
+      filled: true,
+      stroked: false,
+      updateTriggers: { getFillColor: view.shed.length },
+    }),
     new ScatterplotLayer({
       id: "catchments",
       data: view.catchments,
@@ -237,15 +260,20 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // Pinned (selected) station = filled + solid stroke; hover peek = stroke-only, fainter, so a
       // peek reads as provisional and never greys out what's under it. The pinned fill alpha scales
       // with captured demand (28..96) so a station on heavy demand reads denser than one on empty
-      // land — the "which stations actually grab riders" signal, surfaced where you're looking.
+      // land. BUT when we have a real walk shed (hexagons above), the ring drops to a stroke-only
+      // NOMINAL-reach outline — the gap between the 500 m circle and the lopsided fill IS the
+      // barrier penalty (the ped-shed deficit), so we don't fill over it.
       getFillColor: (d: CatchmentCircle) =>
-        d.peek ? [0, 114, 178, 0] : [0, 114, 178, Math.round(28 + Math.min(1, d.demand ?? 0) * 68)],
+        d.peek || view.shed.length > 0
+          ? [0, 114, 178, 0]
+          : [0, 114, 178, Math.round(28 + Math.min(1, d.demand ?? 0) * 68)],
       stroked: true,
-      getLineColor: (d: CatchmentCircle) => (d.peek ? [0, 114, 178, 110] : [0, 114, 178, 180]),
+      getLineColor: (d: CatchmentCircle) =>
+        view.shed.length > 0 ? [0, 114, 178, 90] : d.peek ? [0, 114, 178, 110] : [0, 114, 178, 180],
       lineWidthMinPixels: 1.5,
       updateTriggers: {
-        getFillColor: view.catchments.map((c) => `${!!c.peek}:${Math.round((c.demand ?? 0) * 10)}`).join(","),
-        getLineColor: view.catchments.map((c) => !!c.peek).join(","),
+        getFillColor: view.catchments.map((c) => `${!!c.peek}:${Math.round((c.demand ?? 0) * 10)}`).join(",") + `:${view.shed.length > 0}`,
+        getLineColor: view.catchments.map((c) => !!c.peek).join(",") + `:${view.shed.length > 0}`,
       },
     }),
     // Selected-line emphasis: a wide dark casing under the picked line so it pops on the muted

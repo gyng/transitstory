@@ -9,7 +9,7 @@ use crate::hash::fnv1a;
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 use crate::station::Station;
-use crate::stats::{AccessLink, LineStat, LineView, OdLink, StationStat, StatsSnapshot, StationView};
+use crate::stats::{AccessLink, LineStat, LineView, OdLink, ShedCell, StationStat, StatsSnapshot, StationView};
 use crate::tick;
 use crate::trainset::TrainsetAssignment;
 use crate::vehicle::VehicleSoA;
@@ -921,6 +921,37 @@ impl World {
                     out.push(AccessLink { station: d as u32, x_mm: p.x_mm as f64, y_mm: p.y_mm as f64, ms: t as f64 });
                 }
                 _ => {}
+            }
+        }
+        out
+    }
+
+    /// The walk shed of a selected station: the buildability cells reachable from it on foot,
+    /// each with its distance-decay `intensity` — for the lopsided catchment overlay. Water severs
+    /// it and crossed corridors pinch it (`walkshed::effective_walk_dist`), so the returned cell
+    /// set IS the real catchment, not a circle. Empty when the city carries no buildability raster
+    /// (the frontend then falls back to drawing the nominal-radius ring). Read-only; mutates
+    /// nothing. Cheap — a single station's bounded neighbourhood, recomputed only on selection.
+    pub fn station_walkshed(&self, origin: u32) -> Vec<ShedCell> {
+        let o = origin as usize;
+        if o >= self.stations.len() || self.stations[o].removed || self.build_lookup.is_empty() {
+            return Vec::new();
+        }
+        let sp = self.stations[o].pos;
+        let r = crate::demand::CATCHMENT_MM as f64;
+        let cell = self.build_cell_mm.max(1);
+        let span = crate::demand::CATCHMENT_MM / cell + 1; // cell radius of the search box
+        let (cx, cy) = (sp.x_mm.div_euclid(cell), sp.y_mm.div_euclid(cell));
+        let mut out: Vec<ShedCell> = Vec::new();
+        for gy in (cy - span)..=(cy + span) {
+            for gx in (cx - span)..=(cx + span) {
+                let px = gx * cell + cell / 2;
+                let py = gy * cell + cell / 2;
+                if let Some(eff) = crate::walkshed::effective_walk_dist(&self.build_lookup, cell, sp, PointMm::new(px, py), r) {
+                    let t = eff / r;
+                    let intensity = (-(t * t)).exp() as f32;
+                    out.push(ShedCell { x_mm: px as f64, y_mm: py as f64, intensity });
+                }
             }
         }
         out
