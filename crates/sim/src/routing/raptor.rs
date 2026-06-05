@@ -208,7 +208,12 @@ fn raptor_labels(
                 // Consider (re)boarding here using the previous round's arrival at this stop.
                 let pa = prev[sidx];
                 if pa < INF {
-                    let board_here = pa + r.wait_ms;
+                    // Auto-timetable (no editor): the ORIGIN boarding pays the unbiased ~headway/2
+                    // (a cold arrival), but a TRANSFER boards a line that's somewhat coordinated with
+                    // the feeder, so it waits less — a deterministic 3/8·headway (= 3/4 of wait_ms,
+                    // since wait_ms is headway/2). Integer, headway-only → hash-neutral, no clock/tod.
+                    let wait = if sidx == oi { r.wait_ms } else { r.wait_ms * 3 / 4 };
+                    let board_here = pa + wait;
                     let staying = match board_station {
                         Some(_) => board_arr.saturating_add(r.cum_ms[pos] - cum_at_board),
                         None => INF,

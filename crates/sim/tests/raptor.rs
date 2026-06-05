@@ -56,6 +56,33 @@ fn trainset_mode_heavy() -> u8 {
     4
 }
 
+/// Phase-aware transfer wait (the "auto-timetable" subslice): a TRANSFER boards a line that is
+/// somewhat coordinated with the feeder, so it waits LESS than a cold origin boarding (h/2). The
+/// origin boarding stays h/2 (unbiased arrival). Derived purely from RAPTOR labels so the
+/// assertion cancels ride/dwell and pins the exact integer term.
+#[test]
+fn transfer_wait_is_phase_aware() {
+    let mut w = base_world();
+    let h = 600_000;
+    place(&mut w, 0, 0); // 0 = O
+    place(&mut w, 1_000_000, 0); // 1 = T (1 km — beyond the 400 m footpath range)
+    place(&mut w, 2_000_000, 0); // 2 = D
+    line(&mut w, 0, &[0, 1], h); // line 0: O→T
+    line(&mut w, 0, &[1, 2], h); // line 1: T→D
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+
+    let from_o = RaptorRouter.reachable(&w.lines, &w.serving, &w.footpaths, StationId(0), 4);
+    let from_t = RaptorRouter.reachable(&w.lines, &w.serving, &w.footpaths, StationId(1), 4);
+    // from_t[D] - h/2 is the pure T→D ride+dwell (T is the ORIGIN there, pays h/2). Subtract it
+    // from the O→D minus O→T delta to isolate the transfer wait paid at T — no ride/dwell constants.
+    let r_td = from_t[2] - h / 2;
+    let transfer_wait = from_o[2] - from_o[1] - r_td;
+    assert!(transfer_wait < h / 2, "a transfer waits LESS than a cold origin boarding: {transfer_wait} < {}", h / 2);
+    assert!(transfer_wait >= 0 && transfer_wait <= h, "transfer wait stays within [0, headway]");
+    assert_eq!(transfer_wait, 3 * h / 8, "transfer wait = 3/8 headway (coordinated), not the flat h/2");
+}
+
 #[test]
 fn raptor_prefers_the_faster_line_where_bfs_is_indifferent() {
     let w = two_direct_world();

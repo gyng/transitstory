@@ -5,8 +5,11 @@
 //! architecture intends — a new `impl Router` in a sibling module, no change to `World::apply`'s
 //! signature or the demand call shape, same `Vec<Leg>` output so `Pax`/board_alight stay thin.
 //! Inter-station footpaths now ship: a `footpaths` adjacency lets a router transfer on foot
-//! between unconnected lines whose stops are close (legs stay ride-only with a walk GAP). Still
-//! deferred behind this same seam: a real departure timetable.
+//! between unconnected lines whose stops are close (legs stay ride-only with a walk GAP). The
+//! transfer wait is also phase-aware now (a coordinated 3/8·headway vs the origin's cold
+//! headway/2) — an auto-timetable derived purely from headways, no stored departures. Still
+//! deferred behind this same seam: real stored departure phases + time-of-day service scaling
+//! (both need a non-teleporting variable-fleet dispatch layer first).
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 
