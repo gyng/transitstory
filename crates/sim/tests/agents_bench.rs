@@ -137,6 +137,49 @@ fn agent_demand_benchmark() {
     assert!(wa.stats_snapshot().ridership_total > 0.0, "agent population produces ridership");
 }
 
+/// A small served grid (25 stations, 10 lines — every row + column) for the mode/determinism test.
+fn build_small() -> World {
+    let cells: Vec<_> = (0..100)
+        .map(|k| DemandCell { x_mm: (k % 10) * 1_000_000, y_mm: (k / 10) * 1_000_000, origin_w: 3.0, dest_w: 3.0 })
+        .collect();
+    let mut w = World::new(7, CityData { id: "s".into(), seed: 7, demand: DemandGrid { cell_m: 1000.0, cells }, ..Default::default() });
+    for k in 0..25 {
+        w.apply(&Command::PlaceStation { x_mm: (k % 5) * 2_000_000, y_mm: (k / 5) * 2_000_000, name: None });
+    }
+    let mut li = 0u32;
+    let mut line = |w: &mut World, stops: Vec<u32>| {
+        w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+        for s in stops {
+            w.apply(&Command::AddStop { line: LineId(li), station: StationId(s), after: None });
+        }
+        w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 3 });
+        w.apply(&Command::SetHeadway { line: LineId(li), headway_ms: 120_000 });
+        li += 1;
+    };
+    for r in 0..5 {
+        line(&mut w, (0..5).map(|c| r * 5 + c).collect());
+    }
+    for c in 0..5 {
+        line(&mut w, (0..5).map(|r| r * 5 + c).collect());
+    }
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+#[test]
+fn agent_demand_mode_via_command_develops_ridership_and_replays() {
+    let run = || {
+        let mut w = build_small();
+        w.apply(&Command::SetDemandMode { agents: true }); // the opt-in toggle (command-sourced)
+        for _ in 0..3000 {
+            w.tick(50); // run into the AM rush
+        }
+        w
+    };
+    assert!(run().stats_snapshot().ridership_total > 0.0, "agent-demand mode develops ridership via the command path");
+    assert_eq!(run().state_hash(), run().state_hash(), "agent-demand mode (command-sourced) replays bit-for-bit");
+}
+
 #[test]
 fn agent_demand_is_deterministic() {
     let run = || {

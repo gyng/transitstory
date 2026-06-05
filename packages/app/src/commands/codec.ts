@@ -30,6 +30,8 @@ export const cmd = {
   removeLine: (line: number): Command => ({ RemoveLine: { line } }),
   /** Set the per-span control points (mm `[x,y]`) that bend a line's track between its stops. */
   setLineWaypoints: (line: number, waypoints: [number, number][][]): Command => ({ SetLineWaypoints: { line, waypoints } }),
+  /** Switch the demand model: agents=true → seed-derived citizen commuters; false → gravity flow. */
+  setDemandMode: (agents: boolean): Command => ({ SetDemandMode: { agents } }),
 };
 
 export const WHOLE_LINE = 0xffffffff;

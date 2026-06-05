@@ -14,7 +14,9 @@ export type Command =
   | { RemoveStation: { station: number } }
   | { RemoveLine: { line: number } }
   // waypoints: per-span control points that bend the track; each span is a list of [x_mm, y_mm].
-  | { SetLineWaypoints: { line: number; waypoints: [number, number][][] } };
+  | { SetLineWaypoints: { line: number; waypoints: [number, number][][] } }
+  // demand model: true = seed-derived citizen agents (home/work commuters), false = gravity flow.
+  | { SetDemandMode: { agents: boolean } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -28,6 +30,7 @@ export type Event =
   | { StationRemoved: { station: number } }
   | { LineRemoved: { line: number } }
   | { WaypointsSet: { line: number } }
+  | { DemandModeSet: { agents: boolean } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {

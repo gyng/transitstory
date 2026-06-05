@@ -75,6 +75,12 @@ pub enum Command {
         line: LineId,
         waypoints: Vec<Vec<[i64; 2]>>,
     },
+    /// Switch the demand model: `agents=true` swaps gravity flow for a seed-derived citizen
+    /// population (home/work agents on a schedule); `false` restores gravity. Command-sourced so
+    /// it lives in the save and replays deterministically (the population is regenerated from seed).
+    SetDemandMode {
+        agents: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -90,5 +96,6 @@ pub enum Event {
     StationRemoved { station: StationId },
     LineRemoved { line: LineId },
     WaypointsSet { line: LineId },
+    DemandModeSet { agents: bool },
     Rejected { reason: String },
 }

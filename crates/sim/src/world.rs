@@ -119,6 +119,12 @@ pub struct World {
     pub router: Box<dyn crate::routing::Router>,
     /// Max legs (transfers + 1) a routed trip may use (from CityData, or the routing default).
     pub max_legs: usize,
+    /// Demand model: when `true`, trips come from `population` (agents) instead of gravity flow.
+    /// Command-derived (SetDemandMode), so it isn't hashed; the trips it causes are.
+    pub agent_demand: bool,
+    /// The seed-derived citizen population (Some when agent demand is on). NOT folded into
+    /// state_hash — it is a pure function of (seed, grid), regenerated on enable / replay.
+    pub population: Option<crate::agents::Population>,
 }
 
 /// Borrowed canonical view hashed for determinism. Field order = hash order (stable).
@@ -218,6 +224,8 @@ impl World {
             opex_rem: 0,
             router: Box::new(crate::routing::RaptorRouter),
             max_legs,
+            agent_demand: false,
+            population: None,
         }
     }
 
@@ -388,6 +396,13 @@ impl World {
             }
         }
         ((served / total * 100.0).round() as i64).clamp(0, 100) as u8
+    }
+
+    /// Citizen population for agent demand — scales with the city's residential weight so a bigger
+    /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Tunable.
+    fn agent_population_target(&self) -> usize {
+        let homes: f64 = self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum();
+        ((homes * 40.0) as usize).clamp(4_000, 120_000)
     }
 
     /// Total one-time construction capital across all lines.
@@ -778,6 +793,19 @@ impl World {
                 } else {
                     vec![Event::Rejected { reason: "SetLineWaypoints: unknown line".into() }]
                 }
+            }
+            Command::SetDemandMode { agents } => {
+                self.agent_demand = *agents;
+                if *agents {
+                    // Generate (or keep) the seed-derived population — sized to the city's homes.
+                    if self.population.is_none() {
+                        let n = self.agent_population_target();
+                        self.population = Some(crate::agents::Population::generate(self, n, self.seed));
+                    }
+                } else {
+                    self.population = None; // back to gravity; free the table
+                }
+                vec![Event::DemandModeSet { agents: *agents }]
             }
         };
         // Any change to lines / trainsets / headway / running invalidates dispatch.
