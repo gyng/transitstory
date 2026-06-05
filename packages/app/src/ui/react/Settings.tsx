@@ -2,6 +2,7 @@
 // (capital + fares) on/off. Mode toggles are a frontend gate — they grey out the chorded
 // bar's buttons; the economy toggle emits SetEconomy through Game. Opens as a small panel
 // anchored above the bar; reads Game/Stats state and re-renders on its hook slices.
+import { useState } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
 import { MODES } from "./shared";
 
@@ -68,6 +69,8 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
   const game = useGame();
   const ui = useGameUI();
   const stats = useStats();
+  // Demand model is tracked on Game (no sim-stats field); the toggle is its only mutator.
+  const [agentDemand, setAgentDemand] = useState(game.agentDemand);
 
   if (!open) return null;
 
@@ -123,6 +126,23 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         on={stats.economyEnabled}
         onToggle={() => game.setEconomy(!stats.economyEnabled)}
       />
+
+      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+        Demand model
+      </div>
+      <Toggle
+        label="🧍  Citizen agents"
+        testid="setting-agents"
+        on={agentDemand}
+        onToggle={() => {
+          const v = !agentDemand;
+          setAgentDemand(v);
+          game.setDemandMode(v);
+        }}
+      />
+      <div style={{ color: "#9aa3ad", fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
+        Trips come from a population with homes & jobs instead of gravity flow.
+      </div>
     </div>
   );
 }

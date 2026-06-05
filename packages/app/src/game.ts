@@ -289,6 +289,15 @@ export class Game {
     this.refresh();
   }
 
+  /** Demand model: true = seed-derived citizen agents (home/work commuters), false = gravity flow.
+   *  Command-sourced (in the save + deterministic). Tracked client-side for the Settings toggle. */
+  agentDemand = false;
+  setDemandMode(agents: boolean): void {
+    this.agentDemand = agents;
+    this.bridge.apply(cmd.setDemandMode(agents));
+    this.refresh();
+  }
+
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
     const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));
