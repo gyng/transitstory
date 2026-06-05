@@ -8,6 +8,7 @@ export interface CityEntry {
 }
 
 export const CITIES: CityEntry[] = [
+  { id: "globe", name: "World ✈", blurb: "Global airline — connect cities by air", manifest: "/data/globe_city.json" },
   { id: "singapore", name: "Singapore", blurb: "MRT — dense island metro", manifest: "/data/singapore_city.json" },
   { id: "tokyo", name: "Tokyo", blurb: "JR + subway — the big one", manifest: "/data/tokyo_city.json" },
   { id: "calgary", name: "Calgary", blurb: "C-Train — LRT + free-fare downtown", manifest: "/data/calgary_city.json" },

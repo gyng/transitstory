@@ -123,7 +123,9 @@ export function App() {
     const params = new URLSearchParams(location.search);
     const cityParam = params.get("city");
     if (cityParam) {
-      startBoot(cityById(cityParam).manifest, params.get("network") === "1", params.get("scenario"));
+      const entry = cityById(cityParam);
+      // The globe's "network" is its cities — always load it (the board is empty without them).
+      startBoot(entry.manifest, entry.id === "globe" || params.get("network") === "1", params.get("scenario"));
     }
   }, [startBoot]);
 
@@ -144,7 +146,8 @@ export function App() {
     if (booting) return null; // map is being built; chrome appears once the world is ready
     return (
       <Menu
-        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) => startBoot(c.manifest, withNet, scenario)}
+        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) =>
+          startBoot(c.manifest, c.id === "globe" || withNet, scenario)}
         onResume={startResume}
       />
     );

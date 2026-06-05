@@ -1,0 +1,22 @@
+{
+  "id": "globe",
+  "name": "World",
+  "originLngLat": [
+    10.0,
+    35.0
+  ],
+  "bbox": [
+    -180,
+    -60,
+    180,
+    75
+  ],
+  "center": [
+    10.0,
+    35.0
+  ],
+  "zoom": 1.6,
+  "seed": 42,
+  "demandGridPath": "/data/globe_demand.json",
+  "networkPath": "/data/globe_network.json"
+}
