@@ -7,8 +7,9 @@ export interface CityEntry {
   manifest: string;
 }
 
+// Singapore is first, so it is the default selection (the menu + cityById both seed from CITIES[0]).
+// The globe air board is last — it's the odd-one-out mode, not the default city.
 export const CITIES: CityEntry[] = [
-  { id: "globe", name: "World ✈", blurb: "Global airline — connect cities by air", manifest: "/data/globe_city.json" },
   { id: "singapore", name: "Singapore", blurb: "MRT — dense island metro", manifest: "/data/singapore_city.json" },
   { id: "tokyo", name: "Tokyo", blurb: "JR + subway — the big one", manifest: "/data/tokyo_city.json" },
   { id: "calgary", name: "Calgary", blurb: "C-Train — LRT + free-fare downtown", manifest: "/data/calgary_city.json" },
@@ -21,6 +22,7 @@ export const CITIES: CityEntry[] = [
   { id: "london", name: "London", blurb: "The Tube — radial across the Thames", manifest: "/data/london_city.json" },
   { id: "pyongyang", name: "Pyongyang", blurb: "Deep metro on the Taedong", manifest: "/data/pyongyang_city.json" },
   { id: "glasgow", name: "Glasgow", blurb: "Clockwork-Orange loop on the Clyde", manifest: "/data/glasgow_city.json" },
+  { id: "globe", name: "World ✈", blurb: "Global airline — connect cities by air", manifest: "/data/globe_city.json" },
 ];
 
 export function cityById(id: string | null): CityEntry {
