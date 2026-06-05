@@ -4,10 +4,12 @@
 import type { Map as MlMap } from "maplibre-gl";
 import type { MapboxOverlay } from "@deck.gl/mapbox";
 import type { Layer, PickingInfo } from "@deck.gl/core";
-import { BUSY_WAITING, CATCHMENT_M, LINE_PALETTE, SNAP_PX, STARVED_WAITING } from "./config";
-import { lngLatToMm, metersToLngLat, mmToLngLat } from "./coords/geo";
+import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
+import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ShedHex, type VehicleDot, type WaitingDot } from "./render";
+import { colorToRgb, peepLayer, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ShedHex, type VehicleDot, type WaitingDot } from "./render";
+import { audio } from "./fx/audio";
+import { Effects } from "./fx/effects";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
@@ -75,6 +77,10 @@ export class Game {
    *  auto-shown while drawing a Bus line (so you see where to route it). Memoized lng/lat below. */
   showRoads = false;
   private roadCells: import("./render").RoadCell[] | null = null;
+  /** Toggle the individual-rider "peep" dots (Cities:Skylines-style). On by default; only drawn
+   *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
+   *  render-only read-out from the core — no sim state, no Command. */
+  showPeeps = true;
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
@@ -97,6 +103,11 @@ export class Game {
   /** Cached topology layers (stable identity across frames; rebuilt only on refresh). */
   private below: Layer[] = [];
   private above: Layer[] = [];
+  /** Spatial juice canvas (ripples / connect-flash / throbs). Client-side acknowledgement only —
+   *  driven by the existing GameLoop rAF, never a deck rebuild or a sim tick. */
+  effects!: Effects;
+  /** Per-station boardings from the previous stats snapshot — to emit a board-burst on the delta. */
+  private prevBoardings: Map<number, number> = new Map();
 
   /** Latest stats snapshot (refreshed on the ~3 Hz throttle); drives waiting-pax halos. */
   lastStats: Stats = EMPTY_STATS;
@@ -120,6 +131,26 @@ export class Game {
       pickingRadius: SNAP_PX,
       getTooltip: (info: PickingInfo) => this.inspectTooltip(info),
     });
+    this.effects = new Effects(map);
+  }
+
+  /** Per-frame spatial-juice draw — called from the GameLoop rAF (build + run) with its timestamp.
+   *  Pure client-side canvas tween; touches no sim state and rebuilds no deck layer. Guarded: juice
+   *  is non-essential, so a transient canvas/projection error must NEVER bubble up and stop the rAF
+   *  reschedule (which would freeze the sim). One failed frame is dropped, never the game loop. */
+  drawEffects(now: number): void {
+    try {
+      this.effects.draw(now);
+    } catch {
+      /* swallow — a dropped juice frame is invisible; a stopped render loop is not */
+    }
+  }
+
+  /** lng/lat of a station by id (for anchoring an effect), or null if missing/removed. */
+  private stationLngLat(id: number): [number, number] | null {
+    const s = this.bridge.stationsView()[id];
+    if (!s || s.removed) return null;
+    return mmToLngLat([s.xMm, s.yMm]);
   }
 
   /** deck getTooltip handler — the unified inspector. Dispatches on which pickable layer was hit
@@ -200,7 +231,8 @@ export class Game {
       boardings: ps?.boardings ?? 0,
       alightings: ps?.alightings ?? 0,
       verdict: hasData ? this.starvation(waiting) : null,
-      demand: ps ? ps.demandOrigin + ps.demandDest : 0,
+      homes: ps?.demandOrigin ?? 0,
+      jobs: ps?.demandDest ?? 0,
       serving: ps?.serving ?? lines.length,
       denied: ps?.denied ?? 0,
       abandoned: ps?.abandoned ?? 0,
@@ -226,7 +258,10 @@ export class Game {
   /** Capture an afford-gate (or other) rejection so the UI can flash it; returns the events. */
   private noteRejections(events: Event[]): Event[] {
     const r = events.find((e) => "Rejected" in e) as { Rejected: { reason: string } } | undefined;
-    if (r) this.notice = r.Rejected.reason;
+    if (r) {
+      this.notice = r.Rejected.reason;
+      audio.alert(); // a gated Command's audible echo (pairs with the toast)
+    }
     return events;
   }
 
@@ -253,6 +288,10 @@ export class Game {
       | undefined;
     const id = placed ? placed.StationPlaced.id : -1;
     this.selectedStation = id >= 0 ? id : this.selectedStation; // show its catchment
+    if (id >= 0) {
+      this.effects.ripple(lng, lat); // selection-blue placement ring
+      audio.place();
+    }
     this.refresh();
     return id;
   }
@@ -270,6 +309,15 @@ export class Game {
     this.cancelDraft();
     this.selectedLine = lineId;
     this.selectedStation = null;
+    // Connect flash: the committed line lights up along its length (its own colour) + a chime.
+    const lv = this.bridge.linesView()[lineId];
+    if (lv && lv.polylineMm.length >= 2) {
+      this.effects.connectFlash(
+        lv.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
+        colorToRgb(lv.color).join(","),
+      );
+      audio.connect();
+    }
     this.refresh();
     return lineId;
   }
@@ -348,6 +396,8 @@ export class Game {
     this.mode = mode;
     this.bridge.apply(cmd.setRunning(mode === "run"));
     if (mode === "run") this.cancelDraft();
+    else this.effects.clear(); // back to Build — drop any lingering run-mode throbs/bursts
+    audio.toggle(mode === "run");
     this.refresh();
   }
 
@@ -369,6 +419,7 @@ export class Game {
 
   setTool(tool: Tool): void {
     if (this.tool === "line" && tool !== "line") this.cancelDraft();
+    if (tool !== this.tool) audio.tick();
     this.tool = tool;
     this.refresh();
   }
@@ -380,6 +431,7 @@ export class Game {
     this.cancelDraft();
     this.transport = mode;
     this.tool = "line";
+    audio.tick();
     this.refresh();
   }
 
@@ -414,6 +466,27 @@ export class Game {
     this.refresh();
   }
 
+  /** Toggle the individual-rider "peep" dots. */
+  setShowPeeps(on: boolean): void {
+    this.showPeeps = on;
+    this.refresh();
+  }
+
+  /** Build the binary-attribute peep layer at interpolation `alpha`, or null when off / not running
+   *  / no one in transit. The core fills positions (metres) + RGBA in one capped sweep; we convert
+   *  metres→lng/lat IN PLACE (geo.ts, the one coordinate crossing) into the same fresh buffer and
+   *  hand deck binary attributes — no per-object accessors, so thousands of dots cost ~nothing. */
+  peepLayerAt(alpha: number): Layer | null {
+    // Level-of-detail: peeps are micro-texture — hidden at the city-overview zoom (where they'd be a
+    // swarm of flashing dots) and revealed only once zoomed in. Skips the buffer copy when hidden.
+    if (!this.showPeeps || this.mode !== "run" || this.map.getZoom() < DETAIL_ZOOM) return null;
+    const xy = this.bridge.peepPositions(alpha, TICK_MS); // interleaved metres (fresh each frame)
+    const count = xy.length >> 1;
+    if (count === 0) return null;
+    for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i); // metres→lng/lat in place
+    return peepLayer(xy, this.bridge.peepColors(), count);
+  }
+
   /** ROAD-cell centres in lng/lat for the overlay — derived once from the buildability raster
    *  (the same data the cost/speed gate uses), memoized so it never recomputes per frame. */
   private roadPoints(): import("./render").RoadCell[] {
@@ -437,6 +510,10 @@ export class Game {
   selectStation(id: number | null): void {
     this.selectedStation = id;
     this.selectedLine = null;
+    if (id !== null) {
+      const ll = this.stationLngLat(id);
+      if (ll) this.effects.pulse(ll[0], ll[1]);
+    }
     this.refresh();
   }
 
@@ -967,7 +1044,46 @@ export class Game {
     this.lastStats = s;
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
     this.perLineById = new Map(s.perLine.map((l) => [l.lineId, l]));
+    if (s.running) this.emitStatsJuice(s);
     this.refresh();
+  }
+
+  /** Spatial juice driven off the ~3 Hz stats snapshot (NOT per sim tick): throb the worst-starved
+   *  platforms, and spark a soft burst where boardings jumped since the last snapshot. */
+  private emitStatsJuice(s: Stats): void {
+    // Cheap scans first — no projection / no stationsView() until we know there's work to draw.
+    // Worst-starved platforms (capped so it reads as "fix these few", not a sea of rings).
+    const starvedPs = s.perStation
+      .filter((ps) => ps.waiting >= STARVED_WAITING)
+      .sort((a, b) => b.waiting - a.waiting)
+      .slice(0, 24);
+    // Board-bursts: stations with the biggest boarding gain since the last snapshot.
+    const deltas: { id: number; d: number }[] = [];
+    for (const ps of s.perStation) {
+      const prev = this.prevBoardings.get(ps.stationId) ?? ps.boardings; // first snapshot → no burst
+      const d = ps.boardings - prev;
+      if (d >= 3) deltas.push({ id: ps.stationId, d });
+      this.prevBoardings.set(ps.stationId, ps.boardings);
+    }
+    if (starvedPs.length === 0 && deltas.length === 0) {
+      this.effects.setThrobs([]); // healthy network — clear stale throbs, skip all projection work
+      return;
+    }
+    const sv = this.bridge.stationsView();
+    const at = (id: number): { lng: number; lat: number } | null => {
+      const v = sv[id];
+      if (!v || v.removed) return null;
+      const [lng, lat] = mmToLngLat([v.xMm, v.yMm]);
+      return { lng, lat };
+    };
+    this.effects.setThrobs(
+      starvedPs.map((ps) => at(ps.stationId)).filter((p): p is { lng: number; lat: number } => p !== null),
+    );
+    deltas.sort((a, b) => b.d - a.d);
+    for (const { id } of deltas.slice(0, 6)) {
+      const p = at(id);
+      if (p) this.effects.burst(p.lng, p.lat);
+    }
   }
 
   /** Rebuild cached topology layers from authoritative sim views; recompose with current
@@ -976,15 +1092,23 @@ export class Game {
     const { below, above } = topoLayers(this.buildView());
     this.below = below;
     this.above = above;
-    this.composeAndSet(this.currentVehicleDots());
+    this.composeAndSet(this.currentVehicleDots(), this.peepLayerAt(1));
     for (const cb of this.onChange) cb();
   }
 
-  /** Set the overlay layers: stable cached topo with the vehicle layer in z-order between
-   *  them (catchment/lines/blueprint < vehicles < stations). Reused topo instances mean deck
-   *  only re-uploads the small vehicle layer each frame. */
-  composeAndSet(vehicles: VehicleDot[]): void {
-    this.overlay.setProps({ layers: [...this.below, ...vehicleLayers(vehicles), ...this.above] });
+  /** Set the overlay layers: stable cached topo with the vehicle layer + peep layer spliced into
+   *  z-order (catchment/lines/blueprint < vehicles < peeps < stations < waiting). Reused topo
+   *  instances mean deck only re-uploads the small per-frame vehicle + peep layers. */
+  composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
+    const peep = peeps ? [peeps] : [];
+    // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
+    // only the network — drop the per-station waiting halos, the pinned label, and the vehicle
+    // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
+    // separately in peepLayerAt. Cheap: a filter over ~17 already-built layers, no rebuild.
+    const detail = this.map.getZoom() >= DETAIL_ZOOM;
+    const vlayers = detail ? vehicleLayers(vehicles) : vehicleLayers(vehicles).filter((l) => l.id !== "vehicle-dir");
+    const above = detail ? this.above : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
+    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */

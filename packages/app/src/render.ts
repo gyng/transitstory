@@ -589,3 +589,26 @@ export function vehicleLayers(dots: VehicleDot[]): Layer[] {
     }),
   ];
 }
+
+/** Individual rider "peeps" via deck BINARY attributes (data.attributes) — NO per-object accessors,
+ *  so it scales to the core's MAX_VISIBLE_PEEPS at 60fps where an object-array layer would cliff.
+ *  `positionsLngLat` is interleaved [lng,lat,...] (f32) and `colors` interleaved RGBA (u8); both are
+ *  fresh typed arrays each frame, so deck re-uploads (no stale-reference reuse). Small + faint + NOT
+ *  pickable — the train/station inspectors stay the pick targets; peeps are spatial texture. */
+export function peepLayer(positionsLngLat: Float32Array, colors: Uint8Array, count: number): Layer {
+  return new ScatterplotLayer({
+    id: "peeps",
+    data: {
+      length: count,
+      attributes: {
+        getPosition: { value: positionsLngLat, size: 2 },
+        getFillColor: { value: colors, size: 4, normalized: true }, // u8 0..255 → deck normalizes
+      },
+    },
+    getRadius: 2,
+    radiusUnits: "pixels",
+    radiusMinPixels: 1.4,
+    radiusMaxPixels: 4.5,
+    stroked: false,
+  });
+}

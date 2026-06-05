@@ -6,6 +6,12 @@ export const SG_ORIGIN = { lng: 103.8198, lat: 1.3521 } as const;
 export const SG_CENTER: [number, number] = [SG_ORIGIN.lng, SG_ORIGIN.lat];
 export const SG_ZOOM = 11;
 
+/** Map level-of-detail threshold. At/above this zoom the overview reveals the "micro" overlays —
+ *  individual rider peeps, per-station waiting halos, vehicle direction arrows, pinned labels. Below
+ *  it (the city-overview default, SG_ZOOM=11) only the NETWORK shows — lines + vehicles + stations —
+ *  so the map reads cleanly instead of as a swarm of flashing dots. Tune to taste. */
+export const DETAIL_ZOOM = 12.5;
+
 /** Fixed logical sim step (20 Hz). Render interpolates to 60fps; stats DOM refresh ~1-4 Hz. */
 export const TICK_MS = 50;
 

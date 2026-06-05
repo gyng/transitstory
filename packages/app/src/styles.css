@@ -13,6 +13,9 @@
   /* Height the EditorPanel reserves so it stacks BELOW the top-right Objectives card; the
      ObjectivePanel sets this to its (data-derived) height while mounted, 0px otherwise. */
   --ot-objective-h: 0px;
+  /* Shared easing for the chrome's micro-motion (button press, gauge fill, panel pop). A soft
+     ease-out — "subtle & satisfying", never bouncy. Used by CSS rules here + inline tween styles. */
+  --ot-ease: cubic-bezier(0.22, 0.7, 0.25, 1);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
@@ -42,4 +45,64 @@ body {
 
 #ui > * {
   pointer-events: auto;
+}
+
+/* --- Game-feel layer (juice): subtle CSS micro-motion on the React chrome. The spatial juice
+   (ripples / connect-flash / starved throbs) lives on a separate canvas driven by the rAF loop;
+   these rules cover only the DOM chrome and ride no sim/render hot path. --- */
+
+/* Pill / control buttons get a smooth state cross-fade + a tactile press. Inline transitions on
+   specific buttons (e.g. the Settings toggle) still win, so this never fights bespoke motion. */
+#ui button {
+  transition:
+    transform 0.12s var(--ot-ease),
+    box-shadow 0.15s var(--ot-ease),
+    background-color 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+#ui button:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+/* Contextual / transient panels gently pop in when they mount (selection, settings, an inspector).
+   Persistent chrome (roster, dashboard, bar) is left alone — it shouldn't re-animate on updates. */
+#editor-panel,
+#settings-panel,
+[data-testid="commuter-card"] {
+  animation: ot-pop 0.18s var(--ot-ease) both;
+}
+[data-testid="notice"] {
+  animation: ot-toast-in 0.22s var(--ot-ease) both;
+}
+
+@keyframes ot-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ot-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  #ui *,
+  #ui *::before,
+  #ui *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

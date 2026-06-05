@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { Game } from "../../game";
 import type { GameLoop } from "../../sim/GameLoop";
 import type { Stats } from "../../types";
+import { audio } from "../../fx/audio";
 
 export interface GameUI {
   mode: Game["mode"];
@@ -19,6 +20,7 @@ export interface GameUI {
   showDemand: boolean;
   showReach: boolean;
   showRoads: boolean;
+  showPeeps: boolean;
   selectedLine: number | null;
   selectedStation: number | null;
   notice: string | null;
@@ -33,6 +35,7 @@ function snapUI(g: Game): GameUI {
     showDemand: g.showDemand,
     showReach: g.showReach,
     showRoads: g.showRoads,
+    showPeeps: g.showPeeps,
     selectedLine: g.selectedLine,
     selectedStation: g.selectedStation,
     notice: g.notice,
@@ -47,6 +50,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.showDemand === b.showDemand &&
     a.showReach === b.showReach &&
     a.showRoads === b.showRoads &&
+    a.showPeeps === b.showPeeps &&
     a.selectedLine === b.selectedLine &&
     a.selectedStation === b.selectedStation &&
     a.notice === b.notice &&
@@ -98,11 +102,19 @@ export function GameProvider({
 
     loop.start();
 
+    // WebAudio can only start inside a user gesture — unlock the kit on the first pointer/key
+    // input, then drop the listeners (they're `once`). Until then every cue is a silent no-op.
+    const unlock = () => audio.unlock();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+
     return () => {
       window.clearInterval(id);
       const i = game.onChange.indexOf(onChange);
       if (i >= 0) game.onChange.splice(i, 1);
       loop.stop();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
     };
   }, [game, loop]);
 

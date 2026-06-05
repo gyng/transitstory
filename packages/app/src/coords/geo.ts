@@ -29,6 +29,14 @@ export function metersToLngLat([x, y]: Meters): LngLat {
   return [originLng + x / mPerDegLng, originLat + y / M_PER_DEG_LAT];
 }
 
+/** Non-allocating metres→lng/lat: writes `[lng, lat]` into `out` at `off`. Same math as
+ *  `metersToLngLat`, but for tight per-element fills (e.g. thousands of peep dots per frame) where
+ *  allocating a 2-tuple per point would churn the GC. Keeps the projection inside this one module. */
+export function metersToLngLatInto(x: number, y: number, out: Float32Array, off: number): void {
+  out[off] = originLng + x / mPerDegLng;
+  out[off + 1] = originLat + y / M_PER_DEG_LAT;
+}
+
 export function metersToMm([x, y]: Meters): Mm {
   return [Math.round(x * 1000), Math.round(y * 1000)];
 }

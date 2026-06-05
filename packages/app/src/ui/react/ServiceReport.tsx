@@ -5,8 +5,35 @@
 // ~3 Hz `stats` slice, issues no Commands. Collapsible, but default-open so the info is visible
 // (a discoverable channel, not a buried hover-tooltip).
 import { useState, type CSSProperties } from "react";
-import { useStats } from "./GameContext";
+import { useStats, useGameUI } from "./GameContext";
 import { MODES } from "./shared";
+
+// The travel-demand model in one line, keyed to the time of day: homes (trip origins) generate
+// trips, jobs (destinations) attract them, and the rush direction flips AM↔PM (sim `tod::work_bias`).
+// Driven off the sim's own `period` label so the arrow never disagrees with the clock.
+function demandFlow(period: string): string {
+  switch (period) {
+    case "AM rush":
+      return "🏠 → 💼  morning commute";
+    case "PM rush":
+    case "Evening":
+      return "💼 → 🏠  heading home";
+    case "Night":
+      return "🌙  quiet";
+    default:
+      return "🏠 ⇄ 💼  both ways";
+  }
+}
+
+// Heat-key swatch matching the demand overlay's colours (render.ts demandColor): warm = unserved,
+// cool = covered. A small <span>, so the legend reads next to the live map layer.
+function Swatch({ rgb }: { rgb: string }) {
+  return (
+    <span
+      style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: rgb, verticalAlign: -1, marginRight: 5 }}
+    />
+  );
+}
 
 const CARD: CSSProperties = {
   position: "fixed",
@@ -42,6 +69,7 @@ function Divider() {
 
 export function ServiceReport() {
   const s = useStats();
+  const ui = useGameUI();
   const [open, setOpen] = useState(true);
 
   // Aggregate ridership by transport mode from the per-line snapshot (no new sim field needed).
@@ -81,6 +109,27 @@ export function ServiceReport() {
 
       {open && (
         <div style={{ padding: "0 12px 12px" }}>
+            {/* What demand IS — the conceptual key, so every served/pressure number below has meaning.
+                Homes (origins) generate trips, jobs (destinations) attract them; the rush flips AM↔PM.
+                This is the "what is demand / are trips directional pairs" answer, in the demand panel. */}
+            <div data-testid="demand-explainer" style={{ marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <b>Demand</b>
+                <span data-testid="demand-flow" style={{ color: "#7a818a", fontSize: 11 }}>{demandFlow(s.period)}</span>
+              </div>
+              <div style={{ color: "#7a818a", marginTop: 2 }}>🏠 homes start trips · 💼 jobs pull them in</div>
+              {ui.showDemand && (
+                <div data-testid="demand-key" style={{ marginTop: 4, lineHeight: 1.55 }}>
+                  <div><Swatch rgb="rgb(196,96,46)" />unserved — build here</div>
+                  <div><Swatch rgb="rgb(90,130,170)" />covered by a station</div>
+                  <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 2 }}>
+                    Pin a station → arcs show where its riders travel.
+                  </div>
+                </div>
+              )}
+            </div>
+            <Divider />
+
             {/* Service quality — the journey-time telemetry, previously only in a hover tooltip. */}
             <Row label="Avg wait" value={fmtMin(s.avgWaitMs)} testid="svc-avg-wait" />
             <Row label="Avg trip" value={fmtMin(s.avgJourneyMs)} testid="svc-avg-trip" />

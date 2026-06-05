@@ -86,8 +86,19 @@ pub(crate) fn board_alight(world: &mut World) {
         ref mut wait_samples,
         ref mut denied_boardings,
         ref mut denied_at,
+        ref mut recent_alight,
         ..
     } = *world;
+
+    // Prune render-only walk-out breadcrumbs older than the walk window (and cap the buffer). This
+    // touches no hashed state — recent_alight is excluded from Canonical, so it's determinism-free.
+    let cutoff = clock_ms - crate::render_buf::PEEP_WALK_MS;
+    while recent_alight.front().map(|r| r.t_ms < cutoff).unwrap_or(false) {
+        recent_alight.pop_front();
+    }
+    while recent_alight.len() > crate::render_buf::MAX_RECENT_ALIGHT {
+        recent_alight.pop_front();
+    }
 
     for i in 0..vehicles.len() {
         let st = vehicles.at_station[i];
@@ -123,6 +134,13 @@ pub(crate) fn board_alight(world: &mut World) {
                     // Completed trip: fold end-to-end journey time into the running average.
                     *total_journey_ms += (clock_ms - pax.t_spawn_ms).max(0) as u64;
                     *journey_samples += 1;
+                    // Render-only breadcrumb: this rider now walks out of the station (peeps). NOT
+                    // hashed — recent_alight is excluded from Canonical, so this stays determinism-free.
+                    recent_alight.push_back(crate::world::RecentAlight {
+                        station: s as u32,
+                        citizen: pax.citizen_id,
+                        t_ms: clock_ms,
+                    });
                 } else {
                     let mut p = pax;
                     p.leg += 1; // transfer: advance to the next leg

@@ -49,8 +49,11 @@ export interface StationTip {
   boardings: number;
   alightings: number;
   verdict: "starved" | "busy" | "healthy" | null;
-  /** Captured gravity demand (origin + dest weight) — how much travel demand this station grabs. */
-  demand: number;
+  /** Captured demand the catchment grabs, split by KIND — `homes` (origin/residential weight, where
+   *  trips start) vs `jobs` (destination weight, where trips are pulled to). The split is the answer
+   *  to "what's driving demand here": homes generate trips, jobs attract them (AM→PM flips which). */
+  homes: number;
+  jobs: number;
   /** Operational lines serving the station; 0 = orphaned (placed but not yet in service). */
   serving: number;
   /** Cumulative pressure here: full-train pass-bys (denied) + give-ups (abandoned). */
@@ -86,10 +89,17 @@ function lineSwatches(tip: StationTip): string {
     .join("");
 }
 
-/** Captured-demand readout: "serves ~N demand" — how much travel demand the catchment grabs. */
+/** What's DRIVING demand here: the catchment's captured homes (trip origins) vs jobs (trip
+ *  destinations), shown as separate channels so the player reads the two forces, not one opaque
+ *  total. AM trips flow 🏠→💼, PM 💼→🏠 — seeing both is what makes "build homes→jobs" legible. */
 function demandLine(tip: StationTip): string {
-  if (tip.demand <= 0) return "";
-  return `<div data-testid="station-tip-demand" style="color:#5a626b">◎ serves ~${Math.round(tip.demand)} demand</div>`;
+  const homes = Math.round(tip.homes);
+  const jobs = Math.round(tip.jobs);
+  if (homes + jobs <= 0) return "";
+  const parts: string[] = [];
+  if (homes > 0) parts.push(`🏠 ~<span data-testid="station-tip-homes">${homes}</span> homes`);
+  if (jobs > 0) parts.push(`💼 ~<span data-testid="station-tip-jobs">${jobs}</span> jobs`);
+  return `<div data-testid="station-tip-demand" style="color:#5a626b">${parts.join(" · ")}</div>`;
 }
 
 /** Orphaned warning (placed but no operational line serving it) — the "connect me" nudge. */

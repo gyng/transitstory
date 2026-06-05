@@ -3,15 +3,22 @@
 // details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
 import { useStats } from "./GameContext";
 import { fmtMoney, loadPip } from "./shared";
+import { useTweenedNumber } from "./useTween";
+
+// Stable formatters (module-level so the tween hook's dep identity never changes per render).
+const fmtInt = (n: number): string => `${Math.round(n)}`;
 
 export function StatsBar() {
   const s = useStats();
+  // Rolling headline counters — the value eases toward each new ~3 Hz snapshot instead of snapping
+  // (juice). Ref-owned textContent, so these <b> carry NO JSX child (React must not clobber them).
+  const ridershipRef = useTweenedNumber(s.ridershipTotal, fmtInt);
+  const coverageRef = useTweenedNumber(s.coverageScore, fmtInt);
 
   const hh = Math.floor(s.simHour);
   const mm = Math.floor((s.simHour - hh) * 60);
   const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 
-  const r = Math.round(s.ridershipTotal);
   const c = Math.round(s.coverageScore);
   const w = Math.round(s.waitingTotal);
   const lost = Math.round(s.abandoned);
@@ -66,9 +73,7 @@ export function StatsBar() {
       <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }}></div>
       <div>
         🚇{" "}
-        <b data-testid="ridership" style={{ fontSize: "16px" }}>
-          {r}
-        </b>{" "}
+        <b ref={ridershipRef} data-testid="ridership" style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }} />{" "}
         riders
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -85,12 +90,20 @@ export function StatsBar() {
         >
           <div
             data-testid="coverage-bar"
-            style={{ position: "absolute", inset: `0 ${100 - c}% 0 0`, background: coverageColor }}
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: `${c}%`,
+              background: coverageColor,
+              borderRadius: "6px",
+              // Gauge fill eases toward each new coverage value; hue cross-fades good→bad (juice).
+              transition: "width .5s var(--ot-ease), background-color .4s linear",
+            }}
           ></div>
         </div>
-        <b data-testid="coverage" style={{ width: "26px", textAlign: "right" }}>
-          {c}
-        </b>
+        <b ref={coverageRef} data-testid="coverage" style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
       </div>
       <div style={{ color: "#7a818a", cursor: "help" }} title={waitTip}>
         <span data-testid="waiting">{w}</span> waiting

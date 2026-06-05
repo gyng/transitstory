@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
 import { MODES } from "./shared";
+import { audio } from "../../fx/audio";
 
 // A token-style switch: 38×22 track + sliding knob (mirrors the vanilla toggleRow look).
 function Toggle({
@@ -71,6 +72,8 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
   const stats = useStats();
   // Demand model is tracked on Game (no sim-stats field); the toggle is its only mutator.
   const [agentDemand, setAgentDemand] = useState(game.agentDemand);
+  // Sound is owned by the audio kit (persisted in localStorage); mirror it in local state.
+  const [soundOn, setSoundOn] = useState(!audio.muted);
 
   if (!open) return null;
 
@@ -143,6 +146,22 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
       <div style={{ color: "#9aa3ad", fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
         Trips come from a population with homes & jobs instead of gravity flow.
       </div>
+
+      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+        Sound
+      </div>
+      <Toggle
+        label="🔊  Sound effects"
+        testid="setting-sound"
+        on={soundOn}
+        onToggle={() => {
+          const on = !soundOn;
+          setSoundOn(on);
+          audio.unlock(); // this click is a user gesture — start/resume the context
+          audio.setMuted(!on);
+          if (on) audio.tick(); // immediate confirmation that sound is back
+        }}
+      />
     </div>
   );
 }

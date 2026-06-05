@@ -88,6 +88,18 @@ export class SimBridge {
     return this.sim.vehicleLoads();
   }
 
+  /** Render-only "peep" dots at interpolation `alpha` + render `tickMs` — interleaved `[x,y,...]`
+   *  metres (a fresh JS copy). Caches the paired colours, so call `peepColors()` immediately after.
+   *  Determinism-free (the core reads only un-hashed passenger state). Capped in the core. */
+  peepPositions(alpha: number, tickMs: number): Float32Array {
+    return this.sim.peepPositions(alpha, tickMs);
+  }
+
+  /** RGBA bytes (4 per peep) paired with the LAST `peepPositions()` sweep — call order matters. */
+  peepColors(): Uint8Array {
+    return this.sim.peepColors();
+  }
+
   stats(): Stats {
     return this.sim.stats() as Stats;
   }

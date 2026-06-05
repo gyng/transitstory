@@ -10,6 +10,9 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct Sim {
     world: World,
+    /// Scratch cache: the RGBA bytes produced alongside the last `peepPositions` sweep, handed back
+    /// by the paired `peepColors()` call (so one sweep feeds both the position + colour attributes).
+    peep_rgba: Vec<u8>,
 }
 
 #[wasm_bindgen]
@@ -22,6 +25,7 @@ impl Sim {
         let city = CityData::from_json(city_json).unwrap_or_default();
         Sim {
             world: World::new(seed as u64, city),
+            peep_rgba: Vec::new(),
         }
     }
 
@@ -79,6 +83,24 @@ impl Sim {
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {
         sim::render_buf::vehicle_loads(&self.world)
+    }
+
+    /// Render-only "peep" dots (individual riders). One sweep at interpolation `alpha` (0..1) with
+    /// the render `tick_ms` (for smooth walk motion) returns interleaved `[x0,y0,...]` metres and
+    /// CACHES the paired RGBA, fetched by `peepColors()`. Determinism-free (no hashed state read or
+    /// written). Capped at `MAX_VISIBLE_PEEPS`, so cost is bounded regardless of network size.
+    #[wasm_bindgen(js_name = peepPositions)]
+    pub fn peep_positions(&mut self, alpha: f32, tick_ms: f32) -> Vec<f32> {
+        let (xy, rgba) = sim::render_buf::fill_peeps(&self.world, alpha, tick_ms);
+        self.peep_rgba = rgba;
+        xy
+    }
+
+    /// RGBA bytes (Uint8Array, 4 per peep) for the peeps from the LAST `peepPositions` call. Must be
+    /// read immediately after it (the two calls share one sweep) — the frontend always pairs them.
+    #[wasm_bindgen(js_name = peepColors)]
+    pub fn peep_colors(&self) -> Vec<u8> {
+        self.peep_rgba.clone()
     }
 
     // --- structured queries (wasm->ts query port; low frequency) ---

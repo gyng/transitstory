@@ -44,16 +44,19 @@ function Button({
   testid,
   onClick,
   style,
+  title,
 }: {
   label: string;
   testid: string;
   onClick: () => void;
   style?: CSSProperties;
+  title?: string;
 }) {
   return (
     <button
       data-testid={testid}
       onClick={onClick}
+      title={title}
       style={{
         border: "1px solid #d7dade",
         background: "#fff",
@@ -282,6 +285,7 @@ export function Toolbar() {
         <Button
           label="🌡 Demand"
           testid="layer-demand"
+          title="Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."
           onClick={() => game.setShowDemand(!ui.showDemand)}
           style={{
             background: ui.showDemand ? "#0072b2" : "#fff",
@@ -292,6 +296,7 @@ export function Toolbar() {
         <Button
           label="🕐 Reach"
           testid="layer-reach"
+          title="Reach: pin a station, then shade every other by how fast transit gets there. Faster reach pulls more demand — extend it to unlock trips."
           onClick={() => game.setShowReach(!ui.showReach)}
           style={{
             background: ui.showReach ? "#0072b2" : "#fff",
@@ -306,6 +311,17 @@ export function Toolbar() {
           style={{
             background: ui.showRoads ? "#0072b2" : "#fff",
             color: ui.showRoads ? "#fff" : "#1c2024",
+          }}
+        />
+
+        <Button
+          label="🧍 Peeps"
+          testid="layer-peeps"
+          title="Show individual riders: walking to the platform, waiting, riding the train, and heading out at their stop. Purely visual — no effect on the sim."
+          onClick={() => game.setShowPeeps(!ui.showPeeps)}
+          style={{
+            background: ui.showPeeps ? "#0072b2" : "#fff",
+            color: ui.showPeeps ? "#fff" : "#1c2024",
           }}
         />
 
