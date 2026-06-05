@@ -1,13 +1,17 @@
-//! Routing seam. `trait Router` is the port the demand model plans trips through; `BfsRouter`
-//! (minimum-transfer BFS over the line graph) is the shipped impl. A future RAPTOR (K>1 rounds
-//! + footpaths + frequency-aware arrival times) slots in as a NEW `impl Router` in a sibling
-//! module — with no change to `World::apply`'s signature or the demand call shape (AGENTS
-//! architecture: aspirational systems attach behind the existing trait, not by a core rewrite).
+//! Routing seam. `trait Router` is the port the demand model plans trips through. Two impls
+//! ship behind it: `RaptorRouter` (the DEFAULT — frequency-based RAPTOR minimising expected
+//! travel time over K=`max_legs` rounds) and `BfsRouter` (minimum-transfer BFS, kept as the
+//! simple reference + comparison baseline). The upgrade was a clean drop-in exactly as the
+//! architecture intends — a new `impl Router` in a sibling module, no change to `World::apply`'s
+//! signature or the demand call shape, same `Vec<Leg>` output so `Pax`/board_alight are untouched.
+//! Still deferred behind this same seam: inter-station footpaths and a real departure timetable.
 use crate::ids::{LineId, StationId};
 use crate::line::Line;
 
 mod bfs;
+mod raptor;
 pub use bfs::{plan_route, BfsRouter};
+pub use raptor::RaptorRouter;
 
 /// Default max legs (transfers + 1) a routed trip may use when a city doesn't specify one.
 pub const DEFAULT_MAX_LEGS: usize = 4;

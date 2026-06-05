@@ -1,0 +1,235 @@
+//! Time-dependent (frequency-based) RAPTOR — the upgrade from min-transfer `BfsRouter`. Instead
+//! of counting legs, it minimises **expected travel time**: each boarded leg costs an expected
+//! wait of ~headway/2 plus the in-vehicle time to ride it (arc-length ÷ a mode-effective speed,
+//! plus per-stop dwell). Rounds = trips, so the `max_legs` bound is the RAPTOR round count.
+//!
+//! It is a strict drop-in: same `Router::plan` port, same `Vec<Leg>` output (so `Pax`/board_alight
+//! are untouched), and fully deterministic — integer ms throughout, index-ordered iteration, no
+//! HashMap iteration. No real timetable exists (vehicles are headway-dispatched, positions
+//! emergent), so the honest model is frequency-based: wait = headway/2, ride = mode speed.
+use super::{Leg, Router};
+use crate::ids::{LineId, StationId};
+use crate::line::Line;
+use crate::trainset::spec_for_mode;
+
+/// Unreachable sentinel (kept well below i64::MAX so `+ wait` can't overflow).
+const INF: i64 = i64::MAX / 4;
+/// Effective cruise speed as a fraction of a mode's top speed (accounts for accel/decel/curves),
+/// expressed as a rational so the ride-time estimate stays pure integer: time = dist·NUM/(v·DEN).
+/// NUM folds in the mm/s → ms factor (×1000): 0.75·v_max ⇒ dist·1000/(0.75 v) = dist·4000/(3 v).
+const RIDE_NUM: i64 = 4000;
+const RIDE_DEN: i64 = 3;
+
+/// Frequency-aware RAPTOR. Zero-sized; swaps in for `BfsRouter` behind `trait Router`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RaptorRouter;
+
+impl Router for RaptorRouter {
+    fn plan(
+        &self,
+        lines: &[Line],
+        serving: &[Vec<LineId>],
+        origin: StationId,
+        dest: StationId,
+        max_legs: usize,
+    ) -> Option<Vec<Leg>> {
+        plan_raptor(lines, serving, origin, dest, max_legs)
+    }
+}
+
+/// One directed traversal of a line: the ordered stops a vehicle visits and the cumulative
+/// in-vehicle time (ms) to reach each, so arrival from boarding at index `a` to alighting at `b`
+/// is `board_time + cum_ms[b] - cum_ms[a]`. Out-and-back lines yield two routes (each direction);
+/// loops yield one forward route, doubled so any board point can reach any stop within a cycle.
+struct DirRoute {
+    line: LineId,
+    wait_ms: i64,
+    stops: Vec<StationId>,
+    cum_ms: Vec<i64>,
+}
+
+#[inline]
+fn ride_ms(dist_mm: i64, v_mm_s: i64) -> i64 {
+    dist_mm.max(0).saturating_mul(RIDE_NUM) / (RIDE_DEN * v_mm_s.max(1))
+}
+
+/// Build the directed routes for every operational line (the RAPTOR "route" set).
+fn build_routes(lines: &[Line]) -> Vec<DirRoute> {
+    let mut routes = Vec::new();
+    for (li, line) in lines.iter().enumerate() {
+        let n = line.stops.len();
+        if line.removed || line.trainset.is_none() || n < 2 {
+            continue;
+        }
+        let arclen = &line.stop_arclen_mm;
+        if arclen.len() < n {
+            continue; // geometry not built yet — skip defensively
+        }
+        let line_id = LineId(li as u32);
+        let spec = spec_for_mode(line.mode);
+        let v = spec.v_max_mm_s;
+        let dwell = spec.dwell_ms.max(0);
+        let wait = line.headway_ms.max(0) / 2;
+
+        // Forward inter-stop spans (mm): seg[i] between stop i and i+1.
+        let seg = |i: usize| -> i64 { arclen[i + 1] - arclen[i] };
+
+        if line.loop_line && arclen.len() > n {
+            // Cyclic forward route, doubled so any boarding reaches all stops within one loop.
+            // spans_cyc has n entries: the n-1 inter-stop spans plus the closing span back to stop 0.
+            let span_cyc = |i: usize| -> i64 { arclen[i + 1] - arclen[i] }; // i in 0..n (arclen len n+1)
+            let mut stops = Vec::with_capacity(2 * n);
+            let mut cum = Vec::with_capacity(2 * n);
+            cum.push(0);
+            stops.push(line.stops[0]);
+            for p in 1..2 * n {
+                let s = span_cyc((p - 1) % n);
+                cum.push(cum[p - 1] + ride_ms(s, v) + dwell);
+                stops.push(line.stops[p % n]);
+            }
+            routes.push(DirRoute { line: line_id, wait_ms: wait, stops, cum_ms: cum });
+        } else {
+            // Out-and-back: a forward route and a backward route (a vehicle serves both directions).
+            let mut fwd_stops = Vec::with_capacity(n);
+            let mut fwd_cum = Vec::with_capacity(n);
+            fwd_cum.push(0);
+            fwd_stops.push(line.stops[0]);
+            for j in 1..n {
+                fwd_cum.push(fwd_cum[j - 1] + ride_ms(seg(j - 1), v) + dwell);
+                fwd_stops.push(line.stops[j]);
+            }
+            let mut bwd_stops = Vec::with_capacity(n);
+            let mut bwd_cum = Vec::with_capacity(n);
+            bwd_cum.push(0);
+            bwd_stops.push(line.stops[n - 1]);
+            for j in 1..n {
+                // Reversed traversal rides the same spans in reverse order.
+                bwd_cum.push(bwd_cum[j - 1] + ride_ms(seg(n - 1 - j), v) + dwell);
+                bwd_stops.push(line.stops[n - 1 - j]);
+            }
+            routes.push(DirRoute { line: line_id, wait_ms: wait, stops: fwd_stops, cum_ms: fwd_cum });
+            routes.push(DirRoute { line: line_id, wait_ms: wait, stops: bwd_stops, cum_ms: bwd_cum });
+        }
+    }
+    routes
+}
+
+fn plan_raptor(
+    lines: &[Line],
+    serving: &[Vec<LineId>],
+    origin: StationId,
+    dest: StationId,
+    max_legs: usize,
+) -> Option<Vec<Leg>> {
+    let n = serving.len();
+    let (oi, di) = (origin.index(), dest.index());
+    if oi >= n || di >= n || oi == di || max_legs == 0 {
+        return None;
+    }
+
+    let routes = build_routes(lines);
+    let nlines = lines.len();
+
+    let mut best = vec![INF; n]; // earliest arrival at each station (min over rounds)
+    let mut prev = vec![INF; n]; // arrival snapshot at the START of the current round (for boarding)
+    let mut parent: Vec<Option<(StationId, LineId)>> = vec![None; n];
+    best[oi] = 0;
+    prev[oi] = 0;
+
+    let mut marked = vec![oi]; // stations improved last round → board candidates this round
+    let mut in_improved = vec![false; n];
+    let mut active_line = vec![false; nlines];
+
+    for _round in 0..max_legs {
+        // Mark every line serving a station improved last round (RAPTOR route-marking).
+        for v in active_line.iter_mut() {
+            *v = false;
+        }
+        for &s in &marked {
+            for &l in &serving[s] {
+                if l.index() < nlines {
+                    active_line[l.index()] = true;
+                }
+            }
+        }
+
+        let mut improved: Vec<usize> = Vec::new();
+        for r in &routes {
+            if !active_line[r.line.index()] {
+                continue;
+            }
+            // Scan the directed route once: carry the earliest boarding, relaxing downstream stops.
+            let mut board_arr = INF; // arrival time we were aboard at the boarding stop
+            let mut cum_at_board = 0i64;
+            let mut board_station: Option<StationId> = None;
+            for pos in 0..r.stops.len() {
+                let st = r.stops[pos];
+                let sidx = st.index();
+                if sidx >= n {
+                    continue;
+                }
+                if let Some(bs) = board_station {
+                    let arr = board_arr.saturating_add(r.cum_ms[pos] - cum_at_board);
+                    if arr < best[sidx] {
+                        best[sidx] = arr;
+                        parent[sidx] = Some((bs, r.line));
+                        if !in_improved[sidx] {
+                            in_improved[sidx] = true;
+                            improved.push(sidx);
+                        }
+                    }
+                }
+                // Consider (re)boarding here using the previous round's arrival at this stop.
+                let pa = prev[sidx];
+                if pa < INF {
+                    let board_here = pa + r.wait_ms;
+                    let staying = match board_station {
+                        Some(_) => board_arr.saturating_add(r.cum_ms[pos] - cum_at_board),
+                        None => INF,
+                    };
+                    if board_here < staying {
+                        board_arr = board_here;
+                        cum_at_board = r.cum_ms[pos];
+                        board_station = Some(st);
+                    }
+                }
+            }
+        }
+
+        if improved.is_empty() {
+            break; // no station got closer → fixpoint, further rounds add nothing
+        }
+        // Roll the round forward: this round's results become next round's boarding snapshot.
+        prev.copy_from_slice(&best);
+        for &s in &improved {
+            in_improved[s] = false;
+        }
+        marked = improved;
+    }
+
+    if best[di] >= INF {
+        return None;
+    }
+    reconstruct(&parent, oi, di, max_legs)
+}
+
+/// Walk parent pointers from `dest` back to `origin` into an ordered leg list.
+fn reconstruct(
+    parent: &[Option<(StationId, LineId)>],
+    oi: usize,
+    di: usize,
+    max_legs: usize,
+) -> Option<Vec<Leg>> {
+    let mut legs = Vec::new();
+    let mut cur = di;
+    for _ in 0..max_legs + 1 {
+        let (board, line) = parent[cur]?;
+        legs.push(Leg { line, board, alight: StationId(cur as u32) });
+        cur = board.index();
+        if cur == oi {
+            legs.reverse();
+            return Some(legs);
+        }
+    }
+    None // chain didn't reach the origin within the bound (shouldn't happen) — fail safe
+}

@@ -207,13 +207,40 @@ overlay, and the `GameLoop` rAF loop stay imperative and entirely outside React 
   build green, vitest 10, **all 14 e2e green** (incl. the menu/modes/slice/assign/build-tools flows) + visual
   parity screenshots (`docs/progress/react-menu.png`, `react-ingame.png`).
 
+## Time-dependent routing — RAPTOR (2026-06-05)
+
+Replaced the min-transfer `BfsRouter` as the **default** with `RaptorRouter` (frequency-based
+RAPTOR), the long-planned drop-in behind `trait Router`. BFS counted legs; RAPTOR minimises
+**expected travel time** = per-leg wait (~headway/2) + in-vehicle time (arc-length ÷ a
+mode-effective speed, ~0.75·v_max, + per-stop dwell), bounded to `max_legs` rounds (= K). Riders
+now route over fast/frequent corridors instead of merely fewest-transfer ones. cargo 49 (+5),
+vitest 20, tsc clean — determinism gate green with RAPTOR in the loop.
+
+- **`routing/raptor.rs`** — pure integer / deterministic (i64 ms throughout, index-ordered
+  iteration, no HashMap iteration, no floats in the cost). RAPTOR route-scan per round: mark lines
+  serving any improved stop, scan each directed route once carrying the earliest boarding, relax
+  downstream arrivals; a round-start arrival snapshot guarantees each round adds ≤1 leg (so legs ≤
+  `max_legs`). Out-and-back lines yield forward+backward routes; loops a doubled cyclic route.
+- **Drop-in, no core rewrite** — `World::apply` signature, the demand call shape, and the
+  `Vec<Leg>{line,board,alight}` output are all unchanged, so `Pax`/`board_alight`/`route_cache`
+  are untouched. `BfsRouter` stays as the simple reference + comparison baseline.
+- **Tests** (`tests/raptor.rs`, written RED first) pin what BFS *cannot* do: prefer the faster of
+  two equal-leg direct lines; accept a transfer when frequency+speed make it faster than a slow
+  direct; honour the `max_legs` bound; reach everything BFS can; and stay bit-identical across a
+  6000-tick replay. Browser-corroborated on the live Singapore network (ridership 0→520, trips
+  complete avg ~2.3 min, coverage 94, 0 console errors, no geometry artifacts).
+- **Still deferred** behind the same seam: inter-station **footpaths** (transfers remain at shared
+  station ids only) and a real **departure timetable** (the model is frequency-based by design —
+  vehicles are headway-dispatched with emergent positions, so there is no timetable to read).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
 - **Real OSM demand (pyrosm)** — deferred; T13 ships a deterministic synthetic grid (sim consumes the JSON identically).
 - **Done since the slice:** curves+speed caps, time-of-day, transfers (BFS+cache), real OSM networks +
   6 cities, buildability/build-modes, economy (capital+fares), transport modes (rail/bus/ferry/air),
-  demand layer, settings. Remaining seams: multiplayer, GTFS import, RAPTOR K>1, track junctions, terrain gradient.
+  demand layer, settings, **time-dependent RAPTOR routing**. Remaining seams: multiplayer, GTFS import,
+  routing footpaths/timetable, track junctions, terrain gradient.
 - **idea.md "pt 2" (user-added 2026-06-04):** game modes — *sim mode vs grand-tycoon mode*, *pure-sim vs
   GSG-inspired mode with events*. Future scope, well beyond the thin slice. Noted, not built (guard the loop).
   The command-sourced deterministic core is mode-agnostic, so a future "mode" is a new outer-ring layer +

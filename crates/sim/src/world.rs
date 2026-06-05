@@ -195,7 +195,7 @@ impl World {
             economy_enabled: false,
             opex_accrued: 0,
             opex_rem: 0,
-            router: Box::new(crate::routing::BfsRouter),
+            router: Box::new(crate::routing::RaptorRouter),
             max_legs,
         }
     }
