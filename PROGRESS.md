@@ -324,14 +324,34 @@ rebuild. New player-facing **readouts only** — zero new Commands, zero behavio
 - **Deferred (clean follow-on):** accessibility **isochrone** shading — reuses the very
   `Router::reachable` port `od_weights` now calls, so it slots in behind the same seam.
 
+## Accessibility isochrone + inter-station footpaths (2026-06-05)
+
+Continued from the visibility pass. Two more behind-the-seam extensions:
+
+- **Reach isochrone** — the deferred follow-on to the OD lines. `World::station_access(origin)`
+  returns every reachable station + transit travel time via the same `Router::reachable` port;
+  an opt-in "🕐 Reach" toggle shades them green→amber→red, mutually exclusive with the OD arcs
+  (toggling swaps the lens). Pure read (`od.rs` asserts `state_hash` unchanged + monotone).
+- **Footpaths** — the routing extension routing/mod.rs explicitly named. Lines that share no stop
+  but sit within `FOOTPATH_MM` (~400 m) interchange on FOOT. `World.footpaths` (per-station walk
+  edges + integer walk time, rebuilt with the catchment) feeds a new `footpaths` input on the
+  Router trait; RAPTOR relaxes them between rounds (transit-reached stations only, so no
+  origin/dest walk), legs stay ride-only with a walk GAP (`walk_src` reconstruction), and
+  `board_alight` re-queues the transferer at the next leg's board with a walk delay (skipping
+  "still-walking" riders). `footpaths.rs` proves a 0→3 trip completes ONLY via the walk and
+  replays bit-for-bit; determinism gate + all existing routing tests stay green. The Reach/OD
+  overlays reflect walk-reachable destinations for free. Integer ms throughout; BfsRouter stays
+  transit-only (the baseline).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
 - **Real OSM demand (pyrosm)** — deferred; T13 ships a deterministic synthetic grid (sim consumes the JSON identically).
 - **Done since the slice:** curves+speed caps, time-of-day, transfers (BFS+cache), real OSM networks +
   6 cities, buildability/build-modes, economy (capital+fares), transport modes (rail/bus/ferry/air),
-  demand layer, settings, **time-dependent RAPTOR routing**. Remaining seams: multiplayer, GTFS import,
-  routing footpaths/timetable, track junctions, terrain gradient.
+  demand layer, settings, **time-dependent RAPTOR routing**, demand/traffic visibility (5 tracks),
+  **accessibility isochrone**, **inter-station footpaths**, freeform line waypoints. Remaining seams:
+  multiplayer, GTFS import, departure **timetable**, track junctions, terrain gradient.
 - **idea.md "pt 2" (user-added 2026-06-04):** game modes — *sim mode vs grand-tycoon mode*, *pure-sim vs
   GSG-inspired mode with events*. Future scope, well beyond the thin slice. Noted, not built (guard the loop).
   The command-sourced deterministic core is mode-agnostic, so a future "mode" is a new outer-ring layer +
