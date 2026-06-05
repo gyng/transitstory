@@ -47,51 +47,60 @@ const EDITOR_STYLE: CSSProperties = {
 function LineRow({ l, selected }: { l: PerLine; selected: boolean }) {
   const game = useGame();
   const pip = l.trains > 0 ? loadPip(l.loadFactor) : null;
+  // Frequency subline: surfaces stops · trains · headway in the roster so a player reads a line's
+  // service shape without selecting it (those used to live only in the Editor). headway only once
+  // trains run (it's meaningless with no fleet).
+  const freq =
+    l.trains > 0
+      ? `${l.stops} stops · ${l.trains} train${l.trains === 1 ? "" : "s"} · every ${Math.max(1, Math.round(l.headwayMs / 60_000))} min`
+      : `${l.stops} stops · no trains yet`;
   return (
     <div
       data-testid={`line-row-${l.lineId}`}
       onClick={() => game.selectLine(l.lineId)}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
         padding: "6px",
         borderRadius: "6px",
         cursor: "pointer",
         ...(selected ? { background: "#eef4fb" } : null),
       }}
     >
-      <span
-        style={{
-          width: "14px",
-          height: "14px",
-          borderRadius: "50%",
-          flex: "0 0 auto",
-          background: hex(l.color),
-          boxShadow: "0 0 0 2px #fff,0 0 0 3px #d7dade",
-        }}
-      ></span>
-      <span style={{ flex: "0 0 auto" }} title="mode">
-        {modeIcon(l.mode)}
-      </span>
-      <span
-        style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-        title={l.name}
-      >
-        {l.name || `Line ${l.lineId + 1}`}
-      </span>
-      {pip && (
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span
-          data-testid={`line-load-pip-${l.lineId}`}
-          title={`Load ${pip.pct}% — ${pip.word}`}
-          style={{ flex: "0 0 auto", color: pip.color, fontSize: "11px", lineHeight: 1 }}
-        >
-          {pip.glyph}
+          style={{
+            width: "14px",
+            height: "14px",
+            borderRadius: "50%",
+            flex: "0 0 auto",
+            background: hex(l.color),
+            boxShadow: "0 0 0 2px #fff,0 0 0 3px #d7dade",
+          }}
+        ></span>
+        <span style={{ flex: "0 0 auto" }} title="mode">
+          {modeIcon(l.mode)}
         </span>
-      )}
-      <span data-testid={`line-ridership-${l.lineId}`} style={{ color: "#7a818a" }}>
-        {Math.round(l.ridership)}
-      </span>
+        <span
+          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          title={l.name}
+        >
+          {l.name || `Line ${l.lineId + 1}`}
+        </span>
+        {pip && (
+          <span
+            data-testid={`line-load-pip-${l.lineId}`}
+            title={`Load ${pip.pct}% — ${pip.word}`}
+            style={{ flex: "0 0 auto", color: pip.color, fontSize: "11px", lineHeight: 1 }}
+          >
+            {pip.glyph}
+          </span>
+        )}
+        <span data-testid={`line-ridership-${l.lineId}`} style={{ color: "#7a818a" }}>
+          {Math.round(l.ridership)}
+        </span>
+      </div>
+      <div data-testid={`line-meta-${l.lineId}`} style={{ marginLeft: "22px", marginTop: "2px", fontSize: "11px", color: "#9aa1a9" }}>
+        {freq}
+      </div>
     </div>
   );
 }

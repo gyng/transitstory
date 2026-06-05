@@ -2,7 +2,7 @@
 // Fed by the ~3 Hz stats throttle (useStats — never per frame). One number + one gauge,
 // details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
 import { useStats } from "./GameContext";
-import { fmtMoney } from "./shared";
+import { fmtMoney, loadPip } from "./shared";
 
 export function StatsBar() {
   const s = useStats();
@@ -27,6 +27,12 @@ export function StatsBar() {
 
   // Bar fills left→right; hue shifts good→bad as coverage drops.
   const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "var(--ot-gauge-bad)";
+
+  // Network strain: the fleet's mean load (avgLoadFactor) as a loadPip, with the live train count
+  // in its tooltip. Mounts only once trains run, so it's never dead chrome (like the money box).
+  // Reuses the loadPip shape/colour language so "crush" reads the same here as on a train or line.
+  const trains = s.vehicleCount;
+  const netPip = loadPip(s.avgLoadFactor);
 
   return (
     <div
@@ -94,6 +100,21 @@ export function StatsBar() {
           </span>
         )}
       </div>
+      {/* Network strain (run only): mean fleet load + live train count. Part of the pressure
+          cluster, not a new headline — surfaces avgLoadFactor + vehicleCount which were computed
+          but never shown. Mounts only with trains running, so it's never dead chrome. */}
+      {trains > 0 && (
+        <div
+          data-testid="net-load"
+          style={{ color: "#7a818a", cursor: "help" }}
+          title={`${trains} train${trains === 1 ? "" : "s"} running · mean load ${netPip.pct}% (${netPip.word})`}
+        >
+          <span style={{ color: netPip.color, fontWeight: 700 }}>
+            {netPip.glyph} {netPip.pct}%
+          </span>{" "}
+          load
+        </div>
+      )}
       {/* Build impact left the run HUD — it's a build-time, per-line concern (EditorPanel
           `line-impact`), not a global always-on number. Money mounts only with the economy
           ruleset on, so it's never dead chrome. StatsBar = clock · ridership · gauge · pressure. */}
