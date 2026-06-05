@@ -50,12 +50,14 @@ const MENU_CSS = `
       filter:blur(60px);animation:ot-spin 72s linear infinite}
 
     /* ---- center stage: the absurd light-novel subtitle ---- */
+    /* Fixed stage height reserves the subtitle's vertical space, so cycling to a new image
+       (which remounts + loads async) never reflows the menu below it — no layout shift. */
     #menu .ot-stage{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-      margin-bottom:18px}
+      height:42vh;margin-bottom:18px}
     #menu .ot-stage::before{content:"";position:absolute;width:120%;height:120%;border-radius:50%;
       background:radial-gradient(closest-side,rgba(120,180,230,.20),transparent 72%);
       filter:blur(14px);animation:ot-breathe 7s ease-in-out infinite}
-    #menu .ot-hero{position:relative;max-width:min(620px,86vw);max-height:42vh;width:auto;height:auto;
+    #menu .ot-hero{position:relative;max-width:min(620px,86vw);max-height:100%;width:auto;height:auto;
       display:block;filter:drop-shadow(0 14px 30px rgba(0,0,0,.6));
       animation:ot-pop .7s cubic-bezier(.2,1.3,.4,1) both,ot-float 7s ease-in-out .7s infinite}
 
