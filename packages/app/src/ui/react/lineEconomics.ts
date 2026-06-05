@@ -68,3 +68,46 @@ export function fmtSignedMoney(d: number): string {
   if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}k`;
   return `${sign}$${Math.round(a)}`;
 }
+
+/** Compact count for the roster's number column: 847 / 12.3k / 1.2M. */
+export function fmtCount(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e4) return `${(v / 1e3).toFixed(0)}k`;
+  if (a >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
+  return `${Math.round(v)}`;
+}
+
+/** Shorten an official line name for the roster + derive a 2–3 char identity badge code. This is
+ *  DISPLAY-ONLY (the command-log auto-name is untouched), and lives here so the roster, hover tips,
+ *  and editor read one source and can't drift. Steps: strip a transit-class prefix ("MRT"/"LRT"/…),
+ *  strip a "(terminus → terminus)" tail (spatial truth belongs on the map/editor, not the scan list),
+ *  strip a redundant trailing " Line". Badge code = initials of the cleaned words (mode-letter+number
+ *  for a numbered bus/ferry), else `L<n>`. The FULL name is preserved verbatim for the row tooltip. */
+export function shortLineName(name: string, lineId: number): { code: string; short: string } {
+  const raw = (name || "").trim();
+  let short = raw
+    .replace(/^(MRT|LRT|Metro|Subway|Line|Bus|Ferry)\s+/i, "")
+    .replace(/\s*\([^)]*[→\-–][^)]*\)\s*$/, "")
+    .replace(/\s+Line$/i, "")
+    .trim();
+  if (!short) short = raw || `Line ${lineId + 1}`;
+  const words = short.split(/[\s–-]+/).filter((w) => w && !/^(the|of|and|line)$/i.test(w));
+  const num = short.match(/(\d+)/);
+  let code: string;
+  if (/^(bus|ferry)/i.test(raw) && num) code = raw[0].toUpperCase() + num[1];
+  else if (words.length >= 2) code = (words[0][0] + words[1][0]).toUpperCase();
+  else if (words.length === 1) code = words[0].slice(0, 2).toUpperCase();
+  else code = `L${lineId + 1}`;
+  return { code: code.slice(0, 3), short };
+}
+
+/** Legible ink (#fff or near-black) for text laid over a `u32` swatch fill, by perceptual
+ *  luminance — so a code badge stays readable on both a dark navy and a bright yellow line. */
+export function swatchInk(color: number): string {
+  const r = ((color >> 16) & 0xff) / 255;
+  const g = ((color >> 8) & 0xff) / 255;
+  const b = (color & 0xff) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum < 0.6 ? "#ffffff" : "#1c2024";
+}
