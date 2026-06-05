@@ -28,6 +28,8 @@ export const cmd = {
   removeStation: (station: number): Command => ({ RemoveStation: { station } }),
   /** Bulldoze a whole line (tombstone; its vehicles despawn). */
   removeLine: (line: number): Command => ({ RemoveLine: { line } }),
+  /** Set the per-span control points (mm `[x,y]`) that bend a line's track between its stops. */
+  setLineWaypoints: (line: number, waypoints: [number, number][][]): Command => ({ SetLineWaypoints: { line, waypoints } }),
 };
 
 export const WHOLE_LINE = 0xffffffff;

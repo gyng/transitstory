@@ -12,7 +12,9 @@ export type Command =
   | { SetRunning: { running: boolean } }
   | { SetEconomy: { enabled: boolean } }
   | { RemoveStation: { station: number } }
-  | { RemoveLine: { line: number } };
+  | { RemoveLine: { line: number } }
+  // waypoints: per-span control points that bend the track; each span is a list of [x_mm, y_mm].
+  | { SetLineWaypoints: { line: number; waypoints: [number, number][][] } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -25,6 +27,7 @@ export type Event =
   | { EconomySet: { enabled: boolean } }
   | { StationRemoved: { station: number } }
   | { LineRemoved: { line: number } }
+  | { WaypointsSet: { line: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {

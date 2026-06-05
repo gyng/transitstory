@@ -732,6 +732,29 @@ impl World {
                     }]
                 }
             }
+            Command::SetLineWaypoints { line, waypoints } => {
+                if line.index() < self.lines.len() && !self.lines[line.index()].removed {
+                    let old_capital = self.capital_total();
+                    let saved = self.lines[line.index()].waypoints.clone();
+                    self.lines[line.index()].waypoints = waypoints
+                        .iter()
+                        .map(|span| span.iter().map(|&[x, y]| PointMm::new(x, y)).collect())
+                        .collect();
+                    // Bending the track changes its length → geometry, buildability and cost.
+                    self.rebuild_line_geometry(*line);
+                    self.recompute_line_buildability(*line);
+                    if self.overspent(old_capital) {
+                        self.lines[line.index()].waypoints = saved;
+                        self.rebuild_line_geometry(*line);
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected { reason: "Not enough money to reroute this line".into() }]
+                    } else {
+                        vec![Event::WaypointsSet { line: *line }]
+                    }
+                } else {
+                    vec![Event::Rejected { reason: "SetLineWaypoints: unknown line".into() }]
+                }
+            }
         };
         // Any change to lines / trainsets / headway / running invalidates dispatch.
         if !matches!(cmd, Command::PlaceStation { .. }) {

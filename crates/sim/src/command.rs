@@ -68,6 +68,13 @@ pub enum Command {
     RemoveLine {
         line: LineId,
     },
+    /// Set the freeform control points that bend a line's track between stops. `waypoints[i]`
+    /// (local mm `[x, y]`) shapes the span after stop i; replaces ALL of the line's waypoints in
+    /// one command (so undo = one step). An empty/shorter list straightens those spans.
+    SetLineWaypoints {
+        line: LineId,
+        waypoints: Vec<Vec<[i64; 2]>>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -82,5 +89,6 @@ pub enum Event {
     EconomySet { enabled: bool },
     StationRemoved { station: StationId },
     LineRemoved { line: LineId },
+    WaypointsSet { line: LineId },
     Rejected { reason: String },
 }

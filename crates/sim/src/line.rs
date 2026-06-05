@@ -24,6 +24,13 @@ pub struct Line {
     /// of reversing at an end.
     pub loop_line: bool,
     pub stops: Vec<StationId>,
+    /// Freeform control points that BEND the track between stops. `waypoints[i]` shapes the span
+    /// after stop `i` (between stop i and i+1; for a loop the last entry is the closing span back
+    /// to stop 0). These are pure geometry (mm) — pass-through shaping points, NOT halts — so the
+    /// curve threads stop0, wp[0]…, stop1, wp[1]…, and tight bends just slow trains via the
+    /// existing per-vertex speed cap. Empty = straight-through (the original behaviour).
+    #[serde(default)]
+    pub waypoints: Vec<Vec<PointMm>>,
     pub headway_ms: i64,
     pub trainset: Option<TrainsetAssignment>,
     /// Dense smoothed curve vertices (mm). Recomputed from stop positions on change.
@@ -65,6 +72,7 @@ impl Line {
             mode: 0,
             loop_line: false,
             stops: Vec::new(),
+            waypoints: Vec::new(),
             headway_ms: default_headway_ms,
             trainset: None,
             polyline: Vec::new(),
@@ -168,9 +176,28 @@ impl Line {
     /// Rebuild the smoothed polyline + arc-length tables from the ordered stop positions.
     /// For a loop the path is closed (first stop appended) so trains run a full circuit.
     pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
-        let mut pts: Vec<PointMm> = stop_pts.to_vec();
-        if self.loop_line && pts.len() >= 3 {
-            pts.push(pts[0]);
+        // Interleave each stop with its span's control points so the curve threads
+        // stop0, wp[0]…, stop1, wp[1]…, stop2, … — letting the player BEND the track between
+        // stations. Only stops are halts (recorded in stop_arclen_mm); waypoints just shape.
+        let n = stop_pts.len();
+        let mut pts: Vec<PointMm> = Vec::with_capacity(n);
+        let mut is_stop: Vec<bool> = Vec::with_capacity(n);
+        for i in 0..n {
+            pts.push(stop_pts[i]);
+            is_stop.push(true);
+            // Waypoints for the span AFTER stop i (skip on the open end of a non-loop line).
+            if i + 1 < n || self.loop_line {
+                if let Some(span_wps) = self.waypoints.get(i) {
+                    for &wp in span_wps {
+                        pts.push(wp);
+                        is_stop.push(false);
+                    }
+                }
+            }
+        }
+        if self.loop_line && n >= 3 {
+            pts.push(stop_pts[0]); // close the loop back to the first stop
+            is_stop.push(true);
         }
         let (poly, stop_idx) = smooth_centripetal(&pts);
         self.polyline = poly;
@@ -185,10 +212,12 @@ impl Line {
                 self.arclen_mm.push(acc);
             }
         }
-        // Arc-length at each stop vertex.
+        // Arc-length at each STOP vertex only (waypoints are pass-through, not halts).
         self.stop_arclen_mm = stop_idx
             .iter()
-            .map(|&i| self.arclen_mm.get(i).copied().unwrap_or(0))
+            .zip(&is_stop)
+            .filter(|(_, &stop)| stop)
+            .map(|(&i, _)| self.arclen_mm.get(i).copied().unwrap_or(0))
             .collect();
 
         // Per-vertex curve speed cap (from local circumradius) + tightest radius.

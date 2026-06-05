@@ -29,13 +29,14 @@ fn command_variant_tags_match_the_frontend_mirror() {
         Command::SetSegmentMode { line: LineId(0), span: 0, mode: 0 },
         Command::SetRunning { running: false },
         Command::SetEconomy { enabled: false },
+        Command::SetLineWaypoints { line: LineId(0), waypoints: vec![] },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
     tags.sort();
     // Mirror: packages/app/src/types.ts `Command` + codec.ts `cmd.*`.
     let expected = sorted(vec![
         "AddStop", "AssignTrainset", "CreateLine", "PlaceStation",
-        "SetEconomy", "SetHeadway", "SetRunning", "SetSegmentMode",
+        "SetEconomy", "SetHeadway", "SetLineWaypoints", "SetRunning", "SetSegmentMode",
     ]);
     assert_eq!(tags, expected, "Command vocabulary drifted from the frontend mirror");
 }
@@ -51,6 +52,7 @@ fn event_variant_tags_match_the_frontend_mirror() {
         Event::SegmentModeSet { line: LineId(0), span: 0, mode: 0 },
         Event::RunningSet { running: false },
         Event::EconomySet { enabled: false },
+        Event::WaypointsSet { line: LineId(0) },
         Event::Rejected { reason: String::new() },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
@@ -58,7 +60,7 @@ fn event_variant_tags_match_the_frontend_mirror() {
     // Mirror: packages/app/src/types.ts `Event`.
     let expected = sorted(vec![
         "EconomySet", "HeadwaySet", "LineCreated", "Rejected", "RunningSet",
-        "SegmentModeSet", "StationPlaced", "StopAdded", "TrainsetAssigned",
+        "SegmentModeSet", "StationPlaced", "StopAdded", "TrainsetAssigned", "WaypointsSet",
     ]);
     assert_eq!(tags, expected, "Event vocabulary drifted from the frontend mirror");
 }

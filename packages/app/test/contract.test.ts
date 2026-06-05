@@ -12,6 +12,7 @@ const COMMAND_TAGS = [
   "PlaceStation",
   "SetEconomy",
   "SetHeadway",
+  "SetLineWaypoints",
   "SetRunning",
   "SetSegmentMode",
 ].sort();
@@ -27,6 +28,7 @@ describe("command wire contract", () => {
       cmd.setSegmentMode(0, 0, 0),
       cmd.setRunning(false),
       cmd.setEconomy(false),
+      cmd.setLineWaypoints(0, []),
     ];
     const tags = builders
       .map((c) => {
