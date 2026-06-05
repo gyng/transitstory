@@ -123,6 +123,28 @@ export interface AccessLink {
   ms: number;
 }
 
+/** A waiting rider's trip, for the Commuter card. Named home/work commuter under agent demand;
+ *  anonymous (just the route) under gravity. Mirrors crates/sim journey::JourneyView. */
+export interface JourneyLeg {
+  lineName: string;
+  lineColor: number;
+  board: string;
+  alight: string;
+}
+export interface JourneyView {
+  name: string;
+  anonymous: boolean;
+  home: string;
+  work: string;
+  origin: string;
+  dest: string;
+  here: string;
+  legs: JourneyLeg[];
+  leg: number;
+  waitMin: number;
+  queueLen: number;
+}
+
 export interface LineView {
   id: number;
   name: string;

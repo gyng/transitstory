@@ -181,6 +181,26 @@ fn agent_demand_mode_via_command_develops_ridership_and_replays() {
 }
 
 #[test]
+fn journey_inspector_names_an_agent_commuter() {
+    let mut w = build_small();
+    w.apply(&Command::SetDemandMode { agents: true });
+    let mut found = None;
+    'outer: for _ in 0..4000 {
+        w.tick(50);
+        for s in 0..w.stations.len() as u32 {
+            if let Some(j) = sim::journey::sample(&w, s, 0) {
+                found = Some(j);
+                break 'outer;
+            }
+        }
+    }
+    let j = found.expect("an agent commuter should be waiting somewhere during the AM rush");
+    assert!(!j.anonymous, "agent-demand riders are named citizens, not anonymous");
+    assert!(!j.name.is_empty(), "the commuter has a name");
+    assert!(!j.legs.is_empty() && !j.dest.is_empty(), "the journey carries a route to a destination");
+}
+
+#[test]
 fn agent_demand_is_deterministic() {
     let run = || {
         let mut w = build_tokyo_scale();

@@ -24,6 +24,7 @@ import { OnboardingCoach } from "./Onboarding";
 import { ObjectivePanel } from "./Objectives";
 import { ServiceReport } from "./ServiceReport";
 import { DraftControls } from "./DraftControls";
+import { CommuterCard } from "./CommuterCard";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -161,6 +162,7 @@ export function App() {
       <Panels />
       <ServiceReport />
       <DraftControls />
+      <CommuterCard />
       <Toolbar />
     </GameProvider>
   );

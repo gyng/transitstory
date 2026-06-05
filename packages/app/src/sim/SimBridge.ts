@@ -6,7 +6,7 @@
 import { Sim } from "sim-wasm";
 import { CommandLog } from "../commands/log";
 import { encodeCommand } from "../commands/codec";
-import type { AccessLink, Command, Event, LineView, OdLink, StationView, Stats } from "../types";
+import type { AccessLink, Command, Event, JourneyView, LineView, OdLink, StationView, Stats } from "../types";
 
 export class SimBridge {
   private sim: Sim;
@@ -110,6 +110,12 @@ export class SimBridge {
    *  (read-only, computed on demand). Empty unless the station is operational + served. */
   stationAccess(id: number): AccessLink[] {
     return this.sim.stationAccess(id) as AccessLink[];
+  }
+
+  /** Inspect the `nth` waiting rider at a station — a named commuter (agent demand) or anonymous
+   *  gravity trip, with route + home/work. null if no one is waiting there. */
+  sampleJourney(station: number, nth: number): JourneyView | null {
+    return this.sim.sampleJourney(station, nth) as JourneyView | null;
   }
 
   /** Authoritative construction-cost ($, track only) for a hypothetical line — the build HUD's

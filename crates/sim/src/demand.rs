@@ -170,6 +170,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
                             leg: 0,
                             t_spawn_ms: now,
                             t_wait_ms: now,
+                            citizen_id: u32::MAX, // anonymous gravity trip
                         });
                     }
                 }

@@ -88,12 +88,12 @@ impl Population {
             for &ci in &self.am[b] {
                 let c = &self.citizens[ci as usize];
                 let (o, d) = (self.cell_station[c.home_cell as usize], self.cell_station[c.work_cell as usize]);
-                push_trip(o, d, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                push_trip(o, d, ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
             }
             for &ci in &self.pm[b] {
                 let c = &self.citizens[ci as usize];
                 let (o, d) = (self.cell_station[c.work_cell as usize], self.cell_station[c.home_cell as usize]);
-                push_trip(o, d, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
+                push_trip(o, d, ci, lines, serving, footpaths, waiting, route_cache, &**router, max_legs, now);
             }
         }
     }
@@ -136,6 +136,7 @@ impl Population {
 fn push_trip(
     o: i32,
     d: i32,
+    cid: u32,
     lines: &[crate::line::Line],
     serving: &[Vec<crate::ids::LineId>],
     footpaths: &[Vec<(u32, i64)>],
@@ -154,7 +155,7 @@ fn push_trip(
         .or_insert_with(|| router.plan(lines, serving, footpaths, StationId(oi), StationId(di), max_legs));
     if let Some(legs) = entry {
         if !legs.is_empty() {
-            waiting[oi as usize].push_back(Pax { legs: legs.clone(), leg: 0, t_spawn_ms: now, t_wait_ms: now });
+            waiting[oi as usize].push_back(Pax { legs: legs.clone(), leg: 0, t_spawn_ms: now, t_wait_ms: now, citizen_id: cid });
         }
     }
 }
@@ -187,3 +188,51 @@ fn peak_ms(hour: i64, rng: &mut ChaCha8Rng) -> i64 {
     let j = rng.random_range(0..half as u64) as i64 + rng.random_range(0..half as u64) as i64 - half;
     (base + j).rem_euclid(DAY_MS)
 }
+
+// --- citizen identity resolution (for the journey inspector) ---
+
+impl Population {
+    /// The citizen's display name (resolved from their name index).
+    pub fn name(&self, id: u32) -> String {
+        self.citizens.get(id as usize).map(|c| citizen_name(c.name_idx)).unwrap_or_default()
+    }
+    /// Nearest served station to the citizen's HOME cell (None if unserved / not yet mapped).
+    pub fn home_station(&self, id: u32) -> Option<u32> {
+        let c = self.citizens.get(id as usize)?;
+        match *self.cell_station.get(c.home_cell as usize)? {
+            s if s >= 0 => Some(s as u32),
+            _ => None,
+        }
+    }
+    /// Nearest served station to the citizen's WORK cell.
+    pub fn work_station(&self, id: u32) -> Option<u32> {
+        let c = self.citizens.get(id as usize)?;
+        match *self.cell_station.get(c.work_cell as usize)? {
+            s if s >= 0 => Some(s as u32),
+            _ => None,
+        }
+    }
+}
+
+/// Resolve a name index to "First Last" from the (Singapore-flavoured, multicultural) name tables.
+/// Pure + deterministic; the modulo decouples it from the exact table lengths.
+pub fn citizen_name(name_idx: u32) -> String {
+    let first = FIRST_NAMES[(name_idx as usize / LAST_NAMES.len()) % FIRST_NAMES.len()];
+    let last = LAST_NAMES[name_idx as usize % LAST_NAMES.len()];
+    format!("{first} {last}")
+}
+
+const FIRST_NAMES: &[&str] = &[
+    "Wei", "Mei", "Jun", "Hui", "Xin", "Li", "Ying", "Ming", "Hao", "Ling",
+    "Siti", "Nur", "Aisyah", "Faiz", "Rizwan", "Hafiz", "Aniq", "Farah", "Iskandar", "Zara",
+    "Arjun", "Priya", "Ravi", "Deepa", "Karthik", "Anita", "Vijay", "Lakshmi", "Suresh", "Divya",
+    "Daniel", "Grace", "Marcus", "Chloe", "Ryan", "Emma", "Aaron", "Sophia", "Nathan", "Olivia",
+    "Wen", "Jia", "Yusof", "Imran", "Meera", "Tara", "Ethan", "Hannah", "Bryan", "Sarah",
+];
+
+const LAST_NAMES: &[&str] = &[
+    "Tan", "Lim", "Lee", "Ng", "Wong", "Goh", "Chua", "Koh", "Teo", "Ong",
+    "Bin Rahman", "Binte Yusof", "Ismail", "Rahim", "Hassan", "Abdullah",
+    "Kumar", "Raj", "Nair", "Pillai", "Menon", "Reddy",
+    "Sim", "Chan", "Low", "Yeo", "Toh", "Chong", "Ho", "Fernandez", "D'Cruz", "Singh",
+];

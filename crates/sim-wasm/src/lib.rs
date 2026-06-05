@@ -119,6 +119,14 @@ impl Sim {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Inspect the `nth` waiting rider at a station — a named commuter (agent demand) or anonymous
+    /// gravity trip, with their route + home/work. Returns a `JourneyView` (or null if none).
+    #[wasm_bindgen(js_name = sampleJourney)]
+    pub fn sample_journey(&self, station: u32, nth: u32) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&sim::journey::sample(&self.world, station, nth as usize))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Construction-cost preview ($, track only — no trains) for a hypothetical line through
     /// `station_ids` in `mode`. The build HUD's authoritative figure (same core formula as a
     /// committed line). `loop_line` closes the route. Returns a plain JS number.

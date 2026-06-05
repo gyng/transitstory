@@ -19,6 +19,9 @@ pub struct Pax {
     pub t_spawn_ms: i64,
     /// Clock (ms) the current leg began waiting (reset on transfer) — drives platform wait time.
     pub t_wait_ms: i64,
+    /// Citizen index this trip belongs to (agent demand), or `u32::MAX` for an anonymous gravity
+    /// trip. Lets the journey inspector name the rider + show their home/work. Not hashed.
+    pub citizen_id: u32,
 }
 
 impl Pax {

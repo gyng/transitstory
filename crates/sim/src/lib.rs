@@ -14,6 +14,7 @@ mod dispatch;
 pub mod geo_local;
 pub mod hash;
 pub mod ids;
+pub mod journey;
 pub mod line;
 pub mod pax;
 pub mod render_buf;
