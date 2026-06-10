@@ -36,6 +36,8 @@ const EMPTY_STATS: Stats = {
   simHour: 6,
   period: "AM rush",
   demandMultiplier: 1,
+  simDay: 0,
+  demandOriginTotal: 0,
   buildDifficulty: 0,
   economyEnabled: false,
   balance: 0,

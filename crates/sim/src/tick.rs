@@ -22,8 +22,10 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
 
     // Dynamics only run while Running (Build mode is paused).
     if world.running {
-        // Phase 2 — recompute catchment capture if stations changed, then spawn+route pax.
+        // Phase 2 — once per in-game day, the city grows (transit-oriented demand growth);
+        // then recompute catchment capture if anything changed, then spawn+route pax.
         // Trips come from gravity flow, OR (opt-in) a seed-derived citizen population.
+        crate::demand::grow(world);
         crate::demand::prepare(world);
         if world.agent_demand {
             // Take the population out to avoid aliasing &mut World, spawn, then put it back.

@@ -29,6 +29,7 @@ import { FollowCard } from "./FollowCard";
 import { StatsDashboard } from "./StatsDashboard";
 import { StatsRecorder } from "./statsHistory";
 import { ContextMenu } from "./ContextMenu";
+import { DayReport, Milestones } from "./Beats";
 import { getScenario } from "../../objectives";
 
 interface BootedWorld {
@@ -157,8 +158,15 @@ export function App() {
     if (booting) return null; // map is being built; chrome appears once the world is ready
     return (
       <Menu
-        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) =>
-          startBoot(c.manifest, c.id === "globe" || withNet, scenario)}
+        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) => {
+          // Mirror the start into the URL (the same deep-link the e2e uses) so a refresh — and
+          // the objectives' "Retry challenge" reload — re-boots this exact setup, not the menu.
+          const q = new URLSearchParams({ city: c.id });
+          if (withNet) q.set("network", "1");
+          if (scenario) q.set("scenario", scenario);
+          history.replaceState(null, "", `?${q.toString()}`);
+          startBoot(c.manifest, c.id === "globe" || withNet, scenario);
+        }}
         onResume={startResume}
       />
     );
@@ -183,6 +191,8 @@ export function App() {
       <CommuterCard />
       <FollowCard />
       <StatsRecorder />
+      <DayReport />
+      <Milestones />
       <ContextMenu />
       <Toolbar />
     </GameProvider>

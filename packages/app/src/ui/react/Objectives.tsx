@@ -66,6 +66,27 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
             {status === "active" ? "in progress" : status}
           </span>
         </div>
+        {/* The end state leaves a persistent retry affordance (the banner is dismissible, the
+            outcome isn't): reload re-boots this exact city+scenario via the URL params. */}
+        {status !== "active" && (
+          <button
+            data-testid="objective-retry"
+            onClick={() => window.location.reload()}
+            style={{
+              width: "100%",
+              margin: "6px 0 2px",
+              padding: "5px 0",
+              border: "1px solid #d7dade",
+              borderRadius: 7,
+              background: "#fff",
+              font: "600 12px system-ui",
+              cursor: "pointer",
+              color: "#1c2024",
+            }}
+          >
+            ↻ {status === "won" ? "Play it again" : "Retry the challenge"}
+          </button>
+        )}
         <div style={{ color: "#7a818a", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
         {e.goals.map((g, i) => (
           <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
@@ -116,19 +137,40 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
             <p style={{ margin: "0 0 14px", color: "#5a626b", fontSize: 14 }}>
               {status === "won" ? "Every objective met. Keep building, or start a fresh challenge." : e.failReason ?? "Better luck next time."}
             </p>
-            <button
-              style={{
-                padding: "9px 22px",
-                border: 0,
-                borderRadius: 9,
-                background: "linear-gradient(180deg,#1ab6f0,#0a8fcc)",
-                color: "#fff",
-                font: "700 14px system-ui",
-                cursor: "pointer",
-              }}
-            >
-              Keep building
-            </button>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button
+                data-testid="banner-retry"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  window.location.reload();
+                }}
+                style={{
+                  padding: "9px 22px",
+                  border: 0,
+                  borderRadius: 9,
+                  // On a loss the retry is the primary action; on a win it's the encore.
+                  background: status === "lost" ? "linear-gradient(180deg,#1ab6f0,#0a8fcc)" : "#eef1f4",
+                  color: status === "lost" ? "#fff" : "#1c2024",
+                  font: "700 14px system-ui",
+                  cursor: "pointer",
+                }}
+              >
+                ↻ {status === "won" ? "Play again" : "Retry"}
+              </button>
+              <button
+                style={{
+                  padding: "9px 22px",
+                  border: 0,
+                  borderRadius: 9,
+                  background: status === "won" ? "linear-gradient(180deg,#1ab6f0,#0a8fcc)" : "#eef1f4",
+                  color: status === "won" ? "#fff" : "#1c2024",
+                  font: "700 14px system-ui",
+                  cursor: "pointer",
+                }}
+              >
+                Keep building
+              </button>
+            </div>
           </div>
         </div>
       )}

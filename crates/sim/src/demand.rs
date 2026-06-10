@@ -31,6 +31,45 @@ pub(crate) fn walk_ms(dist_mm: i64) -> i64 {
     dist_mm.max(0).saturating_mul(1000) / WALK_SPEED_MM_S
 }
 
+/// Transit-oriented demand growth — the one-more-day engine. Once per in-game day (clock-derived,
+/// deterministic), every demand cell grows: cells within a catchment of a SERVED station grow at
+/// the city's full `growth_bp_per_day` (the city densifies around the transit you run), the rest
+/// at a third of it (ambient sprawl — a network you stop extending slowly falls behind). Both
+/// origin and dest weights grow, capped at `growth_cap_w` (2× the strongest initial cell).
+/// Crow-flies distance, not the walkshed: growth is "near transit", and the cheap test keeps the
+/// once-a-day pass O(cells × served). Multiplicative, so empty cells stay empty (growth densifies,
+/// it doesn't invent demand from nothing). Sets `demand_dirty` so capture recomputes.
+pub(crate) fn grow(world: &mut World) {
+    let bp = world.city.growth_bp_per_day;
+    if bp <= 0 {
+        return;
+    }
+    let day = world.clock_ms / (24 * crate::tod::HOUR_MS);
+    if day <= world.last_growth_day {
+        return;
+    }
+    world.last_growth_day = day;
+
+    let served_pos: Vec<crate::geo_local::PointMm> = world
+        .stations
+        .iter()
+        .enumerate()
+        .filter(|(s, st)| !st.removed && world.serving.get(*s).map(|v| !v.is_empty()).unwrap_or(false))
+        .map(|(_, st)| st.pos)
+        .collect();
+
+    let near = 1.0 + bp as f32 / 10_000.0;
+    let ambient = 1.0 + bp as f32 / 30_000.0; // a third of the transit-adjacent rate
+    let cap = world.growth_cap_w;
+    for cell in world.city.demand.cells.iter_mut() {
+        let cpos = crate::geo_local::PointMm::new(cell.x_mm, cell.y_mm);
+        let factor = if served_pos.iter().any(|p| p.dist_mm(&cpos) <= CATCHMENT_MM) { near } else { ambient };
+        cell.origin_w = (cell.origin_w * factor).min(cap);
+        cell.dest_w = (cell.dest_w * factor).min(cap);
+    }
+    world.demand_dirty = true; // captured weights + coverage re-derive from the grown grid
+}
+
 /// Recompute per-station captured origin/destination weight from the demand grid. Each
 /// cell's weight is distributed across in-range stations by normalized decay, so the total
 /// captured per cell never exceeds the cell weight. Cheap; runs only when `demand_dirty`.

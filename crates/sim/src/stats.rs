@@ -29,6 +29,12 @@ pub struct StatsSnapshot {
     pub sim_hour: f64,
     pub period: String,
     pub demand_multiplier: f64,
+    /// In-game day index (clock / 24h, from 0) — the frontend's day-rollover beat keys off this
+    /// instead of hand-mirroring HOUR_MS.
+    pub sim_day: u32,
+    /// Total origin demand across the WHOLE city grid right now — the coverage denominator.
+    /// Grows under transit-oriented growth; the day report diffs it to say "the city grew".
+    pub demand_origin_total: f64,
     /// Surface-rail build impact: 0 (all grade-separated / following ROW) .. 100 (heavy surface
     /// cutting through built-up land). Lower is better.
     pub build_difficulty: u8,

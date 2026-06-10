@@ -4,6 +4,11 @@
 import { useStats } from "./GameContext";
 import { fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
+import { cityById } from "../../sim/cities";
+
+/** This run's city anchor (the real network's coverage score) — read once; the URL is stable
+ *  after boot (deep link, or the menu mirrors the start into it). */
+const CITY_ANCHOR = () => cityById(new URLSearchParams(location.search).get("city")).realScore;
 
 // Stable formatters (module-level so the tween hook's dep identity never changes per render).
 const fmtInt = (n: number): string => `${Math.round(n)}`;
@@ -90,7 +95,10 @@ export function StatsBar() {
         <b ref={ridershipRef} data-testid="ridership" style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }} />{" "}
         riders
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }} title="How much of the whole city's demand your network serves well — grows as you expand">
+      <div
+        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}
+        title={`How much of the whole city's demand your network serves well — grows as you expand. The city's real network scores ~${CITY_ANCHOR()}.`}
+      >
         Coverage
         <div
           style={{

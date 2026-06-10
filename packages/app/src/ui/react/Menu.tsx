@@ -9,7 +9,7 @@
 // lets the idle bob resume (a sticky class would leave the pigeon static). The random subtitle
 // is chosen ONCE (frontend chrome RNG, not the sim).
 import { useRef, useState } from "react";
-import { CITIES, type CityEntry } from "../../sim/cities";
+import { CITIES, personalBest, type CityEntry } from "../../sim/cities";
 import { withBase } from "../../config";
 import { readSave, type SaveBlob } from "../../sim/save";
 import { SCENARIOS } from "../../objectives";
@@ -219,6 +219,21 @@ export function Menu({
             >
               <div style={{ font: "600 16px system-ui" }}>{c.name}</div>
               <div style={{ color: "#9aa3ad", fontSize: "12px", marginTop: "3px" }}>{c.blurb}</div>
+              {/* The score-chase line: the city's real network is the bar; the personal best is
+                  the player's standing against it (from-scratch runs only). */}
+              <div data-testid={`city-score-${c.id}`} style={{ fontSize: "11px", marginTop: "4px", color: "#8a93a3" }}>
+                real network ~{c.realScore}
+                {(() => {
+                  const best = personalBest(c.id);
+                  if (best === null) return null;
+                  const beat = best > c.realScore;
+                  return (
+                    <span style={{ color: beat ? "#1ab560" : "#8a93a3" }}>
+                      {" "}· your best {best}{beat ? " 🏆" : ""}
+                    </span>
+                  );
+                })()}
+              </div>
             </button>
           ))}
         </div>

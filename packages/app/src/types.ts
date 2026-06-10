@@ -86,6 +86,11 @@ export interface Stats {
   simHour: number;
   period: string;
   demandMultiplier: number;
+  /** In-game day index (from 0) — the day-rollover report keys off this. */
+  simDay: number;
+  /** Total origin demand across the WHOLE city grid (the coverage denominator); grows under
+   *  transit-oriented growth — the day report diffs it to say "the city grew". */
+  demandOriginTotal: number;
   buildDifficulty: number;
   economyEnabled: boolean;
   balance: number;

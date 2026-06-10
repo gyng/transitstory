@@ -108,6 +108,13 @@ pub struct World {
     pub abandoned_at: Vec<u64>,
     /// Set when stations change (catchment capture needs recompute).
     pub demand_dirty: bool,
+    /// The last in-game day `demand::grow` ran for (clock_ms / DAY). Pure function of the clock,
+    /// so replays reconstruct it — not hashed (like the other derived markers).
+    pub last_growth_day: i64,
+    /// Per-cell weight ceiling for demand growth: 2× the city's strongest initial cell, computed
+    /// once at boot — dataset-agnostic (a metro-population globe cell and a 0–8 city cell both
+    /// get headroom without runaway).
+    pub growth_cap_w: f32,
     /// Optional economy (NIMBY-style): when OFF (the default), money is informational only —
     /// when ON, construction you can't afford is rejected and opex drains the balance.
     pub economy_enabled: bool,
@@ -203,6 +210,14 @@ impl World {
         } else {
             city.max_legs
         };
+        // Growth ceiling: 2× the strongest initial cell (see the field doc). f32 max via fold —
+        // index-ordered, deterministic.
+        let growth_cap_w = city
+            .demand
+            .cells
+            .iter()
+            .fold(0.0f32, |m, c| m.max(c.origin_w).max(c.dest_w))
+            * 2.0;
         World {
             seed,
             clock_ms: 0,
@@ -236,6 +251,8 @@ impl World {
             build_lookup,
             build_cell_mm,
             demand_dirty: false,
+            last_growth_day: 0,
+            growth_cap_w,
             economy_enabled: false,
             opex_accrued: 0,
             opex_rem: 0,
@@ -586,6 +603,8 @@ impl World {
             sim_hour: crate::tod::hour_of_day(self.clock_ms),
             period: crate::tod::period_label(crate::tod::hour_of_day(self.clock_ms)).to_string(),
             demand_multiplier: crate::tod::demand_multiplier(crate::tod::hour_of_day(self.clock_ms)) as f64,
+            sim_day: (self.clock_ms / (24 * crate::tod::HOUR_MS)).clamp(0, u32::MAX as i64) as u32,
+            demand_origin_total: self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum(),
             build_difficulty,
             economy_enabled: self.economy_enabled,
             balance: balance as f64,

@@ -474,6 +474,42 @@ tiers green (cargo 27 suites / vitest 21 / playwright 15).
   pressure channel beyond the balance + new P&L rows; objectives loss state is dismissible without
   trace; no extend/insert/redo line editing (correctly deferred — needs new Command seams).
 
+## The "one more day" pass — growth, beats, and the score chase (2026-06-10)
+
+Follow-up to the audit: the game had a strong minute-loop but no session hook — days were
+statistically interchangeable, so there was no reason to play one more of them. This pass makes
+the in-game day a *turn*. All tiers green (cargo 28 suites incl. new growth tests / vitest 21 /
+playwright 15).
+
+- **Transit-oriented demand growth** (`demand::grow`, the engine): once per in-game day
+  (clock-derived, deterministic, pure f(clock, service)), cells within a catchment of a SERVED
+  station grow at the city's `growth_bp_per_day` (CityData knob, serde-default 250 = +2.5%/day;
+  `CityData::default()` = 0 so native tests opt in), the rest at a third (ambient sprawl — stop
+  extending and the city outgrows you). Capped at 2× the strongest initial cell (dataset-agnostic:
+  city grids and the metro-population globe both get headroom). Multiplicative — empty cells stay
+  empty (growth densifies, it doesn't invent demand). Growth is good news that creates problems:
+  riders + coverage drift up while queues and crush-load pressure mount. Tests (`growth.rs`):
+  near > ambient, cap, disabled-at-0, bit-for-bit replay. Known limit: an agent-mode population is
+  generated once, so growth moves gravity/coverage but not agent trip counts — logged, not hidden.
+- **Day-rollover report card** (`Beats.tsx DayReport`, reads the new `simDay` +
+  `demandOriginTotal` stats fields): "Day N complete — riders +X · coverage Y (+Z) · gave up +W ·
+  🏙 the city grew +G%". The turn punctuation; auto-dismissing, non-modal, baseline-aware
+  (silent on boot + after undo/load rebuilds).
+- **Milestone beats** (`Beats.tsx Milestones`): rider thresholds (100…250k) + every +5 coverage,
+  one celebratory pill at a time, chime included. Baselines from the FIRST snapshot so loading the
+  real network at coverage ~40 fires nothing — only new progress counts.
+- **The score chase**: every city's REAL network is now an explicit bar to clear. Anchors measured
+  in-browser against committed data (method + date documented in `cities.ts`): Singapore 41,
+  Tokyo 38, Calgary 13, Istanbul 46, Manhattan 23, Dublin 39, Chicago 31, SF 47, Brisbane 29,
+  London 45, Pyongyang 38, Glasgow 39, globe 54 — a natural difficulty ladder (beat the C-Train
+  first, BART last). Menu city cards show "real network ~N · your best M" (localStorage best,
+  from-scratch runs only); the StatsBar gauge tooltip names the bar; crossing it fires the
+  headline "🏆 You beat the real <city> network" beat.
+- **Sticky outcomes + retry**: the objectives end-banner now offers Retry (primary on a loss) next
+  to Keep building, and the panel keeps a persistent "↻ Retry the challenge" after dismissal. The
+  menu mirrors every start into the URL (`?city=&network=&scenario=`), so retry/refresh re-boots
+  the exact setup instead of dumping to the menu.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

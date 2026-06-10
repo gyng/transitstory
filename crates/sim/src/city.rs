@@ -28,6 +28,21 @@ pub struct CityData {
     /// change, while `CityData::default()` keeps the shipped behaviour.
     #[serde(default)]
     pub max_legs: usize,
+    /// Demand growth per in-game day, in basis points (250 = +2.5%), applied to cells within a
+    /// catchment of a SERVED station — transit-oriented development: the city grows where (and
+    /// because) you serve it. Cells outside any catchment grow at a third of this rate (ambient
+    /// sprawl), so a network you stop extending slowly falls behind the city. The pressure this
+    /// creates is the one-more-day engine: growth is good news (riders, coverage) that creates
+    /// problems (queues, crush load). Cities loaded from JSON without the field get
+    /// `default_growth_bp`; `CityData::default()` leaves it 0, which DISABLES growth (native
+    /// tests opt in explicitly).
+    #[serde(default = "default_growth_bp")]
+    pub growth_bp_per_day: i64,
+}
+
+/// Default transit-adjacent demand growth: +2.5% per in-game day (ambient = a third of this).
+fn default_growth_bp() -> i64 {
+    250
 }
 
 /// Default rider patience for cities that don't specify one: 10 sim-minutes — about two missed
