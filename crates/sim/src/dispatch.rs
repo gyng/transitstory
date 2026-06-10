@@ -15,10 +15,14 @@ pub(crate) fn dispatch(world: &mut World) {
     world.cell_station_dirty = true; // …and the agent population's nearest-served-station map
 
     // Rebuild the per-station serving-lines map (operational lines only) for routing.
+    // A land line with surface track over open water is NOT operational: build legality is a
+    // CORE rule (AGENTS — clamps live here, the UI only previews it), so an illegal span parks
+    // the whole line — no vehicles, no service — until it's elevated/tunnelled or rerouted.
+    // The line stays in the world (the log is append-only) and renders as the red "fix me".
     let nstations = world.stations.len();
     let mut serving: Vec<Vec<LineId>> = vec![Vec::new(); nstations];
     for (li, line) in world.lines.iter().enumerate() {
-        if !line.removed && line.trainset.is_some() && line.stops.len() >= 2 {
+        if !line.removed && line.trainset.is_some() && line.stops.len() >= 2 && !line.crosses_water_surface {
             for &st in &line.stops {
                 if st.index() < nstations {
                     serving[st.index()].push(LineId(li as u32));
@@ -35,7 +39,7 @@ pub(crate) fn dispatch(world: &mut World) {
     for (li, line) in lines.iter().enumerate() {
         let count = line.trainset.map(|t| t.count).unwrap_or(0);
         let total = line.length_mm();
-        if line.removed || count == 0 || total <= 0 || line.stops.len() < 2 {
+        if line.removed || count == 0 || total <= 0 || line.stops.len() < 2 || line.crosses_water_surface {
             continue;
         }
         // Loop: circuit length = one-way; out-and-back: there and back.

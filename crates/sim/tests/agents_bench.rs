@@ -75,7 +75,7 @@ fn run_ticks(w: &mut World, ticks: usize, dt: i64) -> f64 {
 #[test]
 fn agent_demand_benchmark() {
     let ticks = 6000usize;
-    let dt = 50i64; // 300 s sim = 5 in-game hours (06:00→11:00) — covers the whole AM rush
+    let dt = 50i64; // 300 s sim (06:00 + 300s/HOUR_MS hours) — covers the heart of the AM rush
 
     let base = build_tokyo_scale();
     println!("\n=== Agent-demand prototype benchmark (Tokyo-scale: {} stations, {} lines, {} cells) ===",
@@ -110,7 +110,7 @@ fn agent_demand_benchmark() {
     }
     let agent_ms = t.elapsed().as_secs_f64() * 1000.0;
 
-    println!("\n{} ticks @ dt={}ms ({} in-game hours):", ticks, dt, ticks as i64 * dt / 60_000);
+    println!("\n{} ticks @ dt={}ms ({} in-game hours):", ticks, dt, ticks as i64 * dt / sim::tod::HOUR_MS);
     println!("  gravity: {:7.0} ms total   ({:.3} ms/tick)   ridership {:>6}   distinct routes {}",
         grav_ms, grav_ms / ticks as f64, wg.stats_snapshot().ridership_total as u64, wg.route_cache.len());
     println!("  agents : {:7.0} ms total   ({:.3} ms/tick)   ridership {:>6}   distinct routes {}",

@@ -3,10 +3,12 @@
 // Line drawing disables dragPan during the gesture (re-enabled on commit/cancel) — T11.
 //
 // Build controls (informed by NIMBY/CS/OpenTTD/CAD conventions):
-//  • Station tool places ONE station per click, then disarms to Select — UNLESS a modifier
-//    (Ctrl / Cmd / Shift) is held, which keeps it armed for rapid placement (#3).
+//  • Station tool is STICKY: every click places a station until Esc / right-click / another tool
+//    disarms it — so "place 2 stations" (the onboarding's literal step ①) is two clicks, no
+//    modifier to discover. (It used to disarm after one placement unless Ctrl/Shift was held.)
 //  • Line tool: click stations to chain a route (rubber-band ghost follows the cursor);
-//    double-click / Enter commits; Backspace undoes the last waypoint.
+//    double-click / Enter commits; Backspace undoes the last waypoint. The station a click
+//    would snap to is highlighted BEFORE the click (game.snapStation → white ring).
 //  • Esc and right-click both "stop" — a two-stage cancel: drop the in-progress route, then
 //    (if nothing pending) leave the build tool (#4). The map pans on LEFT-drag, so right-click
 //    is free to use as cancel (it isn't camera-pan here).
@@ -59,13 +61,10 @@ export function attachPointer(game: Game): void {
     }
     const px = e.point.x;
     const py = e.point.y;
-    const oe = e.originalEvent;
-    const keepPlacing = oe.ctrlKey || oe.metaKey || oe.shiftKey;
 
     if (game.mode === "build" && game.tool === "station") {
       game.placeStation(e.lngLat.lng, e.lngLat.lat);
-      // One at a time: disarm to Select after a single placement unless a modifier is held.
-      if (!keepPlacing) game.setTool("select");
+      // Sticky: stay armed for the next placement (Esc / right-click / another tool disarms).
       return;
     }
 
@@ -116,6 +115,14 @@ export function attachPointer(game: Game): void {
   map.on("movestart", () => game.closeContextMenu());
 
   map.on("mousemove", (e) => {
+    // Pre-commit snap highlight (AGENTS UX: "highlight the snap candidate BEFORE the click
+    // commits"): in the line tool, the station a click/drag would chain; in the bulldozer, the
+    // station a click would demolish. Cleared for every other tool.
+    const snappable = game.mode === "build" && (game.tool === "line" || game.tool === "bulldozer");
+    const snap = snappable ? game.nearestStation(e.point.x, e.point.y) : null;
+    const snapChanged = snap !== game.snapStation;
+    game.snapStation = snap;
+
     // Bending a control point: move it under the cursor (sub-100 ms, client-side).
     if (dragging === "handle") {
       game.dragHandle(e.lngLat.lng, e.lngLat.lat);
@@ -123,8 +130,7 @@ export function attachPointer(game: Game): void {
     }
     // Drag-to-draw: chain any station the cursor reaches, rubber-banding to the cursor.
     if (dragging === "draw") {
-      const id = game.nearestStation(e.point.x, e.point.y);
-      if (id !== null) game.extendDraft(id);
+      if (snap !== null) game.extendDraft(snap);
       game.cursor = [e.lngLat.lng, e.lngLat.lat];
       game.refresh();
       return;
@@ -137,7 +143,7 @@ export function attachPointer(game: Game): void {
     }
     // Hover highlight: show the nearest station's catchment.
     const id = game.nearestStation(e.point.x, e.point.y);
-    if (id !== game.hoveredStation) {
+    if (id !== game.hoveredStation || snapChanged) {
       game.hoveredStation = id;
       game.refresh();
     }

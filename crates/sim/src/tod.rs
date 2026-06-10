@@ -2,8 +2,14 @@
 //! follows a twin-peak rush profile and trips flip direction AM (home→work) vs PM (work→home).
 //! Pure functions of the integer clock — deterministic. (Render/demand floats only.)
 
-/// One in-game hour = this many sim-ms (1 sim-minute). A full day = 24 sim-minutes.
-pub const HOUR_MS: i64 = 60_000;
+/// One in-game hour = this many sim-ms (2 sim-minutes). A full day = 48 sim-minutes — long enough
+/// that a rush period (≈3 in-game hours ≈ 6 sim-minutes) spans MULTIPLE default headways, so
+/// time-of-day demand is something the player can actually tune service against, not a flicker
+/// that passes between two trains. (At 8× speed a full day is ~6 wall-minutes.) Anything paced
+/// "per day" must derive from this constant — see `agents::DAY_MS` and
+/// `World::agent_population_target`, which scales with day length to keep trips-per-sim-minute
+/// constant.
+pub const HOUR_MS: i64 = 120_000;
 /// The day starts at this hour (so a fresh run opens into the morning ramp).
 const START_HOUR: f64 = 6.0;
 

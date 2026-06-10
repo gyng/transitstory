@@ -32,7 +32,11 @@ export function withBase(path: string): string {
   return import.meta.env.BASE_URL.replace(/\/+$/, "") + (path.startsWith("/") ? path : "/" + path);
 }
 
-/** Colour-blind-safe (Okabe-Ito) line palette; lines auto-assign the next entry on create. */
+/** Colour-blind-safe line palette (Okabe-Ito base); lines auto-assign the next entry on create.
+ *  Two slots deliberately deviate from straight Okabe-Ito to keep LINE identity clear of the
+ *  SEMANTIC alert hues: bluish-green 0x009e73 (= the "healthy" verdict) → Tol teal 0x44aa99, and
+ *  amber 0xe69f00 (= the "busy" alert) → Tol wine 0x882255 — so a line's colour never reads as a
+ *  health verdict at a glance. */
 export const LINE_PALETTE: number[] = [
-  0x0072b2, 0xd55e00, 0x009e73, 0xcc79a7, 0xe69f00, 0x56b4e9, 0xf0e442, 0x000000,
+  0x0072b2, 0xd55e00, 0x44aa99, 0xcc79a7, 0x882255, 0x56b4e9, 0xf0e442, 0x000000,
 ];

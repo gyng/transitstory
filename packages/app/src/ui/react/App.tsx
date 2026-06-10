@@ -84,9 +84,6 @@ function Title({ name }: { name: string }) {
     <div
       id="app-title"
       style={{
-        position: "fixed",
-        top: 10,
-        left: 14,
         margin: 0,
         padding: "4px 10px",
         borderRadius: 8,
@@ -94,10 +91,20 @@ function Title({ name }: { name: string }) {
         font: "600 14px system-ui,sans-serif",
         color: "#1c2024",
         boxShadow: "0 2px 10px rgba(0,0,0,.12)",
-        zIndex: 10,
+        whiteSpace: "nowrap",
       }}
     >
       Transit Story · {name}
+    </div>
+  );
+}
+
+/** Top-left chrome row: title · Undo · Stats laid out by flex, so a long city name pushes its
+ *  neighbours along instead of sliding under them (the old fixed `left` offsets overlapped). */
+function TopLeftBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ position: "fixed", top: 10, left: 14, zIndex: 10, display: "flex", alignItems: "stretch", gap: 8 }}>
+      {children}
     </div>
   );
 }
@@ -161,8 +168,11 @@ export function App() {
 
   return (
     <GameProvider game={world.game} loop={world.loop}>
-      <Title name={world.cityName} />
-      <UndoControl />
+      <TopLeftBar>
+        <Title name={world.cityName} />
+        <UndoControl />
+        <DashboardControl />
+      </TopLeftBar>
       <Toast />
       <OnboardingCoach />
       <StatsBar />
@@ -173,7 +183,6 @@ export function App() {
       <CommuterCard />
       <FollowCard />
       <StatsRecorder />
-      <DashboardControl />
       <ContextMenu />
       <Toolbar />
     </GameProvider>
@@ -192,10 +201,6 @@ function DashboardControl() {
         onClick={() => setOpen(true)}
         title="Network dashboard — ledger, ridership, satisfaction, trend charts"
         style={{
-          position: "fixed",
-          top: 10,
-          left: 288,
-          zIndex: 10,
           padding: "4px 12px",
           borderRadius: 8,
           border: "0",
@@ -262,10 +267,6 @@ function UndoControl() {
       disabled={!enabled}
       title="Undo last action (Ctrl-Z)"
       style={{
-        position: "fixed",
-        top: 10,
-        left: 200,
-        zIndex: 10,
         padding: "4px 10px",
         borderRadius: 8,
         border: "0",

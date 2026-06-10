@@ -42,8 +42,9 @@ export function StatsBar() {
     `Avg wait ~${avgWaitMin.toFixed(1)} min · Avg trip ~${avgTripMin.toFixed(1)} min` +
     (denied > 0 ? ` · ${denied} passed by full trains` : "");
 
-  // Bar fills left→right; hue shifts good→bad as coverage drops.
-  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "var(--ot-gauge-bad)";
+  // Bar fills left→right. Coverage is a progression dial (it starts near 0 on a fresh map), so
+  // the low band is neutral — not failure-red — and the hue only turns good once it's earned.
+  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "#7a93ad";
 
   // Network strain: the fleet's mean load (avgLoadFactor) as a loadPip, with the live train count
   // in its tooltip. Mounts only once trains run, so it's never dead chrome (like the money box).
@@ -89,7 +90,7 @@ export function StatsBar() {
         <b ref={ridershipRef} data-testid="ridership" style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }} />{" "}
         riders
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }} title="How much of the whole city's demand your network serves well — grows as you expand">
         Coverage
         <div
           style={{

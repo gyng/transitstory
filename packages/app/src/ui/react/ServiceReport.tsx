@@ -135,9 +135,9 @@ export function ServiceReport() {
             <Row label="Avg trip" value={fmtMin(s.avgJourneyMs)} testid="svc-avg-trip" />
             <Divider />
 
-            {/* Demand served + the time-of-day rush level. */}
+            {/* Coverage (% of the whole city's demand served well) + the time-of-day rush level. */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
-              <span style={{ color: "#7a818a" }}>Demand served</span>
+              <span style={{ color: "#7a818a" }} title="How much of the whole city's demand your network serves well — grows as you expand">City coverage</span>
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ position: "relative", width: 64, height: 7, background: "#e7eaee", borderRadius: 4, overflow: "hidden" }}>
                   <span style={{ position: "absolute", inset: `0 ${100 - cov}% 0 0`, background: covColor }} />

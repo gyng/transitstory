@@ -16,7 +16,11 @@ export const MODES: ModeDef[] = [
     hint: "Place stations, then draw track. Surface routes avoid buildings — elevate or tunnel to cross built-up land and water." },
   { id: 1, key: "2", icon: "🚌", name: "Bus", color: "#d55e00",
     hint: "Runs on existing roads — cheap and quick to build, but lower capacity." },
-  { id: 2, key: "3", icon: "⛴", name: "Ferry", color: "#009e73",
+  // Ferry tracks LINE_PALETTE[2] (Tol teal) — the old bluish-green doubled as the "healthy"
+  // verdict colour, so a ferry chip read as a health badge. Mode-chip colours are toolbar
+  // identity only (line colours auto-assign from LINE_PALETTE), but they shouldn't collide
+  // with the semantic hues either.
+  { id: 2, key: "3", icon: "⛴", name: "Ferry", color: "#44aa99",
     hint: "Terminals on the waterfront — routes cross open water with no track to build." },
   { id: 3, key: "4", icon: "✈", name: "Plane", color: "#cc79a7",
     hint: "Airports for long hops — flies over anything, at any distance." },

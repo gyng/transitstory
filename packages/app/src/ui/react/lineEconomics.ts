@@ -43,17 +43,32 @@ export interface Satisfaction {
   word: string;
 }
 
-/** Rider satisfaction (0..100) for a line, from the two service-quality levers the snapshot
- *  exposes per line — crowding (load factor) and wait (≈ headway/2). A comfortable, frequent line
- *  scores high; a packed or infrequent one scores low. Returns null with no service (no trains). */
-export function lineSatisfaction(l: PerLine): Satisfaction | null {
+/** Mean live queue at a line's stops — the third satisfaction input. Computed from the same
+ *  snapshot as everything else (perStation.waiting is a LEVEL, not a cumulative counter, so the
+ *  pressure self-corrects as soon as service improves). A station shared by several lines counts
+ *  toward each — attribution is genuinely ambiguous there, and "my platform is crowded" is true
+ *  for every line that calls at it. */
+export function meanStopQueue(stops: number[], perStation: Map<number, { waiting: number }>): number {
+  if (stops.length === 0) return 0;
+  let sum = 0;
+  for (const id of stops) sum += perStation.get(id)?.waiting ?? 0;
+  return sum / stops.length;
+}
+
+/** Rider satisfaction (0..100) for a line, from the service-quality signals the snapshot exposes —
+ *  crowding (load factor), wait (≈ headway/2), and (when the caller provides it) the live queue at
+ *  its platforms. A comfortable, frequent line with drained platforms scores high; a packed,
+ *  infrequent, or visibly-queueing one scores low. Returns null with no service (no trains). */
+export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | null {
   if (l.trains <= 0) return null;
   // Crowding: comfortable up to ~70% load, then unhappiness ramps; crush (>~110%) is miserable.
   const crowd = l.loadFactor <= 0.7 ? 0 : Math.min(60, (l.loadFactor - 0.7) * 150);
   // Wait: about half the headway. Painless under ~4 min, then ramps.
   const waitMin = l.headwayMs / 2 / 60_000;
   const wait = waitMin <= 4 ? 0 : Math.min(40, (waitMin - 4) * 4);
-  const score = Math.max(0, Math.min(100, Math.round(100 - crowd - wait)));
+  // Queues: a handful of people waiting is a working network; double digits per platform isn't.
+  const queue = queueAtStops <= 4 ? 0 : Math.min(40, (queueAtStops - 4) * 2);
+  const score = Math.max(0, Math.min(100, Math.round(100 - crowd - wait - queue)));
   if (score >= 70) return { score, glyph: "😀", color: "var(--ot-gauge-good,#009e73)", word: "happy" };
   if (score >= 45) return { score, glyph: "😐", color: "#e69f00", word: "ok" };
   return { score, glyph: "😟", color: "var(--ot-gauge-bad,#d62828)", word: "unhappy" };

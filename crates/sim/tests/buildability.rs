@@ -63,6 +63,35 @@ fn open_corridor_has_no_disruption() {
 }
 
 #[test]
+fn surface_over_water_parks_the_line_until_legalized() {
+    // Build legality is a CORE rule, not a UI courtesy: a land line with surface track over open
+    // water gets NO vehicles and serves NO coverage, even with a trainset assigned. Tunnelling
+    // (what the loader and the editor's Track buttons do) un-parks it.
+    let mut w = line_world();
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+    assert!(w.lines[0].crosses_water_surface, "precondition: the line is flagged");
+    assert_eq!(w.vehicles.len(), 0, "an illegal surface-over-water line does not dispatch");
+    assert!(w.serving.iter().all(|s| s.is_empty()), "a parked line serves no station");
+
+    // Legalize the water spans (whole-line tunnel) → the line dispatches on the next tick.
+    w.apply(&Command::SetSegmentMode { line: LineId(0), span: u32::MAX, mode: 2 });
+    w.tick(50);
+    assert!(!w.lines[0].crosses_water_surface);
+    assert_eq!(w.vehicles.len(), 2, "a legalized line dispatches its trainset");
+
+    // Determinism: the park/un-park cycle replays bit-for-bit.
+    let mut b = line_world();
+    b.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    b.apply(&Command::SetRunning { running: true });
+    b.tick(50);
+    b.apply(&Command::SetSegmentMode { line: LineId(0), span: u32::MAX, mode: 2 });
+    b.tick(50);
+    assert_eq!(w.state_hash(), b.state_hash());
+}
+
+#[test]
 fn buildability_is_deterministic() {
     let mut a = line_world();
     a.apply(&Command::SetSegmentMode { line: LineId(0), span: u32::MAX, mode: 1 });

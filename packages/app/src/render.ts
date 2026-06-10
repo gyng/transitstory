@@ -132,6 +132,9 @@ export interface RenderView {
   controlHandles?: ControlHandle[]; // draggable draft control points (waypoints + "+" midpoints)
   pinnedLabel?: { lng: number; lat: number; text: string }; // deck label for the pinned station
   selectedLine?: number | null; // drives the wide selection casing under the selected line
+  /** Pre-commit snap highlight: the station the next click would act on (chain in the line tool,
+   *  demolish in the bulldozer) — drawn as a ring BEFORE the click commits (AGENTS UX). */
+  snapRing?: { lng: number; lat: number; demolish: boolean } | null;
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -439,6 +442,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getLineWidth: view.waiting.map((w) => waitBand(w.count)).join(","),
       },
     }),
+    // Starved-only halos for the city overview: below DETAIL_ZOOM the full "waiting" layer is
+    // LOD-dropped (hundreds of small queues read as a flashing swarm), but a STARVED platform is
+    // exactly the signal a player zooms out to compare — so the worst band stays visible at any
+    // zoom. composeAndSet shows precisely one of {waiting, waiting-overview} per frame.
+    new ScatterplotLayer({
+      id: "waiting-overview",
+      data: view.waiting.filter((w) => w.count >= STARVED_WAITING),
+      getPosition: (d: WaitingDot) => [d.lng, d.lat],
+      getRadius: (d: WaitingDot) => 5 + Math.min(7, Math.sqrt(d.count) * 1.5),
+      radiusUnits: "pixels",
+      stroked: true,
+      filled: false,
+      getLineColor: (d: WaitingDot) => waitRing(d.count).color,
+      getLineWidth: (d: WaitingDot) => waitRing(d.count).width,
+      lineWidthUnits: "pixels",
+      lineWidthMinPixels: 1.5,
+      updateTriggers: {
+        getRadius: view.waiting.map((w) => w.count).join(","),
+      },
+    }),
     // Live build-conflict dots along the in-progress blueprint (amber built/park, red water).
     new ScatterplotLayer({
       id: "hazards",
@@ -474,6 +497,29 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       },
     }),
   ];
+
+  // Pre-commit snap ring: marks the station the next click would chain (line tool, white) or
+  // demolish (bulldozer, red) — the candidate is visible BEFORE the click commits. One datum,
+  // costs nothing when null; sized just over the station dot + its own stroke so it reads as a
+  // target reticle, not another state dot.
+  if (view.snapRing) {
+    above.push(
+      new ScatterplotLayer({
+        id: "snap-ring",
+        data: [view.snapRing],
+        getPosition: (d: { lng: number; lat: number }) => [d.lng, d.lat],
+        getRadius: 11,
+        radiusUnits: "pixels",
+        stroked: true,
+        filled: false,
+        // Selection blue = "the next click acts here"; demolition red for the bulldozer. (Plain
+        // white would wash out against the light basemap + the stations' own white strokes.)
+        getLineColor: view.snapRing.demolish ? [214, 40, 40, 240] : [0, 114, 178, 240],
+        getLineWidth: 2.5,
+        lineWidthUnits: "pixels",
+      }),
+    );
+  }
 
   // Draggable control points for the in-progress line (top of the stack so they're grabbable):
   // a faint "+" at each sub-segment midpoint (drag to bend the track there) and a solid dot per

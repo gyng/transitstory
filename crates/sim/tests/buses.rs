@@ -60,8 +60,8 @@ fn a_bus_is_cheaper_and_faster_on_a_road_than_off_road() {
 #[test]
 fn buses_slow_in_peak_traffic() {
     // The congestion factor is a pure integer of the clock: worst at the peaks, none overnight.
-    let peak = sim::tod::congestion_pct(120_000); // hour 8 (AM rush)
-    let night = sim::tod::congestion_pct(1_200_000); // hour 2 (night)
+    let peak = sim::tod::congestion_pct(2 * sim::tod::HOUR_MS); // hour 8 (AM rush)
+    let night = sim::tod::congestion_pct(20 * sim::tod::HOUR_MS); // hour 2 (night)
     assert!(peak < night, "peak traffic is worse than night: {peak} < {night}");
     assert_eq!(night, 100, "no congestion overnight");
     assert!(peak >= 1 && peak <= 100, "congestion factor in (0, 100]");

@@ -30,9 +30,12 @@ pub struct CityData {
     pub max_legs: usize,
 }
 
-/// Default rider patience for cities that don't specify one: 30 sim-minutes.
+/// Default rider patience for cities that don't specify one: 10 sim-minutes — about two missed
+/// trains at a typical 3–6 sim-minute headway. Patience arms the renege ("gave up waiting")
+/// pressure signal, the game's primary difficulty source; a patience several times the longest
+/// sane headway would silently disable it.
 fn default_patience_ms() -> i64 {
-    1_800_000
+    600_000
 }
 
 /// Coarse classified grid: each cell carries a class `c` (1=RoadROW 2=RailROW 3=Built

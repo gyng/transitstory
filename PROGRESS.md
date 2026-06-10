@@ -419,6 +419,61 @@ the globe-scale AIR vehicle preset.
   clobbering WIP. **Air economy depth (per-route P&L, fares, AI competitors)** remains a
   Command/trait/CityData seam, blocked on the same core rewrite — not half-built.
 
+## Audit-driven legibility + build-UX pass (2026-06-10)
+
+A full game audit (rail build UX / visibility / core loop, plus a live play-through) surfaced
+three load-bearing design bugs and a tail of feedback gaps; all fixed in one pass, all three test
+tiers green (cargo 27 suites / vitest 21 / playwright 15).
+
+- **Coverage gauge re-denominated** (`world.rs coverage_score`): was `served / CAPTURED demand`,
+  which read **91/100 seconds after the first 2-station line** (self-referential denominator) and
+  *dropped* when you placed a not-yet-served station. Now `sqrt(served_quality / WHOLE-CITY origin
+  demand)` — a true progression dial: starts ~0, one good first line ≈ 7, **measured anchors**:
+  the full real Singapore MRT ≈ **41**, the globe flagship air board ≈ **54** (measured in-browser
+  via the hooks). Monotonic by construction (fixed denominator + 0.5 quality floor + monotone
+  sqrt); property tests unchanged-green. Scenario targets retuned to the anchors (Sprint 55→25,
+  Metropolis 80→45 "beat the real MRT", Global Airline stays 50); StatsBar/dashboard copy says
+  "of the whole city"; the low band renders neutral, not failure-red (a fresh map isn't failing).
+- **Time scale made coherent** (`tod.rs HOUR_MS` 60k→120k, day = 48 sim-min): a rush period
+  (~3 in-game hours ≈ 6 sim-min) now spans multiple default headways, so ToD demand is tunable
+  rather than a flicker between two trains. **Default patience 30→10 sim-min** (`city.rs`): renege
+  ("gave up waiting") actually fires — it was the designed difficulty source and effectively never
+  triggered (verified live: abandoned stayed 0 over a whole session pre-fix; fires in minutes now).
+  `agent_population_target` scales with day length (trips/sim-min constant); congestion test
+  re-derived from HOUR_MS instead of pinned ms.
+- **Build legality moved into the core** (`dispatch.rs`): a land line with surface track over open
+  water is **parked** — no vehicles, no serving entry, no coverage — until elevated/tunnelled.
+  Was UI-only (`draftInvalid`), so the hooks/save/replay path accepted a rail line drawn across
+  the open sea that ran normally (reproduced live in the audit). Loader sequencing (AddStop →
+  tunnel) still works — `legalizeWaterCrossings` now also *un-parks* loaded networks; new
+  `buildability.rs` test covers park → legalize → dispatch + replay determinism. Editor warning
+  copy says "parked" explicitly. The canonical slice e2e drew exactly such an illegal line
+  (clipped Marina Bay) — rerouted through real home/job clusters (Tiong Bahru/Holland ↔ CBD/
+  Orchard), and its vehicle-moved predicate de-flaked (sampled positions before dispatch → NaN).
+- **Build UX** (audit findings, all verified live): station tool is **sticky** (the onboarding
+  literally says "place 2 stations" — the tool used to disarm after one, eating the second click);
+  **pre-commit snap ring** (AGENTS rule): the station the next click would chain (selection blue)
+  or bulldoze (red) is ringed before the click; **affordability pre-flight** — an unaffordable
+  draft shows "$XM short" in the pill, disables ✓ Place, and `commitDraft` gates instead of
+  committing; **all-or-nothing commit** — any mid-sequence AddStop rejection rolls the line back
+  (RemoveLine on the same log), so the committed network never silently differs from the blueprint.
+- **Visibility**: inspector tooltips are now **game-owned DOM refreshed on the 3 Hz stats slice**
+  (deck's getTooltip only re-runs on pointer moves — a watched station froze at hover-time values;
+  verified live: counts now tick in place); **starved-only waiting halos survive LOD** (new
+  `waiting-overview` layer ≥ STARVED_WAITING at overview zoom — exactly one waiting layer per
+  frame); **line satisfaction gains a live queue term** (mean waiting at the line's stops via one
+  `game.lineQueue` join) so "100% happy" can't coexist with visibly piling platforms; dashboard
+  clock formats simHour (was a raw float "21.4458…:00"); **bulldoze finally has an echo** (red
+  ripple + "Demolished <name> — $XM written off" toast; it was the one Command with none);
+  palette slots 2/4 swapped off the semantic alert hues (healthy-green/busy-amber → Tol teal/wine,
+  ferry chip synced); attribution de-duplicated (the CARTO style self-attributes); top-left chrome
+  (title · Undo · Stats) is a flex row instead of overlapping fixed offsets.
+- **Audit verdicts otherwise:** engineering conventions all clean (determinism bans, membrane,
+  command-sourcing, geo boundary, render hot path, two clocks, pins, attribution); scope growth
+  judged seam-respecting (nothing half-built). Remaining known gaps: economy lacks an on-map
+  pressure channel beyond the balance + new P&L rows; objectives loss state is dismissible without
+  trace; no extend/insert/redo line editing (correctly deferred — needs new Command seams).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

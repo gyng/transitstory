@@ -4,7 +4,7 @@
 // snapshot or a frontend derivation that shares lineEconomics.ts with the roster (no drift). The
 // recorder that feeds the charts is mounted separately and always-on, so history survives close.
 import type { CSSProperties } from "react";
-import { useStats } from "./GameContext";
+import { useGame, useStats } from "./GameContext";
 import { useStatsHistory } from "./statsHistory";
 import { ChartCard, BarList } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
@@ -19,6 +19,8 @@ function fmtCount(v: number): string {
   return `${Math.round(v)}`;
 }
 const fmtMins = (ms: number) => (ms > 0 ? `${(ms / 60_000).toFixed(1)} min` : "—");
+/** simHour is a float (e.g. 21.44) — render as a wall clock, same as StatsBar. */
+const fmtClock = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.floor((h % 1) * 60)).padStart(2, "0")}`;
 
 const TILE: CSSProperties = {
   flex: "1 1 0",
@@ -53,6 +55,7 @@ function LedgerRow({ label, amount, sign }: { label: string; amount: number; sig
 const SECTION_TITLE: CSSProperties = { fontSize: 12, fontWeight: 700, color: "#5a626b", margin: "2px 0 6px", textTransform: "uppercase", letterSpacing: 0.4 };
 
 export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const game = useGame();
   const s = useStats();
   const history = useStatsHistory();
   if (!open) return null;
@@ -63,7 +66,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
   let satNum = 0;
   let satDen = 0;
   for (const l of served) {
-    const sat = lineSatisfaction(l);
+    const sat = lineSatisfaction(l, game.lineQueue(l.lineId));
     if (sat) {
       const w = Math.max(1, l.ridership);
       satNum += sat.score * w;
@@ -120,7 +123,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 17, fontWeight: 800 }}>📊 Network Dashboard</div>
           <div style={{ marginLeft: 10, color: "#9aa1a9", fontSize: 12 }}>
-            {s.period} · {String(s.simHour).padStart(2, "0")}:00 · {s.running ? "running" : "paused"}
+            {s.period} · {fmtClock(s.simHour)} · {s.running ? "running" : "paused"}
           </div>
           <button
             data-testid="dashboard-close"
@@ -134,7 +137,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         {/* Headline gamey KPIs — big and prominent. */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           <Kpi label="Riders carried" value={fmtCount(s.ridershipTotal)} sub={`${lines.length} lines · ${s.vehicleCount} vehicles`} color="#0072b2" testid="kpi-ridership" />
-          <Kpi label="Coverage" value={`${Math.round(s.coverageScore)}`} sub="of 100" color={s.coverageScore >= 60 ? "var(--ot-gauge-good,#009e73)" : s.coverageScore >= 35 ? "#e69f00" : "var(--ot-gauge-bad,#d62828)"} testid="kpi-coverage" />
+          <Kpi label="Coverage" value={`${Math.round(s.coverageScore)}`} sub="of the whole city" color={s.coverageScore >= 60 ? "var(--ot-gauge-good,#009e73)" : s.coverageScore >= 35 ? "#e69f00" : "#7a93ad"} testid="kpi-coverage" />
           <Kpi label="Satisfaction" value={netSat == null ? "—" : `${netSat}%`} sub={netSat == null ? "no service" : netSat >= 70 ? "happy" : netSat >= 45 ? "ok" : "unhappy"} color={satColor} testid="kpi-satisfaction" />
           <Kpi label={s.economyEnabled ? "Balance" : "Balance (info)"} value={fmtMoney(balance)} sub={s.economyEnabled ? "economy ON" : "economy off"} color={balance >= 0 ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)"} testid="kpi-balance" />
           <Kpi label="Left behind" value={fmtCount(s.abandoned + s.deniedBoardings)} sub={`${fmtCount(s.waitingTotal)} waiting now`} color={s.abandoned + s.deniedBoardings > 0 ? "var(--ot-gauge-bad,#d62828)" : "#1c2024"} testid="kpi-leftbehind" />

@@ -34,7 +34,8 @@ export function DraftControls() {
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
   const cost = p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
-  const ready = game.draft.length >= 2 && !p.invalid;
+  const short = p.shortM > 0;
+  const ready = game.draft.length >= 2 && !p.invalid && !short;
 
   return (
     <div
@@ -58,7 +59,7 @@ export function DraftControls() {
           gap: 6,
           padding: "5px 10px",
           borderRadius: 999,
-          background: p.invalid ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
+          background: p.invalid || short ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
           color: "#fff",
           font: "600 12px system-ui,sans-serif",
           boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.3))",
@@ -75,6 +76,7 @@ export function DraftControls() {
           </>
         )}
         {p.invalid && <span style={{ marginLeft: 2 }}>⚠ over water</span>}
+        {!p.invalid && short && <span data-testid="draft-short" style={{ marginLeft: 2 }}>⚠ ${Math.ceil(p.shortM)}M short</span>}
       </div>
 
       {/* Confirm / cancel — the discoverable commit (double-click / Enter still work). */}
@@ -83,7 +85,15 @@ export function DraftControls() {
           data-testid="draft-confirm"
           onClick={() => game.commitDraft()}
           disabled={!ready}
-          title={ready ? "Place line" : p.invalid ? "Route crosses water — elevate, tunnel, or use a ferry" : "Add at least 2 stops"}
+          title={
+            ready
+              ? "Place line"
+              : p.invalid
+                ? "Route crosses water — elevate, tunnel, or use a ferry"
+                : short
+                  ? `Not enough money — $${Math.ceil(p.shortM)}M short`
+                  : "Add at least 2 stops"
+          }
           style={{
             border: 0,
             borderRadius: 8,

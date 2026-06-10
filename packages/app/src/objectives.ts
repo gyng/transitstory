@@ -51,12 +51,15 @@ export const SCENARIOS: Record<string, Scenario> = {
     blurb: "Get a line moving and carry your first passengers.",
     goals: [{ kind: "ridership", target: 300, label: "Carry 300 riders" }],
   },
+  // Coverage targets are calibrated against measured anchors on the re-denominated gauge
+  // (coverage = sqrt(% of the WHOLE city's demand served well)): one good first line ≈ 7,
+  // the full real Singapore MRT ≈ 41, the globe's flagship air board ≈ 54.
   "coverage-sprint": {
     id: "coverage-sprint",
     title: "Coverage Sprint",
     blurb: "Cover the city fast — and don't strand too many riders.",
     goals: [
-      { kind: "coverage", target: 55, label: "Reach 55 coverage" },
+      { kind: "coverage", target: 25, label: "Reach 25 coverage" },
       { kind: "ridership", target: 1500, label: "Carry 1,500 riders" },
     ],
     deadlineMs: 25 * 60_000,
@@ -65,9 +68,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   metropolis: {
     id: "metropolis",
     title: "Metropolis",
-    blurb: "Build a network worthy of the name.",
+    blurb: "Build a network worthy of the name — bigger than the real one.",
     goals: [
-      { kind: "coverage", target: 80, label: "Reach 80 coverage" },
+      { kind: "coverage", target: 45, label: "Reach 45 coverage (the real MRT scores ~41)" },
       { kind: "ridership", target: 8000, label: "Carry 8,000 riders" },
     ],
     deadlineMs: 45 * 60_000,

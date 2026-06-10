@@ -57,7 +57,7 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
   const { code, short } = shortLineName(l.name, l.lineId);
   const hasTrains = l.trains > 0;
   const pip = hasTrains ? loadPip(l.loadFactor) : null;
-  const sat = lineSatisfaction(l); // folded into the chip tooltip + Editor; no competing glyph here
+  const sat = lineSatisfaction(l, game.lineQueue(l.lineId)); // folded into the chip tooltip + Editor; no competing glyph here
   const pnl = linePnl(l, s);
   const showPnl = s.economyEnabled && hasTrains;
   const headwayMin = Math.max(1, Math.round(l.headwayMs / 60_000));
@@ -296,7 +296,7 @@ function Editor({ l }: { l: PerLine }) {
         {/* Rider satisfaction — the full readout (face + word + score) lives HERE (progressive
             disclosure); the roster shows only the load chip, with the score in its tooltip. */}
         {(() => {
-          const sat = lineSatisfaction(l);
+          const sat = lineSatisfaction(l, game.lineQueue(l.lineId));
           return sat ? (
             <div data-testid="line-satisfaction" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "3px" }}>
               <span style={{ color: "#7a818a" }}>Satisfaction</span>
@@ -342,7 +342,7 @@ function Editor({ l }: { l: PerLine }) {
       <div data-testid="line-impact" style={{ marginTop: "8px", fontSize: "12px" }}>
         {l.crossesWater && (
           <div data-testid="water-warning" style={{ color: "#d62828", fontWeight: 600, marginBottom: "4px" }}>
-            ⚠ Surface track crosses water — Elevate or Tunnel.
+            ⚠ Surface track crosses water — the line is parked (no trains run) until you Elevate or Tunnel.
           </div>
         )}
         {tight && <div style={{ color: "#e69f00" }}>⤳ Tight curves — trains slow here.</div>}

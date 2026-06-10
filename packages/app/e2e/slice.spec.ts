@@ -8,15 +8,19 @@ test("full vertical slice: place → draw → assign → run → ridership + cov
   await page.goto("/?city=singapore");
   await page.waitForFunction(() => window.__MAP_READY === true, undefined, { timeout: 30_000 });
 
-  // 1–3) place stations, draw a line, assign a trainset (auto headway).
+  // 1–3) place stations, draw a line, assign a trainset (auto headway). The corridor must be a
+  // route a player could commit through the UI: the core PARKS a surface line whose track crosses
+  // water (the old coordinates clipped Marina Bay and would now never run), and the coverage
+  // gauge is denominated against the whole city's ORIGIN demand — so the line links real home
+  // clusters (Tiong Bahru / Holland / the north) to job cores (CBD / Orchard), not just offices.
   await page.evaluate(() => {
     const t = window.__ot_test!;
     const ids = [
-      t.placeStationLngLat(103.84, 1.265),
-      t.placeStationLngLat(103.855, 1.29),
-      t.placeStationLngLat(103.85, 1.32),
-      t.placeStationLngLat(103.83, 1.355),
-      t.placeStationLngLat(103.845, 1.39),
+      t.placeStationLngLat(103.84, 1.281), // CBD — jobs
+      t.placeStationLngLat(103.826, 1.291), // Tiong Bahru — homes
+      t.placeStationLngLat(103.832, 1.304), // Orchard — jobs
+      t.placeStationLngLat(103.786, 1.321), // Holland — homes
+      t.placeStationLngLat(103.79, 1.345), // north residential
     ];
     t.drawLine(ids);
     t.assignTrainset(0, 4);
@@ -29,12 +33,19 @@ test("full vertical slice: place → draw → assign → run → ridership + cov
     window.__ot_test!.setSpeed(100);
   });
 
+  // Vehicles dispatch on the first tick after Run — wait for them to EXIST before sampling
+  // positions. (Sampling an empty array made the movement predicate compare against undefined —
+  // NaN — and never fire; under parallel-suite CPU contention the race went that way.)
+  await page.waitForFunction(() => window.__ot!.bridge.vehiclePositions().length > 0, undefined, {
+    timeout: 10_000,
+  });
   const pos0 = await page.evaluate(() => Array.from(window.__ot!.bridge.vehiclePositions()));
   // a vehicle moves...
   await page.waitForFunction(
     (prev) => {
       const cur = Array.from(window.__ot!.bridge.vehiclePositions());
-      return cur.some((v, i) => Math.abs(v - (prev as number[])[i]) > 1);
+      const p = prev as number[];
+      return cur.length > 0 && (cur.length !== p.length || cur.some((v, i) => Math.abs(v - p[i]) > 1));
     },
     pos0,
     { timeout: 10_000 },

@@ -27,13 +27,11 @@ export function createMap(
     pitchWithRotate: false,
   });
 
-  map.addControl(
-    new maplibregl.AttributionControl({
-      compact: false,
-      customAttribution: "© OpenStreetMap contributors · © CARTO",
-    }),
-    "bottom-right",
-  );
+  // The hosted CARTO style already declares "© CARTO, © OpenStreetMap contributors" on its
+  // sources — adding a customAttribution on top rendered the same credit twice. The control
+  // (the ODbL release gate) stays mounted; the text comes from the style. The demo fallback
+  // style carries its own attribution too.
+  map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
   // Deterministic readiness signal for e2e (waits on this, not a sleep).

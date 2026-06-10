@@ -382,25 +382,38 @@ impl World {
     }
 
     /// Best (shortest) headway among operational lines serving station `s`, if any.
-    /// "Operational" = has a trainset and ≥2 stops.
+    /// "Operational" = has a trainset, ≥2 stops, and no illegal surface-over-water span (a parked
+    /// line serves nobody — same rule as `dispatch`).
     fn best_headway_at(&self, s: usize) -> Option<i64> {
         let mut best: Option<i64> = None;
         for l in &self.lines {
-            if !l.removed && l.trainset.is_some() && l.stops.len() >= 2 && l.stops.iter().any(|st| st.index() == s) {
+            if !l.removed
+                && l.trainset.is_some()
+                && l.stops.len() >= 2
+                && !l.crosses_water_surface
+                && l.stops.iter().any(|st| st.index() == s)
+            {
                 best = Some(best.map_or(l.headway_ms, |b| b.min(l.headway_ms)));
             }
         }
         best
     }
 
-    /// 0–100 coverage score: the blend AGENTS mandates — (% of captured origin demand served)
-    /// × a bounded wait-vs-headway quality factor. A served station contributes its demand
-    /// weight scaled by the quality of its BEST (shortest-headway) line, where quality runs
-    /// from 1.0 at the min headway down to a floor of 0.5 at the max headway. The floor is what
-    /// keeps it MONOTONIC: extending coverage adds a non-negative term, and shortening a
-    /// headway only raises a station's quality — neither can ever lower the score (PLAN §7).
+    /// 0–100 coverage score: (quality-weighted origin demand served) / (the WHOLE city's origin
+    /// demand), lifted by a square root so early networks register progress on a 0–100 dial.
+    /// A served station contributes its captured demand weight scaled by the quality of its BEST
+    /// (shortest-headway) line, where quality runs from 1.0 at the min headway down to a floor of
+    /// 0.5 at the max headway.
+    ///
+    /// The denominator is the city total — NOT the captured total — so the gauge is a progression
+    /// metric: it starts near 0, every newly served station raises it, and an unserved station
+    /// leaves it unchanged (it can never read "done" off a single line). The fixed denominator +
+    /// the 0.5 quality floor are what keep it MONOTONIC: extending coverage adds a non-negative
+    /// term, shortening a headway only raises a station's quality, and sqrt is monotone — none of
+    /// them can ever lower the score (PLAN §7). Scale anchors: serving ~30% of the city's demand
+    /// at full quality reads ~55; ~64% reads 80; 100 means everything served at min headway.
     fn coverage_score(&self) -> u8 {
-        let total: f32 = self.captured_origin.iter().sum();
+        let total: f32 = self.city.demand.cells.iter().map(|c| c.origin_w).sum();
         if total <= 0.0 {
             return 0;
         }
@@ -416,15 +429,20 @@ impl World {
                 served += w * quality;
             }
         }
-        ((served / total * 100.0).round() as i64).clamp(0, 100) as u8
+        let frac = (served / total).clamp(0.0, 1.0);
+        ((frac.sqrt() * 100.0).round() as i64).clamp(0, 100) as u8
     }
 
     /// Citizen population for agent demand — scales with the city's residential weight so a bigger
-    /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Tunable.
+    /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Also
+    /// scales with the in-game day length (each citizen commutes twice per day, so trips per
+    /// sim-minute ∝ population / day length): the factor keeps felt intensity constant if
+    /// `tod::HOUR_MS` is retuned. Tunable.
     fn agent_population_target(&self) -> usize {
         let homes: f64 = self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum();
+        let day_scale = crate::tod::HOUR_MS as f64 / 60_000.0; // 1.0 at the original 24-sim-min day
         // Floor kept low so a tiny/sparse city isn't swamped by agents it can't justify.
-        ((homes * 14.0) as usize).clamp(1_000, 60_000)
+        ((homes * 14.0 * day_scale) as usize).clamp(1_000, (60_000.0 * day_scale) as usize)
     }
 
     /// Total one-time construction capital across all lines.

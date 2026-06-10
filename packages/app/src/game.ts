@@ -16,6 +16,7 @@ import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Event, PerLine, PerStation, Stats } from "./types";
 import { lineTipHtml, MODES, modeIcon, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
+import { meanStopQueue } from "./ui/react/lineEconomics";
 
 const EMPTY_STATS: Stats = {
   simClockMs: 0,
@@ -99,6 +100,9 @@ export class Game {
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
+  /** Pre-commit snap candidate: the station the next click would chain (line tool) or demolish
+   *  (bulldozer). Set by the pointer per mousemove; rendered as a ring BEFORE the click commits. */
+  snapStation: number | null = null;
   /** Last rejection reason (e.g. afford-gate) for a transient toast; cleared on dismiss. */
   notice: string | null = null;
 
@@ -177,25 +181,66 @@ export class Game {
   }
 
   /** deck getTooltip handler — the unified inspector. Dispatches on which pickable layer was hit
-   *  (stations / vehicles / lines), building content from the snapshot (not the raw pick) so each
-   *  readout matches what the panels show. Z-order makes the hierarchy natural: a station on top,
-   *  else a train between stops, else the line's own track. */
-  private inspectTooltip(info: PickingInfo): { html: string; style: Record<string, string> } | null {
-    if (!info || !info.layer) return null;
-    let html: string | null = null;
-    if (info.layer.id === "stations") {
+   *  (stations / vehicles / lines). The tooltip DOM is game-owned (not deck's): deck only re-runs
+   *  getTooltip on pointer moves, which froze the numbers while a player watched one station —
+   *  owning the element lets `setStats` re-render the open tooltip on the ~3 Hz slice, so a
+   *  watched queue counts live. Always returns null to deck (suppresses its built-in tooltip). */
+  private inspectTooltip(info: PickingInfo): null {
+    if (!info || !info.layer) {
+      this.tipTarget = null;
+    } else if (info.layer.id === "stations") {
       const obj = info.object as { id?: number } | undefined;
-      const tip = obj && typeof obj.id === "number" ? this.stationTip(obj.id) : null;
-      if (tip) html = stationTipHtml(tip);
+      this.tipTarget = obj && typeof obj.id === "number" ? { kind: "station", id: obj.id, x: info.x, y: info.y } : null;
     } else if (info.layer.id === "vehicles") {
-      const tip = this.vehicleTip(info.index);
-      if (tip) html = vehicleTipHtml(tip);
+      this.tipTarget = info.index >= 0 ? { kind: "vehicle", id: info.index, x: info.x, y: info.y } : null;
     } else if (info.layer.id === "lines") {
       const obj = info.object as { id?: number } | undefined;
-      const tip = obj && typeof obj.id === "number" ? this.lineTip(obj.id) : null;
+      this.tipTarget = obj && typeof obj.id === "number" ? { kind: "line", id: obj.id, x: info.x, y: info.y } : null;
+    } else {
+      this.tipTarget = null;
+    }
+    this.renderTip();
+    return null;
+  }
+
+  /** What the inspector tooltip is currently showing (kind + id + anchor px), or null. */
+  private tipTarget: { kind: "station" | "vehicle" | "line"; id: number; x: number; y: number } | null = null;
+  private tipEl: HTMLDivElement | null = null;
+
+  /** (Re)draw the inspector tooltip from current game state — called on hover changes AND from
+   *  `setStats`, so an open tooltip's numbers stay live instead of freezing at hover time. */
+  private renderTip(): void {
+    const t = this.tipTarget;
+    let html: string | null = null;
+    if (t?.kind === "station") {
+      const tip = this.stationTip(t.id);
+      if (tip) html = stationTipHtml(tip);
+    } else if (t?.kind === "vehicle") {
+      const tip = this.vehicleTip(t.id);
+      if (tip) html = vehicleTipHtml(tip);
+    } else if (t?.kind === "line") {
+      const tip = this.lineTip(t.id);
       if (tip) html = lineTipHtml(tip);
     }
-    return html === null ? null : { html, style: TOOLTIP_STYLE };
+    if (html === null || t === null) {
+      if (this.tipEl) this.tipEl.style.display = "none";
+      return;
+    }
+    if (!this.tipEl) {
+      this.tipEl = document.createElement("div");
+      Object.assign(this.tipEl.style, TOOLTIP_STYLE, {
+        position: "absolute",
+        pointerEvents: "none",
+        zIndex: "9",
+        font: "12px system-ui,sans-serif",
+        whiteSpace: "nowrap",
+      });
+      this.map.getContainer().appendChild(this.tipEl);
+    }
+    this.tipEl.innerHTML = html;
+    this.tipEl.style.display = "block";
+    this.tipEl.style.left = `${t.x + 14}px`;
+    this.tipEl.style.top = `${t.y + 14}px`;
   }
 
   /** Inspect a moving train (by its index in the vehicle SoA) — its line + live load factor.
@@ -231,6 +276,15 @@ export class Game {
       trains: ls?.trains ?? 0,
       headwayMin: ls ? Math.round(ls.headwayMs / 60000) : 0,
     };
+  }
+
+  /** Mean live queue across a line's stops — the platform-pressure input to lineSatisfaction
+   *  (see lineEconomics.meanStopQueue). One join point so the roster, editor, and dashboard all
+   *  derive it identically. */
+  lineQueue(id: number): number {
+    const lv = this.bridge.linesView()[id];
+    if (!lv || lv.removed) return 0;
+    return meanStopQueue(lv.stops, this.perStationById);
   }
 
   /** Assemble the station inspect readout (drives the hover tooltip + the e2e hook). Returns
@@ -320,7 +374,10 @@ export class Game {
   }
 
   /** Commit a line through the given ordered station ids (CreateLine + AddStop*). The
-   *  interactive draw gesture (T11) and the test hook both funnel here. */
+   *  interactive draw gesture (T11) and the test hook both funnel here. All-or-nothing: if any
+   *  AddStop is rejected (the afford-gate mid-sequence), the whole line is rolled back with a
+   *  RemoveLine — a committed network never silently differs from the blueprint that was drawn.
+   *  (The log stays append-only; the rollback is itself a Command.) */
   drawLineByIds(ids: number[]): number {
     if (ids.length < 2) return -1;
     const ev = this.bridge.apply(cmd.createLine(this.nextLineColor(), null, false, this.transport));
@@ -328,7 +385,17 @@ export class Game {
       | { LineCreated: { id: number } }
       | undefined;
     const lineId = created ? created.LineCreated.id : this.bridge.linesView().length - 1;
-    for (const s of ids) this.noteRejections(this.bridge.apply(cmd.addStop(lineId, s)));
+    let rejected = false;
+    for (const s of ids) {
+      const evs = this.noteRejections(this.bridge.apply(cmd.addStop(lineId, s)));
+      if (evs.some((e) => "Rejected" in e)) rejected = true;
+    }
+    if (rejected) {
+      this.bridge.apply(cmd.removeLine(lineId));
+      this.cancelDraft();
+      this.refresh();
+      return -1;
+    }
     this.cancelDraft();
     this.selectedLine = lineId;
     this.selectedStation = null;
@@ -600,8 +667,26 @@ export class Game {
   }
 
   /** Commit the blueprint as one line (re-enables dragPan). Needs >= 2 stops; any bent spans go
-   *  out as a single SetLineWaypoints right after the line is created (so undo is one step). */
+   *  out as a single SetLineWaypoints right after the line is created (so undo is one step).
+   *  Pre-flight gates run BEFORE anything is sent: an invalid (over-water) or unaffordable draft
+   *  stays on screen with a notice instead of committing — the player fixes or cancels, never
+   *  discovers post-commit that the network differs from the blueprint. */
   commitDraft(): void {
+    if (this.draft.length >= 2) {
+      const p = this.draftPreview();
+      if (p.invalid) {
+        this.notice = "Route crosses water — elevate, tunnel, or use a ferry";
+        audio.alert();
+        this.refresh();
+        return;
+      }
+      if (p.shortM > 0) {
+        this.notice = `Not enough money — $${Math.ceil(p.shortM)}M short`;
+        audio.alert();
+        this.refresh();
+        return;
+      }
+    }
     const ids = [...this.draft];
     const wps = this.draftWaypoints.map((span) => span.map(([x, y]) => [x, y] as [number, number]));
     this.map.dragPan.enable();
@@ -611,10 +696,9 @@ export class Game {
     this.draggingHandle = null;
     if (ids.length >= 2) {
       const lineId = this.drawLineByIds(ids);
-      // Only attach waypoints if EVERY drafted stop survived — the afford-gate can reject some
-      // AddStops, leaving fewer spans, which would shift the per-span waypoints onto wrong spans.
-      const committedStops = lineId >= 0 ? this.bridge.linesView()[lineId]?.stops.length ?? 0 : 0;
-      if (lineId >= 0 && committedStops === ids.length && wps.some((s) => s.length > 0)) {
+      // drawLineByIds is all-or-nothing (rolls back on any rejection), so a returned line has
+      // every drafted stop and the per-span waypoints line up 1:1.
+      if (lineId >= 0 && wps.some((s) => s.length > 0)) {
         this.noteRejections(this.bridge.apply(cmd.setLineWaypoints(lineId, wps)));
         this.refresh();
       }
@@ -784,7 +868,7 @@ export class Game {
   /** Live preview of the in-progress route for the build HUD (client-side geometry; the $ cost
    *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
    *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
-  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean } {
+  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean; shortM: number } {
     const len = (pts: [number, number][]) => {
       let mm = 0;
       for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
@@ -799,7 +883,11 @@ export class Game {
     // tracks a detour (the exact bent cost is recomputed by the core on commit). 0 until 2 stops.
     let cost = this.draft.length >= 2 ? this.bridge.previewLineCost(this.draft, this.transport, false) : 0;
     if (cost > 0 && straight > 0) cost = (cost * bent) / straight;
-    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid() };
+    // Affordability pre-flight (economy on only): how far the draft overshoots the balance, in $M.
+    // The core's afford-gate is still the authority at commit — this is the early warning.
+    const s = this.lastStats;
+    const shortM = s?.economyEnabled ? Math.max(0, (cost - s.balance) / 1e6) : 0;
+    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid(), shortM };
   }
 
   // --- geometry helpers ---
@@ -852,22 +940,26 @@ export class Game {
     return best;
   }
 
+  /** Demolition echo — bulldoze was the one Command with NO on-map acknowledgement (AGENTS: every
+   *  Command gets an immediate visual echo). A red ripple where the thing stood + a toast naming
+   *  what was lost; with the economy on, the toast carries the written-off build cost (capital is
+   *  sunk — undo restores it, demolish doesn't refund it). */
+  private demolishEcho(name: string, at: [number, number] | null, capitalCost = 0): void {
+    if (at) this.effects.ripple(at[0], at[1], "214,40,40");
+    const sunk = this.lastStats.economyEnabled && capitalCost > 0 ? ` — $${Math.round(capitalCost / 1e6)}M build cost written off` : "";
+    this.notice = `Demolished ${name}${sunk}`;
+  }
+
   /** Bulldoze under a screen pixel: remove the nearest station within snap radius, else the
    *  nearest line. One undoable Command each (undo = rebuild from seed + log[..-1]). */
   bulldozeAt(px: number, py: number): void {
     const st = this.nearestStation(px, py);
     if (st !== null) {
-      this.noteRejections(this.bridge.apply(cmd.removeStation(st)));
-      if (this.selectedStation === st) this.selectedStation = null;
-      this.refresh();
+      this.removeStationById(st);
       return;
     }
     const ln = this.nearestLine(px, py);
-    if (ln !== null) {
-      this.noteRejections(this.bridge.apply(cmd.removeLine(ln)));
-      if (this.selectedLine === ln) this.selectedLine = null;
-      this.refresh();
-    }
+    if (ln !== null) this.removeLineById(ln);
   }
 
   // --- right-click context menu (run/select only — build keeps its two-stage stop) ---
@@ -889,17 +981,27 @@ export class Game {
     for (const cb of this.onChange) cb();
   }
 
-  /** Bulldoze a station by id (right-click → Bulldoze): the same undoable RemoveStation Command as
-   *  the bulldozer tool, reachable without arming the tool. Undo = rebuild from seed + log. */
+  /** Bulldoze a station by id (bulldozer tool + right-click → Bulldoze): one undoable
+   *  RemoveStation Command, with the demolition echo. Undo = rebuild from seed + log. */
   removeStationById(id: number): void {
-    this.noteRejections(this.bridge.apply(cmd.removeStation(id)));
+    const sv = this.bridge.stationsView()[id];
+    const at = sv && !sv.removed ? mmToLngLat([sv.xMm, sv.yMm]) : null;
+    const name = sv?.name || `Station ${id + 1}`;
+    const evs = this.noteRejections(this.bridge.apply(cmd.removeStation(id)));
+    if (!evs.some((e) => "Rejected" in e)) this.demolishEcho(name, at);
     if (this.selectedStation === id) this.selectedStation = null;
     this.refresh();
   }
 
-  /** Bulldoze a line by id (its vehicles despawn) — one undoable RemoveLine Command. */
+  /** Bulldoze a line by id (its vehicles despawn) — one undoable RemoveLine Command, with the
+   *  demolition echo (incl. the written-off capital when the economy is on). */
   removeLineById(id: number): void {
-    this.noteRejections(this.bridge.apply(cmd.removeLine(id)));
+    const lv = this.bridge.linesView()[id];
+    const name = lv?.name || `Line ${id + 1}`;
+    const mid = lv && !lv.removed && lv.polylineMm.length > 0 ? mmToLngLat(lv.polylineMm[Math.floor(lv.polylineMm.length / 2)]) : null;
+    const capital = this.perLineById.get(id)?.capitalCost ?? 0;
+    const evs = this.noteRejections(this.bridge.apply(cmd.removeLine(id)));
+    if (!evs.some((e) => "Rejected" in e)) this.demolishEcho(name, mid, capital);
     if (this.selectedLine === id) this.selectedLine = null;
     this.refresh();
   }
@@ -1096,7 +1198,19 @@ export class Game {
       controlHandles: this.controlHandles(),
       pinnedLabel,
       selectedLine: this.selectedLine,
+      snapRing: this.snapRingView(),
     };
+  }
+
+  /** The pre-commit snap highlight datum (or null): the station the next click would chain
+   *  (line tool) or demolish (bulldozer), set by the pointer per mousemove. */
+  private snapRingView(): { lng: number; lat: number; demolish: boolean } | null {
+    if (this.snapStation === null || this.mode !== "build") return null;
+    if (this.tool !== "line" && this.tool !== "bulldozer") return null;
+    const s = this.bridge.stationsView()[this.snapStation];
+    if (!s || s.removed) return null;
+    const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+    return { lng, lat, demolish: this.tool === "bulldozer" };
   }
 
   private shedKey: string | null = null;
@@ -1160,6 +1274,7 @@ export class Game {
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
     this.perLineById = new Map(s.perLine.map((l) => [l.lineId, l]));
     if (s.running) this.emitStatsJuice(s);
+    this.renderTip(); // an open inspector tooltip re-reads the fresh snapshot (no frozen numbers)
     this.refresh();
   }
 
@@ -1222,7 +1337,11 @@ export class Game {
     // separately in peepLayerAt. Cheap: a filter over ~17 already-built layers, no rebuild.
     const detail = this.map.getZoom() >= DETAIL_ZOOM;
     const vlayers = detail ? vehicleLayers(vehicles) : vehicleLayers(vehicles).filter((l) => l.id !== "vehicle-dir");
-    const above = detail ? this.above : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
+    // Exactly one waiting layer shows per frame: the full per-station halos when zoomed in, the
+    // starved-only subset at overview (a starved platform must be findable at ANY zoom).
+    const above = detail
+      ? this.above.filter((l) => l.id !== "waiting-overview")
+      : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
     this.overlay.setProps({ layers: [...this.below, ...vlayers, ...peep, ...above] });
   }
 
@@ -1283,10 +1402,12 @@ export class Game {
    *  water it does so on a tunnel/viaduct, not illegal surface track. Without this, those spans load
    *  as surface-over-water and render as the red "fix me" warning instead of the line's true colour
    *  (and the editor scolds pre-built reality). So tunnel each span that crosses water; ferry/air
-   *  (modes 2/3) cross water freely and are skipped. Span mode is a build attribute — no sim effect,
-   *  no determinism impact (it's a command on the same log). At boot the economy is off, so the
-   *  afford-gate never rejects it. A whole-line fallback covers any curve that dips into water where
-   *  the straight span didn't, so a loaded land line is never left painted red. */
+   *  (modes 2/3) cross water freely and are skipped. This also matters mechanically now: the core
+   *  PARKS a surface-over-water line (no dispatch) until it's grade-separated, so legalizing here
+   *  is what lets a loaded network run at all. Deterministic (commands on the same log). At boot
+   *  the economy is off, so the afford-gate never rejects it. A whole-line fallback covers any
+   *  curve that dips into water where the straight span didn't, so a loaded land line is never
+   *  left painted red (or parked). */
   private legalizeWaterCrossings(net: import("./sim/network").Network): void {
     if (!this.build.loaded) return;
     const TUNNEL = 2;

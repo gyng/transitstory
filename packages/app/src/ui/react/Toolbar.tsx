@@ -12,7 +12,7 @@ import { BuildHud } from "./BuildHud";
 
 // Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
 const TOOL_HINT: Record<Tool, string> = {
-  station: "Click to place · hold Ctrl/Shift to place several · Esc or right-click to stop",
+  station: "Click to place — stays armed for the next one · Esc or right-click when done",
   line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
   select: "Click a station or line to inspect it",
   bulldozer: "Click a station or line to demolish it · Esc or right-click to stop",
