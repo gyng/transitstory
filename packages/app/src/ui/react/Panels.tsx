@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PerLine, Stats } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { PANEL_STYLE, hex, loadPip, modeIcon } from "./shared";
+import { AIR_ROSTER, PANEL_STYLE, hex, loadPip, modeIcon } from "./shared";
 import { linePnl, lineSatisfaction, fmtSignedMoney, fmtCount, shortLineName, swatchInk } from "./lineEconomics";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
@@ -322,6 +322,43 @@ function Editor({ l }: { l: PerLine }) {
           </div>
         );
       })()}
+
+      {/* Aircraft picker (AIR lines): the roster ladder is THE capacity lever for a route —
+          a bigger jet lifts more per departure but turns slower at the gate (wider effective
+          headway). Index = AssignTrainset.spec; the sim's clamp keeps anything sane. */}
+      {l.mode === 3 && (
+        <div data-testid="aircraft-picker" style={{ marginBottom: "10px" }}>
+          <div style={{ fontWeight: 600, marginBottom: "4px" }}>Aircraft</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {AIR_ROSTER.map((a, i) => {
+              const sel = (l.trainsetSpec ?? 0) === i;
+              return (
+                <button
+                  key={a.name}
+                  data-testid={`aircraft-${i}`}
+                  title={a.blurb}
+                  onClick={() => game.setAircraft(id, i)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "5px 8px",
+                    border: sel ? "1px solid #0072b2" : "1px solid #d7dade",
+                    borderRadius: 7,
+                    background: sel ? "#eef4fb" : "#fff",
+                    font: "600 12px system-ui",
+                    color: "#1c2024",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>{sel ? "✓ " : ""}{a.name}</span>
+                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{a.capacity} seats · {a.turnS}s turn</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div data-testid="line-performance" style={{ marginBottom: "10px" }}>
         <div style={{ fontWeight: 600, marginBottom: "4px" }}>Performance</div>

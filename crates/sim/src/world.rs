@@ -455,7 +455,7 @@ impl World {
     /// scales with the in-game day length (each citizen commutes twice per day, so trips per
     /// sim-minute ∝ population / day length): the factor keeps felt intensity constant if
     /// `tod::HOUR_MS` is retuned. Tunable.
-    fn agent_population_target(&self) -> usize {
+    pub(crate) fn agent_population_target(&self) -> usize {
         let homes: f64 = self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum();
         let day_scale = crate::tod::HOUR_MS as f64 / 60_000.0; // 1.0 at the original 24-sim-min day
         // Floor kept low so a tiny/sparse city isn't swamped by agents it can't justify.
@@ -512,7 +512,9 @@ impl World {
             let li = self.vehicles.line[i].index();
             if let Some(l) = self.lines.get(li) {
                 if l.trainset.is_some() {
-                    let cap = crate::trainset::spec_for_mode(l.mode).capacity.max(1) as f32;
+                    // vehicle_spec, not spec_for_mode: the assigned aircraft (or future roster
+                    // entry) sets the capacity this load factor is measured against.
+                    let cap = l.vehicle_spec().capacity.max(1) as f32;
                     let lf = self.vehicles.onboard[i] as f32 / cap;
                     load_sum += lf;
                     load_n += 1;
@@ -557,6 +559,7 @@ impl World {
                     ridership: ridership as f64,
                     stops: l.stops.len() as u32,
                     trains: l.trainset.map(|t| t.count as u32).unwrap_or(0),
+                    trainset_spec: l.trainset.map(|t| t.spec).unwrap_or(0),
                     headway_ms: l.headway_ms as f64,
                     disruption: l.disruption_units as f64,
                     crosses_water: l.crosses_water_surface,

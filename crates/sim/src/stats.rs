@@ -80,6 +80,8 @@ pub struct LineStat {
     pub ridership: f64,
     pub stops: u32,
     pub trains: u32,
+    /// The assigned roster entry (meaningful for AIR's aircraft ladder; 0 = the mode default).
+    pub trainset_spec: u8,
     pub headway_ms: f64,
     pub disruption: f64,
     pub crosses_water: bool,

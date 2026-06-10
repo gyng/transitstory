@@ -73,6 +73,43 @@ fn growth_is_capped_and_disabled_at_zero() {
 }
 
 #[test]
+fn agent_population_tops_up_with_growth_and_replays() {
+    // A city with enough homes that the population target clears the 1k floor, so growth moves it.
+    let mk = || {
+        let cells = (0..20)
+            .map(|k| DemandCell { x_mm: 200_000 * k, y_mm: 0, origin_w: 2.0, dest_w: 2.0 })
+            .collect();
+        let mut w = World::new(7, CityData {
+            id: "ag".into(),
+            seed: 7,
+            demand: DemandGrid { cell_m: 200.0, cells },
+            growth_bp_per_day: 2_000, // 20%/day so the homes-derived target visibly rises
+            ..Default::default()
+        });
+        w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+        w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
+        w.apply(&Command::SetDemandMode { agents: true });
+        w.apply(&Command::SetRunning { running: true });
+        w
+    };
+    let mut a = mk();
+    let n0 = a.population.as_ref().map(|p| p.citizens.len()).unwrap_or(0);
+    run_days(&mut a, 3);
+    let n3 = a.population.as_ref().map(|p| p.citizens.len()).unwrap_or(0);
+    assert!(n3 > n0, "the population tops up as the city grows: {n3} > {n0}");
+
+    // Bit-for-bit replay with agents + growth + top-ups all active.
+    let mut b = mk();
+    run_days(&mut b, 3);
+    assert_eq!(a.state_hash(), b.state_hash(), "agent top-ups replay deterministically");
+    assert_eq!(n3, b.population.as_ref().map(|p| p.citizens.len()).unwrap_or(0));
+}
+
+#[test]
 fn growth_replays_deterministically_and_moves_the_coverage_denominator() {
     let mut a = served_world(250);
     let mut b = served_world(250);

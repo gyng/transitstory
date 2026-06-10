@@ -64,6 +64,26 @@ export function recordStats(s: Stats): void {
   emit();
 }
 
+/** One in-game day in sim-ms — 24 × tod::HOUR_MS. Keep in lockstep with the Rust constant. */
+const DAY_MS = 2_880_000;
+
+/** Operating-cash trend from recent history: $/in-game-day over the last ~10 samples, from
+ *  fares − opex only — capital is EXCLUDED (a one-time build is a step, not a burn rate; what
+ *  decides survival is whether operations pay for themselves). `runwayDays` is how long the
+ *  current balance lasts at this burn (null when not burning or with too little data). */
+export function cashTrend(balance: number): { perDay: number; runwayDays: number | null } | null {
+  if (HISTORY.length < 4) return null;
+  const recent = HISTORY.slice(-10);
+  const a = recent[0];
+  const b = recent[recent.length - 1];
+  const dtMs = b.clockMs - a.clockMs;
+  if (dtMs < 3 * 60_000) return null; // need a few sim-minutes of signal
+  const opDelta = (b.fareRevenue - b.opexSpent) - (a.fareRevenue - a.opexSpent);
+  const perDay = (opDelta / dtMs) * DAY_MS;
+  const runwayDays = perDay < 0 && balance > 0 ? balance / -perDay : null;
+  return { perDay, runwayDays };
+}
+
 export function getHistory(): Sample[] {
   return HISTORY;
 }

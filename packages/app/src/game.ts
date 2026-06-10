@@ -418,14 +418,28 @@ export class Game {
     return lineId;
   }
 
-  /** Assign trains and auto-suggest a sensible headway (round-trip / count) on first assign. */
-  assignTrainset(line: number, count: number): void {
+  /** Assign trains and auto-suggest a sensible headway (round-trip / count) on first assign.
+   *  `spec` defaults to the line's CURRENT roster entry so count changes (incl. the headway
+   *  slider's re-derive) never silently reset a chosen aircraft back to the default. */
+  assignTrainset(line: number, count: number, spec: number = this.lineSpec(line)): void {
     const hadTrains = (this.bridge.linesView()[line] && this.lineTrains(line)) || 0;
-    this.noteRejections(this.bridge.apply(cmd.assignTrainset(line, 0, count)));
+    this.noteRejections(this.bridge.apply(cmd.assignTrainset(line, spec, count)));
     if (hadTrains === 0) {
       this.bridge.apply(cmd.setHeadway(line, this.suggestHeadwayMs(line, count)));
     }
     this.refresh();
+  }
+
+  /** Pick a roster entry (AIR's aircraft ladder) for a line, keeping its train count. */
+  setAircraft(line: number, spec: number): void {
+    const count = Math.max(1, this.lineTrains(line));
+    this.noteRejections(this.bridge.apply(cmd.assignTrainset(line, spec, count)));
+    this.refresh();
+  }
+
+  /** The line's current roster entry (0 = mode default; survives count re-assignments). */
+  private lineSpec(line: number): number {
+    return this.bridge.stats().perLine.find((l) => l.lineId === line)?.trainsetSpec ?? 0;
   }
 
   /** The Headway slider is the lever: derive the train count from headway (round-trip / H)
@@ -459,7 +473,7 @@ export class Game {
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
     const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));
-    this.bridge.apply(cmd.assignTrainset(line, 0, count));
+    this.bridge.apply(cmd.assignTrainset(line, this.lineSpec(line), count));
     this.refresh();
   }
 

@@ -68,6 +68,35 @@ impl Population {
         Population { citizens, am, pm, cell_station: Vec::new() }
     }
 
+    /// Append citizens up to `n` (no-op at or above it), drawn from the CURRENT demand grid —
+    /// the transit-oriented-growth hook: as the city grows, new residents move in following the
+    /// GROWN distribution, i.e. they cluster around the network that caused the growth, and agent
+    /// trips rise with the city like gravity trips do. Append-only (existing citizens, their
+    /// schedules, and any in-flight trips are untouched) and deterministic: the RNG stream is
+    /// keyed by (seed, start index), so a replayed sequence of day-boundary top-ups redraws the
+    /// exact same citizens regardless of when each top-up ran.
+    pub fn grow_to(&mut self, world: &World, n: usize, seed: u64) {
+        let start = self.citizens.len();
+        if n <= start {
+            return;
+        }
+        let cells = &world.city.demand.cells;
+        let home_cum = cumulative(cells.iter().map(|c| c.origin_w as f64));
+        let work_cum = cumulative(cells.iter().map(|c| c.dest_w as f64));
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x6E77_C17A ^ ((start as u64) << 1));
+        self.citizens.reserve(n - start);
+        for i in start..n {
+            let home = weighted_pick(&home_cum, &mut rng) as u32;
+            let work = weighted_pick(&work_cum, &mut rng) as u32;
+            let name_idx = rng.random_range(0..NAME_SPACE as u64) as u32;
+            let am_b = (peak_ms(8, &mut rng) / BUCKET_MS) as usize % BUCKETS;
+            let pm_b = (peak_ms(18, &mut rng) / BUCKET_MS) as usize % BUCKETS;
+            self.am[am_b].push(i as u32);
+            self.pm[pm_b].push(i as u32);
+            self.citizens.push(Citizen { name_idx, home_cell: home, work_cell: work });
+        }
+    }
+
     /// Spawn the trips whose departure bucket the clock crossed this tick — O(departures), not O(N).
     /// Mirrors `demand::spawn`'s route-and-queue, so the downstream load is identical to gravity's.
     pub fn spawn_trips(&mut self, world: &mut World, dt_ms: i64) {

@@ -68,6 +68,17 @@ pub(crate) fn grow(world: &mut World) {
         cell.dest_w = (cell.dest_w * factor).min(cap);
     }
     world.demand_dirty = true; // captured weights + coverage re-derive from the grown grid
+
+    // Agent demand grows with the city: top the population up to the new (homes-derived) target,
+    // drawn from the GROWN grid — new residents move in where the growth happened. Append-only +
+    // seed-keyed, so replays redraw identical citizens (see Population::grow_to).
+    if world.agent_demand {
+        if let Some(mut pop) = world.population.take() {
+            let target = world.agent_population_target();
+            pop.grow_to(world, target, world.seed);
+            world.population = Some(pop);
+        }
+    }
 }
 
 /// Recompute per-station captured origin/destination weight from the demand grid. Each

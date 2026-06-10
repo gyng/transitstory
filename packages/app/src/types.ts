@@ -56,6 +56,8 @@ export interface PerLine {
   ridership: number;
   stops: number;
   trains: number;
+  /** The assigned roster entry (AIR's aircraft ladder; 0 = the mode default). */
+  trainsetSpec: number;
   headwayMs: number;
   disruption: number;
   crossesWater: boolean;

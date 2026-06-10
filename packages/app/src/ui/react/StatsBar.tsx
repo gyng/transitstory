@@ -5,6 +5,7 @@ import { useStats } from "./GameContext";
 import { fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
+import { cashTrend } from "./statsHistory";
 
 /** This run's city anchor (the real network's coverage score) — read once; the URL is stable
  *  after boot (deep link, or the menu mirrors the start into it). */
@@ -153,18 +154,38 @@ export function StatsBar() {
       {/* Build impact left the run HUD — it's a build-time, per-line concern (EditorPanel
           `line-impact`), not a global always-on number. Money mounts only with the economy
           ruleset on, so it's never dead chrome. StatsBar = clock · ridership · gauge · pressure. */}
-      {s.economyEnabled && (
-        <div
-          data-testid="money-box"
-          style={{ cursor: "help" }}
-          title={`Fares ${fmtMoney(s.fareRevenue)} − capital ${fmtMoney(s.capitalSpent)} − upkeep ${fmtMoney(s.opexSpent)}`}
-        >
-          💰{" "}
-          <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
-            {fmtMoney(s.balance)}
-          </b>
-        </div>
-      )}
+      {s.economyEnabled && (() => {
+        // Operating-cash trend (fares − opex per day; capital excluded): the "am I dying?"
+        // affordance the audit asked for — the drain is visible BEFORE the afford-gate fires.
+        const trend = cashTrend(s.balance);
+        const burning = trend !== null && trend.perDay < 0;
+        const trendTip =
+          trend === null
+            ? ""
+            : burning
+              ? ` · burning ${fmtMoney(-trend.perDay)}/day${trend.runwayDays !== null ? ` — ≈${Math.max(1, Math.round(trend.runwayDays))} days of runway` : ""}`
+              : ` · earning ${fmtMoney(trend.perDay)}/day from operations`;
+        return (
+          <div
+            data-testid="money-box"
+            style={{ cursor: "help" }}
+            title={`Fares ${fmtMoney(s.fareRevenue)} − capital ${fmtMoney(s.capitalSpent)} − upkeep ${fmtMoney(s.opexSpent)}${trendTip}`}
+          >
+            💰{" "}
+            <b data-testid="money" style={{ color: s.balance < 0 ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
+              {fmtMoney(s.balance)}
+            </b>
+            {trend !== null && (
+              <span data-testid="money-trend" style={{ marginLeft: 4, fontSize: 11, color: burning ? "var(--ot-gauge-bad)" : "var(--ot-gauge-good)" }}>
+                {burning ? "▼" : "▲"}
+                {burning && trend.runwayDays !== null && trend.runwayDays < 30 && (
+                  <span style={{ marginLeft: 2 }}>≈{Math.max(1, Math.round(trend.runwayDays))}d</span>
+                )}
+              </span>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

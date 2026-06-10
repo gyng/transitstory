@@ -539,6 +539,31 @@ undo/redo round-trip + fork-clears-redo + the edited line still carries riders).
 - Known limit: the Editor's Extend buttons live in the full (post-assignment) editor; an
   unassigned line extends via the terminus grab — which is the natural pre-assignment flow.
 
+## Backlog clearance — aircraft picker, agent growth, runway (2026-06-10)
+
+The three remaining deferred items, all unblocked. Tiers: cargo 28 suites (growth.rs now 4 tests)
+/ vitest 21 / playwright 16; picker + runway verified live.
+
+- **Aircraft picker** (the AIR roster's missing UI half, deferred since 2026-06-05 on contested
+  files): the Editor shows an "Aircraft" ladder for AIR lines (Narrowbody/Regional/Widebody/Jumbo
+  — capacity vs gate-turn, mirrored from `trainset.rs` in `shared.ts AIR_ROSTER`, index =
+  `AssignTrainset.spec`). `LineStat` gains `trainset_spec` so the selection reads back from the
+  snapshot; `game.assignTrainset` takes a spec defaulting to the line's CURRENT one — the headway
+  slider's count re-derive no longer silently resets a chosen aircraft (verified live: pick Jumbo,
+  drag headway, spec stays 3). Also fixed the deferred `world.rs` load-factor calc: per-line load
+  now divides by `vehicle_spec().capacity` (the assigned aircraft), not the mode default.
+- **Agent-mode growth** (the known limit from the one-more-day pass): `Population::grow_to` —
+  once per day after `demand::grow`, the population tops up to the homes-derived target, drawn
+  from the GROWN grid (new residents cluster where the growth happened). Append-only (existing
+  citizens + in-flight trips untouched), RNG keyed by (seed, start index) so replayed top-up
+  sequences redraw identical citizens — `growth.rs` asserts the rise AND bit-for-bit replay with
+  agents + growth + top-ups all active.
+- **Economy runway** (the audit's "no embodied failure signal"): the money box gains an
+  operating-cash trend — `statsHistory.cashTrend` fits fares−opex per in-game day over recent
+  samples (capital EXCLUDED: a one-time build is a step, not a burn). ▲/▼ glyph beside the
+  balance, full detail in the tooltip ("burning $X/day — ≈N days of runway"), and the inline ≈Nd
+  count appears only under 30 days — the drain is visible long before the afford-gate fires.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

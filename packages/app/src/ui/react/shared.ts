@@ -33,6 +33,22 @@ export function modeIcon(m: number): string {
   return MODE_ICON[m] ?? "🚇";
 }
 
+/** Hand-mirror of the sim's AIR_ROSTER (trainset.rs) — index IS the `AssignTrainset.spec` id.
+ *  A non-dominated capacity-vs-turnaround ladder: a bigger jet fills more per departure but sits
+ *  longer at the gate (widening effective headway). Keep in lockstep with the Rust roster. */
+export interface AircraftDef {
+  name: string;
+  capacity: number;
+  turnS: number; // gate turnaround (the sim's dwell_ms / 1000)
+  blurb: string;
+}
+export const AIR_ROSTER: AircraftDef[] = [
+  { name: "Narrowbody", capacity: 250, turnS: 60, blurb: "A321/737 class — the all-round trunk jet" },
+  { name: "Regional", capacity: 88, turnS: 45, blurb: "E175/CRJ class — fastest turn, keeps a thin spoke frequent" },
+  { name: "Widebody", capacity: 410, turnS: 90, blurb: "777/A350 class — big ceiling for a fat pair" },
+  { name: "Jumbo", capacity: 525, turnS: 120, blurb: "747/A380 class — max seats, slowest turn" },
+];
+
 /** u32 RGB → CSS hex string (#rrggbb). */
 export function hex(u: number): string {
   return "#" + (u & 0xffffff).toString(16).padStart(6, "0");
