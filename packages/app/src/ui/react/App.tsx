@@ -141,11 +141,15 @@ export function App() {
     }
   }, [startBoot]);
 
-  // Ctrl/Cmd-Z = undo the last committed command (rebuild from seed + log[..-1]).
+  // Ctrl/Cmd-Z = undo (rebuild from seed + log[..-1]); Ctrl/Cmd-Shift-Z or Ctrl-Y = redo.
   useEffect(() => {
     if (!world) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (k === "y" || (k === "z" && e.shiftKey))) {
+        e.preventDefault();
+        world.game.redo();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k === "z") {
         e.preventDefault();
         world.game.undo();
       }
@@ -263,19 +267,16 @@ function Toast() {
   );
 }
 
-/** A small undo affordance next to the title (AGENTS UX "reversible by construction"). Ctrl-Z
- *  is the primary path; this makes it discoverable. Re-renders on the UI slice so its disabled
- *  state tracks the 0↔1 command boundary. */
-function UndoControl() {
-  const game = useGame();
-  useGameUI(); // subscribe: re-render when selection/mode change (covers the empty↔non-empty edge)
-  const enabled = game.canUndo();
+/** Undo/redo affordances next to the title (AGENTS UX "reversible by construction"). Ctrl-Z /
+ *  Ctrl-Shift-Z are the primary paths; these make them discoverable. Re-render on the UI slice
+ *  so the disabled states track the history boundaries. */
+function HistoryButton({ testid, label, hint, enabled, onClick }: { testid: string; label: string; hint: string; enabled: boolean; onClick: () => void }) {
   return (
     <button
-      data-testid="undo"
-      onClick={() => game.undo()}
+      data-testid={testid}
+      onClick={onClick}
       disabled={!enabled}
-      title="Undo last action (Ctrl-Z)"
+      title={hint}
       style={{
         padding: "4px 10px",
         borderRadius: 8,
@@ -287,7 +288,21 @@ function UndoControl() {
         boxShadow: "0 2px 10px rgba(0,0,0,.12)",
       }}
     >
-      ↶ Undo
+      {label}
     </button>
+  );
+}
+
+function UndoControl() {
+  const game = useGame();
+  useGameUI(); // subscribe: re-render when selection/mode change (covers the empty↔non-empty edge)
+  return (
+    <>
+      <HistoryButton testid="undo" label="↶ Undo" hint="Undo last action (Ctrl-Z)" enabled={game.canUndo()} onClick={() => game.undo()} />
+      {/* Redo renders only when there IS something to redo — dead chrome otherwise. */}
+      {game.canRedo() && (
+        <HistoryButton testid="redo" label="↷ Redo" hint="Redo (Ctrl-Shift-Z / Ctrl-Y)" enabled onClick={() => game.redo()} />
+      )}
+    </>
   );
 }

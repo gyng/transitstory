@@ -129,6 +129,7 @@ export interface RenderView {
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
+  blueprintColor?: [number, number, number] | null; // extension ghost dashes in the line's own colour
   controlHandles?: ControlHandle[]; // draggable draft control points (waypoints + "+" midpoints)
   pinnedLabel?: { lng: number; lat: number; text: string }; // deck label for the pinned station
   selectedLine?: number | null; // drives the wide selection casing under the selected line
@@ -358,20 +359,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
   ];
 
   if (view.blueprint.length > 1) {
+    // Provisional ghost: muted grey for a NEW line, the line's OWN colour when EXTENDING one
+    // (the ghost reads as "continuing this line", not starting another), red when illegal
+    // (NIMBY's blue/red blueprint signal). updateTriggers so the colour flips with state.
+    const ghost: [number, number, number, number] = view.blueprintInvalid
+      ? [214, 40, 40, 220]
+      : view.blueprintColor
+        ? [view.blueprintColor[0], view.blueprintColor[1], view.blueprintColor[2], 210]
+        : [120, 124, 130, 190];
     below.push(
       new PathLayer({
         id: "blueprint",
         data: [{ path: view.blueprint }],
         getPath: (d: { path: [number, number][] }) => d.path,
-        // Provisional ghost: muted grey when valid, red when the route is illegal (NIMBY's
-        // blue/red blueprint signal). updateTriggers so the colour flips with validity.
-        getColor: view.blueprintInvalid ? [214, 40, 40, 220] : [120, 124, 130, 190],
+        getColor: ghost,
         getWidth: 4,
         widthUnits: "pixels",
         widthMinPixels: 3,
         capRounded: true,
         jointRounded: true,
-        updateTriggers: { getColor: view.blueprintInvalid ? 1 : 0 },
+        updateTriggers: { getColor: ghost.join(",") },
       }),
     );
   }

@@ -104,6 +104,21 @@ export function ContextMenu() {
         <>
           <div style={HEADER}>◉ {station?.name || `Station ${cm.id + 1}`}</div>
           <MenuItem icon="🔍" label="Inspect" testid="ctx-inspect" onClick={() => { game.selectStation(cm.id); close(); }} />
+          {/* Mid-line insertion: with a line selected, an off-line station can join it at the
+              span it sits closest to (one AddStop — one undo step). */}
+          {(() => {
+            if (ui.selectedLine === null) return null;
+            const lv = game.bridge.linesView()[ui.selectedLine];
+            if (!lv || lv.removed || lv.stops.length < 2 || lv.stops.includes(cm.id)) return null;
+            return (
+              <MenuItem
+                icon="➕"
+                label={`Add to ${lv.name || `Line ${lv.id + 1}`}`}
+                testid="ctx-add-to-line"
+                onClick={() => { game.insertStopOnLine(lv.id, cm.id); close(); }}
+              />
+            );
+          })()}
           <div style={SEP} />
           <MenuItem
             icon="💥"

@@ -111,6 +111,10 @@ export class Game {
   /** In-progress line draft (ordered station ids) + live cursor lng/lat (T11). */
   draft: number[] = [];
   cursor: [number, number] | null = null;
+  /** When set, the draft EXTENDS this committed line instead of creating a new one: draft[0] is
+   *  the seed terminus (already on the line), the rest commit as AddStops (append at the tail,
+   *  insert-at-0 from the head). The ghost dashes in the line's own colour. */
+  extendTarget: { line: number; head: boolean } | null = null;
   /** Per-span control points (waypoints) that BEND the draft's track, in mm. `draftWaypoints[i]`
    *  shapes the span between draft stop i and i+1; client-side while drawing, then committed as a
    *  SetLineWaypoints command. Kept length-aligned to the spans (draft.length - 1). */
@@ -509,6 +513,19 @@ export class Game {
     return this.bridge.log.length > 0;
   }
 
+  /** Redo the most recently undone command (forward navigation; any fresh command forks it). */
+  redo(): boolean {
+    if (!this.bridge.redo()) return false;
+    this.cancelDraft();
+    this.mode = this.bridge.stats().running ? "run" : "build";
+    this.refresh();
+    return true;
+  }
+
+  canRedo(): boolean {
+    return this.bridge.canRedo();
+  }
+
   setTool(tool: Tool): void {
     if (this.tool === "line" && tool !== "line") this.cancelDraft();
     if (tool !== this.tool) audio.tick();
@@ -652,7 +669,29 @@ export class Game {
     this.draftWaypoints = [];
     this.draggingHandle = null;
     this.cursor = null;
+    this.extendTarget = null;
     this.map.dragPan.enable();
+  }
+
+  /** Begin extending a committed line from one of its termini (`head` = from the first stop).
+   *  Seeds the draft with that terminus so the ghost rubber-bands from it; chaining and commit
+   *  then reuse the whole draft pipeline. Loop lines have no termini — refused. Entered from the
+   *  Editor's Extend buttons or by pressing a terminus of the SELECTED line with the line tool. */
+  startExtend(lineId: number, head: boolean): boolean {
+    const lv = this.bridge.linesView()[lineId];
+    if (!lv || lv.removed || lv.loopLine || lv.stops.length === 0) return false;
+    if (this.mode !== "build") this.setMode("build"); // drawing happens behind the Build wall
+    this.cancelDraft();
+    this.tool = "line";
+    this.transport = lv.mode; // the ghost's legality (water rules etc.) follows the LINE's mode
+    this.extendTarget = { line: lineId, head };
+    this.draft = [head ? lv.stops[0] : lv.stops[lv.stops.length - 1]];
+    this.draftWaypoints = [];
+    this.selectedLine = lineId;
+    this.selectedStation = null;
+    this.map.dragPan.disable();
+    this.refresh();
+    return true;
   }
 
   // --- interactive line drawing (snap → blueprint → commit) ---
@@ -691,11 +730,17 @@ export class Game {
     }
     const ids = [...this.draft];
     const wps = this.draftWaypoints.map((span) => span.map(([x, y]) => [x, y] as [number, number]));
+    const extend = this.extendTarget;
     this.map.dragPan.enable();
     this.cursor = null;
     this.draft = [];
     this.draftWaypoints = [];
     this.draggingHandle = null;
+    this.extendTarget = null;
+    if (extend && ids.length >= 2) {
+      this.commitExtension(extend, ids.slice(1)); // ids[0] is the seed terminus, already a stop
+      return;
+    }
     if (ids.length >= 2) {
       const lineId = this.drawLineByIds(ids);
       // drawLineByIds is all-or-nothing (rolls back on any rejection), so a returned line has
@@ -709,13 +754,90 @@ export class Game {
     }
   }
 
-  /** Undo the last placed stop in the in-progress route (Backspace), with its span's waypoints. */
+  /** Send the extension's AddStops: appended at the tail, or inserted at index 0 one by one from
+   *  the head (each insert lands before the previous, so the drawn order is preserved outward).
+   *  No new Command vocabulary — `AddStop{after}` covered this all along. On a mid-sequence
+   *  rejection (afford-gate) we stop sending: unlike a fresh line there is no RemoveStop to roll
+   *  back with, and a shorter extension is still a contiguous, valid line — the notice says why. */
+  private commitExtension(extend: { line: number; head: boolean }, newStops: number[]): void {
+    for (const s of newStops) {
+      const evs = this.noteRejections(
+        this.bridge.apply(cmd.addStop(extend.line, s, extend.head ? 0 : null)),
+      );
+      if (evs.some((e) => "Rejected" in e)) break;
+    }
+    this.selectedLine = extend.line;
+    const lv = this.bridge.linesView()[extend.line];
+    if (lv && lv.polylineMm.length >= 2) {
+      this.effects.connectFlash(
+        lv.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
+        colorToRgb(lv.color).join(","),
+      );
+      audio.connect();
+    }
+    this.refresh();
+  }
+
+  /** Undo the last placed stop in the in-progress route (Backspace), with its span's waypoints.
+   *  While extending, the seed terminus (draft[0]) is part of the committed line — never popped;
+   *  backing past the last NEW stop just leaves the extension armed at its seed. */
   popDraft(): void {
-    if (this.draft.length === 0) return;
+    const floor = this.extendTarget ? 1 : 0;
+    if (this.draft.length <= floor) return;
     this.draft.pop();
     this.draftWaypoints.pop(); // drop the span that ended at the removed stop
     if (this.draft.length === 0) this.map.dragPan.enable();
     this.refresh();
+  }
+
+  /** Insert a station as a stop on a committed line, at the span it sits closest to (projection
+   *  onto each consecutive stop pair; for a loop line the closing span counts too). One AddStop —
+   *  one undo step. The dispatcher redistributes vehicles on the next tick. */
+  insertStopOnLine(lineId: number, stationId: number): boolean {
+    const lv = this.bridge.linesView()[lineId];
+    const sv = this.bridge.stationsView();
+    const st = sv[stationId];
+    if (!lv || lv.removed || !st || st.removed || lv.stops.includes(stationId) || lv.stops.length < 2) return false;
+    // Point-to-segment distance in mm against each span; the winner is where the stop belongs.
+    const d2seg = (p: [number, number], a: [number, number], b: [number, number]): number => {
+      const [px, py] = p;
+      const [ax, ay] = a;
+      const [bx, by] = b;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    const pos = (id: number): [number, number] | null => {
+      const v = sv[id];
+      return v && !v.removed ? [v.xMm, v.yMm] : null;
+    };
+    const p: [number, number] = [st.xMm, st.yMm];
+    let bestSpan = -1;
+    let bestD = Infinity;
+    const spanCount = lv.loopLine ? lv.stops.length : lv.stops.length - 1;
+    for (let i = 0; i < spanCount; i++) {
+      const a = pos(lv.stops[i]);
+      const b = pos(lv.stops[(i + 1) % lv.stops.length]);
+      if (!a || !b) continue;
+      const d = d2seg(p, a, b);
+      if (d < bestD) {
+        bestD = d;
+        bestSpan = i;
+      }
+    }
+    if (bestSpan < 0) return false;
+    const evs = this.noteRejections(this.bridge.apply(cmd.addStop(lineId, stationId, bestSpan + 1)));
+    const ok = !evs.some((e) => "Rejected" in e);
+    if (ok) {
+      const at = mmToLngLat(p);
+      this.effects.ripple(at[0], at[1], colorToRgb(lv.color).join(","));
+      audio.connect();
+      this.selectedLine = lineId;
+    }
+    this.refresh();
+    return ok;
   }
 
   // --- control points (freeform waypoints that bend the draft's track) ---
@@ -741,7 +863,10 @@ export class Game {
    *  and a faint "+" at every sub-segment midpoint (drag it to bend the track there). lng/lat for
    *  the deck layer; `span`/`index` address `draftWaypoints` (for 'add', the splice index). */
   controlHandles(): { lng: number; lat: number; kind: "waypoint" | "add"; span: number; index: number }[] {
-    if (this.tool !== "line" || this.draft.length < 2) return [];
+    // No bend handles while EXTENDING: the extension commits straight AddStops (no waypoint
+    // vocabulary for "append these bends"), so offering handles would silently drop the bends
+    // on commit — the blueprint must never differ from what commits.
+    if (this.tool !== "line" || this.draft.length < 2 || this.extendTarget !== null) return [];
     const sv = this.bridge.stationsView();
     const out: { lng: number; lat: number; kind: "waypoint" | "add"; span: number; index: number }[] = [];
     for (let span = 0; span < this.draft.length - 1; span++) {
@@ -1197,6 +1322,9 @@ export class Game {
       desire,
       reach,
       blueprintInvalid: this.draftInvalid(),
+      blueprintColor: this.extendTarget
+        ? colorToRgb(this.bridge.linesView()[this.extendTarget.line]?.color ?? 0x787e86)
+        : null,
       controlHandles: this.controlHandles(),
       pinnedLabel,
       selectedLine: this.selectedLine,

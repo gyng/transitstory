@@ -285,6 +285,44 @@ function Editor({ l }: { l: PerLine }) {
       />
       <div style={{ color: "#7a818a", margin: "4px 0 10px" }}>Capacity × frequency are your two levers.</div>
 
+      {/* Extend the line from either terminus: arms the line tool with a draft seeded at that
+          end (the ghost takes the line's colour). Loop lines have no termini — no buttons. */}
+      {(() => {
+        const lv = game.bridge.linesView()[id];
+        if (!lv || lv.removed || lv.loopLine || lv.stops.length < 2) return null;
+        const sv = game.bridge.stationsView();
+        const name = (sid: number) => sv[sid]?.name || `Station ${sid + 1}`;
+        const endBtn: CSSProperties = {
+          flex: 1,
+          padding: "5px 4px",
+          border: "1px solid #d7dade",
+          borderRadius: 7,
+          background: "#fff",
+          font: "600 11px system-ui",
+          cursor: "pointer",
+          color: "#1c2024",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        };
+        return (
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontWeight: 600, marginBottom: "4px" }}>Extend line</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button data-testid="extend-head" style={endBtn} title={`Extend from ${name(lv.stops[0])}`} onClick={() => game.startExtend(id, true)}>
+                ⇠ {name(lv.stops[0])}
+              </button>
+              <button data-testid="extend-tail" style={endBtn} title={`Extend from ${name(lv.stops[lv.stops.length - 1])}`} onClick={() => game.startExtend(id, false)}>
+                {name(lv.stops[lv.stops.length - 1])} ⇢
+              </button>
+            </div>
+            <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 3 }}>
+              …or press a terminus with the ╱ Line tool. Right-click a station to add it mid-line.
+            </div>
+          </div>
+        );
+      })()}
+
       <div data-testid="line-performance" style={{ marginBottom: "10px" }}>
         <div style={{ fontWeight: 600, marginBottom: "4px" }}>Performance</div>
         <div data-testid="line-load" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

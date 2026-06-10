@@ -36,6 +36,9 @@ export function DraftControls() {
   const cost = p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
   const short = p.shortM > 0;
   const ready = game.draft.length >= 2 && !p.invalid && !short;
+  // Extending a committed line: the seed terminus isn't a NEW stop — count and label accordingly.
+  const extending = game.extendTarget !== null;
+  const stops = extending ? p.stops - 1 : p.stops;
 
   return (
     <div
@@ -66,7 +69,9 @@ export function DraftControls() {
           whiteSpace: "nowrap",
         }}
       >
-        <span data-testid="draft-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
+        <span data-testid="draft-stops">
+          {extending ? `+${stops} stop${stops === 1 ? "" : "s"}` : `${stops} stop${stops === 1 ? "" : "s"}`}
+        </span>
         <span style={{ opacity: 0.5 }}>·</span>
         <span>~{km} km</span>
         {p.costM > 0 && (
@@ -87,12 +92,16 @@ export function DraftControls() {
           disabled={!ready}
           title={
             ready
-              ? "Place line"
+              ? extending
+                ? "Extend line"
+                : "Place line"
               : p.invalid
                 ? "Route crosses water — elevate, tunnel, or use a ferry"
                 : short
                   ? `Not enough money — $${Math.ceil(p.shortM)}M short`
-                  : "Add at least 2 stops"
+                  : extending
+                    ? "Chain at least 1 new stop"
+                    : "Add at least 2 stops"
           }
           style={{
             border: 0,
@@ -105,7 +114,7 @@ export function DraftControls() {
             boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.3))",
           }}
         >
-          ✓ Place
+          ✓ {extending ? "Extend" : "Place"}
         </button>
         <button
           data-testid="draft-cancel"

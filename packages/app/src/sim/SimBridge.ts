@@ -21,8 +21,15 @@ export class SimBridge {
     this.sim = new Sim(seed, cityJson);
   }
 
+  /** Commands undone but not yet superseded — redo re-applies them through the normal `apply`
+   *  path (the log stays append-only; redo is just "send that command again"). Any FRESH command
+   *  forks history and clears it, like every editor's redo. */
+  private redoStack: Command[] = [];
+  private replayingRedo = false;
+
   /** The single write path. Returns the sim's events (assigned ids, auto-names, rejections). */
   apply(command: Command): Event[] {
+    if (!this.replayingRedo) this.redoStack.length = 0; // a fresh command forks history
     const events = this.sim.applyCommandJson(encodeCommand(command)) as Event[];
     this.log.push(command);
     this.onCommit?.();
@@ -40,15 +47,34 @@ export class SimBridge {
   /** Undo = drop the last command and rebuild from seed + log[..-1]. Returns false if empty. */
   undo(): boolean {
     if (this.log.length === 0) return false;
-    this.log.popLast();
+    const popped = this.log.popLast();
+    if (popped) this.redoStack.push(popped);
     this.rebuild();
     this.onCommit?.();
     return true;
   }
 
+  /** Redo = re-apply the most recently undone command. Returns false with nothing to redo. */
+  redo(): boolean {
+    const cmd = this.redoStack.pop();
+    if (!cmd) return false;
+    this.replayingRedo = true;
+    try {
+      this.apply(cmd);
+    } finally {
+      this.replayingRedo = false;
+    }
+    return true;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
   /** Load a saved command log and rebuild (does NOT fire onCommit — the caller wires that after). */
   loadLog(cmds: readonly Command[]): void {
     this.log.replace(cmds);
+    this.redoStack.length = 0; // a loaded save is a fresh history
     this.rebuild();
   }
 

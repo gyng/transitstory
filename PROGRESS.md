@@ -510,6 +510,35 @@ playwright 15).
   menu mirrors every start into the URL (`?city=&network=&scenario=`), so retry/refresh re-boots
   the exact setup instead of dumping to the menu.
 
+## Line editing — extend, insert, redo (2026-06-10)
+
+The audit's biggest remaining tweak-step friction: changing a committed line meant bulldoze +
+redraw. It turned out to need NO new Command vocabulary — `AddStop{after}` covered extension and
+insertion all along; only the UI (and a redo stack) was missing. Tiers: vitest 21 / playwright 16
+(new `edit-line.spec.ts` asserts committed stop ORDER for both termini + mid-line insertion +
+undo/redo round-trip + fork-clears-redo + the edited line still carries riders).
+
+- **Extend** (`game.startExtend(line, head)`): seeds the draft with a terminus and reuses the
+  whole draft pipeline — ghost, snap ring, DraftControls ("+N stops", ✓ Extend), water/afford
+  pre-flight. The ghost dashes in the LINE'S OWN colour (extension reads as "continuing this
+  line", not starting another). Commit = AddStop appends (tail) or insert-at-0 per stop (head —
+  ordering preserved outward). Entry: Editor "Extend line" buttons (named by terminus), or
+  pressing a terminus of the SELECTED line with the line tool (the Mini-Metro grab). Loop lines
+  have no termini — refused. Waypoint handles are suppressed while extending (no "append bends"
+  vocabulary — the blueprint must never differ from what commits). Mid-sequence afford rejection
+  stops the sequence (a shorter extension is still a contiguous valid line; no RemoveStop exists
+  to roll back with) — noticed, not hidden.
+- **Insert mid-line** (`game.insertStopOnLine`): right-click an off-line station with a line
+  selected → "➕ Add to <line>" places it at the span it projects closest onto (loop closing span
+  included) — one AddStop, one undo step.
+- **Redo** (`SimBridge.redoStack`): undo pushes the popped command; redo re-applies it through
+  the normal `apply` path (log stays append-only); any fresh command forks history and clears the
+  stack; loading a save clears it. Ctrl-Shift-Z / Ctrl-Y + a Redo button that only renders when
+  there's something to redo. The UI slice gained `historyLen`/`redoLen` so the chrome re-renders
+  exactly when history moves.
+- Known limit: the Editor's Extend buttons live in the full (post-assignment) editor; an
+  unassigned line extends via the terminus grab — which is the natural pre-assignment flow.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

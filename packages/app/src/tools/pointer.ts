@@ -34,9 +34,26 @@ export function attachPointer(game: Game): void {
       e.preventDefault(); // don't pan
       return;
     }
-    // Otherwise pressing a station starts the route; dragging through stations chains them.
+    // Otherwise pressing a station starts a route. Pressing a TERMINUS of the SELECTED line
+    // (Mini-Metro's grab-the-end gesture) extends that line instead — the ghost takes the
+    // line's colour so the mode is unmistakable; Esc backs out. Any other station starts a
+    // fresh draft as before.
     const id = game.nearestStation(px, py);
     if (id !== null) {
+      if (game.draft.length === 0 && game.selectedLine !== null) {
+        const lv = game.bridge.linesView()[game.selectedLine];
+        if (lv && !lv.removed && !lv.loopLine && lv.stops.length >= 2) {
+          const head = lv.stops[0] === id;
+          const tail = lv.stops[lv.stops.length - 1] === id;
+          if (head || tail) {
+            game.startExtend(game.selectedLine, head);
+            dragging = "draw";
+            suppressClick = true;
+            e.preventDefault();
+            return;
+          }
+        }
+      }
       game.extendDraft(id);
       dragging = "draw";
       suppressClick = true;
