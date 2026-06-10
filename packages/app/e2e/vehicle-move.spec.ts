@@ -17,6 +17,12 @@ test("vehicles dispatch and move when running", async ({ page }) => {
     t.setRunning(true);
   });
 
+  // Vehicles dispatch on the first sim TICK after Run — the rAF loop needs ~50 ms of wall time
+  // to accumulate one step, so WAIT for it instead of racing it with a synchronous assert
+  // (local machines won that race; CI runners lost it).
+  await page.waitForFunction(() => window.__ot!.bridge.vehicleCount() > 0, undefined, {
+    timeout: 10_000,
+  });
   expect(await page.evaluate(() => window.__ot!.bridge.vehicleCount())).toBeGreaterThan(0);
 
   const p0 = await page.evaluate(() => Array.from(window.__ot!.bridge.vehiclePositions()));
