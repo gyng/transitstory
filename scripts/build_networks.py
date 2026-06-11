@@ -313,9 +313,15 @@ def build(cid, meta):
                     continue
                 dpos, tail = b
                 ktail = tuple(tail)
-                if ktail not in seen:
-                    seen.add(ktail)
-                    branches.append({"divergeAt": dpos, "stations": tail})
+                if ktail in seen:
+                    continue
+                seen.add(ktail)
+                br = {"divergeAt": dpos, "stations": tail}
+                # The spur's own real geometry: split this variant's track at [junction, *tail].
+                bgeom = span_geometry(stitch_ways(vr), [seq[dpos]] + tail, stations, False)
+                if bgeom is not None:
+                    br["geometry"] = bgeom
+                branches.append(br)
         # Real OSM track alignment, split into per-span intermediate vertices (so the line follows
         # the actual layout instead of a synthesised curve). None ⇒ straight fallback.
         geom = span_geometry(stitch_ways(r), seq, stations, loop)

@@ -52,6 +52,15 @@ pub enum Command {
         diverge_at: u16,
         station: StationId,
     },
+    /// Set a branch's own per-span shaping points (its real-geometry waypoints) — the spur's OSM
+    /// alignment for a literal imported line. `waypoints[i]` shapes the branch span after the i-th
+    /// branch vertex (junction→stop0 is span 0). Replaces all of that branch's waypoints in one
+    /// command. Local mm `[x,y]`, like `SetLineWaypoints`.
+    SetBranchWaypoints {
+        line: LineId,
+        branch: u16,
+        waypoints: Vec<Vec<[i64; 2]>>,
+    },
     AssignTrainset {
         line: LineId,
         spec: u8,
@@ -105,6 +114,7 @@ pub enum Event {
     LineCreated { id: LineId },
     StopAdded { line: LineId, station: StationId },
     BranchStopAdded { line: LineId, branch: u16, station: StationId },
+    BranchWaypointsSet { line: LineId, branch: u16 },
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },

@@ -9,6 +9,8 @@ export type Command =
   // branch: append a stop to a line's branch tree (P3). branch==branches.len() creates a new
   // branch off trunk stop `diverge_at`; branch<len appends to that branch.
   | { AddBranchStop: { line: number; branch: number; diverge_at: number; station: number } }
+  // branch waypoints: the spur's own per-span real-geometry shaping points (literal imports).
+  | { SetBranchWaypoints: { line: number; branch: number; waypoints: [number, number][][] } }
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
@@ -26,6 +28,7 @@ export type Event =
   | { LineCreated: { id: number } }
   | { StopAdded: { line: number; station: number } }
   | { BranchStopAdded: { line: number; branch: number; station: number } }
+  | { BranchWaypointsSet: { line: number; branch: number } }
   | { TrainsetAssigned: { line: number; count: number } }
   | { HeadwaySet: { line: number; headway_ms: number } }
   | { SegmentModeSet: { line: number; span: number; mode: number } }

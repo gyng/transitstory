@@ -746,6 +746,34 @@ The P3 core ran branches but nothing imported or drew them. Closed two of the th
   with branch detection (only Singapore re-baked this pass; the others have geometry but not yet
   branches — the importer handles it on their next bake).
 
+## Stage C — branches follow real geometry; every city re-baked (2026-06-12)
+
+Closed the branch-geometry gap and spread branches to all cities.
+
+- **Branch literal geometry** (`Branch.waypoints` + `SetBranchWaypoints` command + mirror): a branch
+  now carries its OWN per-span shaping points (the spur's real OSM alignment). `rebuild_line_geometry`
+  builds a branch path's spans as the **trunk's waypoints for the shared prefix** (so the spur matches
+  the trunk exactly up to the divergence) **plus the branch's own waypoints** for the spur — so a
+  branch follows the real track end-to-end, not a straight chord. The importer emits each branch's
+  geometry by splitting its variant's track at `[junction, *branch_stops]`; `applyNetwork` sets it via
+  `SetBranchWaypoints`. Browser-verified: the Circle Line's Marina Bay spur now curves along the real
+  alignment (227-vertex branch polyline vs the old straight ~5).
+- **Re-baked all 12 cities** with the full pipeline (real geometry + branch detection + branch
+  geometry). **London succeeded this time** (now has real geometry + 20 branches — the Tube is heavily
+  branched). **30 branches detected across cities** (london 20, tokyo 4, chicago/dublin/glasgow/
+  istanbul/manhattan/singapore 1 each) — the variant-based detection generalises well, no manual
+  per-city tuning. Tokyo boots in ~58 s (tight — branches add paths/geometry; London's 20 branches are
+  heavier still and untested on a slow runner, a watch item).
+- Tiers: cargo (determinism + branching green, additive — zero re-pins), vitest 21, tsc clean,
+  playwright 16 (Singapore + Tokyo boot, carry riders).
+- **Service-pattern UI: deferred by design.** Trains already split round-robin across a branched
+  line's paths (a sensible default); a per-branch service-bias lever is exactly the NIMBY-depth AGENTS
+  says to defer unless it sharpens the thin loop, so `SetServicePattern` stays a seam, not built.
+  **Stage C is otherwise complete** — branches import, follow real geometry, and render in every city.
+- Remaining branch caveats (small): a branch crossing water at surface can't be tunnelled
+  (`SetSegmentMode` is trunk-only) so it would park (no current city hits this); branch waypoint
+  *editing* in the UI is absent (imports set them; players can't yet hand-shape a branch).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

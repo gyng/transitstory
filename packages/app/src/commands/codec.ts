@@ -17,6 +17,10 @@ export const cmd = {
   addBranchStop: (line: number, branch: number, diverge_at: number, station: number): Command => ({
     AddBranchStop: { line, branch, diverge_at, station },
   }),
+  /** Set a branch's own per-span real-geometry waypoints (mm `[x,y]`) — the spur's OSM alignment. */
+  setBranchWaypoints: (line: number, branch: number, waypoints: [number, number][][]): Command => ({
+    SetBranchWaypoints: { line, branch, waypoints },
+  }),
   assignTrainset: (line: number, spec: number, count: number): Command => ({
     AssignTrainset: { line, spec, count },
   }),

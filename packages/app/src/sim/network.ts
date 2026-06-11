@@ -21,7 +21,8 @@ export interface NetLine {
   geometry?: [number, number][][];
   // Branches off the trunk (P3): each diverges at trunk stop `divergeAt` and continues through
   // `stations`. Recovered from OSM route variants (e.g. the Circle Line's Marina Bay spur).
-  branches?: { divergeAt: number; stations: number[] }[];
+  // `geometry[j]` is the spur's own [lng,lat] vertices for its j-th span (junction→stop0 is span 0).
+  branches?: { divergeAt: number; stations: number[]; geometry?: [number, number][][] }[];
 }
 
 export interface Network {

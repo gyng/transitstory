@@ -1550,6 +1550,10 @@ export class Game {
       // (bi == current branch count) then extends. Recovers e.g. the Circle Line's Marina Bay spur.
       (line.branches ?? []).forEach((br, bi) => {
         for (const st of br.stations) this.bridge.apply(cmd.addBranchStop(li, bi, br.divergeAt, st));
+        if (literal && br.geometry && br.geometry.length) {
+          const wps = br.geometry.map((span) => span.map(([lng, lat]) => lngLatToMm([lng, lat])));
+          this.bridge.apply(cmd.setBranchWaypoints(li, bi, wps));
+        }
       });
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
       // headwayMin in the network JSON means real minutes of SERVICE — clock-frame sim-ms now.

@@ -650,6 +650,7 @@ impl World {
         use crate::trainset::tmode;
         let lmode = self.lines[idx].mode;
         let waypoints = self.lines[idx].waypoints.clone();
+        let branches = self.lines[idx].branches.clone();
         let specs = self.lines[idx].path_specs();
         let corridor = match lmode {
             tmode::BUS => Some(crate::city::class::ROAD),
@@ -668,6 +669,14 @@ impl World {
                     .collect()
             } else if pi == 0 {
                 waypoints.clone()
+            } else if let Some(b) = branches.get(pi - 1) {
+                // Branch path = trunk prefix + the branch. Reuse the TRUNK's waypoints for the shared
+                // prefix spans (so the spur matches the trunk exactly up to the divergence), then the
+                // branch's own per-span waypoints for the spur.
+                let d = (b.diverge_at as usize).min(waypoints.len());
+                let mut sp: Vec<Vec<PointMm>> = waypoints[..d].to_vec();
+                sp.extend(b.waypoints.iter().cloned());
+                sp
             } else {
                 Vec::new()
             };
@@ -759,7 +768,7 @@ impl World {
                         let l = &mut self.lines[li];
                         if bi == l.branches.len() {
                             // New branch leaving the trunk at `diverge_at`, first stop = station.
-                            l.branches.push(crate::line::Branch { diverge_at: *diverge_at, stops: vec![*station] });
+                            l.branches.push(crate::line::Branch { diverge_at: *diverge_at, stops: vec![*station], waypoints: Vec::new() });
                         } else {
                             l.branches[bi].stops.push(*station); // extend an existing branch
                         }
@@ -778,6 +787,22 @@ impl World {
                     vec![Event::Rejected {
                         reason: "AddBranchStop: unknown line/station or bad branch/divergence".into(),
                     }]
+                }
+            }
+            Command::SetBranchWaypoints { line, branch, waypoints } => {
+                let li = line.index();
+                let bi = *branch as usize;
+                if li < self.lines.len() && bi < self.lines[li].branches.len() {
+                    let wps: Vec<Vec<PointMm>> = waypoints
+                        .iter()
+                        .map(|span| span.iter().map(|&[x, y]| PointMm::new(x, y)).collect())
+                        .collect();
+                    self.lines[li].branches[bi].waypoints = wps;
+                    self.rebuild_line_geometry(*line);
+                    self.recompute_line_buildability(*line);
+                    vec![Event::BranchWaypointsSet { line: *line, branch: *branch }]
+                } else {
+                    vec![Event::Rejected { reason: "SetBranchWaypoints: unknown line or branch".into() }]
                 }
             }
             Command::AssignTrainset { line, spec, count } => {

@@ -248,6 +248,12 @@ impl Path {
 pub struct Branch {
     pub diverge_at: u16,
     pub stops: Vec<StationId>,
+    /// Per-span shaping points for the branch's OWN spans (junction→stop0, stop0→stop1, …) — the
+    /// real OSM alignment of the spur, for a literal imported line. The shared trunk-prefix reuses
+    /// the trunk's waypoints, so the spur matches the trunk exactly up to the divergence. Empty =
+    /// straight spur.
+    #[serde(default)]
+    pub waypoints: Vec<Vec<PointMm>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
