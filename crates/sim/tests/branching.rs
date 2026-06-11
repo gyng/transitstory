@@ -12,7 +12,7 @@ fn y_line(trains: u16) -> World {
     for (x, y) in [(0, 0), (2_000_000, 0), (4_000_000, 0), (2_000_000, 2_000_000), (2_000_000, 4_000_000)] {
         w.apply(&Command::PlaceStation { x_mm: x, y_mm: y, name: None });
     }
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     // Trunk A–B–C.
     for s in [0u32, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });

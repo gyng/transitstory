@@ -22,7 +22,7 @@ fn sorted(mut v: Vec<&str>) -> Vec<String> {
 fn command_variant_tags_match_the_frontend_mirror() {
     let samples = [
         Command::PlaceStation { x_mm: 0, y_mm: 0, name: None },
-        Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 },
+        Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0, literal: false },
         Command::AddStop { line: LineId(0), station: StationId(0), after: None },
         Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 },
         Command::SetHeadway { line: LineId(0), headway_ms: 0 },

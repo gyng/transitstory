@@ -21,7 +21,7 @@ fn catchment_capture_shares_a_cell_without_double_counting() {
     w.apply(&Command::PlaceStation { x_mm: 200_000, y_mm: 0, name: None }); // A: 200 m E
     w.apply(&Command::PlaceStation { x_mm: -200_000, y_mm: 0, name: None }); // B: 200 m W
     w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None }); // C: 1 km E (out of range)
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });

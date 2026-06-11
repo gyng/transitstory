@@ -26,7 +26,7 @@ fn bus_line(w: &mut World, y: i64) -> u32 {
     w.apply(&Command::PlaceStation { x_mm: -3_000_000, y_mm: y, name: None });
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: y, name: None });
     let li = w.lines.len() as u32;
-    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 }); // BUS
+    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1, literal: false }); // BUS
     w.apply(&Command::AddStop { line: LineId(li), station: StationId(s0), after: None });
     w.apply(&Command::AddStop { line: LineId(li), station: StationId(s0 + 1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 1 });
@@ -83,7 +83,7 @@ fn buses_slow_in_peak_traffic() {
     let mut w = World::new(7, city);
     w.apply(&Command::PlaceStation { x_mm: -90_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 90_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
@@ -128,7 +128,7 @@ fn a_bus_follows_the_road_between_stops() {
     let mut w = World::new(7, city);
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // bottom-left, on the road
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None }); // bottom-right, on the road
-    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+    w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
 
@@ -203,7 +203,7 @@ fn shared_road_world(n: u32) -> World {
     w.apply(&Command::PlaceStation { x_mm: -10_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 10_000_000, y_mm: 0, name: None });
     for li in 0..n {
-        w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1 });
+        w.apply(&Command::CreateLine { color: 0xd55e00, name: None, loop_line: false, mode: 1, literal: false });
         w.apply(&Command::AddStop { line: LineId(li), station: StationId(0), after: None });
         w.apply(&Command::AddStop { line: LineId(li), station: StationId(1), after: None });
         w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 1 });

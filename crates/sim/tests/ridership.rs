@@ -26,7 +26,7 @@ fn world_with_stops_headway(stops: &[u32], headway_ms: i64) -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     for &s in stops {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
@@ -156,7 +156,7 @@ fn riders_abandon_when_service_is_too_infrequent() {
         w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
         for s in [0, 1, 2] {
             w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
         }

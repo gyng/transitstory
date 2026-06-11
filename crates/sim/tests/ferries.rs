@@ -26,7 +26,7 @@ fn ferry_line(w: &mut World, y: i64) -> u32 {
     w.apply(&Command::PlaceStation { x_mm: -3_000_000, y_mm: y, name: None });
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: y, name: None });
     let li = w.lines.len() as u32;
-    w.apply(&Command::CreateLine { color: 0x009e73, name: None, loop_line: false, mode: 2 }); // FERRY
+    w.apply(&Command::CreateLine { color: 0x009e73, name: None, loop_line: false, mode: 2, literal: false }); // FERRY
     w.apply(&Command::AddStop { line: LineId(li), station: StationId(s0), after: None });
     w.apply(&Command::AddStop { line: LineId(li), station: StationId(s0 + 1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 1 });
@@ -84,7 +84,7 @@ fn a_ferry_follows_the_water_channel_around_land() {
     let mut w = World::new(7, city);
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // bottom-left terminal, on water
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None }); // bottom-right terminal
-    w.apply(&Command::CreateLine { color: 0x009e73, name: None, loop_line: false, mode: 2 });
+    w.apply(&Command::CreateLine { color: 0x009e73, name: None, loop_line: false, mode: 2, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
 

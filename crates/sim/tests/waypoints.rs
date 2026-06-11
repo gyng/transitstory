@@ -11,7 +11,7 @@ fn straight_line() -> World {
     let mut w = base();
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 10_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w

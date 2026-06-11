@@ -24,7 +24,7 @@ fn place(w: &mut World, x_mm: i64, y_mm: i64) {
 }
 
 fn line(w: &mut World, mode: u8, stops: &[u32], headway_ms: i64) {
-    w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode });
+    w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode, literal: false });
     let li = LineId((w.lines.len() - 1) as u32);
     for &s in stops {
         w.apply(&Command::AddStop { line: li, station: StationId(s), after: None });

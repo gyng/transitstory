@@ -15,6 +15,10 @@ export interface NetLine {
   loop?: boolean;
   mode?: number; // transport mode (0=rail,1=bus,2=ferry,3=air); default rail
   stations: number[]; // ordered indices into stations[]
+  // Real OSM track alignment, per span: geometry[j] is the [lng,lat] vertices strictly between
+  // station j and j+1 (the closing span too, for a loop). Present for real-world imports so the
+  // line follows the actual layout (applied as literal waypoints); absent ⇒ straight spans.
+  geometry?: [number, number][][];
 }
 
 export interface Network {

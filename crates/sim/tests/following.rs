@@ -12,7 +12,7 @@ fn crammed_line(count: u16) -> World {
     let mut w = World::new(7, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None }); // 2 km E
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count });

@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 
 /// Curve samples per inter-stop span (more = smoother + denser polyline).
 const SAMPLES_PER_SPAN: usize = 10;
+/// Samples per segment for LITERAL (imported real-geometry) lines — a light pass that just rounds
+/// the raw OSM corners (the vertices are already dense, so 2 keeps the alignment + caps the size).
+const LITERAL_SAMPLES: usize = 2;
 /// Comfortable lateral acceleration (mm/s²) -> curve speed cap = sqrt(a * radius). CLOCK-FRAME:
 /// ×CLOCK_SCALE² (like the trainset accels), so the cap over a given REAL radius scales with the
 /// ×CLOCK_SCALE speeds and curves bind exactly as tightly as before the unification.
@@ -44,6 +47,12 @@ pub struct Path {
     pub min_radius_mm: i64,
     /// Build mode per inter-stop span: 0=Surface, 1=Elevated, 2=Tunnel.
     pub span_mode: Vec<u8>,
+    /// Literal geometry: connect the stop + waypoint vertices DIRECTLY (no Catmull-Rom smoothing /
+    /// subdivision). Set for real-world imported lines so they follow the actual OSM track alignment
+    /// rather than an idealised synthesised curve — and so dense imported geometry doesn't 10×-bloat
+    /// the polyline. Player-drawn lines stay smoothed (literal = false).
+    #[serde(default)]
+    pub literal: bool,
 }
 
 impl Path {
@@ -150,10 +159,28 @@ impl Path {
     /// `span_mode` values are preserved where the span count is unchanged; new spans default Surface.
     pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>]) {
         let n = stop_pts.len();
+        // A stop's geometric vertex. For LITERAL (imported) lines this is the stop's ON-TRACK
+        // position — the adjacent real waypoint — NOT the supplied point: same-name interchanges are
+        // merged to ONE point (a single station id, for transfers), but each line runs through its
+        // OWN platform, so forcing the merged point into the polyline spikes the track to whichever
+        // line's platform was imported first. Anchoring to the real track removes that snap; the
+        // station id stays shared. Smoothed (player-drawn) lines just use the supplied stop point.
+        let stop_vertex = |i: usize| -> PointMm {
+            if self.literal {
+                span_points
+                    .get(i)
+                    .and_then(|w| w.first())
+                    .copied()
+                    .or_else(|| i.checked_sub(1).and_then(|p| span_points.get(p)).and_then(|w| w.last()).copied())
+                    .unwrap_or(stop_pts[i])
+            } else {
+                stop_pts[i]
+            }
+        };
         let mut pts: Vec<PointMm> = Vec::with_capacity(n);
         let mut is_stop: Vec<bool> = Vec::with_capacity(n);
         for i in 0..n {
-            pts.push(stop_pts[i]);
+            pts.push(stop_vertex(i));
             is_stop.push(true);
             if i + 1 < n || self.loop_line {
                 if let Some(span_wps) = span_points.get(i) {
@@ -165,10 +192,16 @@ impl Path {
             }
         }
         if self.loop_line && n >= 3 {
-            pts.push(stop_pts[0]); // close the loop back to the first stop
+            pts.push(stop_vertex(0)); // close the loop back to the first stop's on-track vertex
             is_stop.push(true);
         }
-        let (poly, stop_idx) = smooth_centripetal(&pts);
+        // Literal (imported) geometry follows the real OSM vertices with only a VERY MINOR
+        // centripetal pass (few samples) — just enough to round the raw corners, not the big
+        // sweeping curve full smoothing would invent (and without the 10× polyline bloat). Player
+        // geometry gets the full smooth. Curve speed caps come from the actual vertices either way,
+        // so a real-world line's tight curves still slow trains correctly.
+        let samples = if self.literal { LITERAL_SAMPLES } else { SAMPLES_PER_SPAN };
+        let (poly, stop_idx) = smooth_centripetal(&pts, samples);
         self.polyline = poly;
         self.arclen_mm.clear();
         let mut acc = 0i64;
@@ -229,6 +262,10 @@ pub struct Line {
     pub loop_line: bool,
     /// The trunk: the primary ordered stop sequence (`paths[0]`).
     pub stops: Vec<StationId>,
+    /// Literal geometry (real-world imports follow the OSM alignment via dense waypoints, not a
+    /// synthesised curve). Propagated to every path on rebuild. See `Path::literal`.
+    #[serde(default)]
+    pub literal: bool,
     /// Branches off the trunk (P3). Empty for a simple linear/loop line.
     #[serde(default)]
     pub branches: Vec<Branch>,
@@ -270,6 +307,7 @@ impl Line {
             mode: 0,
             loop_line: false,
             stops: Vec::new(),
+            literal: false,
             branches: Vec::new(),
             waypoints: Vec::new(),
             headway_ms: default_headway_ms,
@@ -338,6 +376,7 @@ impl Line {
     pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
         let wps = self.waypoints.clone();
         let mut p = Path::new(self.stops.clone(), self.loop_line);
+        p.literal = self.literal;
         p.rebuild(stop_pts, &wps);
         self.paths = vec![p];
     }
@@ -366,13 +405,14 @@ fn cap_from_radius(r_mm: f64) -> i64 {
 
 /// Centripetal Catmull-Rom through `pts`. Returns the dense polyline and, for each input
 /// stop, its index in that polyline (so stations remain exact vertices on the curve).
-fn smooth_centripetal(pts: &[PointMm]) -> (Vec<PointMm>, Vec<usize>) {
+fn smooth_centripetal(pts: &[PointMm], samples: usize) -> (Vec<PointMm>, Vec<usize>) {
     let n = pts.len();
+    let samples = samples.max(1);
     if n < 2 {
         return (pts.to_vec(), (0..n).collect());
     }
     let p: Vec<(f64, f64)> = pts.iter().map(|q| (q.x_mm as f64, q.y_mm as f64)).collect();
-    let mut out: Vec<PointMm> = Vec::with_capacity(n * SAMPLES_PER_SPAN + 1);
+    let mut out: Vec<PointMm> = Vec::with_capacity(n * samples + 1);
     let mut stop_idx: Vec<usize> = Vec::with_capacity(n);
 
     let at = |i: isize| -> (f64, f64) {
@@ -386,8 +426,8 @@ fn smooth_centripetal(pts: &[PointMm]) -> (Vec<PointMm>, Vec<usize>) {
         let p2 = at(i as isize + 1);
         let p3 = at(i as isize + 2);
         stop_idx.push(out.len()); // span starts exactly at stop i
-        for k in 0..SAMPLES_PER_SPAN {
-            let t = k as f64 / SAMPLES_PER_SPAN as f64;
+        for k in 0..samples {
+            let t = k as f64 / samples as f64;
             let (x, y) = catmull(p0, p1, p2, p3, t);
             out.push(PointMm::new(x.round() as i64, y.round() as i64));
         }

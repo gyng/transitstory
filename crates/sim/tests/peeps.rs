@@ -20,7 +20,7 @@ fn serviced_world() -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 0x00ccff, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0x00ccff, name: None, loop_line: false, mode: 0, literal: false });
     for s in 0..3 {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }

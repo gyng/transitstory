@@ -27,7 +27,7 @@ fn served_world(growth_bp: i64) -> World {
     let mut w = World::new(7, city(growth_bp));
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 1_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
@@ -88,7 +88,7 @@ fn agent_population_tops_up_with_growth_and_replays() {
         });
         w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });

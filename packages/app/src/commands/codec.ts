@@ -6,8 +6,8 @@ export const cmd = {
   placeStation: (x_mm: number, y_mm: number, name: string | null = null): Command => ({
     PlaceStation: { x_mm, y_mm, name },
   }),
-  createLine: (color: number, name: string | null = null, loop_line = false, mode = 0): Command => ({
-    CreateLine: { color, name, loop_line, mode },
+  createLine: (color: number, name: string | null = null, loop_line = false, mode = 0, literal = false): Command => ({
+    CreateLine: { color, name, loop_line, mode, literal },
   }),
   addStop: (line: number, station: number, after: number | null = null): Command => ({
     AddStop: { line, station, after },

@@ -680,6 +680,43 @@ tests re-pinned**.
   default already works; a player lever is the add). Until then a branch is operable + routable in the
   core but draws only its trunk.
 
+## Real-world imported lines follow OSM geometry (2026-06-12)
+
+Stage-C work began with the geometry ask: imported real networks were drawn as idealised
+Catmull-Rom curves through the STATIONS (the importer captured stops only), so they didn't follow
+the real track. Now they do — and the merged-interchange snapping that surfaced is fixed.
+
+- **Literal geometry** (`line.rs` `Path.literal` / `Line.literal`, `CreateLine.literal` + mirror):
+  an imported line follows its supplied (OSM) vertices directly with only a VERY MINOR centripetal
+  pass (`LITERAL_SAMPLES = 2` — rounds the raw corners, no big invented curve, no 10× polyline
+  bloat). Player-drawn lines keep the full smooth. Curve speed caps still come from the real
+  vertices, so a real line's tight curves slow trains correctly.
+- **Importer geometry** (`build_networks.py`): the Overpass query now `out geom`; `stitch_ways`
+  chains the member ways into one continuous track polyline; `span_geometry` splits it at each
+  station (nearest vertex) into per-span intermediate vertices; **Douglas-Peucker** (`simplify_rdp`,
+  ~30 m) decimates the dense OSM track (Tokyo 91788→9279 verts, ~10%) so the save / state-hash /
+  boot stay cheap. Emitted as `geometry` in the network JSON; `applyNetwork` creates the line
+  `literal` and sets the per-span [lng,lat]→mm waypoints (the one `coords/geo.ts` crossing).
+- **Interchange snapping fixed** (the reported artifact): same-name stops merge to ONE station id
+  (for transfers) but each line runs through its OWN platform, so forcing the merged point into the
+  polyline spiked the track to whichever line was imported first. `Path::rebuild` now anchors a
+  literal line's stop to its **on-track** vertex (the adjacent real waypoint), not the merged point —
+  the spike is gone; the station id stays shared. (The station DOT still sits at the merged point; a
+  per-line platform model is a larger follow-up.)
+- **Re-baked 11 cities** with decimated geometry (brisbane/calgary/chicago/dublin/glasgow/istanbul/
+  manhattan/pyongyang/sf/singapore/tokyo). **London timed out** on Overpass (97-line Tube) and keeps
+  its old no-geometry data — it degrades gracefully to straight lines. Re-baking also refreshed the
+  networks to current OSM + importer (e.g. Tokyo 440→477 stations, 32→72 lines), so the cities.ts
+  real-network anchors may want re-measuring (soft calibration, not a correctness issue).
+- Browser-verified on Singapore: lines follow the real MRT alignment, interchanges weave cleanly (no
+  spikes), gently rounded; 0 console errors; 58 trains, ridership develops. Tiers: cargo 28 suites
+  (determinism green; literal only affects imports, zero re-pins), vitest 21, tsc clean, playwright
+  16 (Tokyo re-boots in ~52 s with the decimated geometry; previously timed out at 60 s).
+- **Still pending in Stage C** (the original branch goal — the geometry ask took priority): **branch
+  import** (detecting the Circle Line CE / JRL branches from OSM — a heuristic sub-problem), **branch
+  TRACK rendering** (LineView per-branch polylines), and the **service-pattern UI**. The P3 core runs
+  branches; they're just not yet imported or drawn, so the Circle Line still shows no Marina Bay spur.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

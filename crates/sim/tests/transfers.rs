@@ -19,11 +19,11 @@ fn two_line_world() -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: -1_500_000, name: None }); // 7
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: -3_000_000, name: None }); // 8
 
-    w.apply(&Command::CreateLine { color: 0x00aa00, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0x00aa00, name: None, loop_line: false, mode: 0, literal: false });
     for s in [0, 1, 2, 3, 4] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
-    w.apply(&Command::CreateLine { color: 0xaa0000, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0xaa0000, name: None, loop_line: false, mode: 0, literal: false });
     for s in [5, 6, 2, 7, 8] {
         w.apply(&Command::AddStop { line: LineId(1), station: StationId(s), after: None });
     }

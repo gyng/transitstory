@@ -10,7 +10,7 @@ fn sample_log() -> Vec<Command> {
         Command::PlaceStation { x_mm: 0, y_mm: 0, name: None },
         Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None },
         Command::PlaceStation { x_mm: 10_000_000, y_mm: 2_000_000, name: Some("Marina".into()) },
-        Command::CreateLine { color: 0x3366cc, name: None, loop_line: false, mode: 0 },
+        Command::CreateLine { color: 0x3366cc, name: None, loop_line: false, mode: 0, literal: false },
         Command::AddStop { line: LineId(0), station: StationId(0), after: None },
         Command::AddStop { line: LineId(0), station: StationId(1), after: None },
         Command::AddStop { line: LineId(0), station: StationId(2), after: None },
@@ -92,7 +92,7 @@ fn invalid_commands_are_rejected_not_panicking() {
 #[test]
 fn headway_and_count_are_clamped() {
     let mut w = World::new(0, CityData::default());
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 1 }); // below floor
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 9999 }); // above cap
     let l = &w.lines[0];

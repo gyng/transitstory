@@ -4,7 +4,7 @@
 
 export type Command =
   | { PlaceStation: { x_mm: number; y_mm: number; name: string | null } }
-  | { CreateLine: { color: number; name?: string | null; loop_line?: boolean; mode?: number } }
+  | { CreateLine: { color: number; name?: string | null; loop_line?: boolean; mode?: number; literal?: boolean } }
   | { AddStop: { line: number; station: number; after: number | null } }
   // branch: append a stop to a line's branch tree (P3). branch==branches.len() creates a new
   // branch off trunk stop `diverge_at`; branch<len appends to that branch.

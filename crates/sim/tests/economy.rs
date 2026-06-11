@@ -6,7 +6,7 @@ fn rail_world() -> World {
     let mut w = World::new(1, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
@@ -37,7 +37,7 @@ fn heavy_rail_costs_more_and_runs_faster_than_metro() {
         let mut w = World::new(1, CityData::default());
         w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode, literal: false });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
         w
@@ -64,7 +64,7 @@ fn economy_rejects_unaffordable_construction() {
     w.apply(&Command::SetEconomy { enabled: true });
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 40_000_000, y_mm: 0, name: None }); // 40 km apart
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None }); // ~40 km surface, affordable
     let before = w.lines[0].capital_cost;
@@ -86,7 +86,7 @@ fn opex_drains_the_balance_only_when_economy_is_on() {
         }
         w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
@@ -110,7 +110,7 @@ fn fares_grow_the_balance_over_time() {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 4_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     for s in [0, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }

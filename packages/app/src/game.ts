@@ -1532,8 +1532,16 @@ export class Game {
       this.bridge.apply(cmd.placeStation(x, y, s.name));
     }
     net.lines.forEach((line, li) => {
-      this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0, line.name, line.loop ?? false, line.mode ?? 0));
+      // Imported lines with real OSM geometry are LITERAL — they follow the supplied track
+      // alignment directly (no synthesised Catmull-Rom curve).
+      const literal = !!(line.geometry && line.geometry.length);
+      this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0, line.name, line.loop ?? false, line.mode ?? 0, literal));
       for (const idx of line.stations) this.bridge.apply(cmd.addStop(li, idx));
+      if (literal) {
+        // Per-span [lng,lat] vertices → mm waypoints (the one coordinate crossing, coords/geo.ts).
+        const wps = line.geometry!.map((span) => span.map(([lng, lat]) => lngLatToMm([lng, lat])));
+        this.bridge.apply(cmd.setLineWaypoints(li, wps));
+      }
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
       // headwayMin in the network JSON means real minutes of SERVICE — clock-frame sim-ms now.
       this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * SIM_MS_PER_CLOCK_MIN)));

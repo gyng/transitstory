@@ -59,7 +59,9 @@ def overpass(bbox):
     q = (
         f"[out:json][timeout:180];"
         f'(relation["type"="route"]["route"~"{ROUTE_RE}"]({s},{w},{n},{e}););'
-        f"out body;>;out body qt;"
+        # `out geom` carries each relation's member WAY geometry inline (the real track alignment);
+        # `>;out body` then resolves the member nodes with tags (station names).
+        f"out geom;>;out body qt;"
     )
     last = None
     for ep in ENDPOINTS:
@@ -86,6 +88,108 @@ def norm_colour(tags, idx):
 def dist_km(a, b):
     return math.hypot((a[0] - b[0]) * 111.32 * math.cos(math.radians(a[1])),
                       (a[1] - b[1]) * 110.54)
+
+
+# Geometry simplification tolerance (degrees ≈ 30 m). The raw OSM track has a vertex every few
+# metres — far denser than the game needs — which bloats the save, the state hash, and (badly) the
+# boot-time geometry+buildability rebuild on big networks. Douglas-Peucker collapses near-straight
+# runs while keeping every real curve, so the alignment looks identical.
+RDP_EPS = 0.0003
+
+
+def simplify_rdp(pts, eps=RDP_EPS):
+    """Ramer-Douglas-Peucker on a (lng,lat) polyline. Iterative (no recursion-depth blowups on the
+    long dense OSM ways). Endpoints are always kept, so per-span station anchoring is preserved."""
+    n = len(pts)
+    if n < 3:
+        return pts
+    keep = [False] * n
+    keep[0] = keep[n - 1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        a, b = stack.pop()
+        ax, ay = pts[a]
+        bx, by = pts[b]
+        dx, dy = bx - ax, by - ay
+        l2 = dx * dx + dy * dy
+        dmax, idx = 0.0, -1
+        for i in range(a + 1, b):
+            px, py = pts[i][0] - ax, pts[i][1] - ay
+            if l2 == 0:
+                d = math.hypot(px, py)
+            else:
+                t = (px * dx + py * dy) / l2
+                d = math.hypot(px - t * dx, py - t * dy)
+            if d > dmax:
+                dmax, idx = d, i
+        if dmax > eps and idx != -1:
+            keep[idx] = True
+            stack.append((a, idx))
+            stack.append((idx, b))
+    return [pts[i] for i in range(n) if keep[i]]
+
+
+def stitch_ways(r):
+    """Stitch a route relation's member WAY geometries into one continuous (lng,lat) polyline so an
+    imported line follows the REAL track alignment, not a synthesised curve. Ways come in member
+    order but in arbitrary direction; chain greedily by matching endpoints (≈25 m tolerance). A gap
+    just concatenates (the per-span split tolerates it)."""
+    ways = [[(g["lon"], g["lat"]) for g in m["geometry"]]
+            for m in r.get("members", [])
+            if m.get("type") == "way" and m.get("geometry")]
+    ways = [w for w in ways if len(w) >= 2]
+    if not ways:
+        return []
+    TOL2 = (25.0 / 111320.0) ** 2  # ~25 m, in squared degrees (good enough at metro latitudes)
+
+    def near(a, b):
+        return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 <= TOL2
+
+    poly = list(ways[0])
+    for w in ways[1:]:
+        if near(poly[-1], w[0]):
+            poly += w[1:]
+        elif near(poly[-1], w[-1]):
+            poly += list(reversed(w))[1:]
+        elif near(poly[0], w[-1]):
+            poly = w[:-1] + poly
+        elif near(poly[0], w[0]):
+            poly = list(reversed(w))[1:] + poly
+        else:
+            poly += w  # gap — concatenate; the span split still works off nearest vertices
+    return poly
+
+
+def span_geometry(poly, seq, stations, loop):
+    """Split the stitched track polyline into per-span intermediate vertices: geometry[j] is the
+    (lng,lat) points strictly BETWEEN station seq[j] and seq[j+1] (the closing span too, for a loop).
+    Each station maps to its nearest polyline vertex; the slice is oriented from j to j+1. Returns a
+    list aligned with the line's spans, or None if there's no usable polyline (→ straight fallback)."""
+    if len(poly) < 2 or len(seq) < 2:
+        return None
+
+    def nearest(si):
+        p = (stations[si]["lng"], stations[si]["lat"])
+        bi, bd = 0, None
+        for i, q in enumerate(poly):
+            d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2
+            if bd is None or d < bd:
+                bd, bi = d, i
+        return bi
+
+    idx = [nearest(si) for si in seq]
+    pairs = list(zip(seq, seq[1:]))
+    if loop:
+        pairs.append((seq[-1], seq[0]))
+        idx = idx + [idx[0]]
+    geom = []
+    for j in range(len(pairs)):
+        a, b = idx[j], idx[j + 1]
+        seg = poly[a + 1:b] if a <= b else list(reversed(poly[b + 1:a]))
+        seg = simplify_rdp(seg)  # decimate dense straight runs (keeps curves)
+        geom.append([[round(x, 5), round(y, 5)] for (x, y) in seg])
+    # All-empty (stations are the only vertices) ⇒ no real shape to carry.
+    return geom if any(g for g in geom) else None
 
 
 def build(cid, meta):
@@ -166,7 +270,10 @@ def build(cid, meta):
         min_stops = 2 if mode in (1, 2) else 3
         if len(seq) < min_stops:
             continue
-        lines.append({
+        # Real OSM track alignment, split into per-span intermediate vertices (so the line follows
+        # the actual layout instead of a synthesised curve). None ⇒ straight fallback.
+        geom = span_geometry(stitch_ways(r), seq, stations, loop)
+        line = {
             "name": t.get("name") or t.get("ref") or key,
             "colorHex": norm_colour(t, ci),
             "headwayMin": 10 if t.get("route") == "train" else (4 if mode == 0 else (8 if mode == 1 else 20)),
@@ -174,7 +281,10 @@ def build(cid, meta):
             "loop": loop,
             "mode": mode,
             "stations": seq,
-        })
+        }
+        if geom is not None:
+            line["geometry"] = geom
+        lines.append(line)
 
     if not lines:
         raise RuntimeError("no usable routes parsed")

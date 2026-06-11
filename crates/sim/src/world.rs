@@ -672,6 +672,7 @@ impl World {
                 Vec::new()
             };
             let mut p = crate::line::Path::new(stops, loop_line);
+            p.literal = self.lines[idx].literal;
             if let Some(sm) = old_span_modes.get(pi) {
                 p.span_mode = sm.clone();
             }
@@ -695,12 +696,13 @@ impl World {
                 self.demand_dirty = true; // catchment capture must recompute
                 vec![Event::StationPlaced { id, name }]
             }
-            Command::CreateLine { color, name, loop_line, mode } => {
+            Command::CreateLine { color, name, loop_line, mode, literal } => {
                 let id = LineId(self.lines.len() as u32);
                 let mut l = Line::new(*color, DEFAULT_HEADWAY_MS);
                 l.name = name.clone().unwrap_or_else(|| format!("Line {}", id.0 + 1));
                 l.loop_line = *loop_line;
                 l.mode = *mode;
+                l.literal = *literal;
                 self.lines.push(l);
                 vec![Event::LineCreated { id }]
             }

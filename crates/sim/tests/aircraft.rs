@@ -77,7 +77,7 @@ fn air_world(spec: u8) -> World {
     let mut w = World::new(7, CityData::default());
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 1_000_000_000, y_mm: 0, name: None }); // ~1000 km E
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: tmode::AIR });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: tmode::AIR, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec, count: 2 });

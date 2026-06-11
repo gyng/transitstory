@@ -100,7 +100,7 @@ fn barrier_capture_replays_deterministically() {
         let mut w = World::new(7, city_with_barrier(300_000, Some(150_000), sim::city::class::WATER));
         w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
         w.apply(&Command::PlaceStation { x_mm: -300_000, y_mm: 0, name: None });
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });

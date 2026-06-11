@@ -24,7 +24,7 @@ fn starved_world() -> World {
     for k in 0..3 {
         w.apply(&Command::PlaceStation { x_mm: 1_000_000 * k, y_mm: 0, name: None });
     }
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     for s in 0..3 {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }

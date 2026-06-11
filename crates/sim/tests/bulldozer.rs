@@ -9,7 +9,7 @@ fn line_world() -> World {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 6_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     for s in [0, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
@@ -69,7 +69,7 @@ fn remove_station_frees_its_catchment() {
     let city = CityData { id: "t".into(), seed: 1, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() };
     let mut w = World::new(1, city);
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None }); // on the cell
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::SetRunning { running: true });
     w.tick(50); // demand prepare captures
@@ -88,7 +88,7 @@ fn preview_line_cost_matches_a_committed_trainless_line() {
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
     // Commit a line through both stops with NO trainset → capital_cost is track-only.
-    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     let committed = w.lines[0].capital_cost;
@@ -112,11 +112,11 @@ fn determinism_holds_with_removes_in_the_log() {
         for k in 0..5 {
             w.apply(&Command::PlaceStation { x_mm: 1_500_000 * k, y_mm: 0, name: None });
         }
-        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
         for s in [0, 1, 2, 3, 4] {
             w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
         }
-        w.apply(&Command::CreateLine { color: 2, name: None, loop_line: false, mode: 1 });
+        w.apply(&Command::CreateLine { color: 2, name: None, loop_line: false, mode: 1, literal: false });
         for s in [0, 2, 4] {
             w.apply(&Command::AddStop { line: LineId(1), station: StationId(s), after: None });
         }

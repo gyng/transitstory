@@ -29,6 +29,10 @@ pub enum Command {
         /// Transport mode: 0=rail,1=bus,2=ferry,3=air.
         #[serde(default)]
         mode: u8,
+        /// Literal geometry — follow supplied (imported OSM) waypoints directly instead of the
+        /// synthesised Catmull-Rom curve. Set for real-world network imports. Default false.
+        #[serde(default)]
+        literal: bool,
     },
     AddStop {
         line: LineId,

@@ -22,11 +22,11 @@ fn footpath_world() -> World {
     w.apply(&Command::PlaceStation { x_mm: 300_000, y_mm: 0, name: None }); // 2  (line 1 west end, 300 m from 1)
     w.apply(&Command::PlaceStation { x_mm: 2_000_000, y_mm: 0, name: None }); // 3  (line 1 east end)
 
-    w.apply(&Command::CreateLine { color: 0x00aa00, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0x00aa00, name: None, loop_line: false, mode: 0, literal: false });
     for s in [0, 1] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
-    w.apply(&Command::CreateLine { color: 0xaa0000, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0xaa0000, name: None, loop_line: false, mode: 0, literal: false });
     for s in [2, 3] {
         w.apply(&Command::AddStop { line: LineId(1), station: StationId(s), after: None });
     }

@@ -45,7 +45,7 @@ fn build_tokyo_scale() -> World {
     }
     let mut line_id = 0u32;
     let mut add_line = |w: &mut World, stops: Vec<u32>| {
-        w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 0x0072b2, name: None, loop_line: false, mode: 0, literal: false });
         for s in &stops {
             w.apply(&Command::AddStop { line: LineId(line_id), station: StationId(*s), after: None });
         }
@@ -148,7 +148,7 @@ fn build_small() -> World {
     }
     let mut li = 0u32;
     let mut line = |w: &mut World, stops: Vec<u32>| {
-        w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+        w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0, literal: false });
         for s in stops {
             w.apply(&Command::AddStop { line: LineId(li), station: StationId(s), after: None });
         }
@@ -187,7 +187,7 @@ fn agent_demand_survives_an_empty_demand_grid() {
     let mut w = World::new(7, CityData { id: "e".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells: vec![] }, ..Default::default() });
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
     w.apply(&Command::PlaceStation { x_mm: 5_000_000, y_mm: 0, name: None });
-    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
@@ -219,7 +219,7 @@ fn agent_demand_picks_up_a_network_built_after_it_is_enabled() {
     assert_eq!(w.stats_snapshot().ridership_total, 0.0, "no lines yet ⇒ no agent trips");
     // Build a SHORT, frequently-served line connecting home↔job AFTER agents were enabled — the
     // cell_station map must refresh (a long line wouldn't cycle a train back within the test window).
-    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0 });
+    w.apply(&Command::CreateLine { color: 0, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 4 });

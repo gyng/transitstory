@@ -29,3 +29,4 @@ test-results
 # WSL alternate-data-stream stubs (downloaded-file security-zone metadata)
 *:Zone.Identifier
 .claude/
+scripts/__pycache__/
