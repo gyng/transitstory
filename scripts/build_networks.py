@@ -187,6 +187,16 @@ def span_geometry(poly, seq, stations, loop):
         a, b = idx[j], idx[j + 1]
         seg = poly[a + 1:b] if a <= b else list(reversed(poly[b + 1:a]))
         seg = simplify_rdp(seg)  # decimate dense straight runs (keeps curves)
+        # Drop a span whose path WILDLY exceeds the straight gap — that's a non-revenue detour
+        # (depot/siding) or a bad stitch, not the real alignment (e.g. the DTL into Gali Batu depot,
+        # the LRT loops' closing spans). A real curve is ≲2×; >3× is always spurious.
+        sa = (stations[pairs[j][0]]["lng"], stations[pairs[j][0]]["lat"])
+        sb = (stations[pairs[j][1]]["lng"], stations[pairs[j][1]]["lat"])
+        straight = dist_km(sa, sb)
+        pts = [sa] + [(x, y) for (x, y) in seg] + [sb]
+        plen = sum(dist_km(pts[k], pts[k + 1]) for k in range(len(pts) - 1))
+        if straight > 0.05 and plen > 3.0 * straight:
+            seg = []  # straight fallback for this span
         geom.append([[round(x, 5), round(y, 5)] for (x, y) in seg])
     # All-empty (stations are the only vertices) ⇒ no real shape to carry.
     return geom if any(g for g in geom) else None

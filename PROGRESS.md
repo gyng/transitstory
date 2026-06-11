@@ -793,6 +793,24 @@ Worked the post-Stage-C watch items; one was a real bug, one a false alarm.
 - Still open (small, by design): per-branch span-mode EDITING in the UI, branch waypoint editing, and
   the service-pattern lever (round-robin default works).
 
+## Importer fix — drop depot/siding detours from line geometry (2026-06-12)
+
+Reported on the .sg geometry deploy: the Downtown Line "looped to depot" at Bukit Panjang, and the
+LRT loops looked broken. Root cause: `stitch_ways` chains ALL of a relation's member ways including
+**non-revenue depot/siding track**, so a span inherited a huge detour — the DTL into Gali Batu depot
+(span Hillview→Hume: 7.6 km path for a 0.9 km gap, 8.6×), and the Bukit Panjang / Punggol / Sengkang
+LRT loops' closing spans into their depots (5.7–11×).
+
+- **Fix** (`span_geometry`): drop any span whose path length exceeds **3× the straight station gap** —
+  that's never the real alignment (a real curve is ≲2×), so the span falls back to straight. General
+  and robust (no per-line tagging).
+- **Post-processed all committed networks** with the same filter (no re-fetch): **764 detour spans
+  dropped** — singapore 4, but it was widespread (london 207, manhattan 216, tokyo 125, glasgow 81,
+  chicago 51, …); many cities had depot/siding wanders. Pyongyang had none.
+- Browser-verified on Singapore: the Downtown Line terminus at Bukit Panjang is clean (no depot loop)
+  and the BPLRT renders as a proper loop. Tiers: e2e network + slice green (Singapore + Tokyo boot,
+  carry riders).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
