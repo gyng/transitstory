@@ -829,6 +829,25 @@ direction variants.
   routes split (london 99→105, tokyo 72→77, singapore 10→13). Tiers: e2e 16 (Singapore + Tokyo boot,
   carry riders), determinism green.
 
+## Branch UI — branches become first-class in the Editor (2026-06-12)
+
+Took the deferred branch-UI bits: branches are now editable objects, not read-only imported topology.
+
+- **Sim** (`SetBranchTrack` + `RemoveBranch` commands, mirrored): per-branch build mode (sets the
+  branch's OWN spans past the divergence — the shared trunk prefix stays governed by the trunk's
+  Track control, afford-gated like the line Track), and bulldoze a branch (the trunk + other branches
+  stay; reversible by replay). `LineView` gained `branch_modes` (uniform mode per branch, −1 if mixed)
+  + `branch_termini` (terminus station id) for the UI.
+- **Editor** (`Panels.tsx`): a **Branches** section on a branched line — each spur shows "⑂ → <terminus>"
+  with a rail Surface/Elevated/Tunnel toggle and a × bulldoze (testids `branch-N`,
+  `branch-N-mode-M`, `branch-N-remove`). `game.setBranchMode` / `removeBranch` funnel to the commands.
+- Browser-verified on the Circle Line: the Branches row shows "→ Marina Bay"; setting it to Tunnel
+  updates `branchModes` to [2]; removing it drops the spur (0 termini/polylines). Tiers: cargo
+  (determinism + new commands green), vitest 21, tsc clean, playwright 16.
+- **Service-pattern lever** stays deferred by design (round-robin works); branch waypoint *editing*
+  (hand-shaping a spur) and per-branch *span* editing also remain out (whole-branch mode covers the
+  real cases).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

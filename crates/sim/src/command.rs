@@ -61,6 +61,20 @@ pub enum Command {
         branch: u16,
         waypoints: Vec<Vec<[i64; 2]>>,
     },
+    /// Build mode (0=Surface,1=Elevated,2=Tunnel) for a whole BRANCH — sets every span of the
+    /// branch's OWN track (past the divergence; the shared trunk prefix is governed by the trunk).
+    /// The per-branch analog of the whole-line Track control.
+    SetBranchTrack {
+        line: LineId,
+        branch: u16,
+        mode: u8,
+    },
+    /// Bulldoze a branch off a line (tombstone-free: it's just dropped; the trunk + other branches
+    /// stay). Reversible by replay, like `RemoveLine`.
+    RemoveBranch {
+        line: LineId,
+        branch: u16,
+    },
     AssignTrainset {
         line: LineId,
         spec: u8,
@@ -115,6 +129,8 @@ pub enum Event {
     StopAdded { line: LineId, station: StationId },
     BranchStopAdded { line: LineId, branch: u16, station: StationId },
     BranchWaypointsSet { line: LineId, branch: u16 },
+    BranchTrackSet { line: LineId, branch: u16, mode: u8 },
+    BranchRemoved { line: LineId, branch: u16 },
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },

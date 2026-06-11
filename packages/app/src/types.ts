@@ -11,6 +11,9 @@ export type Command =
   | { AddBranchStop: { line: number; branch: number; diverge_at: number; station: number } }
   // branch waypoints: the spur's own per-span real-geometry shaping points (literal imports).
   | { SetBranchWaypoints: { line: number; branch: number; waypoints: [number, number][][] } }
+  // per-branch Track: build mode (0=Surface,1=Elevated,2=Tunnel) for a whole branch's own track.
+  | { SetBranchTrack: { line: number; branch: number; mode: number } }
+  | { RemoveBranch: { line: number; branch: number } }
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
@@ -29,6 +32,8 @@ export type Event =
   | { StopAdded: { line: number; station: number } }
   | { BranchStopAdded: { line: number; branch: number; station: number } }
   | { BranchWaypointsSet: { line: number; branch: number } }
+  | { BranchTrackSet: { line: number; branch: number; mode: number } }
+  | { BranchRemoved: { line: number; branch: number } }
   | { TrainsetAssigned: { line: number; count: number } }
   | { HeadwaySet: { line: number; headway_ms: number } }
   | { SegmentModeSet: { line: number; span: number; mode: number } }
@@ -197,6 +202,9 @@ export interface LineView {
   // One polyline per branch path (P3): drawn in the line's colour beside the trunk so a Y-shaped
   // line shows its spur. Empty for a simple line.
   branchPolylinesMm: [number, number][][];
+  // per-branch build mode (0/1/2) of its own track, or -1 if mixed; and its terminus station id.
+  branchModes: number[];
+  branchTermini: number[];
   minRadiusMm: number;
   spanModes: number[];
   crossesWaterSurface: boolean;

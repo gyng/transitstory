@@ -156,6 +156,13 @@ pub struct LineView {
     /// Drawn in the line's colour alongside the trunk so a Y-shaped line shows its spur (P3).
     #[serde(default)]
     pub branch_polylines_mm: Vec<Vec<[f64; 2]>>,
+    /// Per branch: the uniform build mode of its OWN spans (0=Surface,1=Elevated,2=Tunnel), or -1 if
+    /// mixed. For the Editor's per-branch Track control.
+    #[serde(default)]
+    pub branch_modes: Vec<i32>,
+    /// Per branch: its terminus station id (the last stop), for the "→ <name>" label.
+    #[serde(default)]
+    pub branch_termini: Vec<u32>,
     /// Tightest curve radius (mm) on the line; large value == effectively straight.
     pub min_radius_mm: f64,
     /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).

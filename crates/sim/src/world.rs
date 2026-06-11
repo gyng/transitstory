@@ -805,6 +805,49 @@ impl World {
                     vec![Event::Rejected { reason: "SetBranchWaypoints: unknown line or branch".into() }]
                 }
             }
+            Command::SetBranchTrack { line, branch, mode } => {
+                let li = line.index();
+                let bi = *branch as usize;
+                if li < self.lines.len()
+                    && bi < self.lines[li].branches.len()
+                    && bi + 1 < self.lines[li].paths.len()
+                {
+                    let old_capital = self.capital_total();
+                    let d = self.lines[li].branches[bi].diverge_at as usize;
+                    let saved = self.lines[li].paths[bi + 1].span_mode.clone();
+                    let m = (*mode).min(crate::line::mode::TUNNEL);
+                    {
+                        // The branch's OWN spans (past the divergence) — the shared trunk prefix is
+                        // governed by the trunk's Track control.
+                        let sm = &mut self.lines[li].paths[bi + 1].span_mode;
+                        for k in d..sm.len() {
+                            sm[k] = m;
+                        }
+                    }
+                    self.recompute_line_buildability(*line);
+                    if self.overspent(old_capital) {
+                        self.lines[li].paths[bi + 1].span_mode = saved;
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected { reason: "Not enough money to grade-separate this branch".into() }]
+                    } else {
+                        vec![Event::BranchTrackSet { line: *line, branch: *branch, mode: m }]
+                    }
+                } else {
+                    vec![Event::Rejected { reason: "SetBranchTrack: unknown line or branch".into() }]
+                }
+            }
+            Command::RemoveBranch { line, branch } => {
+                let li = line.index();
+                let bi = *branch as usize;
+                if li < self.lines.len() && bi < self.lines[li].branches.len() {
+                    self.lines[li].branches.remove(bi);
+                    self.rebuild_line_geometry(*line);
+                    self.recompute_line_buildability(*line);
+                    vec![Event::BranchRemoved { line: *line, branch: *branch }]
+                } else {
+                    vec![Event::Rejected { reason: "RemoveBranch: unknown line or branch".into() }]
+                }
+            }
             Command::AssignTrainset { line, spec, count } => {
                 if line.index() < self.lines.len() {
                     let count = (*count).clamp(1, MAX_TRAINS_PER_LINE);
@@ -1147,6 +1190,24 @@ impl World {
                     .iter()
                     .skip(1)
                     .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
+                    .collect(),
+                branch_modes: l
+                    .branches
+                    .iter()
+                    .enumerate()
+                    .map(|(bi, b)| {
+                        // Uniform build mode of the branch's OWN spans (past the divergence), else -1.
+                        let d = b.diverge_at as usize;
+                        match l.paths.get(bi + 1).map(|p| &p.span_mode[d.min(p.span_mode.len())..]) {
+                            Some(own) if !own.is_empty() && own.iter().all(|&m| m == own[0]) => own[0] as i32,
+                            _ => -1,
+                        }
+                    })
+                    .collect(),
+                branch_termini: l
+                    .branches
+                    .iter()
+                    .map(|b| b.stops.last().map(|s| s.0).unwrap_or(0))
                     .collect(),
                 min_radius_mm: l.min_radius_mm() as f64,
                 span_modes: l.paths.first().map(|p| p.span_mode.clone()).unwrap_or_default(),

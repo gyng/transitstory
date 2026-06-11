@@ -361,6 +361,18 @@ export class Game {
     this.refresh();
   }
 
+  /** Build mode (0/1/2) for a whole branch's own track. */
+  setBranchMode(line: number, branch: number, mode: number): void {
+    this.noteRejections(this.bridge.apply(cmd.setBranchTrack(line, branch, mode)));
+    this.refresh();
+  }
+
+  /** Bulldoze a branch off a line (the trunk + other branches stay). */
+  removeBranch(line: number, branch: number): void {
+    this.noteRejections(this.bridge.apply(cmd.removeBranch(line, branch)));
+    this.refresh();
+  }
+
   // --- commands (the only write path) ---
 
   placeStation(lng: number, lat: number): number {

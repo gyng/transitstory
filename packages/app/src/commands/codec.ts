@@ -21,6 +21,12 @@ export const cmd = {
   setBranchWaypoints: (line: number, branch: number, waypoints: [number, number][][]): Command => ({
     SetBranchWaypoints: { line, branch, waypoints },
   }),
+  /** Build mode (0=Surface,1=Elevated,2=Tunnel) for a whole branch's own track. */
+  setBranchTrack: (line: number, branch: number, mode: number): Command => ({
+    SetBranchTrack: { line, branch, mode },
+  }),
+  /** Bulldoze a branch off a line (trunk + other branches stay). */
+  removeBranch: (line: number, branch: number): Command => ({ RemoveBranch: { line, branch } }),
   assignTrainset: (line: number, spec: number, count: number): Command => ({
     AssignTrainset: { line, spec, count },
   }),

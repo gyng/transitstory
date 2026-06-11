@@ -414,6 +414,56 @@ function Editor({ l }: { l: PerLine }) {
         </div>
       )}
 
+      {/* Branches (P3): each spur gets a terminus label, a per-branch Track toggle (rail), and a
+          bulldoze. Only shown for a branched line (e.g. the Circle Line's Marina Bay spur). */}
+      {(() => {
+        const blv = game.bridge.linesView()[id];
+        if (!blv || blv.removed || !blv.branchTermini || blv.branchTermini.length === 0) return null;
+        const bsv = game.bridge.stationsView();
+        const bn = (sid: number) => bsv[sid]?.name || `Station ${sid + 1}`;
+        const sBtn = (on: boolean): CSSProperties => ({
+          width: 22,
+          padding: "3px 0",
+          borderRadius: 5,
+          border: "1px solid #d7dade",
+          cursor: "pointer",
+          font: "600 11px system-ui",
+          ...(on ? { background: "#0072b2", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
+        });
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontWeight: 600, marginBottom: "4px" }}>Branches</div>
+            {blv.branchTermini.map((term, bi) => (
+              <div key={bi} data-testid={`branch-${bi}`} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`Branch to ${bn(term)}`}>
+                  ⑂ → {bn(term)}
+                </span>
+                {isRail &&
+                  (["S", "E", "T"] as const).map((lbl, m) => (
+                    <button
+                      key={m}
+                      data-testid={`branch-${bi}-mode-${m}`}
+                      title={["Surface", "Elevated", "Tunnel"][m]}
+                      onClick={() => game.setBranchMode(id, bi, m)}
+                      style={sBtn(blv.branchModes[bi] === m)}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                <button
+                  data-testid={`branch-${bi}-remove`}
+                  title="Remove this branch"
+                  onClick={() => game.removeBranch(id, bi)}
+                  style={{ width: 22, padding: "3px 0", borderRadius: 5, border: "1px solid #e3b7b7", background: "#fff", color: "#c0392b", cursor: "pointer", font: "600 12px system-ui" }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       <div data-testid="line-impact" style={{ marginTop: "8px", fontSize: "12px" }}>
         {l.crossesWater && (
           <div data-testid="water-warning" style={{ color: "#d62828", fontWeight: 600, marginBottom: "4px" }}>
