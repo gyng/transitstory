@@ -44,6 +44,16 @@ pub(crate) fn dispatch(world: &mut World) {
         }
         // Loop: circuit length = one-way; out-and-back: there and back.
         let round = if line.loop_line { total } else { 2 * total };
+        // Block density cap (P1, docs/capacity-roadmap.md): trains must sit at least a full-speed
+        // braking distance + standoff + their own length apart, so a line physically holds only so
+        // many. Over-provisioning past this is self-limiting — the surplus is simply not dispatched
+        // and the effective headway floors at the block. MAX_TRAINS_PER_LINE is now just a
+        // buffer-sizing backstop; the real ceiling is geometric. Long lines are unaffected (their
+        // block fits far more than the 24-train cap), only short over-subscribed ones bind.
+        let spec = line.vehicle_spec();
+        let min_gap = crate::trainset::block_gap_mm(spec.v_max_mm_s, spec.decel_mm_s2) + spec.length_mm;
+        let max_fit = (round / min_gap.max(1)).max(1);
+        let count = (count as i64).min(max_fit).max(1) as u16;
         for k in 0..count {
             let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
             let (s, dir) = if line.loop_line {

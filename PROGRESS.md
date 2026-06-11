@@ -606,6 +606,40 @@ duration the player reads is true against the clock they watch.
   raptor/pressure-buckets), vitest 21 (capacity re-pin), playwright 16. Adversarially reviewed by
   a 3-lens find→refute workflow over the diff before commit.
 
+## Capacity & topology roadmap — P1: block following + train length (2026-06-12)
+
+Started the **capacity-as-buildable** roadmap (full design in [docs/capacity-roadmap.md](docs/capacity-roadmap.md)):
+line capacity stops being a flat clamp (`MIN_HEADWAY_MS`/`MAX_TRAINS_PER_LINE`) and becomes
+network physics that emerges from track and is fixed by spending money — a **movement-authority
+layer** that each phase extends (P1 following → P3 branching → P2 single/double track → P4 junction
+conflict → P5 shared-track go/no-go). Decisions locked: route-**tree** branching (handles the JRL
+3-way Bahar Junction + the missing Circle Line CE branch), train length **derived from spec** (not a
+lever), service pattern **round-robin default but player-settable**, sequence **P1→P3→P2→P4**.
+
+**P1 (this commit)** — the authority layer with its first resource, TDD red-first
+(`tests/following.rs`):
+- **Train length** (`trainset.rs` `length_mm`, spec-derived: rail 140 m … bus 12 m; AIR flavour-only)
+  + `brake_distance_mm`/`block_gap_mm` helpers. No new state, no schema/command/save change.
+- **Dispatch density cap** (`dispatch.rs`): a line places only as many trains as fit at
+  `braking + standoff + length` apart; the surplus isn't dispatched, so over-provisioning is
+  self-limiting and the effective headway floors at the block. `MAX_TRAINS_PER_LINE` demoted to a
+  buffer-sizing backstop. Long lines unaffected (their block fits >24); only short over-subscribed
+  lines bind.
+- **Move-phase follow clamp** (`vehicle.rs`): in the monotone loop coordinate `p` (unifies loop /
+  out-and-back; leader = next vehicle in the per-line SoA run, cyclic, a lone train's leader is
+  itself so it never binds), each train's advance is capped to hold a braking-distance gap behind the
+  leader's **tail**. Start-of-tick leader snapshot ⇒ order-independent & deterministic. Binds only on
+  desync (a dwelling/slowed leader, bus self-congestion, later branches) — homogeneous lines stay
+  byte-identical (parity), so no overtaking and emergent bunching, no per-frame cost.
+- **Why no re-pins:** the clamp is a no-op for well-spaced low-count lines and the dispatch cap only
+  trims over-provisioned ones, so every existing sim/e2e scenario was unchanged — confirming default
+  parity. The one observable change: an over-subscribed short line now runs fewer trains than the
+  slider requests (read back from the snapshot, per the AGENTS "UI reflects the clamped value" rule).
+- Tiers: cargo (determinism gate + new `following.rs` + all existing suites green, **zero re-pins**),
+  vitest 21 (wasm rebuilt), playwright 16 (real Singapore MRT still carries riders, full slice, Tokyo
+  boot). Determinism bans clean.
+- **Next:** P3 — branching lines (the Circle Line / JRL fix; the data-model + contract-mirror phase).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

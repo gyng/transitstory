@@ -92,6 +92,18 @@ const OFF_ROAD_BUS_MM_S: i64 = 210_000;
 /// geometry keeps it on `class::WATER`; this is the penalty for any leg that strays onto land.
 const OFF_WATER_FERRY_MM_S: i64 = 90_000;
 
+/// Monotone round-trip arc-length `p` for a vehicle — the follow coordinate in which every train on
+/// a line advances in increasing `p` (wrapping at the circuit length), so "the train ahead" is just
+/// the next-larger `p`. Loop and out-and-back unify here. Pure integer (`s`, `dir`, `total`).
+#[inline]
+fn loop_p(s: i64, dir: i8, total: i64, loop_line: bool) -> i64 {
+    if !loop_line && dir < 0 {
+        2 * total - s
+    } else {
+        s
+    }
+}
+
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
@@ -107,6 +119,30 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         if lines[v.line[i].index()].mode == crate::trainset::tmode::BUS {
             let key = (v.x_mm[i].div_euclid(build_cell_mm) as i32, v.y_mm[i].div_euclid(build_cell_mm) as i32);
             *bus_load.entry(key).or_insert(0) += 1;
+        }
+    }
+
+    // Block-following pre-pass (P1, docs/capacity-roadmap.md). Snapshot every vehicle's start-of-tick
+    // loop coordinate `p_start`, and the index of the train AHEAD on its line. Vehicles of a line are
+    // a contiguous, increasing-`p` run in the SoA (dispatch order) and the follow clamp preserves that
+    // order, so the leader of run-position j is (j+1) cyclic. Using start-of-tick leader positions
+    // makes the clamp order-independent (deterministic). A lone train's leader is itself ⇒ its gap is
+    // ~the full circuit, so the clamp never binds without a special case.
+    let n = v.len();
+    let mut p_start = vec![0i64; n];
+    let mut leader = vec![0usize; n];
+    {
+        let mut groups: Vec<Vec<usize>> = vec![Vec::new(); lines.len()];
+        for i in 0..n {
+            let line = &lines[v.line[i].index()];
+            p_start[i] = loop_p(v.s_mm[i], v.dir[i], line.length_mm(), line.loop_line);
+            groups[v.line[i].index()].push(i);
+        }
+        for g in &groups {
+            let m = g.len();
+            for j in 0..m {
+                leader[g[j]] = g[(j + 1) % m];
+            }
         }
     }
 
@@ -189,6 +225,20 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         nv = nv.min(vmax_eff); // hold the curve cap even mid-brake
 
         let ds = nv * dt_ms / 1000;
+        // Block following: cap this tick's advance so the head holds a braking-distance + standoff
+        // gap behind the LEADER'S TAIL, measured in the loop coordinate `p`. Homogeneous lines run
+        // untouched (the gap never binds, so motion — and the replay hash for well-spaced lines — is
+        // unchanged); the clamp only bites where spacing desyncs (a dwelling/slowed leader, bus
+        // self-congestion, later branches). When it binds, the train brakes (speed follows the
+        // shortened advance) and queues behind the leader — emergent bunching, no overtaking.
+        let round = if line.loop_line { total } else { 2 * total };
+        let len_lead = spec.length_mm; // leader shares this line ⇒ same consist length
+        let gap_ht = (p_start[leader[i]] - len_lead - p_start[i]).rem_euclid(round.max(1));
+        let room = (gap_ht - crate::trainset::block_gap_mm(vcur, spec.decel_mm_s2)).max(0);
+        let ds = ds.min(room);
+        if ds < nv * dt_ms / 1000 {
+            nv = ds * 1000 / dt_ms.max(1); // braking for the block ahead
+        }
         let mut new_s = s + dir * ds;
         let crossed = (dir > 0 && new_s >= next_arc) || (dir < 0 && new_s <= next_arc);
         if crossed {
