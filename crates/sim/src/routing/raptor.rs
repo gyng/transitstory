@@ -61,58 +61,66 @@ fn ride_ms(dist_mm: i64, v_mm_s: i64) -> i64 {
 fn build_routes(lines: &[Line]) -> Vec<DirRoute> {
     let mut routes = Vec::new();
     for (li, line) in lines.iter().enumerate() {
-        let n = line.stops.len();
-        if line.removed || line.trainset.is_none() || n < 2 {
+        if line.removed || line.trainset.is_none() {
             continue;
-        }
-        let arclen = &line.stop_arclen_mm;
-        if arclen.len() < n {
-            continue; // geometry not built yet — skip defensively
         }
         let line_id = LineId(li as u32);
         let spec = line.vehicle_spec();
         let v = spec.v_max_mm_s;
         let dwell = spec.dwell_ms.max(0);
-        let wait = line.headway_ms.max(0) / 2;
+        // Trains split round-robin across the line's service paths (P3), so each path runs at
+        // ~1/npaths the line frequency — the rider's expected wait scales accordingly. npaths==1
+        // (a non-branched line) reduces to the old headway/2, so existing routing is unchanged.
+        let npaths = line.paths.len().max(1) as i64;
+        let wait = line.headway_ms.max(0) * npaths / 2;
 
-        // Forward inter-stop spans (mm): seg[i] between stop i and i+1.
-        let seg = |i: usize| -> i64 { arclen[i + 1] - arclen[i] };
+        // One directed route set per service path (trunk + each branch). Each path is linear.
+        for path in &line.paths {
+            let n = path.stops.len();
+            if n < 2 {
+                continue;
+            }
+            let arclen = &path.stop_arclen_mm;
+            if arclen.len() < n {
+                continue; // geometry not built yet — skip defensively
+            }
+            // Forward inter-stop spans (mm): seg[i] between stop i and i+1.
+            let seg = |i: usize| -> i64 { arclen[i + 1] - arclen[i] };
 
-        if line.loop_line && arclen.len() > n {
-            // Cyclic forward route, doubled so any boarding reaches all stops within one loop.
-            // spans_cyc has n entries: the n-1 inter-stop spans plus the closing span back to stop 0.
-            let span_cyc = |i: usize| -> i64 { arclen[i + 1] - arclen[i] }; // i in 0..n (arclen len n+1)
-            let mut stops = Vec::with_capacity(2 * n);
-            let mut cum = Vec::with_capacity(2 * n);
-            cum.push(0);
-            stops.push(line.stops[0]);
-            for p in 1..2 * n {
-                let s = span_cyc((p - 1) % n);
-                cum.push(cum[p - 1] + ride_ms(s, v) + dwell);
-                stops.push(line.stops[p % n]);
+            if path.loop_line && arclen.len() > n {
+                // Cyclic forward route, doubled so any boarding reaches all stops within one loop.
+                let span_cyc = |i: usize| -> i64 { arclen[i + 1] - arclen[i] };
+                let mut stops = Vec::with_capacity(2 * n);
+                let mut cum = Vec::with_capacity(2 * n);
+                cum.push(0);
+                stops.push(path.stops[0]);
+                for p in 1..2 * n {
+                    let s = span_cyc((p - 1) % n);
+                    cum.push(cum[p - 1] + ride_ms(s, v) + dwell);
+                    stops.push(path.stops[p % n]);
+                }
+                routes.push(DirRoute { line: line_id, wait_ms: wait, stops, cum_ms: cum });
+            } else {
+                // Out-and-back: a forward route and a backward route.
+                let mut fwd_stops = Vec::with_capacity(n);
+                let mut fwd_cum = Vec::with_capacity(n);
+                fwd_cum.push(0);
+                fwd_stops.push(path.stops[0]);
+                for j in 1..n {
+                    fwd_cum.push(fwd_cum[j - 1] + ride_ms(seg(j - 1), v) + dwell);
+                    fwd_stops.push(path.stops[j]);
+                }
+                let mut bwd_stops = Vec::with_capacity(n);
+                let mut bwd_cum = Vec::with_capacity(n);
+                bwd_cum.push(0);
+                bwd_stops.push(path.stops[n - 1]);
+                for j in 1..n {
+                    bwd_cum.push(bwd_cum[j - 1] + ride_ms(seg(n - 1 - j), v) + dwell);
+                    bwd_stops.push(path.stops[n - 1 - j]);
+                }
+                routes.push(DirRoute { line: line_id, wait_ms: wait, stops: fwd_stops, cum_ms: fwd_cum });
+                routes.push(DirRoute { line: line_id, wait_ms: wait, stops: bwd_stops, cum_ms: bwd_cum });
             }
-            routes.push(DirRoute { line: line_id, wait_ms: wait, stops, cum_ms: cum });
-        } else {
-            // Out-and-back: a forward route and a backward route (a vehicle serves both directions).
-            let mut fwd_stops = Vec::with_capacity(n);
-            let mut fwd_cum = Vec::with_capacity(n);
-            fwd_cum.push(0);
-            fwd_stops.push(line.stops[0]);
-            for j in 1..n {
-                fwd_cum.push(fwd_cum[j - 1] + ride_ms(seg(j - 1), v) + dwell);
-                fwd_stops.push(line.stops[j]);
-            }
-            let mut bwd_stops = Vec::with_capacity(n);
-            let mut bwd_cum = Vec::with_capacity(n);
-            bwd_cum.push(0);
-            bwd_stops.push(line.stops[n - 1]);
-            for j in 1..n {
-                // Reversed traversal rides the same spans in reverse order.
-                bwd_cum.push(bwd_cum[j - 1] + ride_ms(seg(n - 1 - j), v) + dwell);
-                bwd_stops.push(line.stops[n - 1 - j]);
-            }
-            routes.push(DirRoute { line: line_id, wait_ms: wait, stops: fwd_stops, cum_ms: fwd_cum });
-            routes.push(DirRoute { line: line_id, wait_ms: wait, stops: bwd_stops, cum_ms: bwd_cum });
         }
     }
     routes

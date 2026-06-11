@@ -640,6 +640,46 @@ lever), service pattern **round-robin default but player-settable**, sequence **
   boot). Determinism bans clean.
 - **Next:** P3 — branching lines (the Circle Line / JRL fix; the data-model + contract-mirror phase).
 
+## Capacity & topology roadmap — P3 core: branching lines (2026-06-12)
+
+The data-model phase (docs/capacity-roadmap.md): a line is a **trunk + a tree of branches**, so a
+Y-shaped real service is representable — the Circle Line's missing CE branch (Promenade→Bayfront→
+Marina Bay) and the Jurong Region Line's 3-way Bahar Junction. Confirmed root cause first: `Line` was
+a flat linear `stops` array (`line.rs`), and the importer's `min_stops=3` stub filter dropped the
+standalone branch. TDD red-first (`tests/branching.rs`: a Y-line where a train must reach a branch
+terminus E off the trunk).
+
+The clean model (no graph rewrite): each route through the tree is materialised as a linear service
+**`Path`** (the trunk, or a trunk-prefix continued onto a branch), so every `Path` is exactly the old
+single-polyline line and all vehicle motion / routing / rendering runs **per-path unchanged**. A
+non-branched line is one path (`paths[0]`) and behaves identically — which is why **zero existing
+tests re-pinned**.
+
+- **`line.rs`** — extracted geometry into `Path` (polyline/arclen/stop_arclen/speed_cap/min_radius/
+  span_mode + loop flag); `Line` keeps the trunk `stops` + `branches: Vec<Branch>` + derived `paths`,
+  with trunk-delegating accessors. `path_specs()` enumerates root-to-leaf paths (branches may share a
+  divergence — JRL's 3-way).
+- **`command.rs`** — `AddBranchStop{line,branch,diverge_at,station}` (+ `BranchStopAdded`), mirrored
+  in `types.ts`/`codec.ts` the same commit. `branch==len` opens a branch off `diverge_at`; `<len`
+  extends it. Afford-gated + rollback like `AddStop`.
+- **`world.rs`** — `rebuild_line_geometry` builds one Path per route (corridor A* for bus/ferry,
+  waypoints for the trunk); cost/water/disruption sum over paths with **shared-trunk-prefix skipping**
+  (no double-count); serving + `best_headway_at` include branch stations; `state_hash` gains
+  `veh_path` (a train's path is state). Branch span-mode editing + per-branch waypoints deferred.
+- **`dispatch.rs`** — trains split **round-robin across paths** (train k → path k % npaths), each path
+  its own circuit with the P1 block-density cap. **`vehicle.rs`** — `advance` is path-aware and the
+  P1 follow-grouping keys on `(line, path)` (cross-path conflict on the shared trunk is the deferred
+  P4 junction phase). **`raptor.rs`** — `build_routes` emits a directed route set per path; rider wait
+  scales ×npaths (npaths==1 ⇒ old headway/2, so routing is unchanged for normal lines).
+- Tiers: cargo 28 suites (determinism gate + new `branching.rs` + all existing, **zero re-pins**),
+  vitest 21 (wasm rebuilt), tsc clean, playwright 16 (real MRT carries riders, Tokyo, full slice).
+  Bans clean.
+- **Deferred to Stage C** (clearly, not half-built): the **importer** (real Circle Line/JRL branch
+  data — needs lifting the stub filter), **branch TRACK rendering** (a `LineView` contract change to
+  carry per-branch polylines), and the **service-pattern UI** (`SetServicePattern` — the round-robin
+  default already works; a player lever is the add). Until then a branch is operable + routable in the
+  core but draws only its trunk.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

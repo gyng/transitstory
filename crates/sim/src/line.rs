@@ -1,8 +1,9 @@
-//! A transit line: ordered station stops (out-and-back), color, headway, trainset. The
-//! drawn path is a CURVED polyline (centripetal Catmull-Rom through the stops) so track
-//! follows smooth curves rather than straight dog-legs (a soft minimum-radius: centripetal
-//! parameterization avoids cusps/loops). The dense polyline drives both rendering and the
-//! sim's arc-length motion; `stop_arclen_mm` marks where the actual stations sit on it.
+//! A transit line: an ordered trunk of station stops (out-and-back or loop), color, headway,
+//! trainset — plus an optional tree of BRANCHES off the trunk (P3, docs/capacity-roadmap.md). The
+//! engine materialises one **service `Path`** per route through the tree (the trunk, and each
+//! trunk-prefix continued onto a branch); every `Path` is a linear smoothed polyline exactly like
+//! the old single-polyline line, so vehicle motion / routing / rendering run per-path unchanged.
+//! A non-branched line has exactly one path (`paths[0]`, the trunk), and behaves as before.
 use crate::geo_local::PointMm;
 use crate::ids::StationId;
 use crate::trainset::TrainsetAssignment;
@@ -15,26 +16,22 @@ const SAMPLES_PER_SPAN: usize = 10;
 /// ×CLOCK_SCALE speeds and curves bind exactly as tightly as before the unification.
 const LAT_ACCEL_MM_S2: f64 = 720_000.0;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Line {
-    pub color: u32,
-    pub name: String,
-    /// Transport mode: 0=rail, 1=bus, 2=ferry, 3=air (trainset::tmode). Picks the vehicle
-    /// preset + the placement-gate rules.
-    pub mode: u8,
-    /// Circular line: the path closes (last stop -> first) and trains loop forward instead
-    /// of reversing at an end.
-    pub loop_line: bool,
+/// Build modes for a track span.
+pub mod mode {
+    pub const SURFACE: u8 = 0;
+    pub const ELEVATED: u8 = 1;
+    pub const TUNNEL: u8 = 2;
+}
+
+/// One materialised service path of a line: a root-to-leaf stop sequence (the trunk, or a trunk
+/// prefix continued onto a branch) with its own smoothed geometry. All vehicle motion / routing /
+/// rendering runs on a `Path`, so a path behaves exactly like the old single-polyline line.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Path {
+    /// Ordered stops along this path.
     pub stops: Vec<StationId>,
-    /// Freeform control points that BEND the track between stops. `waypoints[i]` shapes the span
-    /// after stop `i` (between stop i and i+1; for a loop the last entry is the closing span back
-    /// to stop 0). These are pure geometry (mm) — pass-through shaping points, NOT halts — so the
-    /// curve threads stop0, wp[0]…, stop1, wp[1]…, and tight bends just slow trains via the
-    /// existing per-vertex speed cap. Empty = straight-through (the original behaviour).
-    #[serde(default)]
-    pub waypoints: Vec<Vec<PointMm>>,
-    pub headway_ms: i64,
-    pub trainset: Option<TrainsetAssignment>,
+    /// Circular path: closes (last -> first) and runs forward instead of reversing at an end.
+    pub loop_line: bool,
     /// Dense smoothed curve vertices (mm). Recomputed from stop positions on change.
     pub polyline: Vec<PointMm>,
     /// Cumulative arc-length (mm) at each polyline vertex; `arclen_mm[0] == 0`.
@@ -43,59 +40,15 @@ pub struct Line {
     pub stop_arclen_mm: Vec<i64>,
     /// Curve speed cap (mm/s) at each polyline vertex (i64::MAX where straight).
     pub speed_cap_mm_s: Vec<i64>,
-    /// Tightest curve radius on the line (mm); i64::MAX if effectively straight.
+    /// Tightest curve radius on the path (mm); i64::MAX if effectively straight.
     pub min_radius_mm: i64,
     /// Build mode per inter-stop span: 0=Surface, 1=Elevated, 2=Tunnel.
     pub span_mode: Vec<u8>,
-    /// Total surface-rail disruption units (lower is better; 0 when elevated/tunnel/ROW).
-    pub disruption_units: i64,
-    /// True if any Surface span crosses water (the UI's one hard gate).
-    pub crosses_water_surface: bool,
-    /// Capital cost to build this line (dollars): track by mode + land-taking + trains.
-    pub capital_cost: i64,
-    /// Tombstone: a bulldozed line keeps its slot (ids are indices) but is skipped by the
-    /// dispatcher, routing, cost/opex sums, and views. Determinism-safe (in state_hash).
-    #[serde(default)]
-    pub removed: bool,
 }
 
-/// Build modes for a track span.
-pub mod mode {
-    pub const SURFACE: u8 = 0;
-    pub const ELEVATED: u8 = 1;
-    pub const TUNNEL: u8 = 2;
-}
-
-impl Line {
-    /// The concrete vehicle spec for this line: its assigned aircraft/trainset within the mode
-    /// roster (`trainset.spec`), or the mode default when unassigned. Spec id 0 is always the mode
-    /// default, so an unassigned or default-assigned line behaves exactly as before (determinism).
-    #[inline]
-    pub fn vehicle_spec(&self) -> crate::trainset::TrainsetSpec {
-        crate::trainset::spec_for(self.mode, self.trainset.map(|t| t.spec).unwrap_or(0))
-    }
-
-    pub fn new(color: u32, default_headway_ms: i64) -> Self {
-        Self {
-            color,
-            name: String::new(),
-            mode: 0,
-            loop_line: false,
-            stops: Vec::new(),
-            waypoints: Vec::new(),
-            headway_ms: default_headway_ms,
-            trainset: None,
-            polyline: Vec::new(),
-            arclen_mm: Vec::new(),
-            stop_arclen_mm: Vec::new(),
-            speed_cap_mm_s: Vec::new(),
-            min_radius_mm: i64::MAX,
-            span_mode: Vec::new(),
-            disruption_units: 0,
-            crosses_water_surface: false,
-            capital_cost: 0,
-            removed: false,
-        }
+impl Path {
+    pub fn new(stops: Vec<StationId>, loop_line: bool) -> Self {
+        Self { stops, loop_line, min_radius_mm: i64::MAX, ..Default::default() }
     }
 
     /// Span index (inter-stop segment) containing forward arc-length `s_mm`.
@@ -183,27 +136,25 @@ impl Line {
         self.stops[i % self.stops.len()]
     }
 
-    /// Rebuild the smoothed polyline + arc-length tables from the ordered stop positions.
-    /// For a loop the path is closed (first stop appended) so trains run a full circuit.
-    pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
-        let wps = self.waypoints.clone();
-        self.rebuild_with_span_points(stop_pts, &wps);
+    /// Number of inter-stop spans (the closing span included for a loop).
+    pub fn nspans(&self) -> usize {
+        if self.loop_line {
+            self.stops.len()
+        } else {
+            self.stops.len().saturating_sub(1)
+        }
     }
 
-    /// As `rebuild_from_points`, but the per-span shaping points are supplied EXTERNALLY rather
-    /// than read from `self.waypoints` — so a bus line can be threaded along an auto-computed road
-    /// route while a rail line uses the player's waypoints. `span_points[i]` shapes the span after
-    /// stop i (pass-through, not halts).
-    pub fn rebuild_with_span_points(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>]) {
-        // Interleave each stop with its span's control points so the curve threads
-        // stop0, wp[0]…, stop1, wp[1]…, stop2, …. Only stops are halts (recorded in stop_arclen_mm).
+    /// Rebuild the smoothed polyline + arc-length tables from this path's ordered stop positions.
+    /// `span_points[i]` shapes the span after stop i (pass-through bends, not halts). Existing
+    /// `span_mode` values are preserved where the span count is unchanged; new spans default Surface.
+    pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>]) {
         let n = stop_pts.len();
         let mut pts: Vec<PointMm> = Vec::with_capacity(n);
         let mut is_stop: Vec<bool> = Vec::with_capacity(n);
         for i in 0..n {
             pts.push(stop_pts[i]);
             is_stop.push(true);
-            // Shaping points for the span AFTER stop i (skip on the open end of a non-loop line).
             if i + 1 < n || self.loop_line {
                 if let Some(span_wps) = span_points.get(i) {
                     for &wp in span_wps {
@@ -219,7 +170,6 @@ impl Line {
         }
         let (poly, stop_idx) = smooth_centripetal(&pts);
         self.polyline = poly;
-        // Cumulative arc-length along the dense polyline.
         self.arclen_mm.clear();
         let mut acc = 0i64;
         for i in 0..self.polyline.len() {
@@ -230,7 +180,6 @@ impl Line {
                 self.arclen_mm.push(acc);
             }
         }
-        // Arc-length at each STOP vertex only (waypoints are pass-through, not halts).
         self.stop_arclen_mm = stop_idx
             .iter()
             .zip(&is_stop)
@@ -238,7 +187,6 @@ impl Line {
             .map(|(&i, _)| self.arclen_mm.get(i).copied().unwrap_or(0))
             .collect();
 
-        // Per-vertex curve speed cap (from local circumradius) + tightest radius.
         let n = self.polyline.len();
         self.speed_cap_mm_s = vec![i64::MAX; n];
         let mut minr = f64::INFINITY;
@@ -253,6 +201,145 @@ impl Line {
             }
         }
         self.min_radius_mm = if minr.is_finite() { minr as i64 } else { i64::MAX };
+        // Preserve existing per-span build modes; resize to the new span count (new spans Surface).
+        let nspans = self.nspans();
+        if self.span_mode.len() != nspans {
+            self.span_mode.resize(nspans, mode::SURFACE);
+        }
+    }
+}
+
+/// A branch off the trunk: it leaves the trunk at trunk stop `diverge_at` and continues through
+/// `stops`. Multiple branches may share a `diverge_at` (a 3-way junction). A tree, never a cycle.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Branch {
+    pub diverge_at: u16,
+    pub stops: Vec<StationId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Line {
+    pub color: u32,
+    pub name: String,
+    /// Transport mode: 0=rail, 1=bus, 2=ferry, 3=air (trainset::tmode). Picks the vehicle
+    /// preset + the placement-gate rules.
+    pub mode: u8,
+    /// Circular line: the trunk path closes (last stop -> first) and trains loop forward instead
+    /// of reversing at an end.
+    pub loop_line: bool,
+    /// The trunk: the primary ordered stop sequence (`paths[0]`).
+    pub stops: Vec<StationId>,
+    /// Branches off the trunk (P3). Empty for a simple linear/loop line.
+    #[serde(default)]
+    pub branches: Vec<Branch>,
+    /// Freeform control points that BEND the trunk track between stops. `waypoints[i]` shapes the
+    /// span after trunk stop `i`. Pure geometry (mm) — pass-through, NOT halts. Empty = straight.
+    #[serde(default)]
+    pub waypoints: Vec<Vec<PointMm>>,
+    pub headway_ms: i64,
+    pub trainset: Option<TrainsetAssignment>,
+    /// Materialised service paths: `paths[0]` is the trunk; `paths[1..]` is one per branch (the
+    /// trunk prefix up to the divergence, continued onto the branch's stops). Derived on rebuild.
+    #[serde(default)]
+    pub paths: Vec<Path>,
+    /// Total surface-rail disruption units across ALL paths (lower is better; 0 when elevated/ROW).
+    pub disruption_units: i64,
+    /// True if any Surface span on ANY path crosses water (the UI's one hard gate).
+    pub crosses_water_surface: bool,
+    /// Capital cost to build this line (dollars): track by mode + land-taking + trains.
+    pub capital_cost: i64,
+    /// Tombstone: a bulldozed line keeps its slot (ids are indices) but is skipped by the
+    /// dispatcher, routing, cost/opex sums, and views. Determinism-safe (in state_hash).
+    #[serde(default)]
+    pub removed: bool,
+}
+
+impl Line {
+    /// The concrete vehicle spec for this line: its assigned aircraft/trainset within the mode
+    /// roster (`trainset.spec`), or the mode default when unassigned. Spec id 0 is always the mode
+    /// default, so an unassigned or default-assigned line behaves exactly as before (determinism).
+    #[inline]
+    pub fn vehicle_spec(&self) -> crate::trainset::TrainsetSpec {
+        crate::trainset::spec_for(self.mode, self.trainset.map(|t| t.spec).unwrap_or(0))
+    }
+
+    pub fn new(color: u32, default_headway_ms: i64) -> Self {
+        Self {
+            color,
+            name: String::new(),
+            mode: 0,
+            loop_line: false,
+            stops: Vec::new(),
+            branches: Vec::new(),
+            waypoints: Vec::new(),
+            headway_ms: default_headway_ms,
+            trainset: None,
+            paths: vec![Path::new(Vec::new(), false)],
+            disruption_units: 0,
+            crosses_water_surface: false,
+            capital_cost: 0,
+            removed: false,
+        }
+    }
+
+    /// The trunk path (`paths[0]`) — what line-level queries (and every non-branched line) mean.
+    #[inline]
+    pub fn trunk(&self) -> &Path {
+        &self.paths[0]
+    }
+
+    /// The root-to-leaf stop sequence for each service path: the trunk, then each branch as the
+    /// trunk prefix `[0..=diverge_at]` continued onto the branch's stops. Used by geometry rebuild,
+    /// dispatch (trains run these round-robin), and routing. Each is linear; branch paths are
+    /// out-and-back even on a loop trunk.
+    pub fn path_specs(&self) -> Vec<(Vec<StationId>, bool)> {
+        let mut out = vec![(self.stops.clone(), self.loop_line)];
+        for b in &self.branches {
+            let d = (b.diverge_at as usize).min(self.stops.len().saturating_sub(1));
+            let mut s: Vec<StationId> = self.stops[..=d].to_vec();
+            s.extend_from_slice(&b.stops);
+            out.push((s, false));
+        }
+        out
+    }
+
+    // --- trunk-delegating geometry accessors (line-level callers + every non-branched path) ---
+    #[inline]
+    pub fn length_mm(&self) -> i64 {
+        self.paths.first().map(|p| p.length_mm()).unwrap_or(0)
+    }
+    #[inline]
+    pub fn point_at(&self, s_mm: i64) -> (i64, i64) {
+        self.paths.first().map(|p| p.point_at(s_mm)).unwrap_or((0, 0))
+    }
+    #[inline]
+    pub fn heading_at(&self, s_mm: i64) -> f32 {
+        self.paths.first().map(|p| p.heading_at(s_mm)).unwrap_or(0.0)
+    }
+    #[inline]
+    pub fn speed_cap_at(&self, s_mm: i64) -> i64 {
+        self.paths.first().map(|p| p.speed_cap_at(s_mm)).unwrap_or(i64::MAX)
+    }
+    #[inline]
+    pub fn span_of(&self, s_mm: i64) -> usize {
+        self.paths.first().map(|p| p.span_of(s_mm)).unwrap_or(0)
+    }
+    #[inline]
+    pub fn station_for_stop_index(&self, i: usize) -> StationId {
+        self.paths.first().map(|p| p.station_for_stop_index(i)).unwrap_or(StationId(0))
+    }
+    #[inline]
+    pub fn min_radius_mm(&self) -> i64 {
+        self.paths.first().map(|p| p.min_radius_mm).unwrap_or(i64::MAX)
+    }
+
+    /// Rebuild ONLY the trunk path geometry from explicit stop points (no branches) — the cost
+    /// preview path. Uses the line's waypoints for shaping; leaves branches untouched.
+    pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
+        let wps = self.waypoints.clone();
+        let mut p = Path::new(self.stops.clone(), self.loop_line);
+        p.rebuild(stop_pts, &wps);
+        self.paths = vec![p];
     }
 }
 
@@ -284,8 +371,6 @@ fn smooth_centripetal(pts: &[PointMm]) -> (Vec<PointMm>, Vec<usize>) {
     if n < 2 {
         return (pts.to_vec(), (0..n).collect());
     }
-    // n == 2 still runs the loop below (clamped neighbours => ~linear) so straight spans get
-    // intermediate vertices too — needed for per-segment buildability sampling.
     let p: Vec<(f64, f64)> = pts.iter().map(|q| (q.x_mm as f64, q.y_mm as f64)).collect();
     let mut out: Vec<PointMm> = Vec::with_capacity(n * SAMPLES_PER_SPAN + 1);
     let mut stop_idx: Vec<usize> = Vec::with_capacity(n);

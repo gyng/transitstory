@@ -23,9 +23,14 @@ pub(crate) fn dispatch(world: &mut World) {
     let mut serving: Vec<Vec<LineId>> = vec![Vec::new(); nstations];
     for (li, line) in world.lines.iter().enumerate() {
         if !line.removed && line.trainset.is_some() && line.stops.len() >= 2 && !line.crosses_water_surface {
-            for &st in &line.stops {
-                if st.index() < nstations {
-                    serving[st.index()].push(LineId(li as u32));
+            // A station is served if ANY service path (trunk or branch) stops there. Dedup so a
+            // trunk station (present on every path) counts the line once.
+            for path in &line.paths {
+                for &st in &path.stops {
+                    let i = st.index();
+                    if i < nstations && !serving[i].contains(&LineId(li as u32)) {
+                        serving[i].push(LineId(li as u32));
+                    }
                 }
             }
         }
@@ -37,47 +42,59 @@ pub(crate) fn dispatch(world: &mut World) {
     v.clear();
 
     for (li, line) in lines.iter().enumerate() {
-        let count = line.trainset.map(|t| t.count).unwrap_or(0);
-        let total = line.length_mm();
-        if line.removed || count == 0 || total <= 0 || line.stops.len() < 2 || line.crosses_water_surface {
+        let total_count = line.trainset.map(|t| t.count).unwrap_or(0);
+        if line.removed || total_count == 0 || line.stops.len() < 2 || line.crosses_water_surface {
             continue;
         }
-        // Loop: circuit length = one-way; out-and-back: there and back.
-        let round = if line.loop_line { total } else { 2 * total };
-        // Block density cap (P1, docs/capacity-roadmap.md): trains must sit at least a full-speed
-        // braking distance + standoff + their own length apart, so a line physically holds only so
-        // many. Over-provisioning past this is self-limiting — the surplus is simply not dispatched
-        // and the effective headway floors at the block. MAX_TRAINS_PER_LINE is now just a
-        // buffer-sizing backstop; the real ceiling is geometric. Long lines are unaffected (their
-        // block fits far more than the 24-train cap), only short over-subscribed ones bind.
+        // Trains split round-robin across the line's service paths (P3): train k runs path
+        // k % npaths, so a branched line alternates destinations. Each path is its own circuit with
+        // its own block density cap.
         let spec = line.vehicle_spec();
         let min_gap = crate::trainset::block_gap_mm(spec.v_max_mm_s, spec.decel_mm_s2) + spec.length_mm;
-        let max_fit = (round / min_gap.max(1)).max(1);
-        let count = (count as i64).min(max_fit).max(1) as u16;
-        for k in 0..count {
-            let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
-            let (s, dir) = if line.loop_line {
-                (p, 1i8)
-            } else if p <= total {
-                (p, 1i8)
-            } else {
-                (2 * total - p, -1i8)
-            };
-            let (x, y) = line.point_at(s);
-            v.line.push(LineId(li as u32));
-            v.s_mm.push(s);
-            v.prev_s_mm.push(s);
-            v.dir.push(dir);
-            v.x_mm.push(x);
-            v.y_mm.push(y);
-            v.prev_x_mm.push(x);
-            v.prev_y_mm.push(y);
-            v.angle.push(line.heading_at(s));
-            v.v_mm_s.push(0);
-            v.dwell_until_ms.push(0);
-            v.onboard.push(0);
-            v.onboard_pax.push(Vec::new());
-            v.at_station.push(-1);
+        let npaths = line.paths.len().max(1);
+        for (pi, path) in line.paths.iter().enumerate() {
+            let total = path.length_mm();
+            if total <= 0 || path.stops.len() < 2 {
+                continue;
+            }
+            // This path's round-robin share of the fleet (k in 0..total_count with k % npaths == pi).
+            let count_p = ((total_count as usize).saturating_sub(pi) + npaths - 1) / npaths;
+            if count_p == 0 {
+                continue;
+            }
+            // Loop: circuit length = one-way; out-and-back: there and back.
+            let round = if path.loop_line { total } else { 2 * total };
+            // Block density cap (P1, docs/capacity-roadmap.md): trains must sit at least a full-speed
+            // braking distance + standoff + their own length apart, so a path holds only so many.
+            // Over-provisioning is self-limiting — the surplus is simply not dispatched.
+            let max_fit = (round / min_gap.max(1)).max(1);
+            let count = (count_p as i64).min(max_fit).max(1) as u16;
+            for k in 0..count {
+                let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
+                let (s, dir) = if path.loop_line {
+                    (p, 1i8)
+                } else if p <= total {
+                    (p, 1i8)
+                } else {
+                    (2 * total - p, -1i8)
+                };
+                let (x, y) = path.point_at(s);
+                v.line.push(LineId(li as u32));
+                v.path.push(pi as u8);
+                v.s_mm.push(s);
+                v.prev_s_mm.push(s);
+                v.dir.push(dir);
+                v.x_mm.push(x);
+                v.y_mm.push(y);
+                v.prev_x_mm.push(x);
+                v.prev_y_mm.push(y);
+                v.angle.push(path.heading_at(s));
+                v.v_mm_s.push(0);
+                v.dwell_until_ms.push(0);
+                v.onboard.push(0);
+                v.onboard_pax.push(Vec::new());
+                v.at_station.push(-1);
+            }
         }
     }
 }

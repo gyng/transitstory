@@ -163,6 +163,7 @@ struct Canonical<'a> {
     stations: &'a [Station],
     lines: &'a [Line],
     veh_line: &'a [LineId],
+    veh_path: &'a [u8],
     veh_s_mm: &'a [i64],
     veh_dir: &'a [i8],
     veh_dwell_ms: &'a [i64],
@@ -288,14 +289,27 @@ impl World {
         let mut disr = 0i64;
         let mut water = false;
         let mut capital = 0i64;
-        for vi in 1..l.polyline.len() {
-            let seg_m = (l.arclen_mm[vi] - l.arclen_mm[vi - 1]) / 1000; // mm -> metres
-            if seg_m <= 0 {
-                continue;
-            }
-            let span = l.span_of(l.arclen_mm[vi]);
-            let m = l.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
-            let c = self.classify(l.polyline[vi].x_mm, l.polyline[vi].y_mm);
+        // Sum over every service path. Each branch path repeats the shared trunk prefix, so skip
+        // that prefix (already costed by the trunk path) to avoid double-counting — only the
+        // branch's OWN spans (past the divergence) add cost.
+        for (pi, path) in l.paths.iter().enumerate() {
+            let skip_to = if pi == 0 {
+                0
+            } else {
+                let d = l.branches.get(pi - 1).map(|b| b.diverge_at as usize).unwrap_or(0);
+                path.stop_arclen_mm.get(d).copied().unwrap_or(0)
+            };
+            for vi in 1..path.polyline.len() {
+                if path.arclen_mm[vi] <= skip_to {
+                    continue;
+                }
+                let seg_m = (path.arclen_mm[vi] - path.arclen_mm[vi - 1]) / 1000; // mm -> metres
+                if seg_m <= 0 {
+                    continue;
+                }
+                let span = path.span_of(path.arclen_mm[vi]);
+                let m = path.span_mode.get(span).copied().unwrap_or(mode::SURFACE);
+                let c = self.classify(path.polyline[vi].x_mm, path.polyline[vi].y_mm);
             // Per-mode placement: rail/bus blocked by water + penalised through built land;
             // ferry wants water (penalised over land, water is free); air is exempt.
             let (w, blocks_on_water): (i64, bool) = match tm {
@@ -350,9 +364,10 @@ impl World {
                 },
             };
             capital += per_km * seg_m / 1000;
-            // Surface track through built-up land takes land (rail + heavy rail).
-            if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
-                capital += TAKING_PER_KM_BUILT * seg_m / 1000;
+                // Surface track through built-up land takes land (rail + heavy rail).
+                if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
+                    capital += TAKING_PER_KM_BUILT * seg_m / 1000;
+                }
             }
         }
         (disr, water, capital)
@@ -362,15 +377,11 @@ impl World {
     /// per-span build modes. Cheap (one pass over the polyline vertices); called on a geometry
     /// or mode change.
     fn recompute_line_buildability(&mut self, line: LineId) {
-        use crate::line::mode;
         let idx = line.index();
         if idx >= self.lines.len() {
             return;
         }
-        let nspans = self.lines[idx].stops.len().saturating_sub(1);
-        if self.lines[idx].span_mode.len() != nspans {
-            self.lines[idx].span_mode.resize(nspans, mode::SURFACE);
-        }
+        // Per-span build modes live on each Path now (sized in Path::rebuild); nothing to size here.
         let (disr, water, mut capital) = self.line_cost_metrics(&self.lines[idx]);
         capital += self.lines[idx].trainset.map(|t| t.count as i64).unwrap_or(0) * TRAIN_COST;
         self.lines[idx].disruption_units = disr;
@@ -410,7 +421,7 @@ impl World {
                 && l.trainset.is_some()
                 && l.stops.len() >= 2
                 && !l.crosses_water_surface
-                && l.stops.iter().any(|st| st.index() == s)
+                && l.paths.iter().any(|p| p.stops.iter().any(|st| st.index() == s))
             {
                 best = Some(best.map_or(l.headway_ms, |b| b.min(l.headway_ms)));
             }
@@ -629,30 +640,45 @@ impl World {
     }
 
     fn rebuild_line_geometry(&mut self, line: LineId) {
-        // Snapshot stop positions first to avoid borrowing self mutably + immutably, then
-        // rebuild the smoothed (curved) polyline + arc-length tables.
-        if let Some(l) = self.lines.get(line.index()) {
-            let pts: Vec<PointMm> = l.stops.iter().map(|&s| self.station_pos(s)).collect();
-            // Buses follow the ROAD raster between stops and ferries follow WATER (auto-routed, A*
-            // over the grid); other modes use the player's hand-placed waypoints. Both are
-            // pass-through shaping points fed to the same smoother.
-            use crate::trainset::tmode;
-            let corridor = match l.mode {
-                tmode::BUS => Some(crate::city::class::ROAD),
-                tmode::FERRY => Some(crate::city::class::WATER),
-                _ => None,
-            };
+        // Build ONE smoothed Path per service route (trunk + each branch's trunk-prefix→leaf). Buses
+        // follow the ROAD raster between stops and ferries follow WATER (auto-routed A*); other modes
+        // use the player's hand-placed waypoints (trunk only — branch waypoint editing deferred).
+        let idx = line.index();
+        if idx >= self.lines.len() {
+            return;
+        }
+        use crate::trainset::tmode;
+        let lmode = self.lines[idx].mode;
+        let waypoints = self.lines[idx].waypoints.clone();
+        let specs = self.lines[idx].path_specs();
+        let corridor = match lmode {
+            tmode::BUS => Some(crate::city::class::ROAD),
+            tmode::FERRY => Some(crate::city::class::WATER),
+            _ => None,
+        };
+        // Preserve player-set per-span build modes across the rebuild (by path index).
+        let old_span_modes: Vec<Vec<u8>> =
+            self.lines[idx].paths.iter().map(|p| p.span_mode.clone()).collect();
+        let mut new_paths: Vec<crate::line::Path> = Vec::with_capacity(specs.len());
+        for (pi, (stops, loop_line)) in specs.into_iter().enumerate() {
+            let pts: Vec<PointMm> = stops.iter().map(|&s| self.station_pos(s)).collect();
             let span_points: Vec<Vec<PointMm>> = if let Some(prefer) = corridor {
                 (0..pts.len().saturating_sub(1))
                     .map(|i| crate::roadnav::class_route(&self.build_lookup, self.build_cell_mm, prefer, pts[i], pts[i + 1]))
                     .collect()
+            } else if pi == 0 {
+                waypoints.clone()
             } else {
-                l.waypoints.clone()
+                Vec::new()
             };
-            if let Some(l) = self.lines.get_mut(line.index()) {
-                l.rebuild_with_span_points(&pts, &span_points);
+            let mut p = crate::line::Path::new(stops, loop_line);
+            if let Some(sm) = old_span_modes.get(pi) {
+                p.span_mode = sm.clone();
             }
+            p.rebuild(&pts, &span_points);
+            new_paths.push(p);
         }
+        self.lines[idx].paths = new_paths;
     }
 
     /// Apply one command. Total + infallible: invalid commands return a `Rejected` event
@@ -717,6 +743,41 @@ impl World {
                     }]
                 }
             }
+            Command::AddBranchStop { line, branch, diverge_at, station } => {
+                let li = line.index();
+                let bi = *branch as usize;
+                let ok = li < self.lines.len()
+                    && station.index() < self.stations.len()
+                    && bi <= self.lines[li].branches.len()
+                    && (*diverge_at as usize) < self.lines[li].stops.len();
+                if ok {
+                    let old_capital = self.capital_total();
+                    let saved = self.lines[li].branches.clone();
+                    {
+                        let l = &mut self.lines[li];
+                        if bi == l.branches.len() {
+                            // New branch leaving the trunk at `diverge_at`, first stop = station.
+                            l.branches.push(crate::line::Branch { diverge_at: *diverge_at, stops: vec![*station] });
+                        } else {
+                            l.branches[bi].stops.push(*station); // extend an existing branch
+                        }
+                    }
+                    self.rebuild_line_geometry(*line);
+                    self.recompute_line_buildability(*line);
+                    if self.overspent(old_capital) {
+                        self.lines[li].branches = saved;
+                        self.rebuild_line_geometry(*line);
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected { reason: "Not enough money for this branch".into() }]
+                    } else {
+                        vec![Event::BranchStopAdded { line: *line, branch: *branch, station: *station }]
+                    }
+                } else {
+                    vec![Event::Rejected {
+                        reason: "AddBranchStop: unknown line/station or bad branch/divergence".into(),
+                    }]
+                }
+            }
             Command::AssignTrainset { line, spec, count } => {
                 if line.index() < self.lines.len() {
                     let count = (*count).clamp(1, MAX_TRAINS_PER_LINE);
@@ -754,27 +815,24 @@ impl World {
                 }
             }
             Command::SetSegmentMode { line, span, mode } => {
-                if line.index() < self.lines.len() {
+                if line.index() < self.lines.len() && !self.lines[line.index()].paths.is_empty() {
                     let old_capital = self.capital_total();
-                    let saved_modes = self.lines[line.index()].span_mode.clone();
+                    let saved_modes = self.lines[line.index()].paths[0].span_mode.clone();
                     {
-                        let l = &mut self.lines[line.index()];
-                        let nspans = l.stops.len().saturating_sub(1);
-                        if l.span_mode.len() != nspans {
-                            l.span_mode.resize(nspans, crate::line::mode::SURFACE);
-                        }
+                        // Build modes apply to the TRUNK path (branch span-mode editing deferred).
+                        let p = &mut self.lines[line.index()].paths[0];
                         let m = (*mode).min(crate::line::mode::TUNNEL);
                         if *span == u32::MAX {
-                            for s in l.span_mode.iter_mut() {
+                            for s in p.span_mode.iter_mut() {
                                 *s = m;
                             }
-                        } else if (*span as usize) < l.span_mode.len() {
-                            l.span_mode[*span as usize] = m;
+                        } else if (*span as usize) < p.span_mode.len() {
+                            p.span_mode[*span as usize] = m;
                         }
                     }
                     self.recompute_line_buildability(*line);
                     if self.overspent(old_capital) {
-                        self.lines[line.index()].span_mode = saved_modes;
+                        self.lines[line.index()].paths[0].span_mode = saved_modes;
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
                             reason: "Not enough money to grade-separate this line".into(),
@@ -805,11 +863,19 @@ impl World {
                         .lines
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| !l.removed && l.stops.iter().any(|s| s.index() == idx))
+                        .filter(|(_, l)| {
+                            !l.removed
+                                && (l.stops.iter().any(|s| s.index() == idx)
+                                    || l.branches.iter().any(|b| b.stops.iter().any(|s| s.index() == idx)))
+                        })
                         .map(|(li, _)| li)
                         .collect();
                     for li in affected {
                         self.lines[li].stops.retain(|s| s.index() != idx);
+                        for b in &mut self.lines[li].branches {
+                            b.stops.retain(|s| s.index() != idx);
+                        }
+                        self.lines[li].branches.retain(|b| !b.stops.is_empty());
                         self.rebuild_line_geometry(LineId(li as u32));
                         self.recompute_line_buildability(LineId(li as u32));
                     }
@@ -899,6 +965,7 @@ impl World {
             stations: &self.stations,
             lines: &self.lines,
             veh_line: &self.vehicles.line,
+            veh_path: &self.vehicles.path,
             veh_s_mm: &self.vehicles.s_mm,
             veh_dir: &self.vehicles.dir,
             veh_dwell_ms: &self.vehicles.dwell_until_ms,
@@ -1032,13 +1099,15 @@ impl World {
                 loop_line: l.loop_line,
                 color: l.color,
                 stops: l.stops.iter().map(|s| s.0).collect(),
+                // Trunk geometry only for now; branch-track rendering is Stage C (needs a LineView
+                // contract change to carry per-branch polylines).
                 polyline_mm: l
-                    .polyline
-                    .iter()
-                    .map(|p| [p.x_mm as f64, p.y_mm as f64])
-                    .collect(),
-                min_radius_mm: l.min_radius_mm as f64,
-                span_modes: l.span_mode.clone(),
+                    .paths
+                    .first()
+                    .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
+                    .unwrap_or_default(),
+                min_radius_mm: l.min_radius_mm() as f64,
+                span_modes: l.paths.first().map(|p| p.span_mode.clone()).unwrap_or_default(),
                 crosses_water_surface: l.crosses_water_surface,
                 removed: l.removed,
             })

@@ -88,7 +88,7 @@ fn a_ferry_follows_the_water_channel_around_land() {
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
 
-    let max_y = w.lines[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
+    let max_y = w.lines[0].paths[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
     assert!(max_y > 1_000_000, "the ferry follows the water channel, not straight over land (max y {max_y})");
 }
 

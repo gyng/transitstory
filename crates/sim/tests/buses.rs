@@ -133,7 +133,7 @@ fn a_bus_follows_the_road_between_stops() {
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
 
     // A straight line stays at y≈0; routing the U-shaped road climbs to ~2 km.
-    let max_y = w.lines[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
+    let max_y = w.lines[0].paths[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
     assert!(max_y > 1_000_000, "the bus routes along the U-shaped road, not straight (max y {max_y})");
 
     // …and it stays deterministic.

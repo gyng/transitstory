@@ -65,9 +65,9 @@ fn sharp_corner_detects_tight_radius_straight_does_not() {
     for s in [0, 1, 2] {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
     }
-    assert!(w.lines[0].min_radius_mm < 1_000_000, "the corner has a tight radius");
+    assert!(w.lines[0].min_radius_mm() < 1_000_000, "the corner has a tight radius");
     // Some vertex therefore carries a finite curve speed cap.
-    assert!(w.lines[0].speed_cap_mm_s.iter().any(|&c| c < i64::MAX), "curve speed cap applied");
+    assert!(w.lines[0].paths[0].speed_cap_mm_s.iter().any(|&c| c < i64::MAX), "curve speed cap applied");
 
     // A straight (collinear) line has no curve constraint.
     let mut s = World::new(1, CityData::default());
@@ -78,7 +78,7 @@ fn sharp_corner_detects_tight_radius_straight_does_not() {
     for st in [0, 1, 2] {
         s.apply(&Command::AddStop { line: LineId(0), station: StationId(st), after: None });
     }
-    assert_eq!(s.lines[0].min_radius_mm, i64::MAX, "straight line is uncapped");
+    assert_eq!(s.lines[0].min_radius_mm(), i64::MAX, "straight line is uncapped");
 }
 
 #[test]

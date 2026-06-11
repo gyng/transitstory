@@ -12,6 +12,11 @@ export const cmd = {
   addStop: (line: number, station: number, after: number | null = null): Command => ({
     AddStop: { line, station, after },
   }),
+  /** Append a stop to a line's branch tree (P3). branch == current branch count creates a new
+   *  branch leaving the trunk at stop `diverge_at`; branch < count extends that branch. */
+  addBranchStop: (line: number, branch: number, diverge_at: number, station: number): Command => ({
+    AddBranchStop: { line, branch, diverge_at, station },
+  }),
   assignTrainset: (line: number, spec: number, count: number): Command => ({
     AssignTrainset: { line, spec, count },
   }),

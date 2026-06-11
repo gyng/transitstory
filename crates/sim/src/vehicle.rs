@@ -7,6 +7,9 @@ use crate::world::World;
 #[derive(Default)]
 pub struct VehicleSoA {
     pub line: Vec<LineId>,
+    /// Which service PATH of the line this vehicle runs (`line.paths[path]`): 0 = trunk, 1.. = a
+    /// branch (P3). Trains are assigned round-robin across a branched line's paths.
+    pub path: Vec<u8>,
     /// Arc-length position along the line polyline (mm), current and previous tick.
     pub s_mm: Vec<i64>,
     pub prev_s_mm: Vec<i64>,
@@ -44,6 +47,7 @@ impl VehicleSoA {
 
     pub fn clear(&mut self) {
         self.line.clear();
+        self.path.clear();
         self.s_mm.clear();
         self.prev_s_mm.clear();
         self.dir.clear();
@@ -132,17 +136,31 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let mut p_start = vec![0i64; n];
     let mut leader = vec![0usize; n];
     {
-        let mut groups: Vec<Vec<usize>> = vec![Vec::new(); lines.len()];
+        // Group by (line, PATH): trains on different service paths of a branched line diverge, so
+        // each path is its own follow stream. Vehicles of a (line, path) are a contiguous,
+        // increasing-`p` run in the SoA (dispatch order); the clamp preserves that order, so the
+        // leader of run-position j is (j+1) cyclic. (Cross-path conflict on the shared trunk is the
+        // deferred junction phase P4 — here paths follow independently.)
         for i in 0..n {
             let line = &lines[v.line[i].index()];
-            p_start[i] = loop_p(v.s_mm[i], v.dir[i], line.length_mm(), line.loop_line);
-            groups[v.line[i].index()].push(i);
+            let (total, loop_line) = line
+                .paths
+                .get(v.path[i] as usize)
+                .map(|p| (p.length_mm(), p.loop_line))
+                .unwrap_or((0, false));
+            p_start[i] = loop_p(v.s_mm[i], v.dir[i], total, loop_line);
         }
-        for g in &groups {
-            let m = g.len();
-            for j in 0..m {
-                leader[g[j]] = g[(j + 1) % m];
+        let mut i = 0usize;
+        while i < n {
+            let (li, pa) = (v.line[i], v.path[i]);
+            let mut j = i;
+            while j < n && v.line[j] == li && v.path[j] == pa {
+                j += 1;
             }
+            for k in i..j {
+                leader[k] = if k + 1 < j { k + 1 } else { i };
+            }
+            i = j;
         }
     }
 
@@ -152,8 +170,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         v.prev_y_mm[i] = v.y_mm[i];
 
         let line = &lines[v.line[i].index()];
-        let total = line.length_mm();
-        if total <= 0 || line.arclen_mm.len() < 2 {
+        let path = match line.paths.get(v.path[i] as usize) {
+            Some(p) => p,
+            None => continue,
+        };
+        let total = path.length_mm();
+        if total <= 0 || path.arclen_mm.len() < 2 {
             continue;
         }
         if clock < v.dwell_until_ms[i] {
@@ -163,23 +185,23 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
 
         let spec = line.vehicle_spec();
         // Loops always run forward (+1); out-and-back uses the stored direction.
-        let dir = if line.loop_line { 1 } else { v.dir[i] as i64 };
+        let dir = if path.loop_line { 1 } else { v.dir[i] as i64 };
         let s = v.s_mm[i];
         // Stops sit at specific arc-lengths along the smoothed polyline.
-        let stop_idx = next_stop_index(&line.stop_arclen_mm, s, dir);
-        let next_arc = line.stop_arclen_mm[stop_idx];
+        let stop_idx = next_stop_index(&path.stop_arclen_mm, s, dir);
+        let next_arc = path.stop_arclen_mm[stop_idx];
         let dist_to_stop = (next_arc - s).abs();
 
         let accel_step = spec.accel_mm_s2 * dt_ms / 1000;
         let decel_step = spec.decel_mm_s2 * dt_ms / 1000;
         let vcur = v.v_mm_s[i];
         // Effective top speed = min(trainset vmax, local curve speed cap, street-running cap).
-        let mut vmax_eff = spec.v_max_mm_s.min(line.speed_cap_at(s));
+        let mut vmax_eff = spec.v_max_mm_s.min(path.speed_cap_at(s));
         // Surface speed depends on the ground class (the buildability raster). Buses are road-bound;
         // rail/heavy are tram-capped only through dense built-up land.
-        let span = line.span_of(s);
-        if line.span_mode.get(span).copied().unwrap_or(0) == crate::line::mode::SURFACE {
-            let (cx, cy) = line.point_at(s);
+        let span = path.span_of(s);
+        if path.span_mode.get(span).copied().unwrap_or(0) == crate::line::mode::SURFACE {
+            let (cx, cy) = path.point_at(s);
             let key = (cx.div_euclid(build_cell_mm) as i32, cy.div_euclid(build_cell_mm) as i32);
             let cell = build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN);
             if line.mode == crate::trainset::tmode::BUS {
@@ -231,7 +253,7 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         // unchanged); the clamp only bites where spacing desyncs (a dwelling/slowed leader, bus
         // self-congestion, later branches). When it binds, the train brakes (speed follows the
         // shortened advance) and queues behind the leader — emergent bunching, no overtaking.
-        let round = if line.loop_line { total } else { 2 * total };
+        let round = if path.loop_line { total } else { 2 * total };
         let len_lead = spec.length_mm; // leader shares this line ⇒ same consist length
         let gap_ht = (p_start[leader[i]] - len_lead - p_start[i]).rem_euclid(round.max(1));
         let room = (gap_ht - crate::trainset::block_gap_mm(vcur, spec.decel_mm_s2)).max(0);
@@ -246,14 +268,14 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             nv = 0;
             v.dwell_until_ms[i] = clock + spec.dwell_ms;
             // Record arrival at this stop's station for the board/alight phase.
-            v.at_station[i] = line.station_for_stop_index(stop_idx).0 as i32;
-            if line.loop_line {
+            v.at_station[i] = path.station_for_stop_index(stop_idx).0 as i32;
+            if path.loop_line {
                 // Reaching the closing vertex wraps back to the start; never reverse.
-                if stop_idx + 1 >= line.stop_arclen_mm.len() {
+                if stop_idx + 1 >= path.stop_arclen_mm.len() {
                     new_s = 0;
                 }
                 v.dir[i] = 1;
-            } else if stop_idx + 1 >= line.stop_arclen_mm.len() {
+            } else if stop_idx + 1 >= path.stop_arclen_mm.len() {
                 v.dir[i] = -1; // forward end -> reverse
             } else if stop_idx == 0 {
                 v.dir[i] = 1; // back end -> reverse
@@ -262,10 +284,10 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
 
         v.s_mm[i] = new_s;
         v.v_mm_s[i] = nv;
-        let (x, y) = line.point_at(new_s);
+        let (x, y) = path.point_at(new_s);
         v.x_mm[i] = x;
         v.y_mm[i] = y;
-        let h = line.heading_at(new_s);
+        let h = path.heading_at(new_s);
         v.angle[i] = if dir < 0 { h + std::f32::consts::PI } else { h };
     }
 }

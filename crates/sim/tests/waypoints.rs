@@ -21,18 +21,18 @@ fn straight_line() -> World {
 fn a_waypoint_bends_the_track_without_adding_a_stop() {
     let mut w = straight_line();
     let straight_len = w.lines[0].length_mm();
-    let straight_stops = w.lines[0].stop_arclen_mm.len();
+    let straight_stops = w.lines[0].paths[0].stop_arclen_mm.len();
 
     // One control point 3 km north of the midpoint, in the single span (after stop 0).
     let ev = w.apply(&Command::SetLineWaypoints { line: LineId(0), waypoints: vec![vec![[5_000_000, 3_000_000]]] });
     assert!(matches!(ev.as_slice(), [Event::WaypointsSet { .. }]), "got {ev:?}");
 
     // The polyline now bows north, and is longer than the straight chord…
-    let max_y = w.lines[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
+    let max_y = w.lines[0].paths[0].polyline.iter().map(|p| p.y_mm).max().unwrap();
     assert!(max_y > 1_000_000, "track bends toward the waypoint (max_y = {max_y})");
     assert!(w.lines[0].length_mm() > straight_len, "the detour is longer than the straight line");
     // …but the waypoint is NOT a stop — still exactly two halts.
-    assert_eq!(w.lines[0].stop_arclen_mm.len(), straight_stops, "waypoints never add halts");
+    assert_eq!(w.lines[0].paths[0].stop_arclen_mm.len(), straight_stops, "waypoints never add halts");
     assert_eq!(w.lines[0].stops.len(), 2);
 }
 

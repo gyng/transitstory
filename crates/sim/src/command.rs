@@ -36,6 +36,18 @@ pub enum Command {
         #[serde(default)]
         after: Option<usize>,
     },
+    /// Append a stop to a BRANCH of a line (P3, docs/capacity-roadmap.md). `branch` indexes the
+    /// line's branches: `branch == branches.len()` creates a new branch leaving the trunk at trunk
+    /// stop `diverge_at` (its first stop = `station`); `branch < branches.len()` appends `station`
+    /// to that existing branch (`diverge_at` ignored). Branches form a tree off the trunk — multiple
+    /// branches may share a `diverge_at` (a 3-way junction, e.g. the Jurong Region Line at Bahar).
+    /// The engine derives a root-to-leaf service path per branch; trains run them round-robin.
+    AddBranchStop {
+        line: LineId,
+        branch: u16,
+        diverge_at: u16,
+        station: StationId,
+    },
     AssignTrainset {
         line: LineId,
         spec: u8,
@@ -88,6 +100,7 @@ pub enum Event {
     StationPlaced { id: StationId, name: String },
     LineCreated { id: LineId },
     StopAdded { line: LineId, station: StationId },
+    BranchStopAdded { line: LineId, branch: u16, station: StationId },
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },
