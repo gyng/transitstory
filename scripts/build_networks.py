@@ -222,6 +222,33 @@ def branch_from_variant(trunk, var):
     return None
 
 
+def cluster_variants(seqs):
+    """Group a ref's variants into clusters by station-set overlap. Variants that share most of their
+    stations are the SAME route (direction/destination variants → trunk + branches); near-disjoint
+    ones (sharing only an interchange — e.g. the Sengkang/Punggol LRT East vs West loops, both
+    ref=SKLRT/PGLRT) are DIFFERENT routes and each become their own line, so neither loop is lost."""
+    n = len(seqs)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    sets = [set(s) for (_, s) in seqs]
+    for i in range(n):
+        for j in range(i + 1, n):
+            inter = len(sets[i] & sets[j])
+            mn = min(len(sets[i]), len(sets[j]))
+            if mn and inter > 0.5 * mn:  # share >half the smaller variant ⇒ same route
+                parent[find(i)] = find(j)
+    out = {}
+    for i in range(n):
+        out.setdefault(find(i), []).append(seqs[i])
+    return list(out.values())
+
+
 def build(cid, meta):
     data = overpass(meta["bbox"])
     # Clip stops to the city bbox (+~2km): a route relation carries its FULL extent, so a
@@ -291,64 +318,69 @@ def build(cid, meta):
         return s
 
     lines = []
-    for ci, (key, vlist) in enumerate(sorted(variants.items())):
+    color_i = 0
+    for key, vlist in sorted(variants.items()):
         # Station seq for every variant (this also registers all branch-only stations).
         seqs = [(r, seq_of(stops)) for (r, stops) in vlist]
         seqs = [(r, s) for (r, s) in seqs if len(s) >= 2]
         if not seqs:
             continue
-        # Trunk = the longest variant: its tags drive the line, its geometry the trunk shape.
-        r, seq = max(seqs, key=lambda rs: len(rs[1]))
-        t = r.get("tags", {})
-        mode = route_mode(t)
-        # Loop detection: tagged roundtrip, or the route returns to its start station.
-        loop = t.get("roundtrip") == "yes"
-        if len(seq) >= 3 and seq[0] == seq[-1]:
-            loop = True
-            seq = seq[:-1]
-        # Rail needs >=3 stops (2-stop = under-construction / people-mover stub); ferries and
-        # buses are legitimately point-to-point, so 2 stops is fine for them.
-        min_stops = 2 if mode in (1, 2) else 3
-        if len(seq) < min_stops:
-            continue
-        # Branches: other variants that share a prefix with the trunk then continue into new track.
-        # (Out-and-back only — loop lines have no clean single junction in this simple model.)
-        branches, seen = [], set()
-        if not loop:
-            for (vr, vseq) in seqs:
-                if vr is r:
-                    continue
-                b = branch_from_variant(seq, vseq)
-                if not b:
-                    continue
-                dpos, tail = b
-                ktail = tuple(tail)
-                if ktail in seen:
-                    continue
-                seen.add(ktail)
-                br = {"divergeAt": dpos, "stations": tail}
-                # The spur's own real geometry: split this variant's track at [junction, *tail].
-                bgeom = span_geometry(stitch_ways(vr), [seq[dpos]] + tail, stations, False)
-                if bgeom is not None:
-                    br["geometry"] = bgeom
-                branches.append(br)
-        # Real OSM track alignment, split into per-span intermediate vertices (so the line follows
-        # the actual layout instead of a synthesised curve). None ⇒ straight fallback.
-        geom = span_geometry(stitch_ways(r), seq, stations, loop)
-        line = {
-            "name": t.get("name") or t.get("ref") or key,
-            "colorHex": norm_colour(t, ci),
-            "headwayMin": 10 if t.get("route") == "train" else (4 if mode == 0 else (8 if mode == 1 else 20)),
-            "trains": max(2, min(12, len(seq) // 3)),
-            "loop": loop,
-            "mode": mode,
-            "stations": seq,
-        }
-        if geom is not None:
-            line["geometry"] = geom
-        if branches:
-            line["branches"] = branches
-        lines.append(line)
+        # One ref can hold MULTIPLE distinct routes (East vs West LRT loops); split by overlap so each
+        # becomes its own line. (A normal line is one cluster → one line + branches.)
+        for cluster in cluster_variants(seqs):
+            # Trunk = the longest variant in the cluster: its tags drive the line, its geometry shapes it.
+            r, seq = max(cluster, key=lambda rs: len(rs[1]))
+            t = r.get("tags", {})
+            mode = route_mode(t)
+            # Loop detection: tagged roundtrip, or the route returns to its start station.
+            loop = t.get("roundtrip") == "yes"
+            if len(seq) >= 3 and seq[0] == seq[-1]:
+                loop = True
+                seq = seq[:-1]
+            # Rail needs >=3 stops (2-stop = under-construction / people-mover stub); ferries and
+            # buses are legitimately point-to-point, so 2 stops is fine for them.
+            min_stops = 2 if mode in (1, 2) else 3
+            if len(seq) < min_stops:
+                continue
+            # Branches: other variants IN THIS CLUSTER that share a prefix then continue into new
+            # track. (Out-and-back only — loop lines have no clean single junction here.)
+            branches, seen = [], set()
+            if not loop:
+                for (vr, vseq) in cluster:
+                    if vr is r:
+                        continue
+                    b = branch_from_variant(seq, vseq)
+                    if not b:
+                        continue
+                    dpos, tail = b
+                    ktail = tuple(tail)
+                    if ktail in seen:
+                        continue
+                    seen.add(ktail)
+                    br = {"divergeAt": dpos, "stations": tail}
+                    # The spur's own real geometry: split this variant's track at [junction, *tail].
+                    bgeom = span_geometry(stitch_ways(vr), [seq[dpos]] + tail, stations, False)
+                    if bgeom is not None:
+                        br["geometry"] = bgeom
+                    branches.append(br)
+            # Real OSM track alignment, split into per-span intermediate vertices (so the line follows
+            # the actual layout instead of a synthesised curve). None ⇒ straight fallback.
+            geom = span_geometry(stitch_ways(r), seq, stations, loop)
+            line = {
+                "name": t.get("name") or t.get("ref") or key,
+                "colorHex": norm_colour(t, color_i),
+                "headwayMin": 10 if t.get("route") == "train" else (4 if mode == 0 else (8 if mode == 1 else 20)),
+                "trains": max(2, min(12, len(seq) // 3)),
+                "loop": loop,
+                "mode": mode,
+                "stations": seq,
+            }
+            if geom is not None:
+                line["geometry"] = geom
+            if branches:
+                line["branches"] = branches
+            lines.append(line)
+            color_i += 1
 
     if not lines:
         raise RuntimeError("no usable routes parsed")

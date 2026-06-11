@@ -811,6 +811,24 @@ LRT loops' closing spans into their depots (5.7–11×).
   and the BPLRT renders as a proper loop. Tiers: e2e network + slice green (Singapore + Tokyo boot,
   carry riders).
 
+## Importer fix — split same-ref distinct routes (LRT East/West loops) (2026-06-12)
+
+Reported on .sg: the Sengkang & Punggol LRT each show only ONE of their two loops. Cause: OSM tags
+BOTH the East Loop and West Loop with the SAME `ref` (SKLRT / PGLRT), and the importer grouped all
+same-ref variants into one line keeping the longest — so the other loop was discarded. But East and
+West are DIFFERENT physical loops (disjoint stations, sharing only the central interchange), not
+direction variants.
+
+- **Fix** (`cluster_variants`): within a ref, cluster variants by **station-set overlap** (union-find;
+  share >half the smaller variant ⇒ same route). Same-route variants stay one line (→ trunk +
+  branches, e.g. the Circle Line); near-disjoint ones (the LRT East vs West loops) each become their
+  own line, so neither loop is lost. Re-baked: Singapore now has **both** Punggol loops AND both
+  Sengkang loops. The split also (correctly) separates a few genuinely-distinct same-ref services
+  elsewhere (e.g. an airport shuttle), at the cost of a couple of duplicate line names — acceptable.
+- Re-baked all 12 cities (with the depot-detour filter from the prior fix): line counts rose where
+  routes split (london 99→105, tokyo 72→77, singapore 10→13). Tiers: e2e 16 (Singapore + Tokyo boot,
+  carry riders), determinism green.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
