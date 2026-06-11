@@ -1226,13 +1226,17 @@ export class Game {
 
     const lines = linesV
       .filter((l) => !l.removed)
-      .map((l) => ({
-        id: l.id,
+      .flatMap((l) => {
         // A line with surface track over water renders red until elevated/tunnelled.
-        color: l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color),
-        path: l.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
-        mode: l.mode, // heavy/high-speed rail (4) gets distinct mainline styling
-      }));
+        const color = l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color);
+        const mode = l.mode; // heavy/high-speed rail (4) gets distinct mainline styling
+        // The trunk, plus one path per branch (P3) — all the same id/colour so a Y-shaped line
+        // (e.g. the Circle Line's Marina Bay spur) draws as one coloured service.
+        const paths = [l.polylineMm, ...(l.branchPolylinesMm ?? [])];
+        return paths
+          .filter((p) => p.length >= 2)
+          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode }));
+      });
 
     // Blueprint: the draft threaded through its control points (so bends render live) + cursor leg.
     const blueprint: [number, number][] = this.draftPointsMm().map((p) => mmToLngLat(p));
@@ -1542,6 +1546,11 @@ export class Game {
         const wps = line.geometry!.map((span) => span.map(([lng, lat]) => lngLatToMm([lng, lat])));
         this.bridge.apply(cmd.setLineWaypoints(li, wps));
       }
+      // Branches (P3): build each via AddBranchStop — branch index bi creates on its first stop
+      // (bi == current branch count) then extends. Recovers e.g. the Circle Line's Marina Bay spur.
+      (line.branches ?? []).forEach((br, bi) => {
+        for (const st of br.stations) this.bridge.apply(cmd.addBranchStop(li, bi, br.divergeAt, st));
+      });
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
       // headwayMin in the network JSON means real minutes of SERVICE — clock-frame sim-ms now.
       this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * SIM_MS_PER_CLOCK_MIN)));

@@ -150,8 +150,12 @@ pub struct LineView {
     pub loop_line: bool,
     pub color: u32,
     pub stops: Vec<u32>,
-    /// Polyline vertices in mm `[[x,y], ...]` in stop order.
+    /// Trunk polyline vertices in mm `[[x,y], ...]` in stop order.
     pub polyline_mm: Vec<[f64; 2]>,
+    /// One polyline per BRANCH path (paths[1..]); each is the full trunk-prefix→branch track in mm.
+    /// Drawn in the line's colour alongside the trunk so a Y-shaped line shows its spur (P3).
+    #[serde(default)]
+    pub branch_polylines_mm: Vec<Vec<[f64; 2]>>,
     /// Tightest curve radius (mm) on the line; large value == effectively straight.
     pub min_radius_mm: f64,
     /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).

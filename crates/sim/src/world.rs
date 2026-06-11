@@ -1108,6 +1108,12 @@ impl World {
                     .first()
                     .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
                     .unwrap_or_default(),
+                branch_polylines_mm: l
+                    .paths
+                    .iter()
+                    .skip(1)
+                    .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
+                    .collect(),
                 min_radius_mm: l.min_radius_mm() as f64,
                 span_modes: l.paths.first().map(|p| p.span_mode.clone()).unwrap_or_default(),
                 crosses_water_surface: l.crosses_water_surface,

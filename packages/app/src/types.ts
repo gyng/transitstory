@@ -191,6 +191,9 @@ export interface LineView {
   color: number;
   stops: number[];
   polylineMm: [number, number][];
+  // One polyline per branch path (P3): drawn in the line's colour beside the trunk so a Y-shaped
+  // line shows its spur. Empty for a simple line.
+  branchPolylinesMm: [number, number][][];
   minRadiusMm: number;
   spanModes: number[];
   crossesWaterSurface: boolean;

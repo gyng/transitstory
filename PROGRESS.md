@@ -717,6 +717,35 @@ the real track. Now they do — and the merged-interchange snapping that surface
   TRACK rendering** (LineView per-branch polylines), and the **service-pattern UI**. The P3 core runs
   branches; they're just not yet imported or drawn, so the Circle Line still shows no Marina Bay spur.
 
+## Stage C — branches surfaced: the Circle Line gets its Marina Bay spur (2026-06-12)
+
+The P3 core ran branches but nothing imported or drew them. Closed two of the three Stage-C gaps —
+**branch import** + **branch track rendering** — so a real branched service now appears on the map.
+
+- **Branch import** (`build_networks.py`): OSM carries the Circle Line as four `ref=CCL` route
+  variants — two terminate at Dhoby Ghaut (the arc), two run to Marina Bay (the CE spur) — and the
+  importer used to keep only the longest and discard the rest. Now it keeps ALL variants, takes the
+  longest as the trunk, and mines the others for branches: `branch_from_variant` finds a variant that
+  shares a prefix with the trunk then continues into NEW track, and emits it as a branch diverging at
+  the junction. Robust (uses OSM's own variants, no cross-line guessing) and conservative (a shorter/
+  subset variant never invents a branch). Re-baked Singapore → the Circle Line now carries a branch
+  **@ Promenade → Bayfront → Marina Bay**, and exactly one line gets a branch (no false positives).
+  Emitted as `branches` in the network JSON; `applyNetwork` builds each via `AddBranchStop`.
+- **Branch track rendering** (`stats.rs` `LineView.branch_polylines_mm`, `world.rs` export, `types.ts`,
+  `game.ts`): the line geometry view now carries one polyline per branch path; the `LinePath[]`
+  builder flat-maps a line into its trunk + branch paths (same id/colour), so the deck PathLayers draw
+  the spur in the line's colour. Browser-verified: the Circle Line shows its Marina Bay branch,
+  selectable, 0 console errors.
+- Tiers: cargo (determinism + branching green, LineView field additive — zero re-pins), vitest 21,
+  tsc clean, playwright 16 (Singapore + Tokyo boot and carry riders).
+- **Still deferred:** **branch literal geometry** (the spur renders STRAIGHT — branch paths get no
+  imported waypoints yet, so Promenade→Marina Bay is a straight segment; fine for a short spur, a
+  follow-up for long branches); **service-pattern UI** (`SetServicePattern` — round-robin default
+  already works); **branch water-legalization** (`SetSegmentMode` is trunk-only, so a branch crossing
+  water at surface would park — the CE branch doesn't, so it runs); and **re-baking the other cities**
+  with branch detection (only Singapore re-baked this pass; the others have geometry but not yet
+  branches — the importer handles it on their next bake).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

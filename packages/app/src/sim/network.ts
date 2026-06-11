@@ -19,6 +19,9 @@ export interface NetLine {
   // station j and j+1 (the closing span too, for a loop). Present for real-world imports so the
   // line follows the actual layout (applied as literal waypoints); absent ⇒ straight spans.
   geometry?: [number, number][][];
+  // Branches off the trunk (P3): each diverges at trunk stop `divergeAt` and continues through
+  // `stations`. Recovered from OSM route variants (e.g. the Circle Line's Marina Bay spur).
+  branches?: { divergeAt: number; stations: number[] }[];
 }
 
 export interface Network {
