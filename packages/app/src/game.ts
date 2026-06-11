@@ -15,7 +15,7 @@ import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Event, PerLine, PerStation, Stats } from "./types";
-import { lineTipHtml, MODES, modeIcon, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
+import { lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
 import { meanStopQueue } from "./ui/react/lineEconomics";
 
 const EMPTY_STATS: Stats = {
@@ -280,7 +280,7 @@ export class Game {
       loadFactor: ls?.loadFactor ?? 0,
       stops: ls?.stops ?? lv.stops.length,
       trains: ls?.trains ?? 0,
-      headwayMin: ls ? Math.round(ls.headwayMs / 60000) : 0,
+      headwayMin: ls ? Math.round(ls.headwayMs / SIM_MS_PER_CLOCK_MIN) : 0,
     };
   }
 
@@ -481,25 +481,26 @@ export class Game {
     return this.bridge.stats().perLine.find((l) => l.lineId === line)?.trains ?? 0;
   }
 
-  /** Estimated round-trip travel time (ms): out-and-back run + dwell at each stop. */
+  /** Estimated round-trip travel time (sim-ms): out-and-back run + dwell at each stop, using the
+   *  LINE'S mode spec from the shared mirror (the old version hardcoded the rail spec for every
+   *  mode, so bus/ferry/heavy headway suggestions were estimated at rail speeds). */
   roundTripMs(line: number): number {
     const l = this.bridge.linesView()[line];
-    if (!l) return 600_000;
+    if (!l) return 20_000;
     let lenMm = 0;
     for (let i = 1; i < l.polylineMm.length; i++) {
       const [ax, ay] = l.polylineMm[i - 1];
       const [bx, by] = l.polylineMm[i];
       lenMm += Math.hypot(bx - ax, by - ay);
     }
-    const vMaxMmS = 22_000;
-    const dwellMs = 20_000;
-    const oneWayMs = (lenMm / vMaxMmS) * 1000 + l.stops.length * dwellMs;
+    const spec = MODE_SPECS[l.mode] ?? MODE_SPECS[0];
+    const oneWayMs = (lenMm / spec.vMaxMmS) * 1000 + l.stops.length * spec.dwellMs;
     return 2 * oneWayMs;
   }
 
-  /** Round-trip / train count, clamped to the sim's headway bounds. */
+  /** Round-trip / train count, clamped to the sim's headway bounds (mirrored: 1–60 clock-min). */
   suggestHeadwayMs(line: number, count: number): number {
-    return Math.max(30_000, Math.min(1_800_000, Math.round(this.roundTripMs(line) / Math.max(1, count))));
+    return Math.max(2_000, Math.min(120_000, Math.round(this.roundTripMs(line) / Math.max(1, count))));
   }
 
   setMode(mode: Mode): void {
@@ -1534,7 +1535,8 @@ export class Game {
       this.bridge.apply(cmd.createLine(parseInt(line.colorHex, 16) >>> 0, line.name, line.loop ?? false, line.mode ?? 0));
       for (const idx of line.stations) this.bridge.apply(cmd.addStop(li, idx));
       this.bridge.apply(cmd.assignTrainset(li, 0, Math.max(1, Math.min(8, line.trains))));
-      this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * 60_000)));
+      // headwayMin in the network JSON means real minutes of SERVICE — clock-frame sim-ms now.
+      this.bridge.apply(cmd.setHeadway(li, Math.round(line.headwayMin * SIM_MS_PER_CLOCK_MIN)));
     });
     this.legalizeWaterCrossings(net);
     this.selectedStation = null;

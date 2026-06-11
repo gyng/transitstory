@@ -4,6 +4,7 @@
 import type { Layer } from "@deck.gl/core";
 import { ArcLayer, ColumnLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
+import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
 export type Rgb = [number, number, number];
 
@@ -189,12 +190,12 @@ function waitRing(count: number): { color: [number, number, number, number]; wid
 /** Accessibility band for the "Reach" isochrone: travel time (ms) from the selected station →
  *  green (quick) / amber (medium) / red (slow). Bands so it reads as a stoplight, not a smear. */
 function reachColor(ms: number): [number, number, number, number] {
-  if (ms <= 6 * 60_000) return [0, 158, 115, 90]; // ≤6 min — green
-  if (ms <= 15 * 60_000) return [230, 159, 0, 90]; // ≤15 min — amber
+  if (ms <= 6 * SIM_MS_PER_CLOCK_MIN) return [0, 158, 115, 90]; // ≤6 clock-min — green
+  if (ms <= 15 * SIM_MS_PER_CLOCK_MIN) return [230, 159, 0, 90]; // ≤15 clock-min — amber
   return [213, 94, 0, 90]; // slower — vermillion
 }
 function reachBand(ms: number): 0 | 1 | 2 {
-  return ms <= 6 * 60_000 ? 0 : ms <= 15 * 60_000 ? 1 : 2;
+  return ms <= 6 * SIM_MS_PER_CLOCK_MIN ? 0 : ms <= 15 * SIM_MS_PER_CLOCK_MIN ? 1 : 2;
 }
 
 /** Topology layers (rebuilt only on topology/selection change — cached by Game so they keep

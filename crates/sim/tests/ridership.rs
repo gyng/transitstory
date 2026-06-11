@@ -38,7 +38,7 @@ fn world_with_stops_headway(stops: &[u32], headway_ms: i64) -> World {
 
 /// 3 stations always placed; the line covers the given subset of stops (default headway).
 fn world_with_stops(stops: &[u32]) -> World {
-    world_with_stops_headway(stops, 200_000)
+    world_with_stops_headway(stops, 10_000) // 5 clock-min
 }
 
 #[test]
@@ -77,9 +77,9 @@ fn coverage_score_monotonic_under_superset() {
 fn coverage_score_rewards_shorter_headway() {
     // Same coverage, shorter headway => the gauge must NOT be lower (and here, strictly higher:
     // a frequent line is better service than an infrequent one over identical stops).
-    let mut slow = world_with_stops_headway(&[0, 1, 2], 1_200_000); // 20 min
+    let mut slow = world_with_stops_headway(&[0, 1, 2], 40_000); // 20 clock-min
     slow.tick(50);
-    let mut fast = world_with_stops_headway(&[0, 1, 2], 60_000); // 1 min
+    let mut fast = world_with_stops_headway(&[0, 1, 2], 2_000); // 1 clock-min
     fast.tick(50);
     let (slow_c, fast_c) = (slow.stats_snapshot().coverage_score, fast.stats_snapshot().coverage_score);
     assert!(fast_c >= slow_c, "shorter headway never lowers coverage ({fast_c} >= {slow_c})");
@@ -89,9 +89,9 @@ fn coverage_score_rewards_shorter_headway() {
 #[test]
 fn coverage_score_monotonic_under_superset_and_shorter_headway() {
     // The AGENTS contract: superset network + shorter headway => score not lower.
-    let mut base = world_with_stops_headway(&[0, 1], 1_200_000);
+    let mut base = world_with_stops_headway(&[0, 1], 40_000); // 20 clock-min
     base.tick(50);
-    let mut better = world_with_stops_headway(&[0, 1, 2], 60_000);
+    let mut better = world_with_stops_headway(&[0, 1, 2], 2_000); // 1 clock-min
     better.tick(50);
     assert!(
         better.stats_snapshot().coverage_score >= base.stats_snapshot().coverage_score,
@@ -105,7 +105,7 @@ fn coverage_score_monotonic_under_superset_and_shorter_headway() {
 fn lifecycle_telemetry_populates_and_left_behind_aliases_denials() {
     // Journey/wait telemetry must populate once trips complete, and left_behind must be the
     // real cumulative denied-boarding counter (not the live waiting-queue depth).
-    let mut w = world_with_stops_headway(&[0, 1, 2], 60_000);
+    let mut w = world_with_stops_headway(&[0, 1, 2], 2_000); // 1 clock-min
     for _ in 0..6000 {
         w.tick(50);
     }
@@ -161,19 +161,19 @@ fn riders_abandon_when_service_is_too_infrequent() {
             w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
         }
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 }); // sparse service
-        w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 1_800_000 });
+        w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 }); // 60 clock-min (the max)
         w.apply(&Command::SetRunning { running: true });
         w
     };
 
-    let mut a = build(120_000); // 2-min patience
+    let mut a = build(4_000); // 2 clock-min patience
     for _ in 0..8000 {
         a.tick(50); // 400 s
     }
     assert!(a.stats_snapshot().abandoned > 0.0, "infrequent service loses riders to renege");
 
     // Deterministic replay.
-    let mut b = build(120_000);
+    let mut b = build(4_000);
     for _ in 0..8000 {
         b.tick(50);
     }

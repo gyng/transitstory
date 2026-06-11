@@ -12,9 +12,9 @@ use sim::*;
 fn air_default_spec_is_locked() {
     let d = spec_for(tmode::AIR, 0);
     assert_eq!(d.capacity, 250);
-    assert_eq!(d.v_max_mm_s, 60_000_000);
-    assert_eq!(d.accel_mm_s2, 3_000_000);
-    assert_eq!(d.decel_mm_s2, 3_000_000);
+    assert_eq!(d.v_max_mm_s, 1_800_000_000); // clock-frame (x30)
+    assert_eq!(d.accel_mm_s2, 2_700_000_000); // clock-frame (x900)
+    assert_eq!(d.decel_mm_s2, 2_700_000_000);
     assert_eq!(d.dwell_ms, 60_000);
 }
 

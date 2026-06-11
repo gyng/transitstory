@@ -6,9 +6,13 @@ use crate::world::World;
 
 /// Load-dependent dwell: each boarding/alighting passenger adds time at the stop, capped. This is
 /// what makes BUNCHING emergent — a crowded vehicle dwells longer, falls behind, and the (now
-/// lighter-loaded) follower catches up. Integer + deterministic.
-const DWELL_PER_PAX_MS: i64 = 250;
-const MAX_EXTRA_DWELL_MS: i64 = 80_000;
+/// lighter-loaded) follower catches up. Integer + deterministic. CLOCK-FRAME: 100 sim-ms = 3
+/// clock-seconds per boarder. The cap is PER-SPEC (4× the vehicle's base dwell) rather than a
+/// constant, so the feedback keeps the same relative strength for a 7-seat metro (≤2.8 s extra)
+/// and a 250-seat aircraft (≤4 clock-min extra) alike — a flat cap sized for one mode killed
+/// bunching for the other.
+const DWELL_PER_PAX_MS: i64 = 100;
+const MAX_EXTRA_DWELL_FACTOR: i64 = 4;
 
 #[derive(Clone, Debug)]
 pub struct Pax {
@@ -200,7 +204,7 @@ pub(crate) fn board_alight(world: &mut World) {
         // Load-dependent dwell: extend the (already-set) base dwell by the boarding/alighting
         // load, so a crowded vehicle falls behind and bunching emerges on an overloaded line.
         if base_dwell > 0 {
-            let extra = (DWELL_PER_PAX_MS * (alighted_here + boarded_here)).min(MAX_EXTRA_DWELL_MS);
+            let extra = (DWELL_PER_PAX_MS * (alighted_here + boarded_here)).min(MAX_EXTRA_DWELL_FACTOR * base_dwell);
             vehicles.dwell_until_ms[i] = clock_ms + base_dwell + extra;
         }
     }

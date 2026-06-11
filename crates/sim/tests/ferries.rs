@@ -46,8 +46,10 @@ fn a_ferry_is_cheaper_and_faster_on_water_than_on_land() {
     // B: an open-water ferry lays no capital; a ferry forced over land would have to build something.
     assert!(cap(water) < cap(land), "an open-water ferry is cheaper: {} < {}", cap(water), cap(land));
 
-    // A: the water ferry cruises; the land-bound one crawls.
-    for _ in 0..1000 {
+    // A: the water ferry cruises; the land-bound one crawls. Short window (2 sim-s): at the
+    // clock-frame speeds a ferry covers ~500 m here — far from the terminal, so `s` is still a
+    // monotone speed proxy (after a reversal the position comparison would be meaningless).
+    for _ in 0..40 {
         w.tick(50);
     }
     let s_of = |line: u32| -> i64 {

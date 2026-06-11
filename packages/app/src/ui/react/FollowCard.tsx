@@ -33,7 +33,9 @@ export function FollowCard() {
   // commute spawns, `followCitizen` finds them again and the live view resumes (the daily routine).
   if (!f) {
     const prev = lastSeen.current;
-    const gaveUp = !!prev && !prev.onboard && prev.waitMin > 20;
+    // waitMin is CLOCK minutes; default patience is 10 clock-min, so a rider last seen waiting
+    // ~8+ almost certainly reneged rather than boarded between samples.
+    const gaveUp = !!prev && !prev.onboard && prev.waitMin > 8;
     return (
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

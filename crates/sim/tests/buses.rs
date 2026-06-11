@@ -46,9 +46,10 @@ fn a_bus_is_cheaper_and_faster_on_a_road_than_off_road() {
     // B: an on-road bus lays no track (rides the existing road); an off-road one builds a busway.
     assert!(cap(road) < cap(offroad), "on-road bus is cheaper to build: {} < {}", cap(road), cap(offroad));
 
-    // A: run a while; the on-road vehicle covers more arc-length than the off-road one (which
-    // crawls without a road). Few enough ticks that neither reaches the far stop.
-    for _ in 0..1000 {
+    // A: run a SHORT window (5 sim-s): at clock-frame speeds the on-road bus covers ~2 km of the
+    // 6 km line and the off-road one ~1 km — neither reaches the far stop, so raw `s` is still a
+    // monotone speed proxy (after a terminus reversal the comparison would be phase luck).
+    for _ in 0..100 {
         w.tick(50);
     }
     let s_of = |line: u32| -> i64 {
@@ -171,7 +172,10 @@ fn congestion_is_worse_in_built_up_areas() {
     let downtown = bus_line(&mut w, 0); // hemmed in by BUILT
     let open = bus_line(&mut w, 4_000_000); // out in the open
     w.apply(&Command::SetRunning { running: true });
-    for _ in 0..800 {
+    // Sample mid-cruise BEFORE either bus reaches its far terminus (clock-frame speeds finish the
+    // old 40 s window with reversals + dwells in it — a sample landing mid-dwell reads v=0 and the
+    // comparison becomes phase luck). 3 sim-s: both still accelerating/cruising on their first leg.
+    for _ in 0..60 {
         w.tick(50); // cruising
     }
     let v = |line: u32| -> i64 {

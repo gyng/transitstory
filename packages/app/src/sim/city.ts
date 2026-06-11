@@ -18,6 +18,11 @@ export interface RawCity {
   networkPath?: string;
   /** Optional committed buildability grid (surface-rail cost signal). */
   buildabilityPath?: string;
+  /** Optional per-city rider patience (sim-ms) — overrides the core's default. The globe sets an
+   *  air-scale value (90_000 = 45 clock-min): air travellers arrive for a departure rather than
+   *  drifting off after one missed metro interval, so its pressure is CAPACITY (denied boardings,
+   *  aircraft choice), not schedule impatience. */
+  patienceMs?: number;
 }
 
 export interface RawDemand {
@@ -55,6 +60,7 @@ export function buildCoreCity(
     return { x_mm, y_mm, origin_w: c.originWeight, dest_w: c.destWeight };
   });
   const core: Record<string, unknown> = { seed: raw.seed, demand: { cell_m: demand.cellM, cells } };
+  if (raw.patienceMs !== undefined) core.patience_ms = raw.patienceMs; // per-city demand knob (city.rs)
   if (buildability) {
     core.buildability = {
       cell_m: buildability.cellM,

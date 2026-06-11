@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 
 /// Curve samples per inter-stop span (more = smoother + denser polyline).
 const SAMPLES_PER_SPAN: usize = 10;
-/// Comfortable lateral acceleration (mm/s^2) -> curve speed cap = sqrt(a * radius).
-const LAT_ACCEL_MM_S2: f64 = 800.0;
+/// Comfortable lateral acceleration (mm/s²) -> curve speed cap = sqrt(a * radius). CLOCK-FRAME:
+/// ×CLOCK_SCALE² (like the trainset accels), so the cap over a given REAL radius scales with the
+/// ×CLOCK_SCALE speeds and curves bind exactly as tightly as before the unification.
+const LAT_ACCEL_MM_S2: f64 = 720_000.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Line {

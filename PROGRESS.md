@@ -564,6 +564,48 @@ The three remaining deferred items, all unblocked. Tiers: cargo 28 suites (growt
   balance, full detail in the tooltip ("burning $X/day — ≈N days of runway"), and the inline ≈Nd
   count appears only under 30 days — the drain is visible long before the afford-gate fires.
 
+## Headway made honest — the clock-frame unification (2026-06-11)
+
+The audit's last open headway item, deferred twice as "would require rebuilding the speed model".
+It did. The sim's physics ran in real-world time while the player's clock ran 30× faster, so
+"Headway: 6 min" meant a train every 3 in-game HOURS; waits, trips, and the day were three
+different time languages. Now there is ONE: `tod::CLOCK_SCALE = 30` (= 3.6M / HOUR_MS), and every
+duration the player reads is true against the clock they watch.
+
+- **The rescale** (constants only — zero algorithm changes, determinism untouched): ground/water
+  speeds ×30 (a "80 km/h" metro covers 80 km per CLOCK hour), accelerations ×900 (braking distance
+  v²/2a is frame-invariant, so stopping behaviour over real metres is identical), dwells ÷30
+  (rail 21 clock-s, restated per mode), headway clamps → 1–60 CLOCK-minutes (2_000–120_000 sim-ms,
+  slider unchanged at 2–20 but now meaning clock minutes), patience → 10 clock-min, walk speed +
+  ACCESS_DECAY ×/÷30 (footpath transfers ~5 clock-min; accessibility weighting over real geography
+  unchanged), curve LAT_ACCEL ×900 (curves bind identically over real radii).
+- **Mini-Metro capacity rescale** (÷30: rail 7, bus 3, ferry 13, heavy 18): trips/day ×30 ×
+  riders/trip ÷30 ⇒ load factors, queue magnitudes, denied/renege pressure, fares/day and opex
+  trajectories all match the old tuning with spawn rates, agents, ToD, growth, and day length
+  UNTOUCHED. DWELL_PER_PAX 100 ms (3 clock-s/boarder) keeps bunching at the same relative strength.
+- **Parity measured live**: starter corridor day-1 = +223 riders (was +240 on a slightly bigger
+  build), load 7%, growth +0.9%/day — and the readouts finally cohere: headway 4.1 clock-min
+  (the auto-suggest now lands on plausible metro numbers by itself), avg wait 2.5 clock-min
+  (≈ headway/2 ON THE CLOCK), avg trip 11.3 clock-min for ~7 km. **1× is playable**: trains every
+  ~8 wall-seconds instead of 6 minutes of dead air. Full e2e wall time fell 3.2 min → 53 s for
+  the same behavioural asserts (ridership develops 30× faster in wall time).
+- **The globe stays story-framed** (deliberate, documented in `spec_for_mode`): air speeds remain
+  "a hop is near-instant"; its 45–120 s roster dwells now read as plausible 22–60 clock-minute
+  gate turnarounds for free (picker copy updated). The globe is the one mode whose speeds aren't
+  clock-honest.
+- **Mirrors + displays**: `shared.ts SIM_MS_PER_CLOCK_MIN = 2_000` is the single display
+  conversion (slider, roster, tooltips, dashboards, reach bands, journey/wait minutes in
+  `journey.rs`); `MODE_SPECS` replaces `roundTripMs`'s stale hardcoded rail spec (which had been
+  estimating bus/ferry/heavy headways at rail speeds — a real pre-existing bug). Anchors
+  re-measured post-change (most +1–3 from the friendlier quality span; globe 54→64); cities.ts
+  updated.
+- **Caveats**: old saves replay with out-of-range headways clamped into the new 1–60 clock-min
+  band (sim version bump, acceptable); opex's "per day" basis (86.4M sim-ms) was already
+  real-time-denominated and is deliberately untouched (balance trajectories preserved).
+- Tiers: cargo 28 suites (ferry speed-proxy window shortened; clock-frame re-pins in ridership/
+  raptor/pressure-buckets), vitest 21 (capacity re-pin), playwright 16. Adversarially reviewed by
+  a 3-lens find→refute workflow over the diff before commit.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

@@ -63,7 +63,7 @@ fn trainset_mode_heavy() -> u8 {
 #[test]
 fn transfer_wait_is_phase_aware() {
     let mut w = base_world();
-    let h = 600_000;
+    let h = 20_000; // 10 clock-min — inside the clamps, so the stored headway IS h (exact algebra below)
     place(&mut w, 0, 0); // 0 = O
     place(&mut w, 1_000_000, 0); // 1 = T (1 km — beyond the 400 m footpath range)
     place(&mut w, 2_000_000, 0); // 2 = D
@@ -106,9 +106,9 @@ fn slow_direct_vs_fast_transfer_world() -> World {
     place(&mut w, 0, 0); // 0 = O
     place(&mut w, 20_000_000, 0); // 1 = D (20 km east)
     place(&mut w, 10_000_000, 0); // 2 = T (interchange, 10 km)
-    line(&mut w, trainset_mode_bus(), &[0, 1], 1_200_000); // line 0: direct but 20-min headway + slow
-    line(&mut w, trainset_mode_heavy(), &[0, 2], 120_000); // line 1: O→T, 2-min headway, fast
-    line(&mut w, trainset_mode_heavy(), &[2, 1], 120_000); // line 2: T→D, 2-min headway, fast
+    line(&mut w, trainset_mode_bus(), &[0, 1], 40_000); // line 0: direct but 20-CLOCK-min headway + slow
+    line(&mut w, trainset_mode_heavy(), &[0, 2], 4_000); // line 1: O→T, 2-clock-min headway, fast
+    line(&mut w, trainset_mode_heavy(), &[2, 1], 4_000); // line 2: T→D, 2-clock-min headway, fast
     w.apply(&Command::SetRunning { running: true });
     w.tick(50);
     w

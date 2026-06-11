@@ -19,9 +19,10 @@ test("assign trainset + headway via the editor and the command path", async ({ p
   expect(line.trains).toBe(3);
   expect(line.headwayMs).toBeGreaterThan(0); // auto-suggested
 
-  await page.evaluate(() => window.__ot_test!.setHeadwayMs(0, 6 * 60_000));
+  // 6 CLOCK-minutes (frame-unified: 1 clock-min = 2_000 sim-ms), inside the 1-60 clock-min clamps.
+  await page.evaluate(() => window.__ot_test!.setHeadwayMs(0, 6 * 2_000));
   line = await page.evaluate(() => window.__ot!.bridge.stats().perLine[0]);
-  expect(line.headwayMs).toBe(360_000);
+  expect(line.headwayMs).toBe(12_000);
 
   // The editor panel is visible for the selected line.
   await expect(page.locator('[data-testid="editor-panel"]')).toBeVisible();

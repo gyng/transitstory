@@ -25,7 +25,8 @@ export interface Sample {
 
 /** Max retained samples; older ones are dropped (the chart window slides). */
 const MAX = 360;
-/** Minimum SIM-time gap between samples (1 sim-minute) — bounds buffer growth + chart density. */
+/** Minimum SIM-time gap between samples (60 wall-seconds at 1×; half an in-game hour) — bounds
+ *  buffer growth + chart density at 48 samples per in-game day. Frame-free pacing choice. */
 const SAMPLE_EVERY_MS = 60_000;
 
 let HISTORY: Sample[] = [];
@@ -77,7 +78,7 @@ export function cashTrend(balance: number): { perDay: number; runwayDays: number
   const a = recent[0];
   const b = recent[recent.length - 1];
   const dtMs = b.clockMs - a.clockMs;
-  if (dtMs < 3 * 60_000) return null; // need a few sim-minutes of signal
+  if (dtMs < 3 * 60_000) return null; // need a few samples' worth of signal (sim-ms window)
   const opDelta = (b.fareRevenue - b.opexSpent) - (a.fareRevenue - a.opexSpent);
   const perDay = (opDelta / dtMs) * DAY_MS;
   const runwayDays = perDay < 0 && balance > 0 ? balance / -perDay : null;

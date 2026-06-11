@@ -30,8 +30,8 @@ fn reachable_returns_ordered_one_to_all_times() {
     place(&mut w, 10_000_000, 0); // P (10 km, fast line)
     place(&mut w, 0, 10_000_000); // Q (10 km, slow line)
     place(&mut w, 5_000_000, 5_000_000); // R (no line)
-    line(&mut w, HEAVY, &[0, 1], 120_000);
-    line(&mut w, BUS, &[0, 2], 1_200_000);
+    line(&mut w, HEAVY, &[0, 1], 4_000); // fast, 2-clock-min headway
+    line(&mut w, BUS, &[0, 2], 40_000); // slow, 20-clock-min headway
     w.apply(&Command::SetRunning { running: true });
     w.tick(50);
 
@@ -72,8 +72,8 @@ fn two_jobs_world() -> World {
     place(&mut w, 0, 0); // 0 = O
     place(&mut w, 10_000_000, 0); // 1 = P
     place(&mut w, 0, 10_000_000); // 2 = Q
-    line(&mut w, HEAVY, &[0, 1], 120_000); // O↔P: fast, 2-min headway
-    line(&mut w, BUS, &[0, 2], 1_200_000); // O↔Q: slow, 20-min headway
+    line(&mut w, HEAVY, &[0, 1], 4_000); // O↔P: fast, 2-clock-min headway
+    line(&mut w, BUS, &[0, 2], 40_000); // O↔Q: slow, 20-clock-min headway
     w.apply(&Command::SetRunning { running: true });
     w
 }

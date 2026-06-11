@@ -14,7 +14,7 @@ fn starved_city() -> CityData {
         id: "starve".into(),
         seed: 11,
         demand: DemandGrid { cell_m: 250.0, cells },
-        patience_ms: 120_000, // riders give up after 2 in-game minutes of waiting
+        patience_ms: 4_000, // riders give up after 2 CLOCK minutes of waiting
         ..Default::default()
     }
 }
@@ -30,7 +30,7 @@ fn starved_world() -> World {
     }
     // One train on a long headway: deliberately too little service for the demand.
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
-    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 900_000 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 }); // sparse: 60 clock-min
     w.apply(&Command::SetRunning { running: true });
     w
 }

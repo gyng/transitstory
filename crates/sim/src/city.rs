@@ -45,12 +45,12 @@ fn default_growth_bp() -> i64 {
     250
 }
 
-/// Default rider patience for cities that don't specify one: 10 sim-minutes — about two missed
-/// trains at a typical 3–6 sim-minute headway. Patience arms the renege ("gave up waiting")
-/// pressure signal, the game's primary difficulty source; a patience several times the longest
-/// sane headway would silently disable it.
+/// Default rider patience for cities that don't specify one: 10 CLOCK-minutes (20_000 sim-ms in
+/// the unified frame) — about two missed trains at a typical 3–6 clock-minute headway. Patience
+/// arms the renege ("gave up waiting") pressure signal, the game's primary difficulty source; a
+/// patience several times the longest sane headway would silently disable it.
 fn default_patience_ms() -> i64 {
-    600_000
+    20_000
 }
 
 /// Coarse classified grid: each cell carries a class `c` (1=RoadROW 2=RailROW 3=Built

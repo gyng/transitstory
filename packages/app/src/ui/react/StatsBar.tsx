@@ -2,7 +2,7 @@
 // Fed by the ~3 Hz stats throttle (useStats — never per frame). One number + one gauge,
 // details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
 import { useStats } from "./GameContext";
-import { fmtMoney, loadPip } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
 import { cashTrend } from "./statsHistory";
@@ -39,8 +39,8 @@ export function StatsBar() {
   const w = Math.round(s.waitingTotal);
   const lost = Math.round(s.abandoned);
   const denied = Math.round(s.deniedBoardings);
-  const avgWaitMin = s.avgWaitMs / 60000;
-  const avgTripMin = s.avgJourneyMs / 60000;
+  const avgWaitMin = s.avgWaitMs / SIM_MS_PER_CLOCK_MIN;
+  const avgTripMin = s.avgJourneyMs / SIM_MS_PER_CLOCK_MIN;
   // Service-quality detail lives on the waiting readout's tooltip (progressive disclosure),
   // not as new always-on HUD numbers (AGENTS IA: one number + one gauge). The terminal
   // "gave up" count is the visible pressure; the full-train denial count is in the tooltip.

@@ -10,6 +10,17 @@
 /// `World::agent_population_target`, which scales with day length to keep trips-per-sim-minute
 /// constant.
 pub const HOUR_MS: i64 = 120_000;
+/// In-game clock seconds per sim-second = 3_600_000 / HOUR_MS. THE frame constant: since the
+/// clock-unification pass, every physics constant in the sim (vehicle speeds, dwells, headways,
+/// patience, walk speeds, travel-time decays) is expressed so that durations READ TRUE against
+/// the in-game clock — "a 4-minute headway" means 4 minutes on the clock the player watches,
+/// stored as 4 × 60 × 1000 / CLOCK_SCALE = 8_000 sim-ms. Speeds carry ×CLOCK_SCALE (a "80 km/h"
+/// train covers 80 km per CLOCK hour), accelerations ×CLOCK_SCALE² (so braking distances stay
+/// physical: v²/2a is frame-invariant). Capacities were rescaled ÷CLOCK_SCALE alongside so
+/// per-trip loads, queues, fares/day, and opex trajectories are unchanged. One deliberate
+/// exception: the globe's AIR mode keeps its story-scaled speeds ("a hop is near-instant") —
+/// its gate turnarounds happen to read plausibly in clock terms anyway.
+pub const CLOCK_SCALE: i64 = 3_600_000 / HOUR_MS;
 /// The day starts at this hour (so a fresh run opens into the morning ramp).
 const START_HOUR: f64 = 6.0;
 

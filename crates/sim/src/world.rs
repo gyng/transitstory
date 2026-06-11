@@ -19,11 +19,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// Frequency/capacity guardrails. `count` is clamped so the (future) pre-sized SoA
-/// vehicle buffers can never be exceeded; headway has a sane floor.
+/// vehicle buffers can never be exceeded; headway has a sane floor. CLOCK-FRAME (see
+/// `tod::CLOCK_SCALE`): values are sim-ms, labels are what the in-game clock observes —
+/// 1 clock-minute = 2_000 sim-ms.
 pub const MAX_TRAINS_PER_LINE: u16 = 24;
-pub const MIN_HEADWAY_MS: i64 = 30_000; // 30 s
-pub const MAX_HEADWAY_MS: i64 = 1_800_000; // 30 min
-pub const DEFAULT_HEADWAY_MS: i64 = 300_000; // 5 min
+pub const MIN_HEADWAY_MS: i64 = 2_000; // 1 clock-min
+pub const MAX_HEADWAY_MS: i64 = 120_000; // 60 clock-min
+pub const DEFAULT_HEADWAY_MS: i64 = 10_000; // 5 clock-min
 
 // Economy (optional, NIMBY-style). Dollars. Construction is a one-time capital cost; fares
 // accrue per boarding. The disruption metric feeds the surface land-taking premium.

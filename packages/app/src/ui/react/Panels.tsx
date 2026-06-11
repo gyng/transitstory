@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PerLine, Stats } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { AIR_ROSTER, PANEL_STYLE, hex, loadPip, modeIcon } from "./shared";
+import { AIR_ROSTER, PANEL_STYLE, SIM_MS_PER_CLOCK_MIN, hex, loadPip, modeIcon } from "./shared";
 import { linePnl, lineSatisfaction, fmtSignedMoney, fmtCount, shortLineName, swatchInk } from "./lineEconomics";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
@@ -60,7 +60,7 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
   const sat = lineSatisfaction(l, game.lineQueue(l.lineId)); // folded into the chip tooltip + Editor; no competing glyph here
   const pnl = linePnl(l, s);
   const showPnl = s.economyEnabled && hasTrains;
-  const headwayMin = Math.max(1, Math.round(l.headwayMs / 60_000));
+  const headwayMin = Math.max(1, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN));
   // Abbreviated service shape: "12 · 4tr · 5min" (mode glyph prefix only where it discriminates).
   const freq = `${l.mode !== 0 ? `${modeIcon(l.mode)} ` : ""}${l.stops} · ${l.trains}tr · ${headwayMin}min`;
   const chipTitle = pip
@@ -187,7 +187,7 @@ function LineList() {
 function Editor({ l }: { l: PerLine }) {
   const game = useGame();
   const id = l.lineId;
-  const mins = Math.max(2, Math.min(20, Math.round(l.headwayMs / 60_000)));
+  const mins = Math.max(2, Math.min(20, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN)));
   // Local preview of the headway slider — `input` updates only this label; `change` commits.
   const [previewMins, setPreviewMins] = useState<number | null>(null);
 
@@ -198,7 +198,7 @@ function Editor({ l }: { l: PerLine }) {
     (el: HTMLInputElement | null) => {
       if (!el) return;
       el.oninput = () => setPreviewMins(Number(el.value)); // preview only
-      el.onchange = () => game.setHeadwayMs(id, Number(el.value) * 60_000); // commit
+      el.onchange = () => game.setHeadwayMs(id, Number(el.value) * SIM_MS_PER_CLOCK_MIN); // commit
     },
     [game, id],
   );
@@ -277,8 +277,8 @@ function Editor({ l }: { l: PerLine }) {
         ref={sliderRef}
         data-testid="headway-slider"
         type="range"
-        min="2"
-        max="20"
+        min="1"
+        max="30"
         step="1"
         defaultValue={mins}
         style={{ width: "100%" }}
@@ -352,7 +352,7 @@ function Editor({ l }: { l: PerLine }) {
                   }}
                 >
                   <span>{sel ? "✓ " : ""}{a.name}</span>
-                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{a.capacity} seats · {a.turnS}s turn</span>
+                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{a.capacity} seats · {a.turnMin} min turn</span>
                 </button>
               );
             })}

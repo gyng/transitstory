@@ -21,7 +21,7 @@ pub struct JourneyView {
     pub here: String, // station they're waiting at right now
     pub legs: Vec<JourneyLeg>,
     pub leg: u32, // current leg index (which hop they're on)
-    pub wait_min: f64, // minutes waited on the current leg
+    pub wait_min: f64, // CLOCK minutes waited on the current leg (frame-unified display unit)
     pub queue_len: u32, // riders waiting at `here` (for the "1 of N" affordance)
 }
 
@@ -123,8 +123,8 @@ fn build_follow(world: &World, pax: &crate::pax::Pax, onboard: bool, station: i3
         vehicle,
         legs,
         leg: pax.leg as u32,
-        wait_min: (world.clock_ms - pax.t_wait_ms).max(0) as f64 / 60_000.0,
-        journey_min: (world.clock_ms - pax.t_spawn_ms).max(0) as f64 / 60_000.0,
+        wait_min: (world.clock_ms - pax.t_wait_ms).max(0) as f64 / (60_000.0 / crate::tod::CLOCK_SCALE as f64),
+        journey_min: (world.clock_ms - pax.t_spawn_ms).max(0) as f64 / (60_000.0 / crate::tod::CLOCK_SCALE as f64),
     }
 }
 
@@ -177,7 +177,7 @@ pub fn sample(world: &World, station: u32, nth: usize) -> Option<JourneyView> {
         here: st_name(station),
         legs,
         leg: pax.leg as u32,
-        wait_min: (world.clock_ms - pax.t_wait_ms).max(0) as f64 / 60_000.0,
+        wait_min: (world.clock_ms - pax.t_wait_ms).max(0) as f64 / (60_000.0 / crate::tod::CLOCK_SCALE as f64),
         queue_len: q.len() as u32,
     })
 }

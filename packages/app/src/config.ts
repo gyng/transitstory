@@ -22,8 +22,11 @@ export const SNAP_PX = 18;
 /** Waiting-queue thresholds (passengers) for the station-inspect verdict + starvation ring.
  *  busy = a watch signal; starved = the ring turns vermillion (the fix is shorter headway /
  *  more capacity). Single source for both the tooltip verdict word and the on-map ring colour. */
-export const BUSY_WAITING = 4;
-export const STARVED_WAITING = 12;
+/** CLOCK-FRAME RETUNE: with ~7-seat vehicles sweeping queues every 1-60 clock-minutes, queues
+ *  peak far lower than the pre-unification 200-seat/3-clock-hour world — STARVED now means
+ *  "more than a full trainload left on the platform", the same felt pressure. */
+export const BUSY_WAITING = 3;
+export const STARVED_WAITING = 7;
 
 /** Prefix a `public/`-rooted asset path with Vite's deploy base, so committed data/title
  *  assets resolve under a project-pages base (`/transitstory/`) as well as at root (`/`).

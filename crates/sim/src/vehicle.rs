@@ -83,14 +83,14 @@ fn next_stop_index(arc: &[i64], s: i64, dir: i64) -> usize {
 /// Advance every vehicle one fixed step along its line (trapezoidal speed + dwell + reverse
 /// at ends). Integer mm/ms throughout; deterministic. Records prev positions for interpolation.
 /// Street-running surface track through built-up land is slow (tram-like) — a real downside
-/// of NOT grade-separating in the dense core (mm/s ~ 43 km/h).
-const STREET_SPEED_MM_S: i64 = 12_000;
-/// A bus OFF the road network crawls (no road to run on) — ~25 km/h. On a `class::ROAD` cell it
-/// runs at its full spec speed (subject to congestion). This is the bus's road-bound identity.
-const OFF_ROAD_BUS_MM_S: i64 = 7_000;
+/// of NOT grade-separating in the dense core (~43 km/h on the CLOCK; ×CLOCK_SCALE frame).
+const STREET_SPEED_MM_S: i64 = 360_000;
+/// A bus OFF the road network crawls (no road to run on) — ~25 km/h clock. On a `class::ROAD`
+/// cell it runs at its full spec speed (subject to congestion). The bus's road-bound identity.
+const OFF_ROAD_BUS_MM_S: i64 = 210_000;
 /// A ferry forced OFF the water (over land) barely moves — its identity is water-bound, so the
 /// geometry keeps it on `class::WATER`; this is the penalty for any leg that strays onto land.
-const OFF_WATER_FERRY_MM_S: i64 = 3_000;
+const OFF_WATER_FERRY_MM_S: i64 = 90_000;
 
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;

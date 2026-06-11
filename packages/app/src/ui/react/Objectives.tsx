@@ -100,7 +100,9 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
         ))}
         {scenario.deadlineMs !== undefined && status === "active" && (
           <div style={{ color: "#7a818a", fontSize: 11, marginTop: 6 }}>
-            ⏳ {Math.max(0, Math.ceil((scenario.deadlineMs - stats.simClockMs) / 60_000))} min left
+            {/* Deadlines are SESSION time (sim-ms ≈ wall-ms at 1×), not in-game clock minutes —
+                disambiguated since every other duration now reads in clock units. */}
+            ⏳ {Math.max(0, Math.ceil((scenario.deadlineMs - stats.simClockMs) / 60_000))} min left (real time)
           </div>
         )}
       </div>

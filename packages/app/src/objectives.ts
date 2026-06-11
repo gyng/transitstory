@@ -53,7 +53,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   // Coverage targets are calibrated against measured anchors on the re-denominated gauge
   // (coverage = sqrt(% of the WHOLE city's demand served well)): one good first line ≈ 7,
-  // the full real Singapore MRT ≈ 41, the globe's flagship air board ≈ 54.
+  // the full real Singapore MRT ≈ 41, the globe's flagship air board ≈ 64 (re-measured post clock-unification).
   "coverage-sprint": {
     id: "coverage-sprint",
     title: "Coverage Sprint",

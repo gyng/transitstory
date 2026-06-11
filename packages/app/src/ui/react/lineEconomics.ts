@@ -8,6 +8,7 @@
 // total opex. Satisfaction is a service-quality score from the two per-line levers the snapshot
 // exposes: crowding (load factor) and wait (headway/2).
 import type { PerLine, Stats } from "../../types";
+import { SIM_MS_PER_CLOCK_MIN } from "./shared";
 
 /** The flat fare ($/boarding) the sim charges, recovered from the global totals so nothing here
  *  hardcodes the core constant (fareRevenue = ridershipTotal × FARE). 0 before any boarding. */
@@ -64,7 +65,7 @@ export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | n
   // Crowding: comfortable up to ~70% load, then unhappiness ramps; crush (>~110%) is miserable.
   const crowd = l.loadFactor <= 0.7 ? 0 : Math.min(60, (l.loadFactor - 0.7) * 150);
   // Wait: about half the headway. Painless under ~4 min, then ramps.
-  const waitMin = l.headwayMs / 2 / 60_000;
+  const waitMin = l.headwayMs / 2 / SIM_MS_PER_CLOCK_MIN; // clock minutes (frame-unified)
   const wait = waitMin <= 4 ? 0 : Math.min(40, (waitMin - 4) * 4);
   // Queues: a handful of people waiting is a working network; double digits per platform isn't.
   const queue = queueAtStops <= 4 ? 0 : Math.min(40, (queueAtStops - 4) * 2);

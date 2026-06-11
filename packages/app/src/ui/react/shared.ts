@@ -33,20 +33,39 @@ export function modeIcon(m: number): string {
   return MODE_ICON[m] ?? "🚇";
 }
 
+/** Sim-ms per in-game CLOCK minute = 60_000 / tod::CLOCK_SCALE. THE display conversion since the
+ *  clock-unification pass: every sim duration (headway, waits, journey, travel times) reads true
+ *  against the in-game clock when divided by this. Hand-mirrored from the Rust frame constants
+ *  (HOUR_MS=120_000 ⇒ CLOCK_SCALE=30 ⇒ 2_000) — keep in lockstep. */
+export const SIM_MS_PER_CLOCK_MIN = 2_000;
+
+/** Per-mode vehicle estimates for the frontend's round-trip/headway suggestion — hand-mirrored
+ *  from trainset.rs `spec_for_mode` (CLOCK-FRAME values; keep in lockstep). AIR uses its roster
+ *  default. Only vMaxMmS + dwellMs are needed client-side. */
+export const MODE_SPECS: { vMaxMmS: number; dwellMs: number }[] = [
+  { vMaxMmS: 660_000, dwellMs: 700 }, // rail
+  { vMaxMmS: 420_000, dwellMs: 400 }, // bus
+  { vMaxMmS: 330_000, dwellMs: 1_300 }, // ferry
+  { vMaxMmS: 1_800_000_000, dwellMs: 60_000 }, // air (clock frame too — narrowbody default)
+  { vMaxMmS: 2_490_000, dwellMs: 1_500 }, // heavy rail
+];
+
 /** Hand-mirror of the sim's AIR_ROSTER (trainset.rs) — index IS the `AssignTrainset.spec` id.
  *  A non-dominated capacity-vs-turnaround ladder: a bigger jet fills more per departure but sits
  *  longer at the gate (widening effective headway). Keep in lockstep with the Rust roster. */
 export interface AircraftDef {
   name: string;
   capacity: number;
-  turnS: number; // gate turnaround (the sim's dwell_ms / 1000)
+  /** Gate turnaround in CLOCK minutes (dwell_ms / SIM_MS_PER_CLOCK_MIN — air keeps its story-frame
+   *  dwell values, which read as plausible real turnarounds on the unified clock). */
+  turnMin: number;
   blurb: string;
 }
 export const AIR_ROSTER: AircraftDef[] = [
-  { name: "Narrowbody", capacity: 250, turnS: 60, blurb: "A321/737 class — the all-round trunk jet" },
-  { name: "Regional", capacity: 88, turnS: 45, blurb: "E175/CRJ class — fastest turn, keeps a thin spoke frequent" },
-  { name: "Widebody", capacity: 410, turnS: 90, blurb: "777/A350 class — big ceiling for a fat pair" },
-  { name: "Jumbo", capacity: 525, turnS: 120, blurb: "747/A380 class — max seats, slowest turn" },
+  { name: "Narrowbody", capacity: 250, turnMin: 30, blurb: "A321/737 class — the all-round trunk jet" },
+  { name: "Regional", capacity: 88, turnMin: 22, blurb: "E175/CRJ class — fastest turn, keeps a thin spoke frequent" },
+  { name: "Widebody", capacity: 410, turnMin: 45, blurb: "777/A350 class — big ceiling for a fat pair" },
+  { name: "Jumbo", capacity: 525, turnMin: 60, blurb: "747/A380 class — max seats, slowest turn" },
 ];
 
 /** u32 RGB → CSS hex string (#rrggbb). */

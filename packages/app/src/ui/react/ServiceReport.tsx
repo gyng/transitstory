@@ -6,7 +6,7 @@
 // (a discoverable channel, not a buried hover-tooltip).
 import { useState, type CSSProperties } from "react";
 import { useStats, useGameUI } from "./GameContext";
-import { MODES } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, MODES } from "./shared";
 
 // The travel-demand model in one line, keyed to the time of day: homes (trip origins) generate
 // trips, jobs (destinations) attract them, and the rush direction flips AM↔PM (sim `tod::work_bias`).
@@ -49,7 +49,7 @@ const CARD: CSSProperties = {
   overflow: "hidden",
 };
 
-const fmtMin = (ms: number): string => (ms > 0 ? `${(ms / 60000).toFixed(1)} min` : "—");
+const fmtMin = (ms: number): string => (ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—"); // clock minutes
 
 /** One label/value row; `tone` colours the value for pressure readouts. */
 function Row({ label, value, tone, testid }: { label: string; value: string; tone?: string; testid?: string }) {

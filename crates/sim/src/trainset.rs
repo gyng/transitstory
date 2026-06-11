@@ -4,19 +4,29 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct TrainsetSpec {
+    /// Seats per vehicle. CLOCK-FRAME SCALE (Mini-Metro-style): rescaled ÷CLOCK_SCALE alongside
+    /// the speed unification, so trips/day × riders/trip — and with them load factors, queues,
+    /// fares and opex trajectories — match the pre-unification tuning without touching spawn
+    /// rates. A "full train" is ~7 riders; denied-boarding pressure works the same.
     pub capacity: u16,
-    pub v_max_mm_s: i64,  // top speed (mm/s) ~ 22 m/s ≈ 80 km/h
-    pub accel_mm_s2: i64, // acceleration (mm/s^2)
-    pub decel_mm_s2: i64, // braking (mm/s^2)
-    pub dwell_ms: i64,    // station dwell time
+    /// Top speed (mm per sim-second), CLOCK-FRAME: ×CLOCK_SCALE vs the real-world figure, so the
+    /// nameplate speed is what the in-game clock observes (660_000 ⇒ 80 km per CLOCK hour).
+    pub v_max_mm_s: i64,
+    /// Acceleration/braking (mm/s²), ×CLOCK_SCALE² — braking distance v²/2a is frame-invariant,
+    /// so stopping behaviour over real metres is unchanged.
+    pub accel_mm_s2: i64,
+    pub decel_mm_s2: i64,
+    /// Station dwell (sim-ms) — reads true on the clock (700 sim-ms = 21 clock-seconds).
+    pub dwell_ms: i64,
 }
 
 pub const SPECS: &[TrainsetSpec] = &[TrainsetSpec {
-    capacity: 200,
-    v_max_mm_s: 22_000,
-    accel_mm_s2: 900,
-    decel_mm_s2: 1_200,
-    dwell_ms: 20_000,
+    // Metro: 80 km/h (clock), 0→top in ~24 clock-s, 21 clock-s dwell.
+    capacity: 7,
+    v_max_mm_s: 660_000,
+    accel_mm_s2: 810_000,
+    decel_mm_s2: 1_080_000,
+    dwell_ms: 700,
 }];
 
 #[inline]
@@ -35,36 +45,42 @@ pub mod tmode {
 }
 
 /// Vehicle preset per transport mode (speed/capacity/dwell differ; the sim path is shared).
+/// All ground/water modes are CLOCK-FRAME (see `TrainsetSpec` field docs): speeds ×CLOCK_SCALE,
+/// accel ×CLOCK_SCALE², dwell and capacity ÷CLOCK_SCALE vs their pre-unification values.
 pub fn spec_for_mode(mode: u8) -> TrainsetSpec {
     match mode {
-        tmode::BUS => TrainsetSpec { capacity: 80, v_max_mm_s: 14_000, accel_mm_s2: 1100, decel_mm_s2: 1500, dwell_ms: 12_000 },
-        tmode::FERRY => TrainsetSpec { capacity: 400, v_max_mm_s: 11_000, accel_mm_s2: 400, decel_mm_s2: 600, dwell_ms: 40_000 },
-        // Globe-scale jet (cities sit thousands of km apart, so AIR cruises far faster than ground
-        // modes). The mode default is roster index 0 — the narrowbody — and AIR additionally offers
-        // a roster of alternate aircraft (regional/widebody/jumbo) selectable per route via `spec_for`.
+        // Bus: 50 km/h (clock), nimble, 12 clock-s stops.
+        tmode::BUS => TrainsetSpec { capacity: 3, v_max_mm_s: 420_000, accel_mm_s2: 990_000, decel_mm_s2: 1_350_000, dwell_ms: 400 },
+        // Ferry: 40 km/h (clock), sluggish, 39 clock-s berthing.
+        tmode::FERRY => TrainsetSpec { capacity: 13, v_max_mm_s: 330_000, accel_mm_s2: 360_000, decel_mm_s2: 540_000, dwell_ms: 1_300 },
+        // Globe-scale jet. Speeds ride the same CLOCK frame as every other mode (x30/x900 in the
+        // unification) so the global decay/patience constants stay coherent across modes — flights
+        // remain "near-instant" by design (a half-globe hop ~ a few sim-seconds). Gate turnarounds
+        // (45–120 sim-s) read as plausible 22–60 clock-minute turns; capacities keep real seat
+        // counts (the globe's demand economy is its own scale).
         tmode::AIR => AIR_ROSTER[0],
-        // Heavy / high-speed rail: ~300 km/h, big intercity trains, longer station dwell.
-        tmode::HEAVY => TrainsetSpec { capacity: 550, v_max_mm_s: 83_000, accel_mm_s2: 700, decel_mm_s2: 900, dwell_ms: 45_000 },
+        // Heavy / high-speed rail: ~300 km/h (clock), big intercity trains, 45 clock-s dwell.
+        tmode::HEAVY => TrainsetSpec { capacity: 18, v_max_mm_s: 2_490_000, accel_mm_s2: 630_000, decel_mm_s2: 810_000, dwell_ms: 1_500 },
         _ => SPECS[0], // rail
     }
 }
 
 /// AIR aircraft roster — the stock a player picks from per route via `AssignTrainset{spec}`.
-/// Index 0 is the locked default (byte-identical to the historical single AIR preset) so existing
-/// saves and the determinism hash are unchanged. Higher indices trade **capacity** against ground
+/// Index 0 is the default. (The pre-unification byte-lock on this entry was superseded by the
+/// clock-frame migration, which is an explicit sim-version bump for saves.) Higher indices trade **capacity** against ground
 /// **turnaround** (`dwell_ms`): a bigger jet fills more of a fat city-pair per departure but sits
 /// longer at the gate, widening effective headway for a fixed fleet — so no aircraft is strictly
 /// best (capacity and dwell rise in lockstep). Speed is secondary flavor only (a hop is near-instant
 /// at globe scale). Names/icons for the picker live in the frontend `shared.ts` roster mirror.
 pub const AIR_ROSTER: &[TrainsetSpec] = &[
     // 0 Narrowbody Jet (default) — A321/737 class: the all-round trunk single-aisle.
-    TrainsetSpec { capacity: 250, v_max_mm_s: 60_000_000, accel_mm_s2: 3_000_000, decel_mm_s2: 3_000_000, dwell_ms: 60_000 },
+    TrainsetSpec { capacity: 250, v_max_mm_s: 1_800_000_000, accel_mm_s2: 2_700_000_000, decel_mm_s2: 2_700_000_000, dwell_ms: 60_000 },
     // 1 Regional Jet — E175/CRJ class: fewest seats, fastest single-door turn → keep a thin spoke frequent.
-    TrainsetSpec { capacity: 88, v_max_mm_s: 52_000_000, accel_mm_s2: 3_000_000, decel_mm_s2: 3_000_000, dwell_ms: 45_000 },
+    TrainsetSpec { capacity: 88, v_max_mm_s: 1_560_000_000, accel_mm_s2: 2_700_000_000, decel_mm_s2: 2_700_000_000, dwell_ms: 45_000 },
     // 2 Widebody — 777/A350 class: big ceiling for a fat pair, slower two-aisle load (90s turn).
-    TrainsetSpec { capacity: 410, v_max_mm_s: 72_000_000, accel_mm_s2: 3_000_000, decel_mm_s2: 3_000_000, dwell_ms: 90_000 },
+    TrainsetSpec { capacity: 410, v_max_mm_s: 2_160_000_000, accel_mm_s2: 2_700_000_000, decel_mm_s2: 2_700_000_000, dwell_ms: 90_000 },
     // 3 Jumbo — 747-8/A380 class: max seats for your single fattest trunk, slowest multi-deck turn (120s).
-    TrainsetSpec { capacity: 525, v_max_mm_s: 70_000_000, accel_mm_s2: 3_000_000, decel_mm_s2: 3_000_000, dwell_ms: 120_000 },
+    TrainsetSpec { capacity: 525, v_max_mm_s: 2_100_000_000, accel_mm_s2: 2_700_000_000, decel_mm_s2: 2_700_000_000, dwell_ms: 120_000 },
 ];
 
 /// Resolve the concrete vehicle spec for a line: its mode default, or the assigned aircraft within

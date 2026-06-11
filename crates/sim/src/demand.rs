@@ -14,16 +14,18 @@ pub const CATCHMENT_MM: i64 = 500_000;
 /// Expected passengers per second per unit of captured origin weight (× this × dt_ms).
 pub const DEMAND_RATE_PER_MS: f32 = 1.0e-5;
 /// Distance-decay scale for destination attractiveness (mm) — the geometric fallback used only
-/// when the router exposes no accessibility data.
+/// when the router exposes no accessibility data. (Pure distance: frame-free.)
 const DEST_DECAY_MM: f64 = 3_000_000.0;
-/// Accessibility-decay scale (ms): a destination's pull halves at ~this transit travel time, so
-/// well-connected (fast-to-reach) places draw proportionally more trips. ~15 min.
-const ACCESS_DECAY_MS: f64 = 900_000.0;
+/// Accessibility-decay scale (sim-ms): a destination's pull halves at ~this transit travel time —
+/// 15 CLOCK-minutes. Travel times shrank ×CLOCK_SCALE in the unification, so this decay anchor
+/// shrank with them; the accessibility weighting over real geography is unchanged.
+const ACCESS_DECAY_MS: f64 = 30_000.0;
 /// Max walking-transfer distance (mm) between two stations — ~400 m, a generous interchange walk
 /// shed. Stops closer than this form a footpath interchange even on unconnected lines.
 pub(crate) const FOOTPATH_MM: i64 = 400_000;
-/// Walking speed (mm/s) for the footpath time estimate (~1.4 m/s). Integer ms throughout.
-pub(crate) const WALK_SPEED_MM_S: i64 = 1_400;
+/// Walking speed (mm per sim-second) for the footpath time estimate — ~1.4 m/s ON THE CLOCK
+/// (×CLOCK_SCALE frame): a 400 m interchange walk costs ~5 clock-minutes, like before.
+pub(crate) const WALK_SPEED_MM_S: i64 = 42_000;
 
 /// Integer walk time (ms) for a footpath of `dist_mm`: dist / speed, with the mm/s → ms ×1000.
 #[inline]

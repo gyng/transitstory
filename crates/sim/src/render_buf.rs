@@ -21,7 +21,7 @@ fn mm_to_m(v: i64) -> f32 {
 /// order). Keeps per-frame work bounded regardless of network size.
 pub const MAX_VISIBLE_PEEPS: usize = 4096;
 /// Walk-in / walk-out animation window (ms of sim time).
-pub const PEEP_WALK_MS: i64 = 6_000;
+pub const PEEP_WALK_MS: i64 = 1_900; // 80 m stub at the unified 42_000 mm/s walk speed (clock-honest)
 /// Cap on the walk-out breadcrumb ring buffer (board_alight prunes to this).
 pub const MAX_RECENT_ALIGHT: usize = 8_192;
 

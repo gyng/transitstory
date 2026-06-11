@@ -8,7 +8,7 @@ import { useGame, useStats } from "./GameContext";
 import { useStatsHistory } from "./statsHistory";
 import { ChartCard, BarList } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
-import { hex, fmtMoney } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, hex, fmtMoney } from "./shared";
 
 /** Compact count formatter: 980 / 12.3k / 1.4M. */
 function fmtCount(v: number): string {
@@ -18,7 +18,7 @@ function fmtCount(v: number): string {
   if (a >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
   return `${Math.round(v)}`;
 }
-const fmtMins = (ms: number) => (ms > 0 ? `${(ms / 60_000).toFixed(1)} min` : "—");
+const fmtMins = (ms: number) => (ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—"); // clock minutes
 /** simHour is a float (e.g. 21.44) — render as a wall clock, same as StatsBar. */
 const fmtClock = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.floor((h % 1) * 60)).padStart(2, "0")}`;
 

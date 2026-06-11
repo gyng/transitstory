@@ -66,7 +66,7 @@ describe("SimBridge (wasm-in-node)", () => {
     for (let i = 0; i < b.vehicleCount(); i++) {
       const onboard = loads[i * 2];
       const cap = loads[i * 2 + 1];
-      expect(cap).toBe(200); // the rail (mode 0) vehicle spec capacity — single source from the core
+      expect(cap).toBe(7); // the rail (mode 0) clock-frame capacity — single source from the core
       expect(onboard).toBeLessThanOrEqual(cap); // never over capacity
     }
   });
