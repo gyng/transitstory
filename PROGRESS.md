@@ -762,8 +762,8 @@ Closed the branch-geometry gap and spread branches to all cities.
   geometry). **London succeeded this time** (now has real geometry + 20 branches — the Tube is heavily
   branched). **30 branches detected across cities** (london 20, tokyo 4, chicago/dublin/glasgow/
   istanbul/manhattan/singapore 1 each) — the variant-based detection generalises well, no manual
-  per-city tuning. Tokyo boots in ~58 s (tight — branches add paths/geometry; London's 20 branches are
-  heavier still and untested on a slow runner, a watch item).
+  per-city tuning. (Boot is NOT the bottleneck — measured __MAP_READY ≈ 8 s Tokyo / 10 s London even
+  with the branches; the e2e spec's ~1 min is the ridership-develop wait, not the boot.)
 - Tiers: cargo (determinism + branching green, additive — zero re-pins), vitest 21, tsc clean,
   playwright 16 (Singapore + Tokyo boot, carry riders).
 - **Service-pattern UI: deferred by design.** Trains already split round-robin across a branched
@@ -773,6 +773,25 @@ Closed the branch-geometry gap and spread branches to all cities.
 - Remaining branch caveats (small): a branch crossing water at surface can't be tunnelled
   (`SetSegmentMode` is trunk-only) so it would park (no current city hits this); branch waypoint
   *editing* in the UI is absent (imports set them; players can't yet hand-shape a branch).
+
+## Stage C watch items — branch water-legalization fixed (2026-06-12)
+
+Worked the post-Stage-C watch items; one was a real bug, one a false alarm.
+
+- **Branch water-legalization (FIXED).** A loaded real network whose branch crosses water at surface
+  kept the WHOLE line parked (no dispatch, renders red), because `legalizeWaterCrossings`'s safety net
+  tunnels via a whole-line `SetSegmentMode` that only touched the trunk path. Hit on a flagship city:
+  **London parked the Elizabeth line, Mildmay (Overground) and DLR** — all branch the Thames/docks.
+  Fix: a whole-line `SetSegmentMode` (`span == u32::MAX`) now sets EVERY path's span modes (trunk +
+  branches), so legalizing tunnels the branch crossings too. Per-span (specific span) edits stay
+  trunk-only (per-branch span editing still deferred). Verified live: London **0 parked (was 3)**, 313
+  vehicles dispatched, ridership develops; boots in ~8 s. Non-branched lines unchanged (their only path
+  IS the trunk), so determinism + all tiers stay green (cargo, vitest 21, playwright 16).
+- **Boot performance (FALSE ALARM).** The earlier "Tokyo ~58 s boot" was a misread — that's the e2e
+  spec's TOTAL (incl. the 45 s ridership-develop wait). Measured `__MAP_READY` directly: **~8 s Tokyo,
+  ~10 s London** even with the branches. No fix needed; PROGRESS note above corrected.
+- Still open (small, by design): per-branch span-mode EDITING in the UI, branch waypoint editing, and
+  the service-pattern lever (round-robin default works).
 
 ## Known gaps / deferred
 

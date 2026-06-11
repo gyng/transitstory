@@ -842,30 +842,39 @@ impl World {
                 }
             }
             Command::SetSegmentMode { line, span, mode } => {
-                if line.index() < self.lines.len() && !self.lines[line.index()].paths.is_empty() {
+                let li = line.index();
+                if li < self.lines.len() && !self.lines[li].paths.is_empty() {
                     let old_capital = self.capital_total();
-                    let saved_modes = self.lines[line.index()].paths[0].span_mode.clone();
-                    {
-                        // Build modes apply to the TRUNK path (branch span-mode editing deferred).
-                        let p = &mut self.lines[line.index()].paths[0];
-                        let m = (*mode).min(crate::line::mode::TUNNEL);
-                        if *span == u32::MAX {
+                    let saved: Vec<Vec<u8>> =
+                        self.lines[li].paths.iter().map(|p| p.span_mode.clone()).collect();
+                    let m = (*mode).min(crate::line::mode::TUNNEL);
+                    if *span == u32::MAX {
+                        // WHOLE LINE = every span of EVERY path (trunk + branches), so legalizing a
+                        // loaded water-crossing network tunnels its BRANCHES too (else a branch span
+                        // over water keeps the whole line parked — e.g. London's Elizabeth/DLR/Mildmay
+                        // lines cross the Thames on a branch).
+                        for p in self.lines[li].paths.iter_mut() {
                             for s in p.span_mode.iter_mut() {
                                 *s = m;
                             }
-                        } else if (*span as usize) < p.span_mode.len() {
+                        }
+                    } else {
+                        // A specific span targets the trunk (per-branch span editing is deferred).
+                        let p = &mut self.lines[li].paths[0];
+                        if (*span as usize) < p.span_mode.len() {
                             p.span_mode[*span as usize] = m;
                         }
                     }
                     self.recompute_line_buildability(*line);
                     if self.overspent(old_capital) {
-                        self.lines[line.index()].paths[0].span_mode = saved_modes;
+                        for (p, sm) in self.lines[li].paths.iter_mut().zip(saved) {
+                            p.span_mode = sm;
+                        }
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
                             reason: "Not enough money to grade-separate this line".into(),
                         }]
                     } else {
-                        let m = (*mode).min(crate::line::mode::TUNNEL);
                         vec![Event::SegmentModeSet { line: *line, span: *span, mode: m }]
                     }
                 } else {
