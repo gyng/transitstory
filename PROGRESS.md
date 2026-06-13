@@ -1033,6 +1033,39 @@ the block's identity key graduates line-scoped → `TrackSegmentId`; the reserva
   suites, incl. single_track 7, branching 2, determinism 6).
 - Tiers: cargo (zero re-pins), vitest 21, tsc clean, playwright 16.
 
+## Track objects — Phase 1: crisp grid geometry (2026-06-13)
+
+The geometry SUBSTRATE for cross-line shared track (owner decision: full track objects, built grid-
+first; docs/fantasy-fork.md §10 + docs/shared-rail.md). The cross-line mutex needs **byte-exact
+physical identity** — two continuous Catmull-Rom polylines tracing "the same" rail are NOT byte-
+identical (a float-rounded vertex can land in different cells ⇒ the mutex silently never engages = a
+false-negative head-on shipping green). Grid geometry makes identity exact: track vertices land on a
+`cell_mm` lattice, so two lines over the same cells emit byte-identical edges.
+
+- **`CityData.grid_cell_mm`** (`#[serde(default)]`, **0 = off/continuous**): a bake property frozen at
+  construction (NOT a Command). CityData is not hashed, and an existing city (no field ⇒ 0) builds the
+  EXACT continuous polyline ⇒ **zero re-pins** (full sim suite byte-identical, additive behind the flag).
+- **`grid_walk`** (`line.rs`): `Path::rebuild` branches on `grid_cell_mm`; when >0 the polyline is a
+  dense OCTILINEAR lattice walk — each input point snaps to its cell, vertices are cell CENTRES, and
+  consecutive points connect by a unit-step walk that is **canonical** (the cell PAIR is sorted
+  lexicographically, walked diagonal-first from the smaller, then oriented) so `a→b` is the exact
+  reverse of `b→a`. Pure integer; everything downstream (arclen via `dist_mm`, stop_arclen, speed_cap
+  via circumradius, span_mode/track_type per span) is unchanged. The P4 Catmull-Rom shared-prefix
+  arclen-drift workaround vanishes on grid (identical prefixes ⇒ identical vertices).
+- **Sharing guarantee (the LITE scope)** = two lines whose stops snap to the **same consecutive
+  stop-cells** emit byte-identical edges (the shared-STATION trunk — the realistic cross-line pattern).
+  The grid review found the honest limit: a corridor shared BETWEEN stops (express `A→B` vs local
+  `A→M→B` on one rail) splits the walk at `M` and emits different edges — that needs explicit laid
+  track both lines reference (the FULL track-objects model). Pinned `#[ignore]`d
+  (`grid_express_local_corridor_shares_edges_is_full_model`); Phase 2's mutex contract is "shared
+  consecutive stop-cells".
+- **Tests** (`tests/grid.rs`, red-first): vertices on the lattice (unit octilinear steps); two lines
+  share byte-identical edges on a common section (the Phase-2 foundation); symmetric/canonical walk;
+  grid replay bit-for-bit; degenerate spacing (adjacent + same-cell stops, no panic). Review: 1
+  finding (the express/local limit, documented + `#[ignore]`d); parity/determinism/panic-safety clean.
+- Tiers: cargo 33 suites (zero re-pins), vitest 21, tsc clean, playwright 16. Phase 2 (the cross-line
+  shared-block mutex per shared-rail.md) builds on this.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

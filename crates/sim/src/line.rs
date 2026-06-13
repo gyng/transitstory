@@ -184,7 +184,7 @@ impl Path {
     /// Rebuild the smoothed polyline + arc-length tables from this path's ordered stop positions.
     /// `span_points[i]` shapes the span after stop i (pass-through bends, not halts). Existing
     /// `span_mode` values are preserved where the span count is unchanged; new spans default Surface.
-    pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>]) {
+    pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>], grid_cell_mm: i64) {
         let n = stop_pts.len();
         // A stop's geometric vertex. For LITERAL (imported) lines this is the stop's ON-TRACK
         // position — the adjacent real waypoint — NOT the supplied point: same-name interchanges are
@@ -227,8 +227,16 @@ impl Path {
         // sweeping curve full smoothing would invent (and without the 10× polyline bloat). Player
         // geometry gets the full smooth. Curve speed caps come from the actual vertices either way,
         // so a real-world line's tight curves still slow trains correctly.
-        let samples = if self.literal { LITERAL_SAMPLES } else { SAMPLES_PER_SPAN };
-        let (poly, stop_idx) = smooth_centripetal(&pts, samples);
+        // GRID mode (grid_cell_mm > 0): a crisp octilinear lattice walk (integer-exact, byte-identical
+        // for two lines over the same cells — the cross-line edge_key foundation). Otherwise the
+        // continuous Catmull-Rom curve (literal = a light pass; player = full smooth). Parity: a city
+        // with grid_cell_mm == 0 takes the EXACT existing path ⇒ byte-identical geometry, zero re-pins.
+        let (poly, stop_idx) = if grid_cell_mm > 0 {
+            grid_walk(&pts, grid_cell_mm)
+        } else {
+            let samples = if self.literal { LITERAL_SAMPLES } else { SAMPLES_PER_SPAN };
+            smooth_centripetal(&pts, samples)
+        };
         self.polyline = poly;
         self.arclen_mm.clear();
         let mut acc = 0i64;
@@ -410,11 +418,11 @@ impl Line {
 
     /// Rebuild ONLY the trunk path geometry from explicit stop points (no branches) — the cost
     /// preview path. Uses the line's waypoints for shaping; leaves branches untouched.
-    pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm]) {
+    pub fn rebuild_from_points(&mut self, stop_pts: &[PointMm], grid_cell_mm: i64) {
         let wps = self.waypoints.clone();
         let mut p = Path::new(self.stops.clone(), self.loop_line);
         p.literal = self.literal;
-        p.rebuild(stop_pts, &wps);
+        p.rebuild(stop_pts, &wps, grid_cell_mm);
         self.paths = vec![p];
     }
 }
@@ -438,6 +446,66 @@ fn cap_from_radius(r_mm: f64) -> i64 {
         return i64::MAX;
     }
     (LAT_ACCEL_MM_S2 * r_mm).sqrt() as i64
+}
+
+/// Crisp GRID geometry (fantasy-fork.md §10): snap each input point to its `cell_mm` lattice cell and
+/// connect consecutive points by a dense OCTILINEAR walk — a vertex at every cell CENTRE along the way,
+/// stepping diagonally where both axes differ then straight. No Catmull-Rom, no float in vertex math.
+/// Returns the polyline + each input point's vertex index.
+///
+/// SHARING GUARANTEE (the cross-line `edge_key` foundation, shared-rail.md): the walk between a cell
+/// PAIR is a deterministic pure-integer function of just that (canonical, lexicographically-ordered)
+/// pair, so two lines whose stops snap to the **same consecutive stop-cells** emit byte-identical
+/// vertices ⇒ identical edges, and `a→b` is the exact reverse of `b→a`. This is the realistic
+/// shared-TRUNK pattern (two lines sharing a central section with shared STATIONS). **It does NOT
+/// cover a corridor shared BETWEEN stops** — an express `A→B` and a local `A→M→B` over the same rail
+/// split the walk at `M` and emit different cells unless `M` lies exactly on the canonical `A→B` walk
+/// (the express/local false-negative the grid review found). That case needs explicit laid track
+/// lines reference (the FULL track-objects model), and is out of LITE scope — Phase 2's cross-line
+/// mutex contract is "shared consecutive stop-cells", and `grid_express_local_*` (#[ignore]d) pins it.
+fn grid_walk(pts: &[PointMm], cell_mm: i64) -> (Vec<PointMm>, Vec<usize>) {
+    let cell = |p: PointMm| (p.x_mm.div_euclid(cell_mm), p.y_mm.div_euclid(cell_mm));
+    let centre = |c: (i64, i64)| PointMm::new(c.0 * cell_mm + cell_mm / 2, c.1 * cell_mm + cell_mm / 2);
+    // The canonical cell path from `a` to `b` INCLUSIVE: walk diagonal-first from the lexicographically
+    // SMALLER endpoint, then orient `a -> b`. So `a -> b` and `b -> a` are EXACT reverses (the same edge
+    // set) — load-bearing for the cross-line mutex: an out-and-back train and an opposing train on
+    // another line traverse the shared section in opposite directions and must reserve the SAME edges.
+    let walk = |a: (i64, i64), b: (i64, i64)| -> Vec<(i64, i64)> {
+        let (lo, hi, rev) = if a <= b { (a, b, false) } else { (b, a, true) };
+        let mut v = vec![lo];
+        let (mut x, mut y) = lo;
+        while (x, y) != hi {
+            x += (hi.0 - x).signum();
+            y += (hi.1 - y).signum();
+            v.push((x, y));
+        }
+        if rev {
+            v.reverse();
+        }
+        v
+    };
+    let mut poly: Vec<PointMm> = Vec::new();
+    let mut stop_idx: Vec<usize> = Vec::with_capacity(pts.len());
+    let mut prev: Option<(i64, i64)> = None;
+    for &p in pts {
+        let c = cell(p);
+        match prev {
+            None => {
+                poly.push(centre(c));
+                stop_idx.push(0);
+            }
+            Some(pc) => {
+                // `walk(pc, c)` is pc..=c inclusive; pc is already in `poly`, so push the rest.
+                for &cc in &walk(pc, c)[1..] {
+                    poly.push(centre(cc));
+                }
+                // `c` is the last vertex pushed (or, if c == pc, the previous vertex ⇒ zero-length span).
+                stop_idx.push(poly.len().saturating_sub(1));
+            }
+        }
+        prev = Some(c);
+    }
+    (poly, stop_idx)
 }
 
 /// Centripetal Catmull-Rom through `pts`. Returns the dense polyline and, for each input

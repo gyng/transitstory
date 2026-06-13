@@ -445,7 +445,7 @@ impl World {
         let mut l = Line::new(0, DEFAULT_HEADWAY_MS);
         l.mode = mode;
         l.loop_line = loop_line;
-        l.rebuild_from_points(&pts); // empty span_mode ⇒ every span defaults to Surface
+        l.rebuild_from_points(&pts, self.city.grid_cell_mm); // empty span_mode ⇒ every span defaults to Surface
         let (_disr, _water, capital) = self.line_cost_metrics(&l);
         capital
     }
@@ -729,7 +729,7 @@ impl World {
             if let Some(tt) = old_track_types.get(pi) {
                 p.track_type = tt.clone();
             }
-            p.rebuild(&pts, &span_points);
+            p.rebuild(&pts, &span_points, self.city.grid_cell_mm);
             new_paths.push(p);
         }
         self.lines[idx].paths = new_paths;

@@ -110,7 +110,30 @@ all now have regression tests in `junction.rs`):
 — probably a small derived wait-rank, not new hashed state) would restore the full passing-place
 capacity for long single runs. Until then, a multi-span single section runs at most 2 trains.
 
-## Track objects — the cliff *(after S2; the real model change)*
+## Track objects — cross-line shared track *(GO 2026-06-13; the grid path)*
+
+> **Owner decision (2026-06-13):** build the **grid path** (docs/fantasy-fork.md §10 + docs/shared-rail.md),
+> not declared-window on continuous geometry — because the cross-line mutex needs **byte-exact**
+> physical identity, and continuous Catmull-Rom polylines never share exact vertices (a float-rounded
+> vertex lands in different cells ⇒ the mutex silently never engages = a gate-blind false-negative
+> head-on). Grid geometry makes identity exact. Built in two phases:
+
+- **Phase 1 — crisp grid geometry (DONE 2026-06-13).** `CityData.grid_cell_mm` (bake property, 0 = off
+  ⇒ byte-identical, zero re-pins); `line.rs::grid_walk` builds a dense octilinear lattice polyline
+  (cell-centre vertices, canonical so `a→b` reverses `b→a`), integer-exact. **Sharing guarantee (LITE):
+  two lines with the same consecutive stop-cells emit byte-identical edges** (the shared-station trunk).
+  **Honest limit** (grid review): a corridor shared BETWEEN stops (express/local) needs the FULL laid-
+  track model — `#[ignore]`d seam. So Phase 2's cross-line mutex contract is "shared consecutive
+  stop-cells". `tests/grid.rs`.
+- **Phase 2 — cross-line shared-block mutex (next, shared-rail.md).** Line-independent `edge_key` from
+  consecutive grid vertices; Phase A.1.7 cross-line occupancy + Phase B.6 atomic whole-block meet gate
+  (reuse `occ_claim`/`group_overlap`); the liveness STACK in one commit — atomic block-to-passing-place
+  + cross-LINE dispatch cap + capacity-1 mutex on cyclic shared components + a FAIR (non-lowest-index)
+  arbitration token (the S2 fairness follow-up comes due here). Derived/unhashed (zero re-pins), routing
+  untouched, two golden-hash tripwires. Budget 4+ adversarial rounds — cross-line is strictly harder
+  than S2's within-line case.
+
+## Track objects — the FULL model — the cliff *(after Phase 2; the real model change)*
 
 - **`TrackSegment` becomes first-class** (geometry + per-segment track/signal state); `Line` references
   a `Vec<TrackSegmentId>`; the importer + editor build/edit segments; lines are assigned to segments.

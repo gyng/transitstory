@@ -17,6 +17,13 @@ pub struct CityData {
     /// Coarse buildability grid (mm) for the surface-rail cost signal. Additive/optional.
     #[serde(default)]
     pub buildability: BuildabilityGrid,
+    /// GRID geometry mode (fantasy-fork.md §10 / shared-rail.md). When > 0, track is built on a
+    /// `grid_cell_mm` lattice (crisp octilinear, integer-exact) instead of the continuous Catmull-Rom
+    /// curve, so two lines over the same physical corridor produce byte-identical edges (the
+    /// foundation for cross-line shared track). A bake property frozen at construction, NOT a Command.
+    /// **0 = off (continuous)** ⇒ every existing city builds the exact same geometry (zero re-pins).
+    #[serde(default)]
+    pub grid_cell_mm: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy
