@@ -78,6 +78,10 @@ pub struct World {
     /// (transient, like `serving`). Empty for an all-non-branched network ⇒ the junction-mutex
     /// passes are inert and motion is byte-identical to pre-P4.
     pub junctions: Vec<Junction>,
+    /// Cross-LINE shared physical-rail blocks (Phase 2, docs/shared-rail.md). Re-derived in `dispatch`
+    /// on `dispatch_dirty` for GRID lines only; **never hashed** (transient, like `junctions`). Empty
+    /// for a continuous / non-grid / non-shared network ⇒ the cross-line mutex is inert (zero re-pins).
+    pub cross_blocks: Vec<CrossBlock>,
     /// Inter-station footpaths: per station, the nearby stations reachable on foot within
     /// `FOOTPATH_MM`, each with its integer walk time (ms). Derived from positions, rebuilt with
     /// the catchment when stations change. Lets RAPTOR transfer between unconnected lines whose
@@ -171,6 +175,27 @@ pub struct Junction {
     /// path supplies its OWN arc-lengths — the clean answer to per-path Catmull-Rom inflation: the
     /// mutex never keys on a shared scalar.
     pub span_by_path: Vec<(u8, i64, i64)>,
+}
+
+/// A CROSS-LINE shared physical-rail block (Phase 2, docs/shared-rail.md): a maximal run of
+/// physically-SINGLE grid edges traversed by **>=2 distinct lines**, between common passing places.
+/// Keyed on a line-INDEPENDENT `block_id` so two lines on one physical rail land in the SAME mutex row
+/// (unlike the line-scoped `Junction`). Re-derived on `dispatch_dirty` for grid lines only; **never
+/// hashed** (transient, like `junctions`/`serving`). Inert unless a grid network actually shares a
+/// single edge ⇒ continuous / non-shared networks are byte-identical.
+#[derive(Clone)]
+pub struct CrossBlock {
+    /// Unique, deterministic id (the block's index in edge-key-sorted order — command-order-independent).
+    pub block_id: u64,
+    /// The shared-edge component contains a CYCLE (a ring shared by lines) ⇒ a capacity-1 global mutex
+    /// (the depth-1-forest liveness argument fails on a ring). Else capacity = `passing_places + 1`.
+    pub cyclic: bool,
+    /// Physically-DOUBLE shared edges bracketing/within the block — the cross-line meet capacity.
+    pub passing_places: u32,
+    /// Per TRAVERSAL: `(line, path, lo_arclen, hi_arclen)` — the block's arc-length window on that
+    /// lane. A lane appears MORE THAN ONCE when an out-and-back train crosses the block both ways
+    /// (forward + return are distinct arclen windows), so the runtime mutex tests each.
+    pub by_lane: Vec<(u32, u8, i64, i64)>,
 }
 
 /// One render-only breadcrumb: a passenger finished their trip at `station` at `t_ms` (citizen id
@@ -278,6 +303,7 @@ impl World {
             abandoned_at: Vec::new(),
             serving: Vec::new(),
             junctions: Vec::new(),
+            cross_blocks: Vec::new(),
             footpaths: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             access_cache: rustc_hash::FxHashMap::default(),

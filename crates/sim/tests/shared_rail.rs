@@ -73,6 +73,62 @@ fn two_lines_shared_single(trains: u16) -> World {
     w
 }
 
+#[test]
+fn cross_blocks_derive_one_shared_section() {
+    // Step 1 (the derivation): the shared single A–B run is ONE cross-line block with both lines as
+    // lanes, line-independent, acyclic. Inert (derived, not yet used for movement).
+    let mut w = two_lines_shared_single(2);
+    w.tick(50); // dispatch derives world.cross_blocks
+    assert_eq!(w.cross_blocks.len(), 1, "the shared A–B single section is exactly one cross-line block");
+    let blk = &w.cross_blocks[0];
+    let lanes: std::collections::BTreeSet<u32> = blk.by_lane.iter().map(|&(l, _, _, _)| l).collect();
+    assert_eq!(lanes, std::collections::BTreeSet::from([0, 1]), "both lines are lanes of the block");
+    assert!(!blk.cyclic, "a linear shared section is acyclic");
+    for &(_, _, lo, hi) in &blk.by_lane {
+        assert!(hi > lo, "each lane's window covers the shared run");
+    }
+}
+
+#[test]
+fn cross_blocks_are_command_order_independent() {
+    // The block set (ids + lanes) is a pure function of geometry/topology, not of which line was
+    // created first — load-bearing for determinism + the future block-id ordering.
+    let snap = |w: &World| -> Vec<(bool, u32, Vec<u32>)> {
+        let mut v: Vec<(bool, u32, Vec<u32>)> = w
+            .cross_blocks
+            .iter()
+            .map(|b| {
+                let mut lanes: Vec<u32> = b.by_lane.iter().map(|&(l, _, _, _)| l).collect();
+                lanes.sort_unstable();
+                lanes.dedup();
+                (b.cyclic, b.passing_places, lanes)
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let mut a = two_lines_shared_single(2);
+    a.tick(50);
+    // Build B with the two lines created in the OPPOSITE order (same geometry).
+    let cell = 100_000i64;
+    let mut b = grid_world(cell, 7);
+    let sa = place(&mut b, 3 * cell + 50_000, 50_000);
+    let sb = place(&mut b, 6 * cell + 50_000, 50_000);
+    let s1 = place(&mut b, 50_000, 50_000);
+    let e1 = place(&mut b, 9 * cell + 50_000, 50_000);
+    let s2 = place(&mut b, 50_000, 3 * cell + 50_000);
+    let e2 = place(&mut b, 9 * cell + 50_000, 3 * cell + 50_000);
+    let l2 = make_line(&mut b, &[s2, sa, sb, e2]); // line 2 FIRST
+    let l1 = make_line(&mut b, &[s1, sa, sb, e1]);
+    b.apply(&Command::SetSegmentTrack { line: l1, span: 1, track: SINGLE });
+    b.apply(&Command::SetSegmentTrack { line: l2, span: 1, track: SINGLE });
+    b.apply(&Command::AssignTrainset { line: l1, spec: 0, count: 2 });
+    b.apply(&Command::AssignTrainset { line: l2, spec: 0, count: 2 });
+    b.apply(&Command::SetRunning { running: true });
+    b.tick(50);
+    assert_eq!(snap(&a), snap(&b), "the cross-line block set is command-order-independent");
+}
+
 // Phase-2 RED-first target (`#[ignore]`d until the cross-line `edge_key` mutex + liveness stack lands,
 // shared-rail.md Step 2). Confirmed RED today: cross-line head-on on the shared single edge at tick 37
 // (two lines pass clean through each other — line-scoped keys). Un-ignore when Phase 2 ships.

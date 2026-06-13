@@ -188,6 +188,12 @@ pub(crate) fn dispatch(world: &mut World) {
     }
     world.junctions = junctions;
 
+    // --- Phase 2: cross-line shared physical-rail blocks (docs/shared-rail.md) ---------------------
+    // On a GRID, two DISTINCT lines over the same single edge must mutex (Step 2). Step 1 derives the
+    // shared single-edge blocks (line-independent ids) into a transient, NEVER-hashed field — inert
+    // (empty) for continuous / non-grid / non-shared networks ⇒ zero re-pins.
+    world.cross_blocks = derive_cross_blocks(world);
+
     let lines = &world.lines;
     let junctions = &world.junctions; // P4: read the switch clusters for the tick-0 placement snap
     let v = &mut world.vehicles;
@@ -417,4 +423,178 @@ pub(crate) fn dispatch(world: &mut World) {
             }
         }
     }
+}
+
+/// Derive the cross-line shared physical-rail blocks (Phase 2 Step 1, docs/shared-rail.md). GRID lines
+/// only. A block = a maximal node-connected run of physically-SINGLE grid edges traversed by **>=2
+/// distinct lines**, keyed line-independently. Pure integer; sorted-Vec grouping (no HashMap
+/// iteration); command-order-independent (block ids in min-edge order). Empty (inert) unless a grid
+/// network actually shares a single edge ⇒ continuous / non-grid / non-shared networks are unchanged.
+fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
+    let cell = world.city.grid_cell_mm;
+    if cell <= 0 {
+        return Vec::new();
+    }
+    type Node = (i64, i64);
+    type Edge = (Node, Node);
+    let node_of = |p: &crate::geo_local::PointMm| -> Node { (p.x_mm.div_euclid(cell), p.y_mm.div_euclid(cell)) };
+
+    // 1. Every grid edge-use: which (line,path) traverses which physical edge, single?, arclen window.
+    struct Use {
+        edge: Edge,
+        line: u32,
+        path: u8,
+        vi: usize,
+        single: bool,
+        lo: i64,
+        hi: i64,
+    }
+    let mut uses: Vec<Use> = Vec::new();
+    for (li, line) in world.lines.iter().enumerate() {
+        if line.removed || line.trainset.is_none() || line.stops.len() < 2 || line.crosses_water_surface {
+            continue;
+        }
+        for (pi, path) in line.paths.iter().enumerate() {
+            let poly = &path.polyline;
+            for i in 0..poly.len().saturating_sub(1) {
+                let a = node_of(&poly[i]);
+                let b = node_of(&poly[i + 1]);
+                if a == b {
+                    continue; // zero-length (same-cell) edge
+                }
+                let edge = if a <= b { (a, b) } else { (b, a) };
+                let lo = path.arclen_mm[i];
+                let hi = path.arclen_mm[i + 1];
+                let span = path.span_of((lo + hi) / 2);
+                let single = path.track_type.get(span).copied().unwrap_or(0) == crate::line::track::SINGLE;
+                uses.push(Use { edge, line: li as u32, path: pi as u8, vi: i, single, lo, hi });
+            }
+        }
+    }
+    if uses.is_empty() {
+        return Vec::new();
+    }
+
+    // 2. Group by edge → BLOCK edge (>=2 distinct lines AND single-on-any) vs PASSING edge (shared,
+    //    fully double). Sorted iteration ⇒ deterministic, no HashMap.
+    let mut idx: Vec<usize> = (0..uses.len()).collect();
+    idx.sort_by(|&a, &b| uses[a].edge.cmp(&uses[b].edge));
+    let mut block_edges: Vec<Edge> = Vec::new();
+    let mut passing_edges: Vec<Edge> = Vec::new();
+    let mut g = 0;
+    while g < idx.len() {
+        let edge = uses[idx[g]].edge;
+        let mut h = g;
+        let mut lines_seen: Vec<u32> = Vec::new();
+        let mut any_single = false;
+        while h < idx.len() && uses[idx[h]].edge == edge {
+            let u = &uses[idx[h]];
+            if !lines_seen.contains(&u.line) {
+                lines_seen.push(u.line);
+            }
+            any_single |= u.single;
+            h += 1;
+        }
+        if lines_seen.len() >= 2 {
+            if any_single {
+                block_edges.push(edge);
+            } else {
+                passing_edges.push(edge);
+            }
+        }
+        g = h;
+    }
+    if block_edges.is_empty() {
+        return Vec::new();
+    }
+    block_edges.sort();
+
+    // 3. Union-find: coalesce block edges sharing a NODE into components.
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    let m = block_edges.len();
+    let mut parent: Vec<usize> = (0..m).collect();
+    let mut inc: Vec<(Node, usize)> = Vec::with_capacity(2 * m);
+    for (ei, &(a, b)) in block_edges.iter().enumerate() {
+        inc.push((a, ei));
+        inc.push((b, ei));
+    }
+    inc.sort();
+    let mut k = 0;
+    while k < inc.len() {
+        let node = inc[k].0;
+        let base = inc[k].1;
+        let mut kk = k + 1;
+        while kk < inc.len() && inc[kk].0 == node {
+            let (r1, r2) = (find(&mut parent, base), find(&mut parent, inc[kk].1));
+            if r1 != r2 {
+                parent[r1] = r2;
+            }
+            kk += 1;
+        }
+        k = kk;
+    }
+
+    // 4. edge → component root (sorted lookup); roots in canonical order for stable block ids.
+    let edge_comp: Vec<(Edge, usize)> = (0..m).map(|ei| (block_edges[ei], find(&mut parent, ei))).collect();
+    let mut roots: Vec<usize> = (0..m).map(|ei| find(&mut parent, ei)).collect();
+    roots.sort_unstable();
+    roots.dedup();
+
+    // 5. Per component → a CrossBlock: cyclic? + passing places + per-(line,path) traversal windows.
+    let mut blocks: Vec<crate::world::CrossBlock> = Vec::new();
+    for (bid, &root) in roots.iter().enumerate() {
+        let mut comp_nodes: Vec<Node> = Vec::new();
+        let mut comp_edge_count = 0usize;
+        for ei in 0..m {
+            if find(&mut parent, ei) == root {
+                comp_edge_count += 1;
+                comp_nodes.push(block_edges[ei].0);
+                comp_nodes.push(block_edges[ei].1);
+            }
+        }
+        comp_nodes.sort_unstable();
+        comp_nodes.dedup();
+        // Connected component with edges >= nodes contains a cycle (a ring shared by lines).
+        let cyclic = comp_edge_count >= comp_nodes.len();
+        let passing_places = passing_edges
+            .iter()
+            .filter(|&&(a, b)| comp_nodes.binary_search(&a).is_ok() || comp_nodes.binary_search(&b).is_ok())
+            .count() as u32;
+
+        // Per-(line,path) windows: this component's uses, grouped by lane, split by contiguous-vi runs
+        // (a lane that revisits the block gets multiple windows).
+        let mut comp_uses: Vec<&Use> = uses
+            .iter()
+            .filter(|u| edge_comp.binary_search_by(|x| x.0.cmp(&u.edge)).map(|p| edge_comp[p].1 == root).unwrap_or(false))
+            .collect();
+        comp_uses.sort_by(|a, b| (a.line, a.path, a.vi).cmp(&(b.line, b.path, b.vi)));
+        let mut by_lane: Vec<(u32, u8, i64, i64)> = Vec::new();
+        let mut q = 0;
+        while q < comp_uses.len() {
+            let (line, path) = (comp_uses[q].line, comp_uses[q].path);
+            let lo = comp_uses[q].lo;
+            let mut hi = comp_uses[q].hi;
+            let mut last_vi = comp_uses[q].vi;
+            let mut r = q + 1;
+            while r < comp_uses.len()
+                && comp_uses[r].line == line
+                && comp_uses[r].path == path
+                && comp_uses[r].vi == last_vi + 1
+            {
+                hi = comp_uses[r].hi;
+                last_vi = comp_uses[r].vi;
+                r += 1;
+            }
+            by_lane.push((line, path, lo, hi));
+            q = r;
+        }
+        blocks.push(crate::world::CrossBlock { block_id: bid as u64, cyclic, passing_places, by_lane });
+    }
+    blocks
 }
