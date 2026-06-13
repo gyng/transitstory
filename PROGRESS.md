@@ -848,6 +848,43 @@ Took the deferred branch-UI bits: branches are now editable objects, not read-on
   (hand-shaping a spur) and per-branch *span* editing also remain out (whole-branch mode covers the
   real cases).
 
+## Capacity roadmap — P2: single vs double track (2026-06-13)
+
+The cost/capacity lever (docs/capacity-roadmap.md): a per-span `track_type` (default **Double**, so P1
+replays byte-identical until set). On a SINGLE span opposing trains cannot both be inside — they MEET
+at the bounding stations (passing places); single track is **~half the build cost, lower capacity**.
+Built with a 3-workflow pipeline (understand → adversarial design → adversarial review), which is what
+made the determinism + deadlock correctness hold.
+
+- **Meet protocol** (`vehicle.rs`): `advance()` split into three index-ordered passes — derive
+  (P1-clamped desired advance), resolve (single-span entry gating), commit. Single-track is **block
+  working by train identity** (one train per single span); a train at a TERMINUS reserves the adjacent
+  single span through its turnaround (a dead-end is not a passing place). The gate keys off the span
+  the move CROSSES INTO (`next_arc`'s stop), not `span_of(s+ds)` — the decisive fix the design
+  adversaries found (correct for sub-tick spans + gate-departing trains). Loops are exempt (one-way ⇒
+  no meets). Occupancy is **re-derived from the SoA each tick** (sorted Vecs, binary search, no
+  HashMap, integer) — never persisted, never hashed; the only hashed addition is `Path.track_type`,
+  so **double-track motion is bit-identical (zero re-pins)**.
+- **Liveness via dispatch cap** (`dispatch.rs`): the review caught a real **P1×P2 deadlock the design's
+  proof missed** — once trains exceed a line's passing capacity, the meet protocol gridlocks (an
+  occupant is P1-blocked behind a train P2-held by that occupant). The meet protocol can't untangle
+  it; **liveness is guaranteed upstream** by a single-track capacity cap: a path with single spans
+  runs at most (DOUBLE spans + 1) trains — a fully-single out-and-back is a one-train shuttle — the
+  surplus undispatched (the `max_fit` self-limiting pattern). Single-track placements snap to passing
+  places (never mid-block) so the head-on invariant holds from tick 0; loops skip the snap (no perturb).
+- **Cost** (`world.rs`): single track = `SINGLE_TRACK_PCT=55`% of double per-km capital. **Command**
+  `SetSegmentTrack{line,span,track}` mirrors `SetSegmentMode` (whole-line over all paths / per-span
+  trunk; afford-gated; does NOT set `dispatch_dirty`); `types.ts`/`codec.ts` mirrored. **UI**: a
+  Double/Single toggle in the Editor's Track section (rail), reading `LineView.track_types`.
+- **Tests** (`tests/single_track.rs`, red-first): head-on safety + multi-train meet liveness;
+  **over-provisioned never freezes** (the at/above-threshold deadlock cases the first cut missed —
+  2-stop/2-train, 4-stop/4-train, …); determinism with `SetSegmentTrack` in the log; cost cheaper;
+  single-track loop = double-loop dispatch (pure discount); double-track lets opposing trains pass.
+- Tiers: cargo 29 suites (determinism gate + 7 single_track + all existing, zero re-pins), vitest 21,
+  tsc clean, playwright 16. **Deferred** (seam, not half-built): per-branch single track; coalescing a
+  multi-span single run as one block (each span is independently reservable today); a `max_fit` shrink
+  for single-track (emergent bunching is the intended AGENTS-aligned pressure).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

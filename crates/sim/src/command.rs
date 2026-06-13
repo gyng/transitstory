@@ -91,6 +91,14 @@ pub enum Command {
         span: u32,
         mode: u8,
     },
+    /// Track type for one inter-stop span (0=Double,1=Single; P2); span=u32::MAX sets every span of
+    /// the line. Mirrors SetSegmentMode — affects capacity (single-track meets) + capital cost, NOT
+    /// the build mode. Single track is cheaper to build but serialises opposing traffic (meets).
+    SetSegmentTrack {
+        line: LineId,
+        span: u32,
+        track: u8,
+    },
     SetRunning {
         running: bool,
     },
@@ -134,6 +142,7 @@ pub enum Event {
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },
+    SegmentTrackSet { line: LineId, span: u32, track: u8 },
     RunningSet { running: bool },
     EconomySet { enabled: bool },
     StationRemoved { station: StationId },

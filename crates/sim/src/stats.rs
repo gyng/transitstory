@@ -168,6 +168,9 @@ pub struct LineView {
     /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).
     pub span_modes: Vec<u8>,
     pub crosses_water_surface: bool,
+    /// Track type per inter-stop span (0=Double,1=Single; P2) — the trunk's, for the Editor toggle.
+    #[serde(default)]
+    pub track_types: Vec<u8>,
     /// Tombstoned (bulldozed): kept for index-stable ids, but the frontend skips rendering it.
     pub removed: bool,
 }

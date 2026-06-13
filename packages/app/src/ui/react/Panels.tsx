@@ -215,6 +215,8 @@ function Editor({ l }: { l: PerLine }) {
   const lv = game.bridge.linesView().find((x) => x.id === id);
   const modes = lv?.spanModes ?? [];
   const allMode = modes.length && modes.every((m) => m === modes[0]) ? modes[0] : -1;
+  const tracks = lv?.trackTypes ?? [];
+  const allTrack = tracks.length && tracks.every((t) => t === tracks[0]) ? tracks[0] : -1;
   const tight = lv ? lv.minRadiusMm < 100_000 : false;
   const isRail = l.mode === 0;
 
@@ -407,6 +409,32 @@ function Editor({ l }: { l: PerLine }) {
                   }}
                 >
                   {label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Track type (P2): Single track is cheaper to build but lower capacity — opposing trains
+              must meet at passing places (stations). */}
+          <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
+            {([0, 1] as const).map((t) => {
+              const on = allTrack === t;
+              return (
+                <button
+                  key={t}
+                  data-testid={`track-${t}`}
+                  title={t === 1 ? "Single track: ~half the cost, lower capacity (trains meet at stations)" : "Double track: full capacity"}
+                  onClick={() => game.setLineTrack(id, t)}
+                  style={{
+                    flex: 1,
+                    padding: "5px",
+                    borderRadius: "6px",
+                    border: "1px solid #d7dade",
+                    cursor: "pointer",
+                    font: "600 12px system-ui",
+                    ...(on ? { background: "#5a3e85", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
+                  }}
+                >
+                  {t === 1 ? "Single track" : "Double track"}
                 </button>
               );
             })}

@@ -361,6 +361,13 @@ export class Game {
     this.refresh();
   }
 
+  /** Track type (0=Double,1=Single) for the whole line (P2). Single is cheaper but lower capacity
+   *  (opposing trains must meet at passing places). */
+  setLineTrack(line: number, track: number): void {
+    this.noteRejections(this.bridge.apply(cmd.setSegmentTrack(line, WHOLE_LINE, track)));
+    this.refresh();
+  }
+
   /** Build mode (0/1/2) for a whole branch's own track. */
   setBranchMode(line: number, branch: number, mode: number): void {
     this.noteRejections(this.bridge.apply(cmd.setBranchTrack(line, branch, mode)));

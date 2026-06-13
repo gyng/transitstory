@@ -37,6 +37,10 @@ export const cmd = {
   setSegmentMode: (line: number, span: number, mode: number): Command => ({
     SetSegmentMode: { line, span, mode },
   }),
+  /** Track type (P2): span = WHOLE_LINE sets every span; track 0=Double,1=Single. */
+  setSegmentTrack: (line: number, span: number, track: number): Command => ({
+    SetSegmentTrack: { line, span, track },
+  }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
   setEconomy: (enabled: boolean): Command => ({ SetEconomy: { enabled } }),
   /** Bulldoze a station (tombstone; dropped from any line through it). */
@@ -51,6 +55,7 @@ export const cmd = {
 
 export const WHOLE_LINE = 0xffffffff;
 export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;
+export const TRACK_TYPE = { DOUBLE: 0, SINGLE: 1 } as const;
 /** Transport mode (Line.mode in the sim). Matches crates/sim trainset::tmode. */
 export const TRANSPORT = { RAIL: 0, BUS: 1, FERRY: 2, AIR: 3, HEAVY: 4 } as const;
 export type TransportMode = (typeof TRANSPORT)[keyof typeof TRANSPORT];

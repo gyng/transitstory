@@ -17,6 +17,8 @@ export type Command =
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
+  // track type (P2): 0=Double,1=Single; span=WHOLE_LINE sets the whole line. Affects capacity + cost.
+  | { SetSegmentTrack: { line: number; span: number; track: number } }
   | { SetRunning: { running: boolean } }
   | { SetEconomy: { enabled: boolean } }
   | { RemoveStation: { station: number } }
@@ -37,6 +39,7 @@ export type Event =
   | { TrainsetAssigned: { line: number; count: number } }
   | { HeadwaySet: { line: number; headway_ms: number } }
   | { SegmentModeSet: { line: number; span: number; mode: number } }
+  | { SegmentTrackSet: { line: number; span: number; track: number } }
   | { RunningSet: { running: boolean } }
   | { EconomySet: { enabled: boolean } }
   | { StationRemoved: { station: number } }
@@ -207,6 +210,7 @@ export interface LineView {
   branchTermini: number[];
   minRadiusMm: number;
   spanModes: number[];
+  trackTypes: number[]; // 0=Double,1=Single per span (P2)
   crossesWaterSurface: boolean;
   removed: boolean;
 }

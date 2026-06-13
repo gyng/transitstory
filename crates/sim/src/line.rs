@@ -26,6 +26,15 @@ pub mod mode {
     pub const TUNNEL: u8 = 2;
 }
 
+/// Track type per span (P2, docs/capacity-roadmap.md). DOUBLE is the default everywhere so P1 replay
+/// stays byte-identical until a `SetSegmentTrack` lands. On a SINGLE span, opposing-direction trains
+/// cannot both be inside — they MEET at the bounding stations (passing places); single track is
+/// cheaper to build but lower capacity.
+pub mod track {
+    pub const DOUBLE: u8 = 0;
+    pub const SINGLE: u8 = 1;
+}
+
 /// One materialised service path of a line: a root-to-leaf stop sequence (the trunk, or a trunk
 /// prefix continued onto a branch) with its own smoothed geometry. All vehicle motion / routing /
 /// rendering runs on a `Path`, so a path behaves exactly like the old single-polyline line.
@@ -47,6 +56,10 @@ pub struct Path {
     pub min_radius_mm: i64,
     /// Build mode per inter-stop span: 0=Surface, 1=Elevated, 2=Tunnel.
     pub span_mode: Vec<u8>,
+    /// Track type per inter-stop span: 0=Double (default), 1=Single (P2). Parallel to `span_mode`.
+    /// Default-empty deserializes as all-Double; sized/zero-filled (Double) in `rebuild`.
+    #[serde(default)]
+    pub track_type: Vec<u8>,
     /// Literal geometry: connect the stop + waypoint vertices DIRECTLY (no Catmull-Rom smoothing /
     /// subdivision). Set for real-world imported lines so they follow the actual OSM track alignment
     /// rather than an idealised synthesised curve — and so dense imported geometry doesn't 10×-bloat
@@ -58,6 +71,20 @@ pub struct Path {
 impl Path {
     pub fn new(stops: Vec<StationId>, loop_line: bool) -> Self {
         Self { stops, loop_line, min_radius_mm: i64::MAX, ..Default::default() }
+    }
+
+    /// The span `s_mm` is STRICTLY INSIDE (between its two bounding stops, on neither gate), or
+    /// `None` when on a station gate (a passing place owning no single-span reservation). P2's
+    /// single-track meet protocol keys off this; shared so the "inside vs at a gate" test can't drift.
+    pub fn strictly_inside(&self, s_mm: i64) -> Option<usize> {
+        let sp = self.span_of(s_mm);
+        let lo = self.stop_arclen_mm.get(sp).copied().unwrap_or(i64::MIN);
+        let hi = self.stop_arclen_mm.get(sp + 1).copied().unwrap_or(i64::MAX);
+        if s_mm > lo && s_mm < hi {
+            Some(sp)
+        } else {
+            None
+        }
     }
 
     /// Span index (inter-stop segment) containing forward arc-length `s_mm`.
@@ -238,6 +265,10 @@ impl Path {
         let nspans = self.nspans();
         if self.span_mode.len() != nspans {
             self.span_mode.resize(nspans, mode::SURFACE);
+        }
+        // Same for track type (new spans default Double).
+        if self.track_type.len() != nspans {
+            self.track_type.resize(nspans, track::DOUBLE);
         }
     }
 }

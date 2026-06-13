@@ -68,7 +68,19 @@ pub(crate) fn dispatch(world: &mut World) {
             // braking distance + standoff + their own length apart, so a path holds only so many.
             // Over-provisioning is self-limiting — the surplus is simply not dispatched.
             let max_fit = (round / min_gap.max(1)).max(1);
-            let count = (count_p as i64).min(max_fit).max(1) as u16;
+            let mut count = (count_p as i64).min(max_fit).max(1) as u16;
+            // P2 single-track capacity cap: a path carrying SINGLE spans can run at most
+            // (passing-places + 1) trains without an opposing-meet deadlock — a passing place is a
+            // DOUBLE span (a loop where opposing trains pass); a fully-single out-and-back is a
+            // one-train shuttle. Surplus stays undispatched (the same self-limiting pattern as the
+            // block cap; the UI reads the clamped count back). Loops are exempt (one-way ⇒ no meets).
+            if !path.loop_line {
+                let single = path.track_type.iter().filter(|&&t| t == crate::line::track::SINGLE).count();
+                if single > 0 {
+                    let doubles = path.track_type.len().saturating_sub(single) as u16;
+                    count = count.min(doubles.saturating_add(1));
+                }
+            }
             for k in 0..count {
                 let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
                 let (s, dir) = if path.loop_line {
@@ -77,6 +89,19 @@ pub(crate) fn dispatch(world: &mut World) {
                     (p, 1i8)
                 } else {
                     (2 * total - p, -1i8)
+                };
+                // P2: never DISPATCH a train mid-SINGLE-block (it would start strictly inside a span,
+                // which the move-phase meet protocol gates ENTRY into but cannot un-place). Snap such
+                // a placement to the span's ENTRY gate (a passing place), so the head-on invariant
+                // holds from tick 0. Double-track placement is untouched (P1 parity preserved).
+                let s = match path.strictly_inside(s) {
+                    Some(sp)
+                        if !path.loop_line
+                            && path.track_type.get(sp).copied().unwrap_or(0) == crate::line::track::SINGLE =>
+                    {
+                        if dir > 0 { path.stop_arclen_mm[sp] } else { path.stop_arclen_mm[sp + 1] }
+                    }
+                    _ => s,
                 };
                 let (x, y) = path.point_at(s);
                 v.line.push(LineId(li as u32));

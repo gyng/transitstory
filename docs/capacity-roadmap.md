@@ -116,6 +116,14 @@ The data-model phase, and the only one with real **contract-mirror surface**.
   capacity** (plugs into the capital model).
 - Hashed reservation state. **Key property test: deadlock-freedom** (deterministic occupant-wins +
   lower-index tiebreak). `SetSegmentTrack` Command, `types.ts`/`codec.ts` mirror.
+- **DONE 2026-06-13** — built via understand→design→review workflows. Two corrections from the
+  adversarial passes: (1) occupancy is **re-derived each tick** (sorted Vecs, no HashMap, integer),
+  NOT persisted/hashed — only `Path.track_type` is hashed, so double-track replays byte-identical;
+  (2) the meet protocol alone is NOT deadlock-free — a P1×P2 cycle gridlocks once trains exceed the
+  line's passing capacity, so **liveness is guaranteed upstream by a dispatch single-track capacity
+  cap** (doubles+1 trains; a fully-single out-and-back is a one-train shuttle), mirroring P1's
+  `max_fit`. Identity-based block working (one train per single span) + terminus reservation; loops
+  exempt (one-way ⇒ no meets ⇒ pure cost discount).
 
 ### P4 — Junction conflict  *(operations at branch points + at-grade crossings)*
 - Mutex where branches diverge/converge (P3) and where distinct lines cross at grade (raster-cell

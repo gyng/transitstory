@@ -39,6 +39,8 @@ const PER_KM_HSR_SURFACE: i64 = 24_000_000;
 const PER_KM_HSR_ELEVATED: i64 = 60_000_000;
 const PER_KM_HSR_TUNNEL: i64 = 180_000_000;
 const TAKING_PER_KM_BUILT: i64 = 6_000_000;
+/// P2: single track costs this percent of double-track per-km capital (one rail pair, not two).
+const SINGLE_TRACK_PCT: i64 = 55;
 const TRAIN_COST: i64 = 15_000_000;
 // Recurring maintenance (opex), accrued only while the economy is ON and running. A slow drain
 // that fares must outrun — the second pressure axis alongside waiting. Tunable game balance.
@@ -363,7 +365,16 @@ impl World {
                     _ => PER_KM_SURFACE,
                 },
             };
-            capital += per_km * seg_m / 1000;
+            // P2: single track lays one rail pair instead of two — cheaper to build (the trade-off
+            // is lower capacity: opposing trains must meet at passing places). Integer percent.
+            let track_pct = if path.track_type.get(span).copied().unwrap_or(crate::line::track::DOUBLE)
+                == crate::line::track::SINGLE
+            {
+                SINGLE_TRACK_PCT
+            } else {
+                100
+            };
+            capital += per_km * track_pct / 100 * seg_m / 1000;
                 // Surface track through built-up land takes land (rail + heavy rail).
                 if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
                     capital += TAKING_PER_KM_BUILT * seg_m / 1000;
@@ -657,9 +668,11 @@ impl World {
             tmode::FERRY => Some(crate::city::class::WATER),
             _ => None,
         };
-        // Preserve player-set per-span build modes across the rebuild (by path index).
+        // Preserve player-set per-span build modes + track types across the rebuild (by path index).
         let old_span_modes: Vec<Vec<u8>> =
             self.lines[idx].paths.iter().map(|p| p.span_mode.clone()).collect();
+        let old_track_types: Vec<Vec<u8>> =
+            self.lines[idx].paths.iter().map(|p| p.track_type.clone()).collect();
         let mut new_paths: Vec<crate::line::Path> = Vec::with_capacity(specs.len());
         for (pi, (stops, loop_line)) in specs.into_iter().enumerate() {
             let pts: Vec<PointMm> = stops.iter().map(|&s| self.station_pos(s)).collect();
@@ -684,6 +697,9 @@ impl World {
             p.literal = self.lines[idx].literal;
             if let Some(sm) = old_span_modes.get(pi) {
                 p.span_mode = sm.clone();
+            }
+            if let Some(tt) = old_track_types.get(pi) {
+                p.track_type = tt.clone();
             }
             p.rebuild(&pts, &span_points);
             new_paths.push(p);
@@ -922,6 +938,46 @@ impl World {
                     }
                 } else {
                     vec![Event::Rejected { reason: "SetSegmentMode: unknown line".into() }]
+                }
+            }
+            Command::SetSegmentTrack { line, span, track } => {
+                let li = line.index();
+                if li < self.lines.len() && !self.lines[li].paths.is_empty() {
+                    let old_capital = self.capital_total();
+                    let saved: Vec<Vec<u8>> =
+                        self.lines[li].paths.iter().map(|p| p.track_type.clone()).collect();
+                    let t = (*track).min(crate::line::track::SINGLE);
+                    if *span == u32::MAX {
+                        // WHOLE LINE = every span of every path (trunk + branches).
+                        for p in self.lines[li].paths.iter_mut() {
+                            for s in p.track_type.iter_mut() {
+                                *s = t;
+                            }
+                        }
+                    } else {
+                        // A specific span targets the trunk (per-branch track editing is deferred).
+                        let p = &mut self.lines[li].paths[0];
+                        if (*span as usize) < p.track_type.len() {
+                            p.track_type[*span as usize] = t;
+                        }
+                    }
+                    // Track type changes cost (single is cheaper) + the meet authority; it does NOT
+                    // change trainset count, so it must NOT set dispatch_dirty — vehicles keep their
+                    // positions and re-derive single-track occupancy next tick.
+                    self.recompute_line_buildability(*line);
+                    if self.overspent(old_capital) {
+                        for (p, tt) in self.lines[li].paths.iter_mut().zip(saved) {
+                            p.track_type = tt;
+                        }
+                        self.recompute_line_buildability(*line);
+                        vec![Event::Rejected {
+                            reason: "Not enough money to double-track this line".into(),
+                        }]
+                    } else {
+                        vec![Event::SegmentTrackSet { line: *line, span: *span, track: t }]
+                    }
+                } else {
+                    vec![Event::Rejected { reason: "SetSegmentTrack: unknown line".into() }]
                 }
             }
             Command::SetRunning { running } => {
@@ -1211,6 +1267,7 @@ impl World {
                     .collect(),
                 min_radius_mm: l.min_radius_mm() as f64,
                 span_modes: l.paths.first().map(|p| p.span_mode.clone()).unwrap_or_default(),
+                track_types: l.paths.first().map(|p| p.track_type.clone()).unwrap_or_default(),
                 crosses_water_surface: l.crosses_water_surface,
                 removed: l.removed,
             })
