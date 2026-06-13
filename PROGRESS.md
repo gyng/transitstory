@@ -1065,6 +1065,42 @@ false-negative head-on shipping green). Grid geometry makes identity exact: trac
   finding (the express/local limit, documented + `#[ignore]`d); parity/determinism/panic-safety clean.
 - Tiers: cargo 33 suites (zero re-pins), vitest 21, tsc clean, playwright 16. Phase 2 (the cross-line
   shared-block mutex per shared-rail.md) builds on this.
+- **2026-06-14 — Track objects Phase 2: cross-line shared-block mutex (the headline fork feature).**
+  Two **distinct lines** can now physically share one grid rail and take turns on it — the first
+  cross-line block in the project (every prior layer, P2/P4/S1v1/S2, was within a single line). The
+  reservation *machinery* is unchanged (the `occ_claim`/`occ_owner`/`try_claim` sorted-Vec +
+  `group_overlap`); only the **block key** graduates from line-scoped to a line-independent grid
+  `edge_key` (`node_of` = `(x.div_euclid(cell), y.div_euclid(cell))`, sorted cell pair). Built RED-first
+  in 4 commits (`f897792` grid foundation, `b660974` the cross-line head-on RED target, `82271b0`
+  derivation, `8ecb666` mutex+liveness) + 1 fix commit:
+  - **`derive_cross_blocks` (dispatch.rs)** — collect every grid edge-use, **union-find coalesce all
+    shared edges (≥2 distinct lines) sharing a node into one component** (block iff it has a single
+    edge; `cyclic` iff `edges ≥ nodes`); `by_lane` = per-(line,path) arclen windows. Transient,
+    re-derived per dispatch, never hashed.
+  - **Phase A.1.7 + B.6 (vehicle.rs)** — cross-line occupancy claim, then the **atomic whole-block meet
+    gate**: a held consist parks its head AT the near gate with its whole tail BEHIND the block ⇒ a
+    waiter never sits inside the block it waits for ⇒ the wait-for graph is an acyclic depth-1 forest.
+    P2's A.1/B/B.5 skip any span a cross-block owns (`cross_span_covered`, the S2 skip-guard discipline).
+  - **The liveness stack in one commit** — atomic reservation + cross-LINE dispatch cap
+    (`cross_cap`: 1 train/line, ≤2 lines acyclic / 1 cyclic) + single-owner mutex. A half-fix is a
+    *worse*, gate-blind deadlock, so it shipped whole.
+  - **Why grid:** the cross-line mutex needs **byte-exact** physical identity; continuous Catmull-Rom
+    vertices never coincide exactly (a float-rounded vertex lands in a different cell ⇒ the mutex
+    silently never engages = a gate-blind false-negative head-on). Grid geometry (Phase 1) makes
+    identity integer-exact.
+  - **Two adversarial rounds** (budget was 4+; round 2 clean across ~14 runnable counterexamples ⇒
+    early convergence). R1 found **2 gate-blind deadlocks** (short-double miscounted as a passing place;
+    a round-robin handing one line 2 trains that met head-on) → fixed by the coalesce-all + 1-per-line
+    cap (`5361bf7`). R2 attacked the fixed cap with 3 lenses (residual-deadlock, P4/P2 layer-interaction,
+    determinism/parity/3-line): the opposing two-resource cross-block cycle (worst sustained stall **13
+    ticks** over 40 seeds × 6 phase offsets), 3-line A-B/B-C chains, dead-end blocks, out-and-back rings,
+    P4×B.6, P2×B.6 — **none went red**; determinism bit-for-bit.
+  - **Conservative by design (logged follow-up):** 1-train-per-line over-throttles (a line sharing any
+    block runs a shuttle globally) — over-throttle is the safe direction. A per-block capacity + fair
+    aging tiebreak (the S2 fairness follow-up, now shared) restores throughput; deferred.
+  - Containment: inert unless `grid_cell_mm > 0` ⇒ **zero re-pins**; `Canonical`/routing/`types.ts`
+    untouched; no new Command. Tiers: cargo 33 suites + `shared_rail.rs` 7 (incl. ring/over-provisioned
+    never-freeze), vitest 21, tsc clean, playwright 16.
 
 ## Known gaps / deferred
 
@@ -1073,8 +1109,12 @@ false-negative head-on shipping green). Grid geometry makes identity exact: trac
 - **Done since the slice:** curves+speed caps, time-of-day, transfers (BFS+cache), real OSM networks +
   6 cities, buildability/build-modes, economy (capital+fares), transport modes (rail/bus/ferry/air),
   demand layer, settings, **time-dependent RAPTOR routing**, demand/traffic visibility (5 tracks),
-  **accessibility isochrone**, **inter-station footpaths**, freeform line waypoints. Remaining seams:
-  multiplayer, GTFS import, departure **timetable**, track junctions, terrain gradient.
+  **accessibility isochrone**, **inter-station footpaths**, freeform line waypoints, **the capacity
+  stack** (P1 block-follow, P2 single-track meet, P4 junction mutex, S1v1 trunk cap, S2 physical-block
+  meet), **grid geometry + cross-line shared track** (two lines share one rail). Remaining seams:
+  multiplayer, GTFS import, departure **timetable**, the **FULL TrackGraph** (first-class
+  `TrackSegment`s + resource-ordering, the real model-change cliff — see
+  [docs/p5-shared-track-roadmap.md](docs/p5-shared-track-roadmap.md)), terrain gradient.
 - **idea.md "pt 2" (user-added 2026-06-04):** game modes — *sim mode vs grand-tycoon mode*, *pure-sim vs
   GSG-inspired mode with events*. Future scope, well beyond the thin slice. Noted, not built (guard the loop).
   The command-sourced deterministic core is mode-agnostic, so a future "mode" is a new outer-ring layer +

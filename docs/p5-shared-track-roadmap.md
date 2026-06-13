@@ -1,7 +1,9 @@
 # P5 — shared track: the road to first-class track objects
 
-**Status:** S1v1 landed 2026-06-13 (the cross-path single-track cap). S2 (the physical-block meet
-mutex) and the full TrackGraph are scoped below.
+**Status:** S1v1 + S2 landed 2026-06-13 (the within-line caps/mutex). **Cross-line shared track landed
+2026-06-14** — grid geometry (Phase 1) + the cross-line shared-block meet mutex (Phase 2), the first
+time **two distinct lines** physically share one rail and take turns on it. The full TrackGraph (the
+real model-change cliff) is scoped below.
 **Product driver (2026-06-13):** an impending fork into a transport-builder game where **distinct
 lines sharing physical track** (a central tunnel, a shared viaduct, OpenTTD-style track networks) is a
 headline feature. The roadmap originally deferred this as "the architectural cliff — do not build
@@ -125,13 +127,46 @@ capacity for long single runs. Until then, a multi-span single section runs at m
   **Honest limit** (grid review): a corridor shared BETWEEN stops (express/local) needs the FULL laid-
   track model — `#[ignore]`d seam. So Phase 2's cross-line mutex contract is "shared consecutive
   stop-cells". `tests/grid.rs`.
-- **Phase 2 — cross-line shared-block mutex (next, shared-rail.md).** Line-independent `edge_key` from
-  consecutive grid vertices; Phase A.1.7 cross-line occupancy + Phase B.6 atomic whole-block meet gate
-  (reuse `occ_claim`/`group_overlap`); the liveness STACK in one commit — atomic block-to-passing-place
-  + cross-LINE dispatch cap + capacity-1 mutex on cyclic shared components + a FAIR (non-lowest-index)
-  arbitration token (the S2 fairness follow-up comes due here). Derived/unhashed (zero re-pins), routing
-  untouched, two golden-hash tripwires. Budget 4+ adversarial rounds — cross-line is strictly harder
-  than S2's within-line case.
+- **Phase 2 — cross-line shared-block mutex (DONE 2026-06-14, shared-rail.md).** Line-independent
+  `edge_key` from consecutive grid vertices (`node_of` = `(x.div_euclid(cell), y.div_euclid(cell))`, a
+  sorted cell pair); `derive_cross_blocks` (dispatch.rs) collects every grid edge-use, **union-find
+  coalesces all shared edges (≥2 distinct lines) that touch a common node into ONE component** (a
+  component is a block iff it contains a single edge), and a component is `cyclic` iff
+  `edge_count ≥ node_count`. Phase A.1.7 cross-line occupancy + **Phase B.6 atomic whole-block meet
+  gate** (reuse `occ_claim`/`group_overlap`): a held consist parks its head AT the near gate with its
+  whole tail BEHIND the block (`tail = gate − dir·len`), so a waiter never occupies the block it waits
+  for ⇒ the wait-for graph stays an **acyclic depth-1 forest**. The liveness STACK shipped in one
+  commit:
+  - **atomic whole-block reservation** (no partial entry — the head can't cross the near gate unless the
+    whole block is claimable);
+  - **cross-LINE dispatch cap** (`cross_cap` in dispatch.rs): `max_lines = 1 if cyclic else 2`; the
+    lowest-index served lines get **1 train each**, the rest **0** — so a shared block carries ≤2 lines,
+    1 train apiece (a cyclic component is a 1-line shuttle);
+  - **single-owner mutex** on the block via the existing `try_claim` (lowest-index-wins).
+
+  Derived/unhashed (zero re-pins — inert unless `grid_cell_mm > 0`), routing untouched, `Canonical`
+  unchanged. **Two adversarial-review rounds** (the budget was 4+; round 2 was completely clean across
+  ~14 runnable counterexamples, so the conservative design converged early):
+  1. **Two gate-blind deadlocks** — (a) a short double shared run (< a consist length) was miscounted as
+     a passing place ⇒ a multi-block wait-for cycle; (b) a `passing_places + 2` round-robin handed one
+     line 2 trains that met head-on inside the block. **Fixed:** coalesce **all** shared edges into
+     components (block iff it has a single edge), cap to **1 train/line, ≤2 lines** acyclic / **1**
+     cyclic (commit `5361bf7`).
+  2. **Clean.** 3 lenses (residual-deadlock under the new cap, layer-interaction with P4/P2, determinism
+     /parity/3-line), ~14 runnable counterexamples — the opposing two-resource cross-block cycle (worst
+     sustained simultaneous stall **13 ticks** over 40 seeds × 6 phase offsets — never deadlocks),
+     3-line A-B/B-C chains (coalesce to one block through the shared node), dead-end head-on blocks,
+     out-and-back rings (correctly cyclic ⇒ 1-train shuttle), P4-junction × B.6, P2-private × B.6
+     boundary, single-on-A/double-on-B (single-if-any). **None went red.** Determinism bit-for-bit
+     (identical `state_hash` twice); the two transient REDs were test-harness artifacts (a too-loose
+     euclidean head-on detector flagging a legal post-block meet; a clamped track-constant), both
+     corrected to green.
+
+  **Logged follow-up:** the 1-train-per-line cap is deliberately **conservative** — over-throttle is the
+  safe direction (a line sharing any block runs 1 train *globally*). A richer **per-block** capacity
+  (cap only the shared-block contention, let a line run more trains on its private sections via a
+  passing-place count + a fair aging tiebreak — the S2 fairness follow-up, now shared with this layer)
+  restores throughput. Until then, any line touching a shared block runs a shuttle.
 
 ## Track objects — the FULL model — the cliff *(after Phase 2; the real model change)*
 
