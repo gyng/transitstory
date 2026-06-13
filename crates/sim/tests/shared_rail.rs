@@ -129,19 +129,18 @@ fn cross_blocks_are_command_order_independent() {
     assert_eq!(snap(&a), snap(&b), "the cross-line block set is command-order-independent");
 }
 
-// Phase-2 RED-first target (`#[ignore]`d until the cross-line `edge_key` mutex + liveness stack lands,
-// shared-rail.md Step 2). Confirmed RED today: cross-line head-on on the shared single edge at tick 37
-// (two lines pass clean through each other — line-scoped keys). Un-ignore when Phase 2 ships.
 #[test]
-#[ignore = "Phase 2: needs the cross-line edge_key mutex + liveness stack (shared-rail.md Step 2)"]
 fn cross_line_single_section_meet_no_headon() {
-    // SAFETY: never two opposing consists of different lines on the shared single A–B section. RED
-    // today (line-scoped keys ⇒ they pass through each other). LIVENESS: every dispatched train keeps
-    // moving (the meet resolves, no freeze) — proven here, not inferred from the determinism gate.
+    // SAFETY: never two opposing consists of different lines on the shared single A–B section. (RED
+    // before Phase 2: line-scoped keys ⇒ they pass through each other, tick 37.) LIVENESS: every
+    // dispatched train keeps moving (the meet resolves, no freeze) — proven here, NEVER inferred from
+    // the determinism gate. NO-STARVATION: BOTH lines are served (the cross-line cap is round-robin).
     let mut w = two_lines_shared_single(3);
     w.tick(50);
     let nveh = w.vehicles.len();
     assert!(nveh >= 2, "need trains on both lines to contend");
+    assert!(w.vehicles.line.iter().any(|l| l.index() == 0) && w.vehicles.line.iter().any(|l| l.index() == 1),
+        "both lines must be served (cross-line cap must not starve a line)");
     let (x_lo, x_hi) = (3 * 100_000 + 60_000, 6 * 100_000 + 40_000); // strictly inside A–B
     let mut last = w.vehicles.s_mm.clone();
     let mut traveled = vec![0i64; nveh];
@@ -155,4 +154,66 @@ fn cross_line_single_section_meet_no_headon() {
     }
     let total = w.lines[0].length_mm();
     assert!(*traveled.iter().min().unwrap() > total, "a consist froze at the cross-line meet");
+}
+
+#[test]
+fn cross_line_over_provisioned_never_freezes() {
+    // Throw a heavy fleet at the shared single section: the cross-line cap bounds the COMBINED fleet so
+    // the capacity-1 block can't be over-provisioned into a (gate-blind) deadlock. Both lines stay
+    // served and every dispatched consist keeps moving.
+    let mut w = two_lines_shared_single(16);
+    w.tick(50);
+    assert!(w.vehicles.line.iter().any(|l| l.index() == 0) && w.vehicles.line.iter().any(|l| l.index() == 1),
+        "both lines served under over-provision");
+    let (x_lo, x_hi) = (3 * 100_000 + 60_000, 6 * 100_000 + 40_000);
+    let nveh = w.vehicles.len();
+    let mut last = w.vehicles.s_mm.clone();
+    let mut traveled = vec![0i64; nveh];
+    for t in 0..8000 {
+        w.tick(50);
+        assert!(!cross_line_headon(&w, x_lo, x_hi), "head-on under over-provision, tick {t}");
+        for i in 0..nveh {
+            traveled[i] += (w.vehicles.s_mm[i] - last[i]).abs();
+            last[i] = w.vehicles.s_mm[i];
+        }
+    }
+    let total = w.lines[0].length_mm();
+    assert!(*traveled.iter().min().unwrap() > total, "a consist froze under cross-line over-provision");
+}
+
+#[test]
+fn cross_line_ring_never_deadlocks() {
+    // A CYCLIC shared component (two LOOP lines over the same single-track square): the depth-1-forest
+    // liveness argument fails on a ring, so the cross-line cap clamps a cyclic block to ONE train total
+    // (a single-track ring is a one-train shuttle). Assert it derives cyclic, caps to a shuttle, and
+    // the dispatched consist keeps moving (no opposing train ⇒ no deadlock).
+    let cell = 100_000i64;
+    let mut w = grid_world(cell, 13);
+    // A square loop: 4 corner stations both lines run as a loop.
+    let p0 = place(&mut w, 50_000, 50_000); // (0,0)
+    let p1 = place(&mut w, 5 * cell + 50_000, 50_000); // (5,0)
+    let p2 = place(&mut w, 5 * cell + 50_000, 5 * cell + 50_000); // (5,5)
+    let p3 = place(&mut w, 50_000, 5 * cell + 50_000); // (0,5)
+    let mk_loop = |w: &mut World| -> LineId {
+        let li = LineId(w.lines.len() as u32);
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: true, mode: 0, literal: false });
+        for &s in &[p0, p1, p2, p3] {
+            w.apply(&Command::AddStop { line: li, station: s, after: None });
+        }
+        w.apply(&Command::SetSegmentTrack { line: li, span: u32::MAX, track: SINGLE });
+        w.apply(&Command::AssignTrainset { line: li, spec: 0, count: 3 });
+        li
+    };
+    mk_loop(&mut w);
+    mk_loop(&mut w);
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+    assert!(w.cross_blocks.iter().any(|b| b.cyclic), "a shared loop is a cyclic cross-line block");
+    let nveh = w.vehicles.len();
+    assert_eq!(nveh, 1, "a single-track shared ring is a ONE-train shuttle (capacity 1)");
+    let start = w.vehicles.s_mm.clone();
+    for _ in 0..4000 {
+        w.tick(50);
+    }
+    assert!(w.vehicles.s_mm[0] != start[0], "the ring shuttle keeps moving (no cyclic deadlock)");
 }

@@ -194,13 +194,33 @@ pub(crate) fn dispatch(world: &mut World) {
     // (empty) for continuous / non-grid / non-shared networks ⇒ zero re-pins.
     world.cross_blocks = derive_cross_blocks(world);
 
+    // CROSS-LINE dispatch cap (shared-rail.md): the COMBINED fleet across all lines sharing a block is
+    // bounded by the block's single-track capacity — (passing places + the 2 boundary ends) for an
+    // acyclic block, or 1 for a CYCLIC ring (the depth-1-forest argument fails on a ring). Distributed
+    // ROUND-ROBIN across the contending lines (FAIR — not first-line-takes-all, which starves the
+    // higher LineId); a line's total fleet is capped by the tightest block it traverses. This is the
+    // upstream liveness for the cross-line mutex (Phase B.6) — a mutex without it over-provisions a
+    // capacity-1 shared block into a worse, gate-blind deadlock.
+    let mut cross_cap: Vec<u16> = vec![u16::MAX; world.lines.len()];
+    for blk in &world.cross_blocks {
+        let cap = if blk.cyclic { 1usize } else { blk.passing_places as usize + 2 };
+        let mut lns: Vec<u32> = blk.by_lane.iter().map(|&(l, _, _, _)| l).collect();
+        lns.sort_unstable();
+        lns.dedup();
+        let nl = lns.len().max(1);
+        for (k, &l) in lns.iter().enumerate() {
+            let share = (cap.saturating_sub(k) + nl - 1) / nl; // round-robin share of `cap`
+            cross_cap[l as usize] = cross_cap[l as usize].min(share as u16);
+        }
+    }
+
     let lines = &world.lines;
     let junctions = &world.junctions; // P4: read the switch clusters for the tick-0 placement snap
     let v = &mut world.vehicles;
     v.clear();
 
     for (li, line) in lines.iter().enumerate() {
-        let total_count = line.trainset.map(|t| t.count).unwrap_or(0);
+        let total_count = line.trainset.map(|t| t.count).unwrap_or(0).min(cross_cap[li]);
         if line.removed || total_count == 0 || line.stops.len() < 2 || line.crosses_water_surface {
             continue;
         }

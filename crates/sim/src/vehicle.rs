@@ -191,10 +191,23 @@ fn span_block_covered(junctions: &[crate::world::Junction], line: usize, path: u
     })
 }
 
+/// Is single span `[span_lo, span_hi]` on `(line, path)` covered by a CROSS-LINE shared-rail block
+/// (Phase 2)? When so, that block is the SOLE meet authority on the shared physical edge — the per-line
+/// P2/P4 mutex must SKIP it, or a train held by the cross-line block while gated by its own line's
+/// per-line meet forms a wait-for cycle (the S2 skip-guard lesson, generalised cross-line). Inert when
+/// `cross_blocks` is empty (continuous / non-grid / non-shared networks).
+#[inline]
+fn cross_span_covered(cross_blocks: &[crate::world::CrossBlock], line: usize, path: u8, span_lo: i64, span_hi: i64) -> bool {
+    cross_blocks.iter().any(|b| {
+        b.by_lane.iter().any(|&(l, p, lo, hi)| l as usize == line && p == path && lo <= span_lo && hi >= span_hi)
+    })
+}
+
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
     let junctions = &world.junctions; // P4: immutable co-borrow (disjoint field) alongside &mut vehicles
+    let cross_blocks = &world.cross_blocks; // Phase 2: cross-line shared-rail blocks (shared-rail.md)
     let build_lookup = &world.build_lookup;
     let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
@@ -298,8 +311,11 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             if path.track_type.get(sp).copied().unwrap_or(0) == crate::line::track::SINGLE {
                 let lo = path.stop_arclen_mm[sp];
                 let hi = path.stop_arclen_mm.get(sp + 1).copied().unwrap_or(lo);
-                // S2: a junction block owns shared-trunk single spans — P2 must not also claim them.
-                if !span_block_covered(junctions, v.line[i].index(), v.path[i], lo, hi) {
+                // S2/Phase 2: a junction block OR a cross-line block owns shared single spans — P2 must
+                // not also claim them (the sole-authority skip-guard, else a P2×block wait-for cycle).
+                if !span_block_covered(junctions, v.line[i].index(), v.path[i], lo, hi)
+                    && !cross_span_covered(cross_blocks, v.line[i].index(), v.path[i], lo, hi)
+                {
                     occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
                 }
             }
@@ -326,6 +342,30 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                 };
                 if group_overlap(tail, head, lo, hi) {
                     occ_claim(&mut junc_occ, junc_key(li as u32, j.key_station.index() as u32), i as u32);
+                }
+            }
+        }
+    }
+
+    // Phase A.1.7 — start-of-tick CROSS-LINE block occupancy (Phase 2, shared-rail.md). A consist
+    // occupies a shared-rail block when its [tail, head] overlaps its lane window — keyed on the
+    // line-INDEPENDENT `block_id`, so two DISTINCT lines on one physical rail contend for ONE row
+    // (unlike junc_key/seg_key). Inert (no scan) when there are no cross blocks ⇒ continuous / non-grid
+    // / non-shared networks are byte-identical. Owner = lowest index this tick (fairness in B.6/cap).
+    let mut cross_occ: Vec<(u64, u32)> = Vec::new();
+    if !cross_blocks.is_empty() {
+        for i in 0..n {
+            let li = v.line[i].index() as u32;
+            let pi = v.path[i];
+            let head = v.s_mm[i];
+            let tail = head - (v.dir[i] as i64) * len_of[i];
+            for blk in cross_blocks {
+                if blk
+                    .by_lane
+                    .iter()
+                    .any(|&(l, p, lo, hi)| l == li && p == pi && group_overlap(tail, head, lo, hi))
+                {
+                    occ_claim(&mut cross_occ, blk.block_id, i as u32);
                 }
             }
         }
@@ -456,7 +496,9 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         {
             let blo = path.stop_arclen_mm.get(trav_span).copied().unwrap_or(0);
             let bhi = path.stop_arclen_mm.get(trav_span + 1).copied().unwrap_or(blo);
-            if span_block_covered(junctions, v.line[i].index(), v.path[i], blo, bhi) {
+            if span_block_covered(junctions, v.line[i].index(), v.path[i], blo, bhi)
+                || cross_span_covered(cross_blocks, v.line[i].index(), v.path[i], blo, bhi)
+            {
                 continue;
             }
         }
@@ -549,6 +591,57 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         }
     }
 
+    // Phase B.6 — CROSS-LINE block mutex (Phase 2, shared-rail.md): gate a consist's advance ACROSS a
+    // shared-rail block it does not already own — keyed on the line-INDEPENDENT `block_id`, so two
+    // DISTINCT lines on one physical rail mutex. The atomic-whole-block reservation (one owner; others
+    // clamp to the near gate owning nothing) keeps the cross-line wait-for graph an acyclic depth-1
+    // forest — the single-owner-coalescing trick is unavailable cross-line, so the block IS the one
+    // resource. Liveness is guaranteed UPSTREAM by the cross-line dispatch cap (+ the cyclic mutex).
+    let mut cross_claimed: Vec<(u64, u32)> = Vec::new();
+    if !cross_blocks.is_empty() {
+        for i in 0..n {
+            if !c_move[i] || desired_ds[i] == 0 {
+                continue;
+            }
+            let li = v.line[i].index() as u32;
+            let pi = v.path[i];
+            let dir = eff_dir[i];
+            let s = c_s[i];
+            let tail0 = s - dir * len_of[i];
+            let head_after = s + dir * desired_ds[i];
+            for blk in cross_blocks {
+                for &(l, p, lo, hi) in &blk.by_lane {
+                    if l != li || p != pi {
+                        continue;
+                    }
+                    // Already occupying this block (via this window)? Then P1 spacing governs my
+                    // clearance; the mutex must NOT re-gate me (same predicate as A.1.7).
+                    if group_overlap(tail0, s, lo, hi) {
+                        continue;
+                    }
+                    let gate = if dir > 0 { lo } else { hi };
+                    let crossing = (dir > 0 && s <= gate && head_after > gate)
+                        || (dir < 0 && s >= gate && head_after < gate);
+                    if !crossing {
+                        continue;
+                    }
+                    let admit = match occ_owner(&cross_occ, blk.block_id) {
+                        Some(o) if o == i as u32 => true,
+                        Some(_) => false, // another consist (any line) owns the block — HOLD
+                        None => try_claim(&mut cross_claimed, blk.block_id, i as u32),
+                    };
+                    if !admit {
+                        let room = (dir * (gate - s)).max(0);
+                        if desired_ds[i] > room {
+                            desired_ds[i] = room;
+                            desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Phase B.5 — no train comes to REST strictly inside a single span it didn't already own. This is
     // the forest-of-advancing-roots property: every blocked/stopped train rests at a gate owning
     // nothing, so the wait-for graph is an acyclic depth-1 forest (waiters → the one advancing
@@ -570,8 +663,9 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             let ehi = path.stop_arclen_mm.get(esp + 1).copied().unwrap_or(elo);
             if path.track_type.get(esp).copied().unwrap_or(0) == crate::line::track::SINGLE
                 && path.strictly_inside(s) != Some(esp)
-                // S2: the junction block's own B.4 no-rest handles block-covered spans (skip-guard).
+                // S2/Phase 2: a junction OR cross-line block's own B.4/B.6 no-rest handles its spans.
                 && !span_block_covered(junctions, v.line[i].index(), v.path[i], elo, ehi)
+                && !cross_span_covered(cross_blocks, v.line[i].index(), v.path[i], elo, ehi)
             {
                 let entry_arc = if dir > 0 {
                     path.stop_arclen_mm[esp]
