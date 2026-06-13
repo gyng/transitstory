@@ -987,6 +987,52 @@ layer, so each layer is a small extension of proven P2/P4 machinery, not a rewri
   non-branched / fully-double-branched / branch-private-single lines.
 - Tiers: cargo 31 suites (zero re-pins), vitest 21, tsc clean, playwright 16.
 
+## Capacity roadmap — P5 shared track (S2): physical-block meet mutex (2026-06-13)
+
+S2 is the **reusable primitive** S1-first was building toward (docs/p5-shared-track-roadmap.md): a
+single shared-trunk span *between passing places* needs a meet MUTEX, not the cap — the line has
+capacity, so the trunk + branch consists must take turns on the one physical rail, not be capped to a
+shuttle. This is the kernel cross-line track sharing (and the full track-objects end-state) reuse: only
+the block's identity key graduates line-scoped → `TrackSegmentId`; the reservation machinery is constant.
+
+- **Single spans become first-class window-blocks** in the dispatch junction set, alongside P4's
+  divergence points. A block is a per-path arclen window `(path, lo, hi)` (a point has lo==hi; a span
+  has lo<hi). The **existing** vehicle.rs A.1.5 occupancy + B.4 gate (`group_overlap` on `span_by_path`)
+  serialise them **unchanged** — no new pass, no new key. A trunk span k is a block iff it is SHARED
+  (>=2 traversing paths = trunk + a branch with `diverge_at > k`) AND physically SINGLE on ANY
+  traversing path (**single-if-any** — a per-span `SetSegmentTrack` edits only the trunk, so the trunk
+  being single makes the rail single even where a branch reads double). Re-derived per dispatch_dirty,
+  **never hashed**.
+- **Coalescing generalised points→windows** (`coupled` uses `q.lo − p.hi`): contiguous single spans
+  merge into one section, and a single approach **folds into its adjacent switch** within a consist-
+  length — so a consist bridging the single span and the switch holds ONE resource, killing the **P5×P4
+  wait-for cycle** (A holds the span + waits for the switch; B holds the switch + waits for the span).
+  A **non-contiguous** single span (separated by a double) can't bridge a switch ⇒ a standalone block.
+- **The cap drain became ROUND-ROBIN** (S1v1's trunk-takes-all starved the branch to 0): a fully-single
+  trunk (capacity 1) is still a trunk shuttle, but a single span between passing places (capacity >1)
+  shares the budget so the trunk AND branch run and MEET. The two halves ship together — round-robin
+  *without* the mutex would head-on.
+- **Four adversarial-review rounds hardened it** (each a deterministic, replay-gate-blind failure, now
+  regression-tested): (1) **bunched-double over-admit** → count passing-place RUNS, not individual
+  doubles; (2) **staggered region uncapped** → scope the cap to `[0, max diverge_at)` with
+  traversing-path `phys_single`; (3) **P2×junction wait-for cycle** (a train resting inside a coalesced
+  run + a train P2-gating the same span) → the **skip-guard** (`span_block_covered` makes P2's per-path
+  meet skip any span a junction block owns — the block is the sole authority; the double-gating the
+  locked design's skip-guard prevented, bet against and skipped, proven load-bearing); (4) **branch
+  starvation** (lowest-index `try_claim` is deadlock-free but not starvation-free — 2 trunk trains
+  monopolise a coalesced ≥2-span run, pinning a higher-index branch at v=0) → **conservative cap**: a
+  ≥2-span run caps the region to 2 trains (fair alternation), a fully-single trunk is a 1-train shuttle,
+  single-span blocks keep full passing-place capacity. A fair-aging tiebreak (restoring higher
+  multi-span capacity) is a logged follow-up.
+- **Tests** (`tests/junction.rs`, red-first): `single_span_between_passing_places_runs_a_meet`,
+  `non_contiguous_single_span_meets` (branch served + meet, no head-on), plus never-freeze regressions
+  for all four review deadlocks (`bunched_passing_places_long_single_run`, `staggered_single_span`,
+  `multi_span_single_run_with_intermediate_station`, `multi_span_block_does_not_starve_the_branch`).
+  **Parity:** zero re-pins — single-span blocks + the skip-guard fire ONLY for phys-single SHARED spans,
+  so a fully-double-branched / non-branched / branch-private-single line is byte-identical (all sim
+  suites, incl. single_track 7, branching 2, determinism 6).
+- Tiers: cargo (zero re-pins), vitest 21, tsc clean, playwright 16.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

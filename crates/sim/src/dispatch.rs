@@ -64,50 +64,84 @@ pub(crate) fn dispatch(world: &mut World) {
         }
         diverge_idxs.sort_unstable(); // trunk index ascending == trunk arclen ascending (monotone)
 
-        // (b) For each divergence stop, gather its per-path (path, arclen), sorted by path index.
-        //     Every path whose trunk prefix reaches stop d carries the SAME station there (path_specs
-        //     shares the prefix); a point reached by >=2 paths is a real fork. diverge_idxs is sorted
-        //     and per-path arclen is monotone in trunk-stop index, so `points` are arclen-ascending on
-        //     EVERY shared path.
-        struct Pt {
-            station: crate::ids::StationId,
-            by_path: Vec<(u8, i64)>,
+        // (b) Build the PHYSICAL BLOCKS to mutex (P4 switches + S2 single shared spans). Each block is
+        //     a per-path arc-length WINDOW `(path, lo, hi)` (a divergence POINT has lo==hi; a single
+        //     SHARED-TRUNK span has lo<hi). The runtime mutex (vehicle.rs A.1.5/B.4) keys per-path
+        //     against this window, so a branch path's Catmull-Rom-drifted arclen is handled per-path
+        //     (never a shared scalar). diverge_idxs is sorted and per-path arclen is monotone in
+        //     trunk-stop index, so blocks sort arclen-ascending on every shared path.
+        struct Blk {
+            station: crate::ids::StationId, // identity (min over members → the junc_key)
+            lo_trunk: i64,                  // trunk-arclen sort key (i64::MAX if not on the trunk path)
+            by_path: Vec<(u8, i64, i64)>,   // (path, lo, hi), sorted by path
         }
-        let mut points: Vec<Pt> = Vec::new();
+        let trunk_clamp = line.stops.len().saturating_sub(1);
+        let diverge_of = |pi: usize| -> usize {
+            // path 0 = trunk (reaches every trunk stop); path pi = branch pi-1 (diverges at its stop).
+            if pi == 0 { trunk_clamp } else { (line.branches[pi - 1].diverge_at as usize).min(trunk_clamp) }
+        };
+        let mut blocks: Vec<Blk> = Vec::new();
+        // P4 — divergence-point blocks: a switch reached by >=2 paths.
         for &d in &diverge_idxs {
             let station = line.stops[d];
-            let mut by_path: Vec<(u8, i64)> = Vec::new();
+            let mut by_path: Vec<(u8, i64, i64)> = Vec::new();
             for (pi, path) in line.paths.iter().enumerate() {
                 if path.stops.get(d).copied() == Some(station) {
                     let a = path.stop_arclen_mm.get(d).copied().unwrap_or(0);
-                    by_path.push((pi as u8, a));
+                    by_path.push((pi as u8, a, a));
                 }
             }
             if by_path.len() >= 2 {
-                points.push(Pt { station, by_path });
+                let lo_trunk = by_path.iter().find(|&&(p, _, _)| p == 0).map_or(i64::MAX, |&(_, lo, _)| lo);
+                blocks.push(Blk { station, lo_trunk, by_path });
             }
         }
-        if points.is_empty() {
+        // S2 — single-span blocks: a SHARED trunk span (>=2 traversing paths) that is physically SINGLE
+        // (single on ANY traversing path — single-if-any: a per-span SetSegmentTrack edits only the
+        // trunk, so the trunk being single makes the physical rail single even where a branch reads
+        // double). The meet mutex then serialises the trunk + branch consists on that one physical rail.
+        for k in 0..trunk_clamp {
+            let trav: Vec<u8> =
+                (0..line.paths.len() as u8).filter(|&pi| diverge_of(pi as usize) > k).collect();
+            if trav.len() < 2 {
+                continue; // a span past all branches is trunk-private → P2's per-path meet owns it
+            }
+            let single = trav
+                .iter()
+                .any(|&pi| line.paths[pi as usize].track_type.get(k).copied() == Some(crate::line::track::SINGLE));
+            if !single {
+                continue; // a fully-double shared span is a passing place, not a block (parity)
+            }
+            let mut by_path: Vec<(u8, i64, i64)> = Vec::new();
+            for &pi in &trav {
+                let p = &line.paths[pi as usize];
+                let lo = p.stop_arclen_mm.get(k).copied().unwrap_or(0);
+                let hi = p.stop_arclen_mm.get(k + 1).copied().unwrap_or(lo);
+                by_path.push((pi, lo, hi));
+            }
+            let station = line.stops[k].min(line.stops[k + 1]);
+            let lo_trunk = by_path.iter().find(|&&(p, _, _)| p == 0).map_or(i64::MAX, |&(_, lo, _)| lo);
+            blocks.push(Blk { station, lo_trunk, by_path });
+        }
+        if blocks.is_empty() {
             continue;
         }
+        blocks.sort_by_key(|b| b.lo_trunk);
 
-        // Two divergence points are COUPLED when a single consist can straddle both on SOME shared
-        // service path — i.e. their arclen gap is <= len_mm on ANY path containing both. The runtime
-        // mutex (vehicle.rs A.1.5/B.4) keys on PER-PATH spans, and a branch path's smoothed
-        // shared-prefix arclen can be SHORTER than the trunk's (Catmull-Rom neighbour influence pulls
-        // the branch straighter while the trunk bows toward its post-junction continuation). So
-        // coalescing on the TRUNK gap alone under-groups: a pair coupled on a branch but not the trunk
-        // stays split, and a branch consist straddling both forms the exact 2-cycle deadlock coalescing
-        // exists to kill (the design's Residual Risk #2, found in review). Coalesce on the MIN gap over
-        // shared paths — the tightest mutual-reach bound, matching what the mutex actually enforces.
-        let coupled = |p: &Pt, q: &Pt| -> bool {
+        // Two blocks are COUPLED when a single consist can straddle both on SOME shared path — i.e. the
+        // arclen GAP between them (`q.lo - p.hi`) is <= len_mm (within a consist-length, or <0 if they
+        // overlap) on ANY path traversing both. Coalescing on the MIN gap over shared paths (the
+        // tightest mutual-reach bound) merges contiguous single spans into one section AND folds a
+        // single approach into its adjacent switch — so a consist bridging the single span and the
+        // switch holds ONE resource (no P5×P4 wait-for cycle), exactly as P4 coalesces coupled switches.
+        let coupled = |p: &Blk, q: &Blk| -> bool {
             let (mut i, mut j) = (0usize, 0usize);
             let mut min_gap = i64::MAX;
             while i < p.by_path.len() && j < q.by_path.len() {
-                let (pp, pa) = p.by_path[i];
-                let (qp, qa) = q.by_path[j];
+                let (pp, _, ph) = p.by_path[i];
+                let (qp, ql, _) = q.by_path[j];
                 if pp == qp {
-                    min_gap = min_gap.min((qa - pa).abs());
+                    min_gap = min_gap.min(ql - ph);
                     i += 1;
                     j += 1;
                 } else if pp < qp {
@@ -119,29 +153,28 @@ pub(crate) fn dispatch(world: &mut World) {
             min_gap <= len_mm
         };
 
-        // (c) Coalesce adjacent points into one atomic group (chain-merge along the arclen-ascending
-        //     order: a consecutive coupling check suffices because per-path arclen is monotone, so a
-        //     farther point's gap is never smaller than its predecessor's). key_station = lowest
-        //     member StationId (command-order-independent).
+        // (c) Coalesce adjacent blocks into one atomic group (chain-merge along the arclen-ascending
+        //     order; a consecutive coupling check suffices because per-path arclen is monotone).
+        //     key_station = lowest member StationId (command-order-independent).
         let mut gi = 0usize;
-        while gi < points.len() {
+        while gi < blocks.len() {
             let mut gj = gi;
-            while gj + 1 < points.len() && coupled(&points[gj], &points[gj + 1]) {
+            while gj + 1 < blocks.len() && coupled(&blocks[gj], &blocks[gj + 1]) {
                 gj += 1;
             }
-            let mut key_station = points[gi].station;
+            let mut key_station = blocks[gi].station;
             let mut span_map: Vec<(u8, i64, i64)> = Vec::new(); // (path, lo, hi)
-            for p in &points[gi..=gj] {
-                if p.station.index() < key_station.index() {
-                    key_station = p.station;
+            for b in &blocks[gi..=gj] {
+                if b.station.index() < key_station.index() {
+                    key_station = b.station;
                 }
-                for &(pa, a) in &p.by_path {
+                for &(pa, lo, hi) in &b.by_path {
                     match span_map.binary_search_by_key(&pa, |&(k, _, _)| k) {
                         Ok(pos) => {
-                            span_map[pos].1 = span_map[pos].1.min(a);
-                            span_map[pos].2 = span_map[pos].2.max(a);
+                            span_map[pos].1 = span_map[pos].1.min(lo);
+                            span_map[pos].2 = span_map[pos].2.max(hi);
                         }
-                        Err(pos) => span_map.insert(pos, (pa, a, a)),
+                        Err(pos) => span_map.insert(pos, (pa, lo, hi)),
                     }
                 }
             }
@@ -215,38 +248,105 @@ pub(crate) fn dispatch(world: &mut World) {
             counts[pi] = count;
         }
 
-        // S1v1 CROSS-PATH single-track cap (docs/capacity-roadmap.md P5). A BRANCHED line single-
-        // tracked on its UNIVERSALLY-SHARED trunk prefix [0, D) (D = min diverge_at) runs at most
-        // (physically-double shared spans) + 1 trains TOTAL across the trunk AND every branch path —
-        // they ALL traverse the shared trunk, so the section's single-track capacity bounds the WHOLE
-        // fleet, not each path independently. The per-path cap MISSES this: it dispatches 1 trunk + 1
-        // branch train onto a fully-single shared trunk, which then head-on (P2 keys the meet per-path,
-        // so the trunk and branch consists never mutex on the one physical rail). A fully-single shared
-        // trunk ⇒ cap 1 (a shuttle; even a perfect physical mutex deadlocks 2 trains here — no passing
-        // place, they desync and oppose). The budget drains in ascending path order, so the trunk wins.
-        // Letting a single span BETWEEN passing places run a real cross-path MEET is the deferred S2
-        // physical-block mutex. INERT unless the shared prefix has a physically-single span ⇒ zero
-        // re-pins (a non-branched / fully-double / branch-private-single line is untouched).
+        // CROSS-PATH single-track cap (docs/capacity-roadmap.md P5). A BRANCHED line single-tracked on
+        // its UNIVERSALLY-SHARED trunk prefix [0, D) (D = min diverge_at) runs at most (physically-
+        // double shared spans) + 1 trains TOTAL across the trunk AND every branch path — they ALL
+        // traverse the shared trunk, so the section's single-track capacity bounds the WHOLE fleet, not
+        // each path independently (the per-path cap MISSES this and dispatches 1 trunk + 1 branch onto
+        // a fully-single shared trunk). The fleet is shared ROUND-ROBIN: a fully-single shared trunk
+        // (capacity 1) is a trunk-only shuttle, but a single span BETWEEN passing places (capacity >1)
+        // shares its budget so the trunk AND the branch run and MEET — the S2 block mutex (the
+        // single-span windows in the junction set above) serialises that meet. A trunk-takes-all drain
+        // would instead starve the branch to 0. INERT unless the shared prefix has a physically-single
+        // span ⇒ zero re-pins (a non-branched / fully-double / branch-private-single line is untouched).
         if !line.branches.is_empty() {
-            let d_min = line
+            let nspans = line.stops.len().saturating_sub(1);
+            // Branch pi-1 diverges at this trunk-stop index (path 0 = trunk reaches every trunk span).
+            let diverge_of = |pi: usize| -> usize {
+                if pi == 0 { nspans } else { (line.branches[pi - 1].diverge_at as usize).min(nspans) }
+            };
+            // The shared trunk region is spans [0, d_max), d_max = the FURTHEST branch divergence (a
+            // single span in the staggered region [min, max) is shared by the trunk + a late branch and
+            // must be bounded too — the cap was previously scoped to [0, min) and missed it: a deadlock).
+            let d_max = line
                 .branches
                 .iter()
-                .map(|b| (b.diverge_at as usize).min(line.stops.len().saturating_sub(1)))
-                .min()
+                .map(|b| (b.diverge_at as usize).min(nspans))
+                .max()
                 .unwrap_or(0);
-            // Span k (< d_min) is traversed by every path; it is physically SINGLE iff SINGLE on ANY
-            // path (whole-line edits all paths; a per-span edit touches only the trunk — single-if-any
-            // is the safe read so an asymmetric edit still constrains the shared section).
-            let phys_single = |k: usize| {
-                line.paths.iter().any(|p| p.track_type.get(k).copied() == Some(crate::line::track::SINGLE))
+            // Shared span k (< d_max) is physically SINGLE iff SINGLE on ANY path that TRAVERSES it
+            // (trunk + branches diverging past k); single-if-any, and ONLY traversing paths (a branch's
+            // track_type[k] past its OWN divergence is a different physical rail, not shared span k).
+            let phys_single = |k: usize| -> bool {
+                (0..line.paths.len()).any(|pi| {
+                    diverge_of(pi) > k
+                        && line.paths[pi].track_type.get(k).copied() == Some(crate::line::track::SINGLE)
+                })
             };
-            if (0..d_min).any(phys_single) {
-                let doubles = (0..d_min).filter(|&k| !phys_single(k)).count() as i64;
-                let mut budget = doubles + 1; // single-track capacity of the shared trunk
+            if (0..d_max).any(phys_single) {
+                // Single-track capacity = (passing places) + 1, where a passing place is a maximal RUN
+                // of DOUBLE shared spans ADJACENT to a single span. Counting RUNS (not individual
+                // doubles) is load-bearing: the S2 coalescing merges a contiguous single run into ONE
+                // block that holds 1 train, and bunched doubles are ONE passing place — so a raw
+                // double-count over-admits and the over-provisioned single block deadlocks (the meet
+                // protocol cannot untangle a P1×P2 cycle once trains outnumber the passing capacity).
+                let mut passes = 0usize;
+                let mut max_run = 0usize; // longest contiguous phys-single run = a coalesced block length
+                let mut k = 0usize;
+                while k < d_max {
+                    if phys_single(k) {
+                        let mut j = k;
+                        while j < d_max && phys_single(j) {
+                            j += 1;
+                        }
+                        max_run = max_run.max(j - k);
+                        k = j;
+                    } else {
+                        let mut j = k;
+                        while j < d_max && !phys_single(j) {
+                            j += 1;
+                        }
+                        if (k > 0 && phys_single(k - 1)) || (j < d_max && phys_single(j)) {
+                            passes += 1; // a double run touching a single section is a passing place
+                        }
+                        k = j;
+                    }
+                }
+                // FAIRNESS (S2 review): a coalesced single RUN of >=2 spans (an interior station) holds a
+                // train long enough that the block's lowest-index try_claim lets >=2 lower-index (trunk)
+                // trains monopolise it and STARVE a higher-index branch consist forever (deadlock-free
+                // but not starvation-free). Conservatively cap such a region to 2 trains so the trunk +
+                // branch ALTERNATE fairly on the block. A region of only single-SPAN blocks does not
+                // starve (short occupancy leaves admission windows) and keeps the full passing-place
+                // capacity. (A fairness/aging tiebreak restoring the higher multi-span capacity is a
+                // logged follow-up — docs/p5-shared-track-roadmap.md.)
+                // No passing place at all ⇒ a one-train shuttle (no way to meet), regardless of run
+                // length. Else a >=2-span run caps to 2 (fair alternation); single-span blocks keep the
+                // full passing-place capacity.
+                let mut budget = if passes == 0 {
+                    1
+                } else if max_run >= 2 {
+                    2
+                } else {
+                    passes as i64 + 1
+                };
+                let pass1 = counts.clone();
                 for c in counts.iter_mut() {
-                    let take = (*c as i64).min(budget.max(0));
-                    *c = take as u16;
-                    budget -= take;
+                    *c = 0;
+                }
+                // Hand out the budget one train at a time, cycling paths in index order (deterministic),
+                // never exceeding a path's PASS-1 demand — a fair share so neither the trunk nor a
+                // branch is starved while capacity remains.
+                let mut progress = true;
+                while budget > 0 && progress {
+                    progress = false;
+                    for pi in 0..counts.len() {
+                        if budget > 0 && (counts[pi] as i64) < (pass1[pi] as i64) {
+                            counts[pi] += 1;
+                            budget -= 1;
+                            progress = true;
+                        }
+                    }
                 }
             }
         }

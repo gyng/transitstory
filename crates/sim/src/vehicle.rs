@@ -177,6 +177,20 @@ fn group_overlap(tail: i64, head: i64, lo: i64, hi: i64) -> bool {
     b > lo && a < hi
 }
 
+/// Is single span `[span_lo, span_hi]` on `(line, path)` covered by a junction BLOCK (a P4 switch
+/// cluster or an S2 single-span block)? When so, that block is the SOLE meet authority on the span and
+/// P2's per-`(line,path,span)` meet (Phase A.1 / B / B.5) must SKIP it: otherwise a train resting
+/// inside the block and a train P2-gating the same physical span form a P2×junction wait-for cycle
+/// (the deadlock the S2 review found). A block's window contains the whole span (`lo<=span_lo &&
+/// hi>=span_hi`). Inert when `junctions` is empty (the non-branched / fully-double-trunk case).
+#[inline]
+fn span_block_covered(junctions: &[crate::world::Junction], line: usize, path: u8, span_lo: i64, span_hi: i64) -> bool {
+    junctions.iter().any(|j| {
+        j.line.index() == line
+            && j.span_by_path.iter().any(|&(p, lo, hi)| p == path && lo <= span_lo && hi >= span_hi)
+    })
+}
+
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
@@ -282,7 +296,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         });
         if let Some(sp) = span {
             if path.track_type.get(sp).copied().unwrap_or(0) == crate::line::track::SINGLE {
-                occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
+                let lo = path.stop_arclen_mm[sp];
+                let hi = path.stop_arclen_mm.get(sp + 1).copied().unwrap_or(lo);
+                // S2: a junction block owns shared-trunk single spans — P2 must not also claim them.
+                if !span_block_covered(junctions, v.line[i].index(), v.path[i], lo, hi) {
+                    occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
+                }
             }
         }
     }
@@ -432,6 +451,15 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         // The single span the train moves THROUGH toward its far gate (next_arc) — keyed off the stop
         // index, NOT span_of(s+ds): correct for sub-tick spans and for a train departing an entry gate.
         let trav_span = if dir > 0 { c_stop_idx[i].saturating_sub(1) } else { c_stop_idx[i] };
+        // S2 skip-guard: a shared-trunk single span owned by a junction block is gated ONLY by that
+        // block (Phase B.4); P2's per-path gate here would form a P2×junction wait-for cycle.
+        {
+            let blo = path.stop_arclen_mm.get(trav_span).copied().unwrap_or(0);
+            let bhi = path.stop_arclen_mm.get(trav_span + 1).copied().unwrap_or(blo);
+            if span_block_covered(junctions, v.line[i].index(), v.path[i], blo, bhi) {
+                continue;
+            }
+        }
         if path.track_type.get(trav_span).copied().unwrap_or(0) != crate::line::track::SINGLE {
             continue;
         }
@@ -538,8 +566,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         let s = c_s[i];
         let end_s = s + dir * desired_ds[i];
         if let Some(esp) = path.strictly_inside(end_s) {
+            let elo = path.stop_arclen_mm.get(esp).copied().unwrap_or(0);
+            let ehi = path.stop_arclen_mm.get(esp + 1).copied().unwrap_or(elo);
             if path.track_type.get(esp).copied().unwrap_or(0) == crate::line::track::SINGLE
                 && path.strictly_inside(s) != Some(esp)
+                // S2: the junction block's own B.4 no-rest handles block-covered spans (skip-guard).
+                && !span_block_covered(junctions, v.line[i].index(), v.path[i], elo, ehi)
             {
                 let entry_arc = if dir > 0 {
                     path.stop_arclen_mm[esp]

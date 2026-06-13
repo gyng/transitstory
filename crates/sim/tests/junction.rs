@@ -521,36 +521,230 @@ fn fully_single_shared_trunk_no_headon_and_never_freezes() {
     assert!(traveled.iter().all(|&t| t > 0), "the single-track shuttle must keep moving (no freeze)");
 }
 
-/// P5-S2 SEAM (documented limitation — `#[ignore]`d, un-ignore when the physical-block MUTEX lands).
-/// A single shared-trunk span inside an otherwise-DOUBLE branched line (one `SetSegmentTrack{span:k}`,
-/// which edits only the trunk path) is NOT fixed by S1v1's cap — the line has passing places, so the
-/// cap leaves a real fleet, and the trunk + branch trains still pass through each other on the single
-/// physical span k because P2 keys per-path. The fix is the S2 physical-block reservation mutex
-/// (single spans as first-class blocks keyed on the physical segment, coalescing with the adjacent
-/// switch to avoid a P5×P4 cycle). Captured here so S2 has a runnable target.
-#[test]
-#[ignore = "P5-S2: physical-block meet mutex for a single span in a double shared trunk; see doc"]
-fn single_span_in_double_shared_trunk_no_headon_is_s2() {
-    let mut w = shared_single_trunk(6); // start fully single...
-    // ...then DOUBLE every shared-trunk span except span 1 (leaving one single span on the trunk path).
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 0, track: 0 });
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 2, track: 0 });
-    // span 1 stays single on the trunk path (a single span between two passing places).
-    let len = w.lines[0].vehicle_spec().length_mm;
-    let switch = w.lines[0].paths[0].stop_arclen_mm[2];
-    w.tick(50);
-    for t in 0..6000 {
-        w.tick(50);
-        for a in 0..w.vehicles.len() {
-            for b in (a + 1)..w.vehicles.len() {
-                let on_trunk = w.vehicles.s_mm[a] < switch && w.vehicles.s_mm[b] < switch;
-                if on_trunk && w.vehicles.dir[a] != w.vehicles.dir[b] {
-                    let dx = (w.vehicles.x_mm[a] - w.vehicles.x_mm[b]) as i128;
-                    let dy = (w.vehicles.y_mm[a] - w.vehicles.y_mm[b]) as i128;
-                    let d = ((dx * dx + dy * dy) as f64).sqrt() as i64;
-                    assert!(d >= len, "single-span head-on at tick {t}: {d} mm < {len} mm");
+/// A DEFAULT-DOUBLE branched Y-line (trunk 0,1,2,3 on the x-axis; branch off stop 3 in +y) with the
+/// given trunk spans single-tracked PER-SPAN (so only the trunk path is single there; the branch path
+/// stays DOUBLE). The reachable S2 case: a physically-single shared-trunk span between DOUBLE passing
+/// places, where the line has real capacity — the trunk and branch consists must MEET on that span,
+/// not be capped to a shuttle (S1v1's cap leaves a real fleet here).
+fn s2_single_in_double(single_spans: &[u32], trains: u16) -> World {
+    let mut w = World::new(21, CityData::default());
+    for &x in &[0i64, 2_100_000, 4_300_000, 6_600_000] {
+        w.apply(&Command::PlaceStation { x_mm: x, y_mm: 0, name: None });
+    }
+    w.apply(&Command::PlaceStation { x_mm: 7_200_000, y_mm: 2_400_000, name: None }); // 4
+    w.apply(&Command::PlaceStation { x_mm: 7_900_000, y_mm: 5_000_000, name: None }); // 5
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..4u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 3, station: StationId(4) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 3, station: StationId(5) });
+    for &k in single_spans {
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: trains });
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+/// Are two opposing same-line consists both STRICTLY inside the x-range `(xlo, xhi)` of a single
+/// physical trunk span (|y| small ⇒ on the x-axis trunk)? Two opposing trains on one single span is a
+/// head-on the meet mutex must forbid; the strict x-range avoids flagging a legit pass at a DOUBLE
+/// bounding station.
+fn headon_in_x(w: &World, xlo: i64, xhi: i64) -> bool {
+    for li in 0..w.lines.len() {
+        let on: Vec<usize> = (0..w.vehicles.len())
+            .filter(|&i| {
+                w.vehicles.line[i].index() == li
+                    && w.vehicles.y_mm[i].abs() < 800_000
+                    && w.vehicles.x_mm[i] > xlo
+                    && w.vehicles.x_mm[i] < xhi
+            })
+            .collect();
+        for a in 0..on.len() {
+            for b in (a + 1)..on.len() {
+                if w.vehicles.dir[on[a]] != w.vehicles.dir[on[b]] {
+                    return true; // two opposing consists inside one single span
                 }
             }
         }
     }
+    false
+}
+
+#[test]
+fn single_span_between_passing_places_runs_a_meet() {
+    // THE S2 MUTEX. Span 1 (trunk x 2.1M..4.3M) is single; spans 0,2 are DOUBLE passing places. The
+    // line keeps a real fleet (cap = passing-places+1 = 3, NOT a 1-train shuttle), and the trunk +
+    // branch consists MEET on span 1 — never two opposing inside it — while everyone keeps moving. RED
+    // before S2: the branch consist reads span 1 as DOUBLE (per-span editing only the trunk) so it
+    // passes through the meet-gated trunk consist on the one physical rail.
+    let mut w = s2_single_in_double(&[1], 6);
+    w.tick(50);
+    // The BRANCH must be served — one single span between passing places is a MEET, not a shuttle, so
+    // the cap must NOT zero the branch (RED before S2: S1v1's trunk-takes-all drain starves it to 0).
+    assert!(w.vehicles.path.iter().any(|&p| p >= 1), "the branch must run trains (a meet, not a shuttle)");
+    let traveled = run_traveled_no_switchcheck(&mut w, 6000, |w, t| {
+        assert!(!headon_in_x(w, 2_300_000, 4_100_000), "meet violated on single span 1 at tick {t}");
+    });
+    assert!(traveled.len() >= 3, "a single span between passing places must keep a real fleet (cap≥3)");
+    let total = w.lines[0].length_mm();
+    assert!(*traveled.iter().min().unwrap() > total, "a train froze at the single-span meet");
+}
+
+#[test]
+fn non_contiguous_single_span_meets() {
+    // Span 0 (trunk x 0..2.1M) is single but spans 1,2 are DOUBLE, so it is NON-CONTIGUOUS with the
+    // switch at stop 3 (a consist cannot bridge both ⇒ no P5×P4 cycle, a STANDALONE physical block).
+    // The meet mutex must still serialize it: never two opposing consists inside span 0, no freeze.
+    let mut w = s2_single_in_double(&[0], 6);
+    w.tick(50);
+    assert!(w.vehicles.path.iter().any(|&p| p >= 1), "the branch must run (non-contiguous span is a meet)");
+    let traveled = run_traveled_no_switchcheck(&mut w, 6000, |w, t| {
+        assert!(!headon_in_x(w, 200_000, 1_900_000), "meet violated on non-contiguous span 0 at tick {t}");
+    });
+    // Span 0 sits at the terminus with ONE passing place (spans 1,2), so its single-track capacity is
+    // 2 — the branch is still served (round-robin trunk+branch), not starved.
+    assert!(traveled.len() >= 2, "a non-contiguous single span must serve the trunk + branch");
+    let total = w.lines[0].length_mm();
+    assert!(*traveled.iter().min().unwrap() > total, "a train froze at the non-contiguous single span");
+}
+
+/// Warm up `warmup` ticks, then each dispatched vehicle's travel over the next `window` ticks — the
+/// STEADY-STATE liveness metric (a deadlocked train accrues ~0 here even if it moved during warmup).
+fn steady_traveled(w: &mut World, warmup: usize, window: usize) -> Vec<i64> {
+    w.tick(50);
+    for _ in 0..warmup {
+        w.tick(50);
+    }
+    let n = w.vehicles.len();
+    let mut last = w.vehicles.s_mm.clone();
+    let mut traveled = vec![0i64; n];
+    for _ in 0..window {
+        w.tick(50);
+        for i in 0..n {
+            traveled[i] += (w.vehicles.s_mm[i] - last[i]).abs();
+            last[i] = w.vehicles.s_mm[i];
+        }
+    }
+    traveled
+}
+
+#[test]
+fn bunched_passing_places_long_single_run_never_freezes() {
+    // S2 review Bug A: a CONTIGUOUS single run on the shared trunk with the DOUBLE passing places
+    // BUNCHED upstream. Coalescing merges the run into ONE capacity-1 block; over-provisioned, the cap
+    // must count passing-place RUNS (not raw doubles) or it over-admits and the block deadlocks (P1×P2,
+    // a replay-green gridlock). Trunk 0..6 ; one branch off stop 6 ; spans {2,3,4,5} single, {0,1} double.
+    let mut w = World::new(31, CityData::default());
+    for k in 0..7u32 {
+        w.apply(&Command::PlaceStation { x_mm: k as i64 * 2_000_000, y_mm: 0, name: None });
+    }
+    w.apply(&Command::PlaceStation { x_mm: 12_700_000, y_mm: 2_400_000, name: None }); // 7
+    w.apply(&Command::PlaceStation { x_mm: 13_400_000, y_mm: 5_000_000, name: None }); // 8
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..7u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 6, station: StationId(7) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 6, station: StationId(8) });
+    for k in [2u32, 3, 4, 5] {
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 24 });
+    w.apply(&Command::SetRunning { running: true });
+    let total = w.lines[0].length_mm();
+    let traveled = steady_traveled(&mut w, 6000, 6000);
+    assert!(traveled.iter().all(|&t| t > total), "a train froze on the bunched-passing-place single run");
+}
+
+#[test]
+fn staggered_single_span_never_freezes() {
+    // S2 review Bug B: a single span in the STAGGERED region [min,max) — shared by the trunk + a LATE
+    // branch but not an early one — must be capped (the cap was scoped to [0,min) and missed it, so the
+    // late-branch fleet gridlocked the span). Now scoped to [0, max). Trunk 0..6 ; early branch off 1 ;
+    // late branch off 6 ; span 3 single.
+    let mut w = World::new(33, CityData::default());
+    for k in 0..7u32 {
+        w.apply(&Command::PlaceStation { x_mm: k as i64 * 2_000_000, y_mm: 0, name: None });
+    }
+    w.apply(&Command::PlaceStation { x_mm: 2_300_000, y_mm: 2_400_000, name: None }); // 7 (early)
+    w.apply(&Command::PlaceStation { x_mm: 2_600_000, y_mm: 5_000_000, name: None }); // 8
+    w.apply(&Command::PlaceStation { x_mm: 12_700_000, y_mm: 2_400_000, name: None }); // 9 (late)
+    w.apply(&Command::PlaceStation { x_mm: 13_400_000, y_mm: 5_000_000, name: None }); // 10
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..7u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 1, station: StationId(7) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 1, station: StationId(8) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 1, diverge_at: 6, station: StationId(9) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 1, diverge_at: 6, station: StationId(10) });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 3, track: SINGLE });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 16 });
+    w.apply(&Command::SetRunning { running: true });
+    let total = w.lines[0].length_mm();
+    let traveled = steady_traveled(&mut w, 6000, 6000);
+    assert!(traveled.iter().all(|&t| t > total), "a train froze on the staggered single span");
+}
+
+#[test]
+fn multi_span_single_run_with_intermediate_station_never_freezes() {
+    // S2 re-review: a coalesced single RUN of length >=2 (with an INTERMEDIATE station) between passing
+    // places, over-provisioned (cap admits 3). WITHOUT the skip-guard a returning train resting inside
+    // the run + a train P2-gating the same physical span form a P2×junction wait-for cycle (a
+    // replay-green gridlock). The skip-guard makes the junction block the SOLE meet authority, so the
+    // owner exits freely. Trunk 0..5 ; branch off stop 5 ; spans {2,3} single, {0,1,4} double.
+    let mut w = World::new(41, CityData::default());
+    for k in 0..6u32 {
+        w.apply(&Command::PlaceStation { x_mm: k as i64 * 2_000_000, y_mm: 0, name: None });
+    }
+    w.apply(&Command::PlaceStation { x_mm: 10_700_000, y_mm: 2_400_000, name: None }); // 6
+    w.apply(&Command::PlaceStation { x_mm: 11_400_000, y_mm: 5_000_000, name: None }); // 7
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..6u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 5, station: StationId(6) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 5, station: StationId(7) });
+    for k in [2u32, 3] {
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 24 });
+    w.apply(&Command::SetRunning { running: true });
+    let total = w.lines[0].length_mm();
+    let traveled = steady_traveled(&mut w, 8000, 8000);
+    assert!(traveled.iter().all(|&t| t > total), "a train froze on the multi-span single run (P2×junction cycle)");
+}
+
+#[test]
+fn multi_span_block_does_not_starve_the_branch() {
+    // S2 final sweep: a coalesced single RUN of >=2 spans flanked by passing places on BOTH sides, with
+    // the branch off the LAST trunk stop (so it shares the whole trunk). The block's lowest-index
+    // try_claim let 2 lower-index trunk trains monopolise the capacity-1 run and STARVE the branch (a
+    // dispatched consist pinned at v=0 forever) — deadlock-free but not starvation-free. The conservative
+    // cap (a >=2-span run ⇒ 2 trains) makes the trunk + branch ALTERNATE fairly. Round spacing on
+    // purpose (the bug needed the resonance a "nice" geometry produces). Branch off stop 4 ; spans {1,2}.
+    let mut w = World::new(101, CityData::default());
+    for &x in &[0i64, 2_100_000, 4_300_000, 6_600_000, 9_000_000] {
+        w.apply(&Command::PlaceStation { x_mm: x, y_mm: 0, name: None });
+    }
+    w.apply(&Command::PlaceStation { x_mm: 9_600_000, y_mm: 2_400_000, name: None }); // 5
+    w.apply(&Command::PlaceStation { x_mm: 10_300_000, y_mm: 5_000_000, name: None }); // 6
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..5u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 4, station: StationId(5) });
+    w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 4, station: StationId(6) });
+    for k in [1u32, 2] {
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 6 });
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+    assert!(w.vehicles.path.iter().any(|&p| p >= 1), "the branch must be dispatched");
+    let total = w.lines[0].length_mm();
+    let traveled = steady_traveled(&mut w, 8000, 8000);
+    assert!(traveled.iter().all(|&t| t > total), "the branch consist starved on the multi-span block");
 }

@@ -27,7 +27,7 @@ single-track and P4 junctions). What changes per layer is **only the block's ide
 | **P2** (done) | `(line, path, span)` — per service path | one path's trains | meet at passing places + per-path cap |
 | **P4** (done) | `(line, key_station)` — a switch cluster, per line | one line's paths | coalesce within a consist-length ⇒ one owner ⇒ acyclic |
 | **S1v1** (done) | *no mutex* — a **dispatch cap** on the shared trunk | one line's paths | cap the fleet to the section's single-track capacity |
-| **S2** (next) | `(line, physical-span)` — a single span shared by a line's paths | one line's paths | coalesce single spans with the adjacent switch (P4's trick) |
+| **S2** (done) | the **junction window-block** — single spans are first-class blocks | one line's paths | coalesce single spans with the adjacent switch (P4's trick) |
 | **Track objects** | `TrackSegmentId` — a first-class physical edge | **any line's** trains | **resource ordering** across the segment graph (the new hard part) |
 
 The reservation *mechanism* is constant; only the key derivation graduates from line-scoped to
@@ -56,36 +56,59 @@ branched line has a physically-single span on its universally-shared prefix `[0,
 **zero re-pins** (all 31 sim suites byte-identical). No new Command, no `Canonical` change, no
 `types.ts` mirror.
 
-## S2 — the physical-block meet mutex *(next; the reusable primitive)*
+## S2 — the physical-block meet mutex *(DONE 2026-06-13; the reusable primitive)*
 
-**The residual bug S1v1 leaves** (captured `#[ignore]`d as
-`junction.rs::single_span_in_double_shared_trunk_no_headon_is_s2`): a **single span inside an
-otherwise-double** shared trunk. Here the line *has* passing places, so the cap leaves a real fleet — and
-the trunk + branch trains still pass through each other on that one physical span. The fix is a **meet
-mutex on the physical span** (not a cap): trains take turns, meeting at the adjacent double spans.
+**The bug S1v1 left:** a **single span inside an otherwise-double** shared trunk. Here the line *has*
+passing places, so S1v1's cap leaves a real fleet — and the trunk + branch trains still pass through
+each other on that one physical span. The fix is a **meet mutex on the physical span** (not a cap):
+trains take turns, meeting at the adjacent double spans.
 
-**Design (drawn from the P5v1 design workflow + its corrected analysis):**
-- A shared-trunk span is a **physical block** keyed on the physical segment (line-scoped for S1; the
-  station-pair / a derived per-line segment index — drift-proof, never a Catmull-Rom arclen scalar).
-  A span is physically SINGLE iff SINGLE on **any** contending path (single-if-any — closes the
-  asymmetric-track hole where `SetSegmentTrack{span:k}` edits only the trunk path).
-- Reuse P4's block-mutex machinery: add single spans as **first-class window-blocks** to the resource
-  set and **coalesce them with adjacent switches and with each other within a consist-length** — so a
-  consist bridging a single span and the divergence switch holds **one** resource, which is the only
-  way to kill the **P5×P4 wait-for cycle** (train A holds the single span + waits for the switch; train
-  B holds the switch + waits for the single span). Coalescing is P4's exact trick, generalised from
-  points to windows. Non-adjacent single spans (separated by a double) cannot bridge into a switch, so
-  a standalone block mutex covers them.
-- Liveness: the cap (S1v1) bounds population; the mutex provides mutual exclusion; coalescing keeps the
-  wait-for graph an acyclic depth-1 forest. Proven RED-first by un-ignoring the S2 test + never-freeze
-  fixtures (single span between passing places running a real meet, not over-throttled).
+**As built:**
+- Single shared-trunk spans become **first-class window-blocks** in the dispatch junction set, alongside
+  P4's divergence-point blocks. A block is a per-path arclen window `(path, lo, hi)` (a point has
+  lo==hi; a span has lo<hi); the **existing A.1.5/B.4 mutex** (`group_overlap`) serialises them
+  unchanged — no new pass, no new key. A span is a block iff it is **shared** (>=2 traversing paths =
+  trunk + a branch with `diverge_at > k`) AND physically SINGLE on **any** traversing path
+  (single-if-any — closes the asymmetric hole where `SetSegmentTrack{span:k}` edits only the trunk, so
+  the branch reads double on a rail that is physically single).
+- **Coalescing generalised from points to windows** (`coupled` now uses `q.lo − p.hi`): contiguous
+  single spans merge into one section, and a single approach **folds into its adjacent switch** within a
+  consist-length — so a consist bridging the single span and the switch holds **one** resource, killing
+  the **P5×P4 wait-for cycle** (A holds the single span + waits for the switch; B holds the switch +
+  waits for the single span). A **non-contiguous** single span (separated by a double) can't bridge into
+  a switch, so it stays a standalone block — both covered (`non_contiguous_single_span_meets`).
+- **The cap shares its budget round-robin** (S1v1's trunk-takes-all drain starved the branch to 0): a
+  fully-single trunk (capacity 1) is still a trunk shuttle, but a single span between passing places
+  (capacity >1) gives the trunk AND the branch trains so they **meet** — the mutex serialises the span.
+  The two halves (round-robin cap + block mutex) ship together: round-robin without the mutex head-ons.
+- Liveness: the cap bounds population; the mutex provides mutual exclusion; coalescing keeps the
+  wait-for graph an acyclic depth-1 forest. RED-first: `single_span_between_passing_places_runs_a_meet`
+  (branch runs + meets, no head-on, no freeze) + the non-contiguous case. Parity: inert unless a
+  branched line has a phys-single SHARED span ⇒ zero re-pins.
 
-**Open edges flagged for the S2 design** (found by hand-analysis of the rate-limited P5v1 design break):
-the locked "fold-into-junction" design as written misses **non-contiguous** single shared spans and its
-cluster-range cap **over-throttles** a mostly-double line — both are why S2 must model single spans as
-first-class blocks with a passing-place-counting cap, not a backward-walk widening. Also: the
-**staggered partial-sharing** region `[min diverge_at, max diverge_at)` (single spans shared by the
-trunk + a *late* branch but not an early one) needs explicit coverage + a test.
+**Four adversarial-review rounds hardened S2** (each found a deterministic, replay-gate-blind failure;
+all now have regression tests in `junction.rs`):
+1. **Bunched-double over-admit** — the cap counted individual double spans, but coalescing merges a
+   contiguous single run into one capacity-1 block; bunched doubles over-admitted → P1×P2 deadlock.
+   Fixed: count passing-place **RUNS**, not individual doubles.
+2. **Staggered region uncapped** — a single span shared by the trunk + a *late* branch (in
+   `[min, max diverge_at)`) was outside the cap's `[0, min)` scope → unbounded → deadlock. Fixed: scope
+   the cap to `[0, max diverge_at)` with traversing-path-aware `phys_single`.
+3. **P2×junction wait-for cycle** — a returning train resting inside a coalesced run + a train P2-gating
+   the same physical span formed a 2-cycle (the double-gating the **skip-guard** was meant to prevent,
+   bet against and skipped — the review proved it load-bearing). Fixed: `span_block_covered` makes P2's
+   per-path meet SKIP any span a junction block owns (the block is the sole authority).
+4. **Branch starvation** — the block's lowest-index `try_claim` is deadlock-free (the occupant always
+   advances) but **not starvation-free**: on a coalesced ≥2-span run, two lower-index trunk trains hand
+   the block off to each other forever, pinning a higher-index branch at v=0. Fixed **conservatively**:
+   a ≥2-span run caps the region to 2 trains (trunk + branch alternate fairly); a fully-single trunk
+   (no passing place) is a 1-train shuttle; single-span blocks (confirmed not to starve) keep the full
+   passing-place capacity.
+
+**Logged follow-up:** the conservative ≥2-span cap of 2 trades throughput for fairness. A
+**fairness/aging tiebreak** in the block `try_claim`/`occ_owner` (longest-waiting wins, deterministically
+— probably a small derived wait-rank, not new hashed state) would restore the full passing-place
+capacity for long single runs. Until then, a multi-span single section runs at most 2 trains.
 
 ## Track objects — the cliff *(after S2; the real model change)*
 

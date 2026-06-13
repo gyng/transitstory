@@ -198,11 +198,15 @@ block's *identity key* graduates from line-scoped to cross-line per layer.
   trunk wins). Pure `dispatch.rs` clamp, re-derived, **inert unless** the universally-shared prefix
   `[0, min diverge_at)` has a physically-single span ⇒ **zero re-pins**. Un-ignored the captured head-on
   test; the single-span-in-a-double-trunk case is `#[ignore]`d → S2.
-- **S2 — physical-block meet mutex (next, the reusable primitive).** A single span *between passing
-  places* needs a meet MUTEX, not the cap: single spans become first-class **window-blocks** keyed on
-  the physical segment (single-if-any track read), **coalesced with the adjacent switch** (P4's trick,
-  generalised points→windows) to kill the P5×P4 wait-for cycle. This is the kernel cross-line track
-  sharing reuses.
+- **S2 — physical-block meet mutex (DONE 2026-06-13, the reusable primitive).** A single span *between
+  passing places* needs a meet MUTEX, not the cap. Single shared-trunk spans become first-class
+  **window-blocks** in the dispatch junction set (per-path `(path, lo<hi)`; single-if-any track read);
+  the existing A.1.5/B.4 `group_overlap` mutex serialises them unchanged. Coalescing is generalised
+  points→windows (`q.lo − p.hi`), so a single approach **folds into its adjacent switch** (kills the
+  P5×P4 cycle) and contiguous singles merge; non-contiguous singles stay standalone. The cap drain
+  became **round-robin** so the branch runs and MEETS (trunk-takes-all starved it to 0) — the two
+  halves ship together. RED-first meet + non-contiguous tests; zero re-pins. This is the kernel
+  cross-line track sharing reuses (only the block key graduates line-scoped → `TrackSegmentId`).
 - **Track objects — the cliff (after S2).** `TrackSegment` first-class; `Line` references segments; the
   block key becomes a cross-line `TrackSegmentId`; the genuinely new hard part is **cross-line
   deadlock-freedom via resource-ordering** (single-owner coalescing can't collapse multi-line cycles).
