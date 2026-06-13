@@ -130,6 +130,57 @@ The data-model phase, and the only one with real **contract-mirror surface**.
   crossing detection, precomputed on network change). **Train length sets the clearing time**
   (occupied until the tail passes). **Grade-separation = the fix** (reuses Elevated/Tunnel + cost).
   Legible conflict-hotspot indicator. Builds on P1's authority layer + P3's branch points.
+- **DONE 2026-06-13** (P4v1 = same-line branch divergence/convergence switches; at-grade *crossings*
+  between distinct lines + the shared-trunk *section* mutex stay P5 seams). Built via the
+  understand → adversarial design → adversarial review workflow pipeline. The authority layer's 4th
+  `min()`: Phase **B.4** in `vehicle.rs::advance` clamps a train's `ds` so it cannot cross a switch
+  cluster another consist occupies. A consist occupies the cluster while its `[head−dir·len, head]`
+  segment overlaps the cluster's per-path `[lo,hi]` span (half-open `group_overlap`), re-derived each
+  tick (sorted Vecs, `occ_claim`/`occ_owner`/`try_claim`, no HashMap, integer) — **never hashed**, so
+  a non-branched network is **byte-identical (zero re-pins)**. `world.junctions` (also unhashed) is
+  derived in `dispatch.rs` on `dispatch_dirty`. Clearing time ∝ `length_mm` falls out for free
+  (longer consist straddles the switch for more arclen). **Grade-separating a branch does NOT dissolve
+  the mutex** — a same-line switch is a switch at any level (tested).
+- **Coalescing is the load-bearing liveness fix** (both design adversaries found the same break): two
+  switches within one consist-length on the trunk form a 2-cycle deadlock under a naive point-mutex
+  (A holds J1 + gated at J2, B holds J2 + gated at J1 — and the denial arm is index-independent, so
+  the replay gate is silent). Merging them into **one atomic group** (key = `min` member StationId,
+  command-order-independent) collapses the cycle: one consist straddles ≤1 group, every contender for
+  any member point contends for the one key ⇒ the wait-for graph is an **acyclic depth-1 forest**.
+- **Two corrections from the build/review vs the locked design** (both validated by RED-first tests):
+  (1) the design's **§4.3 dispatch cap was dropped** — a branch switch is a POINT crossing occupied
+  only ~`length_mm` of travel, so its throughput dwarfs P1's per-path block density (`max_fit` always
+  binds first), and the mutex is deadlock-free by coalescing, so over-provisioning merely *queues* at
+  the gate; the block-sized cap the design implied would cripple every branched line to ~2 trains
+  (a `dense_*` test pins a real fleet running). (2) The design's **Phase B.5 junction no-rest extension
+  was unnecessary** — B.4's gate-crossing test uses `s <= gate` (a train almost always *departs* the
+  junction station, which sits ON the gate, so `s == gate` is the dominant case; strict `<` would
+  never bind), and with start-of-tick occupancy denying entry while occupied, a non-owner can never
+  enter — let alone rest — inside a cluster. A **dispatch snap** (added, not in the design) keeps the
+  switch collision-free from tick 0 (a placement straddling a cluster snaps to the gate; verified
+  load-bearing by sweep — dense early junctions straddle without it).
+- **Adversarial review caught two real bugs (the determinism gate is blind to both — they replay
+  green):** (a) **CRITICAL — coalescing axis** (Residual Risk #2, realised): the original rule
+  coalesced on the **trunk** gap, but the runtime mutex keys on **per-path** spans, and a branch
+  path's smoothed shared-prefix arclen can be *shorter* than the trunk's (Catmull-Rom pulls the branch
+  straight while the trunk bows toward its post-junction stop). Two switches >`len` apart on the trunk
+  but <`len` on a branch stayed split → a branch consist straddled both → the very 2-cycle gridlock
+  coalescing exists to kill (reproducible with ordinary smoothed geometry). **Fixed:** coalesce on the
+  **MIN gap over shared paths** (the tightest mutual-reach bound, matching the mutex). (b) **P5 seam,
+  deferred — single-track on a branched line's SHARED TRUNK:** P2's meet keys per `(line, path, span)`,
+  so the trunk path and a branch path get different keys for the *same physical trunk rail* and don't
+  mutex (opposing consists pass through). Pre-existing P2×P3 (P4 guards the divergence point, not the
+  single-track span into it); a correct fix is the P5 shared-track phase — key the meet on the physical
+  trunk span **plus** a cross-path liveness cap (a half-fix turns the pass-through into a *worse*
+  deadlock). Captured as `#[ignore]`d `shared_trunk_single_track_no_headon_is_p5`.
+- **Tests** (`tests/junction.rs`, red-first): mutual exclusion (Y + JRL 3-way); coupled-junction
+  no-deadlock (RED without coalescing); **branch-coupled junctions coalesce + run** (RED with
+  trunk-only coalescing — bug a); dense early junction + dense loop+spur clean from dispatch (the
+  snap); single train not self-gated; grade-sep invariant; determinism + command-order-stable keys;
+  non-branched parity; `#[ignore]`d P5 shared-trunk seam (bug b). **Deferred** (seams, logged):
+  at-grade line *crossings* + shared-trunk *section* mutex incl. single-track-on-shared-trunk (P5
+  go/no-go); a **turnout speed cap** at divergences (`speed_cap_at` seam, add only if a junction
+  visibly binds); the optional `LineView.junction_points` amber-dot readout.
 
 ### P5 — Shared-track merges between distinct lines  *(track graph + interlocking — GO/NO-GO after P4)*
 - The architectural cliff: distinct lines over one physical edge ⇒ a shared `TrackGraph`. Kept as a

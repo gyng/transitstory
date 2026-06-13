@@ -37,7 +37,126 @@ pub(crate) fn dispatch(world: &mut World) {
     }
     world.serving = serving;
 
+    // --- P4: rebuild the coalesced junction set (switch-clusters, docs/capacity-roadmap.md) -------
+    // A branched line's divergence/convergence points within one consist-length on the trunk are
+    // COALESCED into one atomic mutex group (the load-bearing liveness fix: two switches within a
+    // consist-length form a 2-cycle deadlock under a naive point-mutex). Re-derived here on the same
+    // trigger as `serving`; never hashed (a pure function of the already-hashed line topology). The
+    // movement clamp (vehicle.rs Phase A.1.5 + B.4) reads this set each tick.
+    let mut junctions: Vec<crate::world::Junction> = Vec::new();
+    for (li, line) in world.lines.iter().enumerate() {
+        // Same served-line gate as dispatch — a parked/illegal/unserved line runs no vehicles.
+        if line.removed || line.trainset.is_none() || line.stops.len() < 2 || line.crosses_water_surface {
+            continue;
+        }
+        if line.branches.is_empty() {
+            continue; // PARITY: a non-branched line contributes ZERO junctions (the inert case)
+        }
+        let len_mm = line.vehicle_spec().length_mm; // the coalescing radius = the consist footprint
+
+        // (a) Unique divergence trunk-stop indices, ascending (dedups a 3-way sharing one diverge_at).
+        let mut diverge_idxs: Vec<usize> = Vec::new();
+        for b in &line.branches {
+            let d = (b.diverge_at as usize).min(line.stops.len().saturating_sub(1));
+            if !diverge_idxs.contains(&d) {
+                diverge_idxs.push(d);
+            }
+        }
+        diverge_idxs.sort_unstable(); // trunk index ascending == trunk arclen ascending (monotone)
+
+        // (b) For each divergence stop, gather its per-path (path, arclen), sorted by path index.
+        //     Every path whose trunk prefix reaches stop d carries the SAME station there (path_specs
+        //     shares the prefix); a point reached by >=2 paths is a real fork. diverge_idxs is sorted
+        //     and per-path arclen is monotone in trunk-stop index, so `points` are arclen-ascending on
+        //     EVERY shared path.
+        struct Pt {
+            station: crate::ids::StationId,
+            by_path: Vec<(u8, i64)>,
+        }
+        let mut points: Vec<Pt> = Vec::new();
+        for &d in &diverge_idxs {
+            let station = line.stops[d];
+            let mut by_path: Vec<(u8, i64)> = Vec::new();
+            for (pi, path) in line.paths.iter().enumerate() {
+                if path.stops.get(d).copied() == Some(station) {
+                    let a = path.stop_arclen_mm.get(d).copied().unwrap_or(0);
+                    by_path.push((pi as u8, a));
+                }
+            }
+            if by_path.len() >= 2 {
+                points.push(Pt { station, by_path });
+            }
+        }
+        if points.is_empty() {
+            continue;
+        }
+
+        // Two divergence points are COUPLED when a single consist can straddle both on SOME shared
+        // service path — i.e. their arclen gap is <= len_mm on ANY path containing both. The runtime
+        // mutex (vehicle.rs A.1.5/B.4) keys on PER-PATH spans, and a branch path's smoothed
+        // shared-prefix arclen can be SHORTER than the trunk's (Catmull-Rom neighbour influence pulls
+        // the branch straighter while the trunk bows toward its post-junction continuation). So
+        // coalescing on the TRUNK gap alone under-groups: a pair coupled on a branch but not the trunk
+        // stays split, and a branch consist straddling both forms the exact 2-cycle deadlock coalescing
+        // exists to kill (the design's Residual Risk #2, found in review). Coalesce on the MIN gap over
+        // shared paths — the tightest mutual-reach bound, matching what the mutex actually enforces.
+        let coupled = |p: &Pt, q: &Pt| -> bool {
+            let (mut i, mut j) = (0usize, 0usize);
+            let mut min_gap = i64::MAX;
+            while i < p.by_path.len() && j < q.by_path.len() {
+                let (pp, pa) = p.by_path[i];
+                let (qp, qa) = q.by_path[j];
+                if pp == qp {
+                    min_gap = min_gap.min((qa - pa).abs());
+                    i += 1;
+                    j += 1;
+                } else if pp < qp {
+                    i += 1;
+                } else {
+                    j += 1;
+                }
+            }
+            min_gap <= len_mm
+        };
+
+        // (c) Coalesce adjacent points into one atomic group (chain-merge along the arclen-ascending
+        //     order: a consecutive coupling check suffices because per-path arclen is monotone, so a
+        //     farther point's gap is never smaller than its predecessor's). key_station = lowest
+        //     member StationId (command-order-independent).
+        let mut gi = 0usize;
+        while gi < points.len() {
+            let mut gj = gi;
+            while gj + 1 < points.len() && coupled(&points[gj], &points[gj + 1]) {
+                gj += 1;
+            }
+            let mut key_station = points[gi].station;
+            let mut span_map: Vec<(u8, i64, i64)> = Vec::new(); // (path, lo, hi)
+            for p in &points[gi..=gj] {
+                if p.station.index() < key_station.index() {
+                    key_station = p.station;
+                }
+                for &(pa, a) in &p.by_path {
+                    match span_map.binary_search_by_key(&pa, |&(k, _, _)| k) {
+                        Ok(pos) => {
+                            span_map[pos].1 = span_map[pos].1.min(a);
+                            span_map[pos].2 = span_map[pos].2.max(a);
+                        }
+                        Err(pos) => span_map.insert(pos, (pa, a, a)),
+                    }
+                }
+            }
+            junctions.push(crate::world::Junction {
+                line: LineId(li as u32),
+                key_station,
+                span_by_path: span_map,
+            });
+            gi = gj + 1;
+        }
+    }
+    world.junctions = junctions;
+
     let lines = &world.lines;
+    let junctions = &world.junctions; // P4: read the switch clusters for the tick-0 placement snap
     let v = &mut world.vehicles;
     v.clear();
 
@@ -52,6 +171,15 @@ pub(crate) fn dispatch(world: &mut World) {
         let spec = line.vehicle_spec();
         let min_gap = crate::trainset::block_gap_mm(spec.v_max_mm_s, spec.decel_mm_s2) + spec.length_mm;
         let npaths = line.paths.len().max(1);
+        // P4 needs NO junction-specific dispatch cap. A branch switch is a POINT crossing occupied
+        // only while a consist's length passes over it (~`length_mm` of travel, a fraction of a
+        // second) — its throughput (round_trip / length_mm) dwarfs P1's per-path block density
+        // (round_trip / min_gap), so the existing `max_fit` cap always binds first. And the junction
+        // MUTEX is deadlock-free by construction (coalescing ⇒ one owner per cluster ⇒ an acyclic
+        // depth-1 wait-for forest, unlike P2's single-track P1×P2 cycle), so over-provisioning just
+        // queues trains at the gate — it never gridlocks. So the fleet is the full count, metered (not
+        // capped) at the switch. (A whole-line cap of ~2 trains — what a block-sized junction cap
+        // implies — would cripple every branched line; see docs/capacity-roadmap.md §4.3 residual.)
         for (pi, path) in line.paths.iter().enumerate() {
             let total = path.length_mm();
             if total <= 0 || path.stops.len() < 2 {
@@ -103,6 +231,23 @@ pub(crate) fn dispatch(world: &mut World) {
                     }
                     _ => s,
                 };
+                // P4: never DISPATCH a train STRADDLING a junction cluster (its consist would start as
+                // an un-arbitrated switch occupant — a tick-0 collision the mutex gates ENTRY into but
+                // cannot un-place). Snap its head to the cluster's near gate (the junction station) so
+                // the mutex arbitrates entry from tick 1. Coalescing ⇒ at most one cluster straddled,
+                // so the (rare) snap is unambiguous. Mirrors the single-track entry-gate snap above;
+                // non-branched lines have no clusters ⇒ no snap (parity).
+                let len = spec.length_mm;
+                let s = junctions
+                    .iter()
+                    .filter(|j| j.line.index() == li)
+                    .find_map(|j| {
+                        let &(_, lo, hi) = j.span_by_path.iter().find(|&&(p, _, _)| p == pi as u8)?;
+                        let tail = s - dir as i64 * len;
+                        let (a, b) = if tail <= s { (tail, s) } else { (s, tail) };
+                        (b > lo && a < hi).then_some(if dir > 0 { lo } else { hi })
+                    })
+                    .unwrap_or(s);
                 let (x, y) = path.point_at(s);
                 v.line.push(LineId(li as u32));
                 v.path.push(pi as u8);

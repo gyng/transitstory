@@ -154,9 +154,33 @@ fn try_claim(claimed: &mut Vec<(u64, u32)>, key: u64, owner: u32) -> bool {
     }
 }
 
+// --- P4 junction-group mutex helpers (docs/capacity-roadmap.md) -------------------------------
+// A switch cluster is a mutex over a per-path arc-length SPAN [lo, hi]: a consist occupies it while
+// its [tail, head] segment overlaps the span. Reuses the P2 occ_claim/occ_owner/try_claim machinery
+// keyed on the group id (`junc_key`) instead of a single span — re-derived each tick, never hashed.
+
+/// Packed total-order key for a junction GROUP: `(line, key_station)`. A distinct key space from
+/// `seg_key` (a grouped-point mutex, not a span mutex); injective in its two 32-bit fields.
+#[inline]
+fn junc_key(line: u32, key_station: u32) -> u64 {
+    ((line as u64) << 32) | (key_station as u64)
+}
+
+/// Does consist segment `[tail, head]` OVERLAP the group span `[lo, hi]`? Half-open at BOTH gates
+/// (`head > lo` and `tail < hi`) — a train resting with its head exactly on the near gate `lo` does
+/// NOT occupy (it sits at the passing place), matching P2's strict `strictly_inside`. The ONE shared
+/// predicate used in BOTH Phase A.1.5 (occupancy) and Phase B.4 (owner early-out), so a head-on-gate
+/// train can never occupy-in-one-pass-but-not-the-other (a deterministic-but-wrong blessed state).
+#[inline]
+fn group_overlap(tail: i64, head: i64, lo: i64, hi: i64) -> bool {
+    let (a, b) = if tail <= head { (tail, head) } else { (head, tail) };
+    b > lo && a < hi
+}
+
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
+    let junctions = &world.junctions; // P4: immutable co-borrow (disjoint field) alongside &mut vehicles
     let build_lookup = &world.build_lookup;
     let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
@@ -179,6 +203,10 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     // makes the clamp order-independent (deterministic). A lone train's leader is itself ⇒ its gap is
     // ~the full circuit, so the clamp never binds without a special case.
     let n = v.len();
+    // P4: per-vehicle consist length (the junction-clearing footprint). A train holds a switch
+    // cluster while its [head − dir·len, head] segment overlaps it, so a longer consist clears it
+    // slower — for free, no new state (`length_mm` already drives P1 spacing).
+    let len_of: Vec<i64> = (0..n).map(|i| lines[v.line[i].index()].vehicle_spec().length_mm).collect();
     let mut p_start = vec![0i64; n];
     let mut leader = vec![0usize; n];
     {
@@ -255,6 +283,31 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         if let Some(sp) = span {
             if path.track_type.get(sp).copied().unwrap_or(0) == crate::line::track::SINGLE {
                 occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
+            }
+        }
+    }
+
+    // Phase A.1.5 — start-of-tick junction-GROUP occupancy (P4). A consist occupies a switch cluster
+    // when its [tail, head] segment overlaps the cluster's span on its OWN path; first writer (lowest
+    // index) wins — the same deterministic tiebreak as P2's A.1. Inert (no scan) when there are no
+    // junctions, so a non-branched network is byte-identical to pre-P4.
+    let mut junc_occ: Vec<(u64, u32)> = Vec::new();
+    if !junctions.is_empty() {
+        for i in 0..n {
+            let li = v.line[i].index();
+            let head = v.s_mm[i];
+            let tail = head - (v.dir[i] as i64) * len_of[i];
+            for j in junctions {
+                if j.line.index() != li {
+                    continue;
+                }
+                let (lo, hi) = match j.span_by_path.iter().find(|&&(p, _, _)| p == v.path[i]) {
+                    Some(&(_, lo, hi)) => (lo, hi),
+                    None => continue, // this path doesn't pass the cluster
+                };
+                if group_overlap(tail, head, lo, hi) {
+                    occ_claim(&mut junc_occ, junc_key(li as u32, j.key_station.index() as u32), i as u32);
+                }
             }
         }
     }
@@ -402,6 +455,68 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             if desired_ds[i] > room2 {
                 desired_ds[i] = room2;
                 desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+            }
+        }
+    }
+
+    // Phase B.4 — JUNCTION-GROUP MUTEX (P4): gate a train's advance ACROSS a switch-cluster it does
+    // not already own (a further min() on `ds`, after P1 block-follow and the P2 meet gate). Because
+    // coupled junctions are COALESCED into one group (dispatch.rs), a consist straddles at most ONE
+    // group and every contender for any member point contends for that ONE key — so the occupied-
+    // junction 2-cycle (the adversaries' break) is structurally impossible: one group ⇒ one owner ⇒
+    // the wait-for graph is an acyclic depth-1 forest. Re-clamping a smaller `ds` is idempotent.
+    let mut junc_claimed: Vec<(u64, u32)> = Vec::new();
+    if !junctions.is_empty() {
+        for i in 0..n {
+            if !c_move[i] || desired_ds[i] == 0 {
+                continue;
+            }
+            let li = v.line[i].index();
+            let dir = eff_dir[i];
+            let s = c_s[i];
+            let head0 = s;
+            let tail0 = head0 - dir * len_of[i];
+            for j in junctions {
+                if j.line.index() != li {
+                    continue;
+                }
+                let (lo, hi) = match j.span_by_path.iter().find(|&&(p, _, _)| p == v.path[i]) {
+                    Some(&(_, lo, hi)) => (lo, hi),
+                    None => continue,
+                };
+                // Already occupying this cluster at start-of-tick? Then P1 spacing governs my
+                // clearance and the mutex must NOT re-gate me (the SAME predicate as A.1.5, so the
+                // two passes can never disagree on a train sitting on the gate).
+                if group_overlap(tail0, head0, lo, hi) {
+                    continue;
+                }
+                // The near edge of the cluster in my travel direction (the gate I hold at): the low
+                // edge going forward, the high edge returning.
+                let gate = if dir > 0 { lo } else { hi };
+                // Only gate when THIS tick's advance would bring my head ACROSS that near gate. Use
+                // `s <= gate` / `s >= gate`: the train almost always DEPARTS the junction station —
+                // which sits ON the near gate — so the dominant case is `s == gate` (a strict `<`/`>`
+                // would miss every gate-departure and the mutex would never bind).
+                let head_after = s + dir * desired_ds[i];
+                let crossing = (dir > 0 && s <= gate && head_after > gate)
+                    || (dir < 0 && s >= gate && head_after < gate);
+                if !crossing {
+                    continue;
+                }
+                let key = junc_key(li as u32, j.key_station.index() as u32);
+                let admit = match occ_owner(&junc_occ, key) {
+                    Some(o) if o == i as u32 => true, // (can't happen given the occupancy early-out)
+                    Some(_) => false,                 // another train owns the cluster — HOLD
+                    None => try_claim(&mut junc_claimed, key, i as u32), // empty: lowest index wins
+                };
+                if !admit {
+                    // Clamp the head to the near gate (rest AT the passing place, owning nothing).
+                    let room = (dir * (gate - s)).max(0);
+                    if desired_ds[i] > room {
+                        desired_ds[i] = room;
+                        desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                    }
+                }
             }
         }
     }
