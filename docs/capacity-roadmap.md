@@ -182,10 +182,31 @@ The data-model phase, and the only one with real **contract-mirror surface**.
   go/no-go); a **turnout speed cap** at divergences (`speed_cap_at` seam, add only if a junction
   visibly binds); the optional `LineView.junction_points` amber-dot readout.
 
-### P5 — Shared-track merges between distinct lines  *(track graph + interlocking — GO/NO-GO after P4)*
-- The architectural cliff: distinct lines over one physical edge ⇒ a shared `TrackGraph`. Kept as a
-  **named seam** (the authority layer's `shared_block_limit` slot). P1–P4 deliver the full
-  capacity-as-buildable fantasy without it. **Do not build speculatively.**
+### P5 — Shared track: the road to first-class track objects  *(GO 2026-06-13 — a product driver)*
+**Full roadmap: [p5-shared-track-roadmap.md](p5-shared-track-roadmap.md).** The original "do not build
+speculatively" deferral was lifted by an impending fork into a transport-builder game where distinct
+lines sharing physical track (a central tunnel, OpenTTD-style networks) is a **headline feature** — so
+it is no longer speculative. Built **incrementally, foundation-first**, around one reusable primitive:
+a **physical-block reservation** (the proven `occ_claim`/`group_overlap` machinery), where only the
+block's *identity key* graduates from line-scoped to cross-line per layer.
+- **S1v1 — cross-path single-track cap (DONE 2026-06-13).** Fixes the reachable shared-trunk head-on (a
+  branched line single-tracked on its shared trunk — the trunk + a branch path are two polylines on one
+  physical rail, and P2's per-`(line,path,span)` meet never mutexes them). A *fully-single* shared
+  trunk deadlocks 2 trains even with a perfect mutex (no passing place), so the load-bearing fix is the
+  **cap**: all paths traverse the shared trunk, so its single-track capacity bounds the WHOLE fleet — cap
+  total trains across trunk + branches to (physically-double shared-prefix spans)+1 (1 ⇒ a shuttle, the
+  trunk wins). Pure `dispatch.rs` clamp, re-derived, **inert unless** the universally-shared prefix
+  `[0, min diverge_at)` has a physically-single span ⇒ **zero re-pins**. Un-ignored the captured head-on
+  test; the single-span-in-a-double-trunk case is `#[ignore]`d → S2.
+- **S2 — physical-block meet mutex (next, the reusable primitive).** A single span *between passing
+  places* needs a meet MUTEX, not the cap: single spans become first-class **window-blocks** keyed on
+  the physical segment (single-if-any track read), **coalesced with the adjacent switch** (P4's trick,
+  generalised points→windows) to kill the P5×P4 wait-for cycle. This is the kernel cross-line track
+  sharing reuses.
+- **Track objects — the cliff (after S2).** `TrackSegment` first-class; `Line` references segments; the
+  block key becomes a cross-line `TrackSegmentId`; the genuinely new hard part is **cross-line
+  deadlock-freedom via resource-ordering** (single-owner coalescing can't collapse multi-line cycles).
+  Routing extends to the track graph. **Each layer ships green and standalone — no half-built cliff.**
 
 ---
 

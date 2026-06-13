@@ -180,6 +180,9 @@ pub(crate) fn dispatch(world: &mut World) {
         // queues trains at the gate — it never gridlocks. So the fleet is the full count, metered (not
         // capped) at the switch. (A whole-line cap of ~2 trains — what a block-sized junction cap
         // implies — would cripple every branched line; see docs/capacity-roadmap.md §4.3 residual.)
+
+        // PASS 1 — each path's fleet (round-robin share, P1 block density, P2 per-path single cap).
+        let mut counts: Vec<u16> = vec![0; line.paths.len()];
         for (pi, path) in line.paths.iter().enumerate() {
             let total = path.length_mm();
             if total <= 0 || path.stops.len() < 2 {
@@ -209,6 +212,53 @@ pub(crate) fn dispatch(world: &mut World) {
                     count = count.min(doubles.saturating_add(1));
                 }
             }
+            counts[pi] = count;
+        }
+
+        // S1v1 CROSS-PATH single-track cap (docs/capacity-roadmap.md P5). A BRANCHED line single-
+        // tracked on its UNIVERSALLY-SHARED trunk prefix [0, D) (D = min diverge_at) runs at most
+        // (physically-double shared spans) + 1 trains TOTAL across the trunk AND every branch path —
+        // they ALL traverse the shared trunk, so the section's single-track capacity bounds the WHOLE
+        // fleet, not each path independently. The per-path cap MISSES this: it dispatches 1 trunk + 1
+        // branch train onto a fully-single shared trunk, which then head-on (P2 keys the meet per-path,
+        // so the trunk and branch consists never mutex on the one physical rail). A fully-single shared
+        // trunk ⇒ cap 1 (a shuttle; even a perfect physical mutex deadlocks 2 trains here — no passing
+        // place, they desync and oppose). The budget drains in ascending path order, so the trunk wins.
+        // Letting a single span BETWEEN passing places run a real cross-path MEET is the deferred S2
+        // physical-block mutex. INERT unless the shared prefix has a physically-single span ⇒ zero
+        // re-pins (a non-branched / fully-double / branch-private-single line is untouched).
+        if !line.branches.is_empty() {
+            let d_min = line
+                .branches
+                .iter()
+                .map(|b| (b.diverge_at as usize).min(line.stops.len().saturating_sub(1)))
+                .min()
+                .unwrap_or(0);
+            // Span k (< d_min) is traversed by every path; it is physically SINGLE iff SINGLE on ANY
+            // path (whole-line edits all paths; a per-span edit touches only the trunk — single-if-any
+            // is the safe read so an asymmetric edit still constrains the shared section).
+            let phys_single = |k: usize| {
+                line.paths.iter().any(|p| p.track_type.get(k).copied() == Some(crate::line::track::SINGLE))
+            };
+            if (0..d_min).any(phys_single) {
+                let doubles = (0..d_min).filter(|&k| !phys_single(k)).count() as i64;
+                let mut budget = doubles + 1; // single-track capacity of the shared trunk
+                for c in counts.iter_mut() {
+                    let take = (*c as i64).min(budget.max(0));
+                    *c = take as u16;
+                    budget -= take;
+                }
+            }
+        }
+
+        // PASS 2 — place each path's (capped) fleet.
+        for (pi, path) in line.paths.iter().enumerate() {
+            let count = counts[pi];
+            if count == 0 {
+                continue;
+            }
+            let total = path.length_mm();
+            let round = if path.loop_line { total } else { 2 * total };
             for k in 0..count {
                 let p = (round as i128 * k as i128 / count as i128) as i64; // 0..round
                 let (s, dir) = if path.loop_line {

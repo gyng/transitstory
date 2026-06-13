@@ -147,6 +147,28 @@ fn coupled_junctions(trains: u16) -> World {
     w
 }
 
+/// Like `run_traveled` but runs a custom per-tick assertion closure instead of the switch-collision
+/// check (used for shared-trunk fixtures whose invariant is a Cartesian head-on, not a switch overlap).
+fn run_traveled_no_switchcheck(
+    w: &mut World,
+    ticks: usize,
+    mut per_tick: impl FnMut(&World, usize),
+) -> Vec<i64> {
+    w.tick(50); // dispatch
+    let nveh = w.vehicles.len();
+    let mut last = w.vehicles.s_mm.clone();
+    let mut traveled = vec![0i64; nveh];
+    for t in 0..ticks {
+        w.tick(50);
+        per_tick(w, t);
+        for i in 0..nveh {
+            traveled[i] += (w.vehicles.s_mm[i] - last[i]).abs();
+            last[i] = w.vehicles.s_mm[i];
+        }
+    }
+    traveled
+}
+
 /// Total absolute arc-length each dispatched vehicle travels over `ticks` steps (the liveness
 /// metric: a frozen/deadlocked train accrues ~0; a live one runs round trips).
 fn run_traveled(w: &mut World, ticks: usize) -> Vec<i64> {
@@ -438,21 +460,12 @@ fn grade_separation_does_not_dissolve_switch_mutex() {
     );
 }
 
-/// P5 SEAM (documented known limitation — `#[ignore]`d, un-ignore when P5 lands). When a BRANCHED
-/// line is single-tracked on its SHARED TRUNK prefix, P2's single-track meet keys occupancy per
-/// (line, PATH, span) — so the trunk service path and a branch service path get DIFFERENT keys for
-/// the SAME physical trunk rail and never mutually exclude: two opposing consists pass through each
-/// other on the shared single track. This is a PRE-EXISTING P2×P3 interaction (present since P2+P3,
-/// untouched by P4 — P4's junction mutex guards the divergence POINT, not the single-track span
-/// leading into it). A correct fix is the P5 "shared-track" phase: key the meet reservation on the
-/// PHYSICAL trunk span shared across paths, AND add a cross-path liveness cap (the per-path cap lets
-/// one trunk + one branch train onto a fully-single shared trunk — without a cross-path cap the
-/// physical-key fix turns this cosmetic pass-through into a WORSE deadlock). Found by the P4
-/// adversarial review; logged in PROGRESS.md / capacity-roadmap.md.
-#[test]
-#[ignore = "P5 shared-physical-track seam (single-track on a branched line's shared trunk); see doc"]
-fn shared_trunk_single_track_no_headon_is_p5() {
-    const SINGLE: u8 = 1;
+const SINGLE: u8 = 1;
+
+/// A branched Y-line single-tracked WHOLE-line ⇒ a fully-single SHARED TRUNK. Builds the fixture that
+/// (pre-S1v1) let the trunk path and a branch path pass through each other on the shared rail, because
+/// P2's meet keys per (line, PATH, span). `trains` is requested; S1v1's cross-path cap clamps it.
+fn shared_single_trunk(trains: u16) -> World {
     let mut w = World::new(7, CityData::default());
     for &x in &[0i64, 2_100_000, 4_300_000, 6_800_000] {
         w.apply(&Command::PlaceStation { x_mm: x, y_mm: 0, name: None });
@@ -466,10 +479,64 @@ fn shared_trunk_single_track_no_headon_is_p5() {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 2, station: StationId(4) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 2, station: StationId(5) });
     w.apply(&Command::SetSegmentTrack { line: LineId(0), span: u32::MAX, track: SINGLE });
-    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: trains });
     w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+#[test]
+fn fully_single_shared_trunk_caps_to_a_shuttle() {
+    // S1v1 (the cross-path cap): a BRANCHED line single-tracked on a fully-single SHARED TRUNK can run
+    // at most ONE train across the trunk + every branch path — a fully-single shared trunk is a
+    // one-train shuttle (a passing place is needed to run more, exactly like P2's non-branched
+    // fully-single line). RED before S1v1: P2's per-path cap dispatches 1 trunk + 1 branch train onto
+    // the shared single rail and they pass through each other. The cap is the load-bearing fix — even
+    // a perfect physical mutex deadlocks 2 trains here (no passing place; they desync and oppose).
+    let mut w = shared_single_trunk(6);
+    w.tick(50);
+    assert_eq!(w.vehicles.len(), 1, "a fully-single shared trunk must cap to a one-train shuttle");
+}
+
+#[test]
+fn fully_single_shared_trunk_no_headon_and_never_freezes() {
+    // With the cap → 1 train, there is no opposing consist on the shared single rail (safety) and the
+    // shuttle keeps moving (liveness). This un-ignores the captured P5 head-on test: it now passes
+    // because the cap removes the second train, not because a mutex arbitrates it.
+    let mut w = shared_single_trunk(6);
     let len = w.lines[0].vehicle_spec().length_mm;
-    // Divergence arclen on the trunk path: a vehicle before it is on the SHARED physical trunk rail.
+    let switch = w.lines[0].paths[0].stop_arclen_mm[2]; // divergence arclen on the trunk
+    let traveled = run_traveled_no_switchcheck(&mut w, 6000, |w, t| {
+        for a in 0..w.vehicles.len() {
+            for b in (a + 1)..w.vehicles.len() {
+                let on_trunk = w.vehicles.s_mm[a] < switch && w.vehicles.s_mm[b] < switch;
+                if on_trunk && w.vehicles.dir[a] != w.vehicles.dir[b] {
+                    let dx = (w.vehicles.x_mm[a] - w.vehicles.x_mm[b]) as i128;
+                    let dy = (w.vehicles.y_mm[a] - w.vehicles.y_mm[b]) as i128;
+                    let d = ((dx * dx + dy * dy) as f64).sqrt() as i64;
+                    assert!(d >= len, "shared-trunk head-on at tick {t}: {d} mm < {len} mm");
+                }
+            }
+        }
+    });
+    assert!(traveled.iter().all(|&t| t > 0), "the single-track shuttle must keep moving (no freeze)");
+}
+
+/// P5-S2 SEAM (documented limitation — `#[ignore]`d, un-ignore when the physical-block MUTEX lands).
+/// A single shared-trunk span inside an otherwise-DOUBLE branched line (one `SetSegmentTrack{span:k}`,
+/// which edits only the trunk path) is NOT fixed by S1v1's cap — the line has passing places, so the
+/// cap leaves a real fleet, and the trunk + branch trains still pass through each other on the single
+/// physical span k because P2 keys per-path. The fix is the S2 physical-block reservation mutex
+/// (single spans as first-class blocks keyed on the physical segment, coalescing with the adjacent
+/// switch to avoid a P5×P4 cycle). Captured here so S2 has a runnable target.
+#[test]
+#[ignore = "P5-S2: physical-block meet mutex for a single span in a double shared trunk; see doc"]
+fn single_span_in_double_shared_trunk_no_headon_is_s2() {
+    let mut w = shared_single_trunk(6); // start fully single...
+    // ...then DOUBLE every shared-trunk span except span 1 (leaving one single span on the trunk path).
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 0, track: 0 });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 2, track: 0 });
+    // span 1 stays single on the trunk path (a single span between two passing places).
+    let len = w.lines[0].vehicle_spec().length_mm;
     let switch = w.lines[0].paths[0].stop_arclen_mm[2];
     w.tick(50);
     for t in 0..6000 {
@@ -481,7 +548,7 @@ fn shared_trunk_single_track_no_headon_is_p5() {
                     let dx = (w.vehicles.x_mm[a] - w.vehicles.x_mm[b]) as i128;
                     let dy = (w.vehicles.y_mm[a] - w.vehicles.y_mm[b]) as i128;
                     let d = ((dx * dx + dy * dy) as f64).sqrt() as i64;
-                    assert!(d >= len, "shared-trunk head-on at tick {t}: opposing consists {d} mm < {len} mm apart");
+                    assert!(d >= len, "single-span head-on at tick {t}: {d} mm < {len} mm");
                 }
             }
         }

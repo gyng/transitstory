@@ -947,6 +947,46 @@ deterministic, replay-gate-invisible deadlock the candidate's liveness proof mis
   mutex incl. single-track-on-shared-trunk (P5 go/no-go); a turnout speed cap at divergences
   (`speed_cap_at` seam); the optional `LineView.junction_points` amber-dot readout.
 
+## Capacity roadmap — P5 shared track (S1v1): cross-path single-track cap (2026-06-13)
+
+**GO decision** (was the deferred "architectural cliff"): a product driver — an impending fork into a
+transport-builder game where distinct lines **sharing physical track** (a central tunnel, OpenTTD-style
+networks) is a headline feature — lifted the "do not build speculatively" deferral. Owner picked the
+**full track-objects** end-state, built **S1-first as a reusable primitive**. Full trajectory:
+[docs/p5-shared-track-roadmap.md](docs/p5-shared-track-roadmap.md). The one reusable primitive is a
+**physical-block reservation**; only the block's identity key graduates (line-scoped → cross-line) per
+layer, so each layer is a small extension of proven P2/P4 machinery, not a rewrite.
+
+- **The bug S1v1 fixes** (the P4-review-found shared-trunk head-on, captured `#[ignore]`d): a branched
+  line single-tracked on its **shared trunk** runs the trunk path and a branch path as two independent
+  polylines over the SAME physical rail; P2's meet keys per `(line, PATH, span)`, so the two consists
+  never mutex and pass through each other (reproduced: head-on at tick 667).
+- **Why a CAP, not a mutex, is the load-bearing fix.** A *fully-single* shared trunk has no passing
+  place, so 2 trains deadlock on it **even with a perfect mutex** (trunk + branch desync over different
+  circuits and oppose with nowhere to pass). The fix bounds population: **all paths traverse the shared
+  trunk**, so its single-track capacity bounds the WHOLE fleet — cap total trains across the trunk +
+  every branch path to (physically-double spans on the universally-shared prefix `[0, min diverge_at)`)
+  + 1. Fully single ⇒ cap 1 (a shuttle; the trunk, lowest path index, wins the budget; the branch is
+  unserved until a span is doubled — the same informative pressure as P2's single-track shuttle).
+- **Single-if-any track read:** a shared span is physically single iff single on ANY contending path
+  (whole-line edits all paths; a per-span edit touches only the trunk — single-if-any keeps an
+  asymmetric edit constraining the shared section). Pure `dispatch.rs` two-pass count clamp
+  (PASS 1 per-path counts → cap → PASS 2 place); re-derived, **never hashed**; integer, index-ordered,
+  no HashMap iteration; deterministic tiebreak (ascending path index).
+- **Deferred to S2** (`#[ignore]`d `single_span_in_double_shared_trunk_no_headon_is_s2`): a single span
+  *between passing places* in an otherwise-double shared trunk needs a meet MUTEX (not the cap — the
+  line has capacity, trains should meet). That mutex — single spans as first-class window-blocks
+  coalesced with the adjacent switch (P4's trick, points→windows) — is the cross-line foundation. Two
+  edges hand-found in the rate-limited design break and logged for S2: the fold-into-junction design
+  misses **non-contiguous** single spans + **over-throttles** a mostly-double line; **staggered**
+  partial-sharing `[min diverge_at, max diverge_at)` needs explicit coverage.
+- **Tests** (`tests/junction.rs`, red-first): `fully_single_shared_trunk_caps_to_a_shuttle` (cap → 1
+  train, was 2 → head-on); `fully_single_shared_trunk_no_headon_and_never_freezes` (safety + liveness);
+  the `#[ignore]`d S2 single-span case. **Parity:** zero re-pins — all 31 sim suites byte-identical
+  (single_track 7, branching 2, determinism 6, every junction/ridership fixture); the cap is inert for
+  non-branched / fully-double-branched / branch-private-single lines.
+- Tiers: cargo 31 suites (zero re-pins), vitest 21, tsc clean, playwright 16.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
