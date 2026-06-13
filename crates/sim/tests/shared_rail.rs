@@ -156,6 +156,83 @@ fn cross_line_single_section_meet_no_headon() {
     assert!(*traveled.iter().min().unwrap() > total, "a consist froze at the cross-line meet");
 }
 
+/// Warm up then return the min steady-state travel (a frozen/deadlocked consist accrues ~0).
+fn steady_min_travel(w: &mut World, warmup: usize, window: usize) -> i64 {
+    w.tick(50);
+    for _ in 0..warmup {
+        w.tick(50);
+    }
+    let n = w.vehicles.len();
+    let mut last = w.vehicles.s_mm.clone();
+    let mut tr = vec![0i64; n];
+    for _ in 0..window {
+        w.tick(50);
+        for i in 0..n {
+            tr[i] += (w.vehicles.s_mm[i] - last[i]).abs();
+            last[i] = w.vehicles.s_mm[i];
+        }
+    }
+    tr.into_iter().min().unwrap_or(0)
+}
+
+#[test]
+fn cross_line_short_passing_place_coalesces_no_deadlock() {
+    // Cross-line review bug 1: two lines share block1 + a SHORT (sub-consist) double + block2. The short
+    // double must NOT count as a passing place (else the 2nd admitted consist breaks the depth-1 forest
+    // ⇒ a multi-block cross-line deadlock). The fix coalesces all shared edges into ONE block. Trunk
+    // cells 2,3,4,5 ; spans 1 & 3 SINGLE, span 2 a 1-cell DOUBLE (< consist).
+    let cell = 100_000i64;
+    let mut w = grid_world(cell, 21);
+    let c0 = place(&mut w, 2 * cell + 50_000, 50_000);
+    let c1 = place(&mut w, 3 * cell + 50_000, 50_000);
+    let c2 = place(&mut w, 4 * cell + 50_000, 50_000);
+    let c3 = place(&mut w, 5 * cell + 50_000, 50_000);
+    let a0 = place(&mut w, 50_000, 50_000);
+    let a1 = place(&mut w, 8 * cell + 50_000, 50_000);
+    let b0 = place(&mut w, 50_000, 3 * cell + 50_000);
+    let b1 = place(&mut w, 8 * cell + 50_000, 3 * cell + 50_000);
+    let l1 = make_line(&mut w, &[a0, c0, c1, c2, c3, a1]);
+    let l2 = make_line(&mut w, &[b0, c0, c1, c2, c3, b1]);
+    for l in [l1, l2] {
+        w.apply(&Command::SetSegmentTrack { line: l, span: 1, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: l, span: 3, track: SINGLE });
+        w.apply(&Command::AssignTrainset { line: l, spec: 0, count: 6 });
+    }
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+    assert_eq!(w.cross_blocks.len(), 1, "a sub-consist double must not split the cross-line block");
+    let total = w.lines[0].length_mm();
+    assert!(steady_min_travel(&mut w, 6000, 6000) > total, "coalesced short-passing-place section froze");
+}
+
+#[test]
+fn cross_line_single_block_with_passing_place_no_overadmit() {
+    // Cross-line review bug 2: two out-and-back lines share a single block (D–A) with a passing place
+    // (P–D double). `passing_places + 2` round-robin'd one line 2 trains that met head-on INSIDE. The
+    // fix caps 1 train per line ⇒ no same-line meet inside; both lines run, the cross-line meet resolves.
+    let cell = 100_000i64;
+    let mut w = grid_world(cell, 23);
+    let p = place(&mut w, 2 * cell + 50_000, 50_000); // (2,0)
+    let d = place(&mut w, 4 * cell + 50_000, 50_000); // (4,0)
+    let a = place(&mut w, 7 * cell + 50_000, 50_000); // (7,0)
+    let s0 = place(&mut w, 50_000, 50_000);
+    let e0 = place(&mut w, 9 * cell + 50_000, 50_000);
+    let s1 = place(&mut w, 50_000, 4 * cell + 50_000);
+    let e1 = place(&mut w, 9 * cell + 50_000, 4 * cell + 50_000);
+    let l1 = make_line(&mut w, &[s0, p, d, a, e0]);
+    let l2 = make_line(&mut w, &[s1, p, d, a, e1]);
+    for l in [l1, l2] {
+        w.apply(&Command::SetSegmentTrack { line: l, span: 2, track: SINGLE }); // D–A single (the block)
+        w.apply(&Command::AssignTrainset { line: l, spec: 0, count: 4 });
+    }
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+    assert!(w.vehicles.line.iter().any(|l| l.index() == 0) && w.vehicles.line.iter().any(|l| l.index() == 1),
+        "both lines served");
+    let total = w.lines[0].length_mm();
+    assert!(steady_min_travel(&mut w, 6000, 6000) > total, "single block over-admitted ⇒ head-on inside ⇒ froze");
+}
+
 #[test]
 fn cross_line_over_provisioned_never_freezes() {
     // Throw a heavy fleet at the shared single section: the cross-line cap bounds the COMBINED fleet so

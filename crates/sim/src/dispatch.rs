@@ -203,14 +203,18 @@ pub(crate) fn dispatch(world: &mut World) {
     // capacity-1 shared block into a worse, gate-blind deadlock.
     let mut cross_cap: Vec<u16> = vec![u16::MAX; world.lines.len()];
     for blk in &world.cross_blocks {
-        let cap = if blk.cyclic { 1usize } else { blk.passing_places as usize + 2 };
         let mut lns: Vec<u32> = blk.by_lane.iter().map(|&(l, _, _, _)| l).collect();
         lns.sort_unstable();
         lns.dedup();
-        let nl = lns.len().max(1);
+        // A shared single block holds ONE consist per LINE at a time (a meet at its boundaries); a 2nd
+        // train of the SAME line would head-on INSIDE it (the cross-line review's over-admit deadlock).
+        // And at most 2 lines can meet on a block whose only passing places are its ends (one from each
+        // end); a CYCLIC ring is a one-train shuttle (1 line). Served lines get 1 train, the rest 0 —
+        // conservative (a richer per-section / per-passing-place capacity is a logged follow-up), but the
+        // load-bearing upstream liveness: a capacity-1 block is NEVER over-admitted into a deadlock.
+        let max_lines = if blk.cyclic { 1 } else { 2 };
         for (k, &l) in lns.iter().enumerate() {
-            let share = (cap.saturating_sub(k) + nl - 1) / nl; // round-robin share of `cap`
-            cross_cap[l as usize] = cross_cap[l as usize].min(share as u16);
+            cross_cap[l as usize] = cross_cap[l as usize].min(if k < max_lines { 1 } else { 0 });
         }
     }
 
@@ -495,12 +499,14 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
         return Vec::new();
     }
 
-    // 2. Group by edge → BLOCK edge (>=2 distinct lines AND single-on-any) vs PASSING edge (shared,
-    //    fully double). Sorted iteration ⇒ deterministic, no HashMap.
+    // 2. Group by edge → every SHARED edge (>=2 distinct lines), with single-on-any flagged. ALL shared
+    //    edges (single OR double) coalesce into components: a double run SHORTER than a consist between
+    //    two single blocks must NOT be treated as a passing place (the cross-line review found that
+    //    under-throttles into a multi-block deadlock). A component is a BLOCK iff it contains a SINGLE
+    //    edge; a fully-double shared corridor is no block (double track needs no mutex). Sorted ⇒ no HashMap.
     let mut idx: Vec<usize> = (0..uses.len()).collect();
     idx.sort_by(|&a, &b| uses[a].edge.cmp(&uses[b].edge));
-    let mut block_edges: Vec<Edge> = Vec::new();
-    let mut passing_edges: Vec<Edge> = Vec::new();
+    let mut shared: Vec<(Edge, bool)> = Vec::new(); // (edge, single-on-any)
     let mut g = 0;
     while g < idx.len() {
         let edge = uses[idx[g]].edge;
@@ -516,18 +522,16 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
             h += 1;
         }
         if lines_seen.len() >= 2 {
-            if any_single {
-                block_edges.push(edge);
-            } else {
-                passing_edges.push(edge);
-            }
+            shared.push((edge, any_single));
         }
         g = h;
     }
-    if block_edges.is_empty() {
+    if shared.is_empty() {
         return Vec::new();
     }
-    block_edges.sort();
+    shared.sort();
+    let block_edges: Vec<Edge> = shared.iter().map(|&(e, _)| e).collect();
+    let edge_single: Vec<bool> = shared.iter().map(|&(_, s)| s).collect();
 
     // 3. Union-find: coalesce block edges sharing a NODE into components.
     fn find(parent: &mut [usize], mut x: usize) -> usize {
@@ -566,9 +570,14 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
     roots.sort_unstable();
     roots.dedup();
 
-    // 5. Per component → a CrossBlock: cyclic? + passing places + per-(line,path) traversal windows.
+    // 5. Per component → a CrossBlock IFF it contains a SINGLE edge (a fully-double shared corridor is no
+    //    block). cyclic? + per-(line,path) traversal windows. (passing_places is retired — the cap is now
+    //    1 train per line, so a single block is never over-admitted by miscounting a short passing place.)
     let mut blocks: Vec<crate::world::CrossBlock> = Vec::new();
-    for (bid, &root) in roots.iter().enumerate() {
+    for &root in &roots {
+        if !(0..m).any(|ei| find(&mut parent, ei) == root && edge_single[ei]) {
+            continue; // fully-double shared corridor — double track needs no mutex
+        }
         let mut comp_nodes: Vec<Node> = Vec::new();
         let mut comp_edge_count = 0usize;
         for ei in 0..m {
@@ -582,10 +591,6 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
         comp_nodes.dedup();
         // Connected component with edges >= nodes contains a cycle (a ring shared by lines).
         let cyclic = comp_edge_count >= comp_nodes.len();
-        let passing_places = passing_edges
-            .iter()
-            .filter(|&&(a, b)| comp_nodes.binary_search(&a).is_ok() || comp_nodes.binary_search(&b).is_ok())
-            .count() as u32;
 
         // Per-(line,path) windows: this component's uses, grouped by lane, split by contiguous-vi runs
         // (a lane that revisits the block gets multiple windows).
@@ -614,7 +619,8 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
             by_lane.push((line, path, lo, hi));
             q = r;
         }
-        blocks.push(crate::world::CrossBlock { block_id: bid as u64, cyclic, passing_places, by_lane });
+        let block_id = blocks.len() as u64;
+        blocks.push(crate::world::CrossBlock { block_id, cyclic, passing_places: 0, by_lane });
     }
     blocks
 }
