@@ -21,8 +21,15 @@ const ARMY_SPEED_MM_S: i64 = 50_000;
 /// a flat, low cost so a modest supply network fields its first legion fast (harness-tuned: with the
 /// production-gated tribute rate, this funds a legion in ~1 game-minute → the loop bites in-window).
 const LAUNCH_COST: i64 = 8;
-/// A defended town's resistance (siege HP). Knob, balance-swept later. S8b: a flat default.
+/// A defended town's BASE resistance (siege HP) — every town defends at least this much. Knob.
 const RESISTANCE: i64 = 500;
+/// S11 FRONTIER GARRISONS (the design's gate-safe Tier-1-LITE enemy: "static town garrisons"). A town's
+/// resistance rises with its DEPTH in the decadence frontier — a town at the far edge (deep in the rot)
+/// adds up to this much HP on top of `RESISTANCE`, so the expansion arc grades from soft (near the
+/// capital) to hard (the corrupted marches). STATIC + deterministic (set once from the field's
+/// distance-to-capital gradient — no mobile AI ⇒ none of the rival's livelock/sawtooth gate-blind risk).
+/// 0 when there is no decadence field (transit + demo arcadia) ⇒ flat `RESISTANCE` ⇒ golden-neutral.
+const GARRISON_MAX: i64 = 500;
 /// Hard cap on concurrent legions — bounds the separate SoA (a runaway-launch backstop; the proper
 /// per-tick bench gate is S10). Launches past this are skipped (logged-by-omission).
 const MAX_ARMIES: usize = 256;
@@ -167,10 +174,34 @@ pub(crate) fn advance_armies(world: &mut World, dt_ms: i64) {
 /// gate-blind hazard: a legion arriving at an already-captured town must not re-count it, it just
 /// garrisons → DONE). Integer, index-ordered ⇒ deterministic. Supply-gated siege + bounties are the
 /// next refinements. `town_value` is lazily sized to the node count, each new town at full `RESISTANCE`.
+/// A station's FRONTIER garrison (S11): `RESISTANCE` + a bonus scaled by how deep in the decadence
+/// frontier it sits (its hop-distance to the capital over the field, normalised by the tide's full span).
+/// 0 bonus — flat `RESISTANCE` — when there is no field (transit / demo arcadia) or the station isn't on
+/// the domain / is unreachable. Pure read of the STATIC field topology ⇒ deterministic + golden-neutral.
+pub(crate) fn garrison_resistance(world: &World, station_idx: usize) -> i64 {
+    let field = &world.decadence_field;
+    if field.is_empty() || field.max_dist == 0 {
+        return RESISTANCE;
+    }
+    let Some(st) = world.stations.get(station_idx) else { return RESISTANCE };
+    let size = world.city.grid_cell_mm.max(1);
+    let Some(&cell) = field.index.get(&crate::hexgrid::axial_of(st.pos, size)) else { return RESISTANCE };
+    let dist = field.dist_to_capital[cell as usize];
+    if dist == u32::MAX {
+        return RESISTANCE; // off the capital-connected frontier ⇒ no garrison bonus
+    }
+    // Linear in frontier depth: 0 at the capital, GARRISON_MAX at the far edge. Integer-exact.
+    RESISTANCE + (GARRISON_MAX.saturating_mul(dist as i64) / field.max_dist as i64)
+}
+
 pub(crate) fn siege(world: &mut World) {
     let n = world.stations.len();
     while world.town_value.len() < n {
-        world.town_value.push(RESISTANCE); // a newly-revealed town defends at full resistance
+        let idx = world.town_value.len();
+        // A newly-revealed town defends at its FRONTIER garrison (base + depth-scaled bonus). The
+        // immutable read finishes before the push (no borrow overlap).
+        let r = garrison_resistance(world, idx);
+        world.town_value.push(r);
     }
     for i in 0..world.armies.len() {
         if world.armies.state[i] != BESIEGING {

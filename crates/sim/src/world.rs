@@ -822,6 +822,7 @@ impl World {
                 serving: self.serving.get(s).map(|v| v.len()).unwrap_or(0) as u32,
                 denied: *self.denied_at.get(s).unwrap_or(&0) as f64,
                 abandoned: *self.abandoned_at.get(s).unwrap_or(&0) as f64,
+                town_resistance: *self.town_value.get(s).unwrap_or(&0) as f64,
             })
             .collect();
 

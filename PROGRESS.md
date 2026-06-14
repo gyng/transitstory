@@ -2532,6 +2532,36 @@ The progress gauge reads coverage+conquest, NOT tribute, so spending never lower
 - Tiers: cargo **208/0** (goldens re-pinned green) · `build_world --selftest` **PASS** · full e2e **23/23**
   (the new tech gate; conquest/multistage still green) · vitest **21/21** · `tsc` clean.
 
+**S11 — FRONTIER GARRISONS (the gate-safe "enemy with a face"), 2026-06-14.** The S11 "rival" line, scoped
+to the increment the design BLESSES: a STATIC town garrison (the Tier-1-LITE enemy), NOT the mobile rival
+kingdom (which the design explicitly defers as "the biggest gate-blind risk — a livelocking/oscillating
+rival passes `run==run`"). A town's siege resistance now scales with its DEPTH in the decadence frontier,
+so the expansion arc grades from soft (by the capital) to hard (the corrupted marches) — the decadence
+antagonist gains conquest teeth without any AI.
+
+- **`army::garrison_resistance`:** a town's resistance = base `RESISTANCE` + a bonus linear in its
+  hop-distance to the capital over the decadence field (0 at the capital, `GARRISON_MAX` at the far edge),
+  read once when `siege` lazily sizes `town_value`. A pure read of the STATIC field topology
+  (`dist_to_capital`/`max_dist`) ⇒ deterministic, bounded, no sawtooth/livelock (the rival's risk avoided).
+- **Golden-neutral BY CONSTRUCTION (no re-pin):** 0 bonus when there's no decadence field — transit + the
+  demo arcadia golden fixture have no buildability ⇒ flat `RESISTANCE` ⇒ both goldens unchanged. (Verified:
+  the goldens stayed green with NO re-pin, unlike the tech bitset.)
+- **Balance preserved:** the baked conquest e2e targets the NEAREST-capital town (low frontier depth ⇒ low
+  garrison) so its trajectory is IDENTICAL — conquest still lands at step 4. Far towns garrison up to 2×;
+  `tests/garrison.rs` proves even a MAX-garrison frontier town still falls to a sustained supplied war (a
+  difficulty curve, not a wall).
+- **Tests (`tests/garrison.rs`, +4):** a frontier town garrisons harder than one by the capital; no field ⇒
+  flat base (golden-neutral); a max-garrison town is still conquerable; the garrison replays bit-for-bit.
+- **Readout:** `per_station.town_resistance` (the grinding siege HP) + a `🛡 N garrison` line in the station
+  tip for town sinks — the queryable state gets its on-screen channel.
+- Tiers: cargo **212/0** (goldens UNCHANGED — golden-neutral, no re-pin) · `build_world --selftest` **PASS**
+  · full e2e **23/23** (baked conquest trajectory identical) · vitest **21/21** · `tsc` clean.
+
+> **The full RIVAL KINGDOM stays deferred** (per the design: "ship only if you commit to it as a pillar —
+> the biggest gate-blind risk"). It is not a safe autonomous build (a mobile-AI livelock passes `run==run`);
+> it needs a human product decision. Frontier garrisons deliver the design's gate-safe enemy increment in
+> its place. The `war_step` is already the seam a future owner-faction attaches to.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

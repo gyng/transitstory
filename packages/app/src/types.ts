@@ -70,6 +70,9 @@ export interface PerStation {
   /** Cumulative pressure here: riders passed by a full train + riders who gave up waiting. */
   denied: number;
   abandoned: number;
+  /** Remaining siege resistance — a town's frontier garrison (S11), grinding down under siege; 0 once
+   *  captured or for a non-town. The HUD shows it for sink (town) stations in arcadia. */
+  townResistance: number;
 }
 
 export interface PerLine {

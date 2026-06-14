@@ -345,6 +345,8 @@ export class Game {
       serving: ps?.serving ?? lines.length,
       denied: ps?.denied ?? 0,
       abandoned: ps?.abandoned ?? 0,
+      // Garrison only for TOWN sinks (dest > origin) — a source isn't a conquest target. 0 ⇒ not shown.
+      garrison: ps && ps.demandDest > ps.demandOrigin ? ps.townResistance ?? 0 : 0,
       lines,
     };
   }

@@ -87,6 +87,9 @@ pub struct StationStat {
     /// global `denied_boardings`/`abandoned` totals bucketed to where the loss actually happened.
     pub denied: f64,
     pub abandoned: f64,
+    /// Remaining siege resistance — a town's FRONTIER garrison (S11), grinding down under siege; 0 once
+    /// captured (or for a non-town / before the war ticks). The HUD shows it for sink (town) stations.
+    pub town_resistance: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

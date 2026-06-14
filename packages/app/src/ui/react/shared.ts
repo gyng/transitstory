@@ -98,6 +98,9 @@ export interface StationTip {
   /** Cumulative pressure here: full-train pass-bys (denied) + give-ups (abandoned). */
   denied: number;
   abandoned: number;
+  /** Remaining siege resistance for a TOWN (arcadia frontier garrison, S11); 0 for non-towns / captured
+   *  / before the war ticks. Shown only when > 0, so a transit station never carries it. */
+  garrison: number;
   /** `load` = this line's mean load factor (0..1), undefined in Build / before it has vehicles. */
   lines: { id: number; color: number; name: string; load?: number }[];
 }
@@ -159,6 +162,14 @@ function pressureLine(tip: StationTip): string {
   return `<div style="color:#d62828">⊘ ${parts.join(" · ")}</div>`;
 }
 
+/** A TOWN's remaining frontier garrison (arcadia, S11) — siege HP grinding down under conquest. Shown
+ *  only when > 0 (a conquerable town), so transit/source stations stay uncluttered. */
+function garrisonLine(tip: StationTip): string {
+  const g = Math.round(tip.garrison);
+  if (g <= 0) return "";
+  return `<div data-testid="station-tip-garrison" style="color:#7a4ed2">🛡 <b>${g}</b> garrison</div>`;
+}
+
 /** Render a StationTip to the deck tooltip HTML (carries the station-tip* testid contract). */
 export function stationTipHtml(tip: StationTip): string {
   const lines = `<div data-testid="station-tip-lines" style="margin-top:5px">${lineSwatches(tip)}</div>`;
@@ -176,7 +187,7 @@ export function stationTipHtml(tip: StationTip): string {
     `<span data-testid="station-tip-verdict" style="color:${VERDICT_COLOR[v]};font-weight:700">${v.toUpperCase()}</span></div>` +
     `<div style="color:#5a626b">▲ <span data-testid="station-tip-boardings">${Math.round(tip.boardings)}</span> boarded · ` +
     `▼ <span data-testid="station-tip-alightings">${Math.round(tip.alightings)}</span> off</div>` +
-    `${demandLine(tip)}${pressureLine(tip)}${orphanLine(tip)}${lines}</div>`
+    `${demandLine(tip)}${garrisonLine(tip)}${pressureLine(tip)}${orphanLine(tip)}${lines}</div>`
   );
 }
 
