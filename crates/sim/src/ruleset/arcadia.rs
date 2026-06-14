@@ -46,8 +46,12 @@ impl Ruleset for ArcadiaRuleset {
         crate::army::maybe_launch(world);
         crate::army::advance_armies(world, dt_ms);
         crate::army::siege(world);
-        // Decadence (S9): the spreading corruption — the lose condition, pushed back by conquest.
+        // Decadence (S9): the global lose-meter pressure — pushed back by conquest.
         crate::decadence::step(world, dt_ms);
+        // Decadence (S10b): the SPATIAL tide — the per-cell creep CA over the baked board (no-op until a
+        // baked world supplies terrain). Runs PARALLEL to the scalar meter; the lose-condition rewire is
+        // S10b-2. Pushed back spatially by the player's rail network (PURGE).
+        crate::decadence_field::step(world, dt_ms);
     }
 }
 

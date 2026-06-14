@@ -155,6 +155,12 @@ pub struct World {
     /// function of it, reconstructible on replay), so NOT hashed. Empty for transit / demo arcadia. The
     /// dynamic, hashed per-cell tide values (S10b) layer on top of this board.
     pub decadence_field: crate::decadence_field::DecadenceField,
+    /// Fantasy (arcadia) S10b: the DYNAMIC decadence tide — per-domain-cell corruption (dense over
+    /// `decadence_field.cells`, 0..`DECAD_MAX`), evolved by the double-buffered creep CA. **Hashed**
+    /// (RNG-/gameplay-causal, can't reconstruct from seed alone), appended LAST in `Canonical`. EMPTY for
+    /// transit / demo arcadia (no terrain ⇒ the CA never runs), so it adds a length-0 slice to the hash
+    /// (one re-pin, then byte-identical). Sized lazily by `decadence_field::step` on first arcadia tick.
+    pub decadence_cells: Vec<i32>,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -321,6 +327,9 @@ struct Canonical<'a> {
     bounty: &'a [i64],
     /// Decadence pressure (fantasy, S9). 0 for transit.
     decadence: i64,
+    /// The spatial decadence tide (fantasy, S10b) — per-cell corruption over the baked board. Appended
+    /// LAST so transit (empty slice) re-pins once then byte-identical. Empty for transit / demo arcadia.
+    decadence_cells: &'a [i32],
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -381,6 +390,7 @@ impl World {
         // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
         let decadence_field = crate::decadence_field::DecadenceField::build(&city);
         World {
+            decadence_cells: Vec::new(),
             seed,
             clock_ms: 0,
             running: false,
@@ -1360,6 +1370,7 @@ impl World {
             is_barracks: &self.is_barracks,
             bounty: &self.bounty,
             decadence: self.decadence,
+            decadence_cells: &self.decadence_cells,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

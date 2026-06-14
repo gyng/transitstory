@@ -2251,6 +2251,43 @@ construction** (the board is a pure function of `CityData`, reconstructible on r
   captured ground → decadence 0), a **hard cell cap + per-tick bench gate** (binding condition #3), and the
   global `decadence` lose meter re-derived from the field reaching the capital. Golden re-pin RED-first.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 3: S10b-1, the decadence CA engine (golden re-pin), 2026-06-14.**
+The second sub-step of S10: the genuine creeping-tide CA on the S10a board. Scoped to the ENGINE running
+**parallel** to the scalar lose meter (unchanged) — the lose-condition rewire + balance re-tune is S10b-2,
+the render is S10c — so the carefully-tuned balance is not re-opened in one risky step (the build plan's
+"don't strand a half-built CA" caution).
+
+- **The CA (`decadence_field::step`, run in `ArcadiaRuleset::war_step`):** a hashed per-cell tide
+  (`World.decadence_cells`, dense over the S10a domain, 0..`DECAD_MAX`=1000) evolved by **double-buffered**
+  integer diffusion (read `cur`, write a scratch `next` — a neighbour-reading CA in place would read
+  half-updated cells). Per tick: SEED the reservoir to MAX; DIFFUSE toward the capital (a cell gains iff a
+  FARTHER-from-capital neighbour is corrupt past `ADVANCE_THRESHOLD` — the front creeps capital-ward along
+  the S10a gradient, never an instant flood); **PURGE** every cell within 2 hexes of a live player station
+  by 10× the diffuse gain, so **PURGE STRICTLY DOMINATES DIFFUSE** — the rail network holds the line and
+  held ground trends to 0. Integer, index-ordered, the only map read is `index.get` (queried) ⇒
+  deterministic.
+- **Binding conditions honoured:** #1 — the new hashed `decadence_cells` slice joins `Canonical` (appended
+  last), a deliberate **re-pin RED-first** of BOTH goldens (transit `0xea4e…74f9 → 0xfd8e_5b04_8a81_c31b`
+  via the empty slice; arcadia `0x52d2…b2aa → 0xbd92_54a0_7395_96de`), provenance documented. #3 — a
+  **hard cap** (`MAX_CA_CELLS=30_000`, disables the CA above it rather than risk a bloom) + the step is
+  O(domain) ≤ O(cap), the **per-tick bench** the build plan requires (the baked board is ~10k cells; the
+  conquest e2e runs the CA every tick across thousands of `tickMs` ticks in **6.3 s**, well within budget).
+- **Tests (`tests/decadence_field.rs` +4, the S10 risk battery — structural, never `run()==run()`):** the
+  tide **creeps from the reservoir toward the capital** (saturated source, inward advance, gradient falls
+  off capital-ward) · **PURGE strictly dominates DIFFUSE** (a station's cell reaches 0 vs corrupt without
+  it — a contrast) · the CA **replays bit-for-bit** (field + `state_hash`) · **no lattice-axis bias** (a
+  q↔r-symmetric square map yields a mirror-symmetric field — this caught + fixed a reservoir top-N
+  truncation that tie-broke by axis; the reservoir is now a symmetric distance BAND).
+- **Parallel-to-scalar (no balance regression):** the synthetic balance harness + the demo + the golden
+  fixtures have no buildability ⇒ empty field ⇒ the CA is a no-op there (scalar model byte-identical). On
+  the real baked world the CA runs every tick but writes only `decadence_cells`; the conquest e2e
+  trajectory is **identical** to the balance-pass run (decadence 31→36→40→27, conquest at step 4) — the
+  scalar lose meter + gameplay are untouched.
+- Tiers: cargo **195/0** (38 suites + the 4 new CA tests; both goldens re-pinned) · the conquest e2e green
+  on the rebuilt bundle. **Next (S10b-2):** rewire the baked-world lose condition to the field reaching the
+  capital + re-verify/-tune the balance (the army pushback ↔ spatial PURGE); then **S10c** renders the cold
+  tide (the "look") + a screenshot.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

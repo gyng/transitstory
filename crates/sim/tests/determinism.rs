@@ -56,7 +56,8 @@ fn replay_equality() {
 //   0x9e3b_e523_a982_8d51 — S8 PlaceBarracks (the empty `is_barracks` slice appended)
 //   0x6253_ac99_08d6_20a3 — S8 PostBounty (the empty `bounty` slice appended)
 //   0xea4e_eb0a_03d9_74f9 — S9 decadence (the `decadence` i64 appended)
-const GOLDEN_TRANSIT_HASH: u64 = 0xea4e_eb0a_03d9_74f9;
+//   0xfd8e_5b04_8a81_c31b — S10b decadence CA (the empty `decadence_cells` slice appended)
+const GOLDEN_TRANSIT_HASH: u64 = 0xfd8e_5b04_8a81_c31b;
 
 #[test]
 fn golden_transit_hash_pinned() {

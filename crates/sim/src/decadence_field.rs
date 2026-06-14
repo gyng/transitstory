@@ -14,12 +14,13 @@
 use crate::city::CityData;
 use crate::geo_local::PointMm;
 use crate::hexgrid::{self, Axial};
+use crate::world::World;
 use std::collections::VecDeque;
 
-/// How many far-edge cells seed the tide (the "reservoir"). A small seed band — the diffusion CA spreads
-/// it inward. Capped so a huge continent doesn't seed a wall of corruption (the S10b dynamic cap is
-/// separate; this only bounds the initial seed set).
-const RESERVOIR_SEEDS: usize = 8;
+/// The reservoir (tide source) = every cell within this many hops of the MAXIMUM creep distance — a
+/// "far edge" BAND, not a fixed count. A band is symmetric by construction (a fixed top-N truncation
+/// tie-breaks by axial order and would bias the tide off a symmetric map); it is bounded by the domain.
+const RESERVOIR_BAND: u32 = 2;
 
 /// Is a terrain class part of the CA domain — passable land the corruption spreads over? Class codes
 /// (`build_world.py`): 4=WATER, 6=MOUNTAIN (impassable ridge), 7=HILL, 8=FOREST, 9=LEY, 10=PLAIN. The
@@ -46,6 +47,9 @@ pub struct DecadenceField {
     pub capital: Option<u32>,
     /// Tide-origin seed cells: the cells farthest from the capital (the "far edge"), reachable to it.
     pub reservoir: Vec<u32>,
+    /// Axial → CellId lookup (the inverse of `cells`). Static topology, queried not iterated (like
+    /// `World::build_lookup`), so NOT hashed — used to map a station's mm to its domain cell for PURGE.
+    pub index: rustc_hash::FxHashMap<Axial, u32>,
 }
 
 impl DecadenceField {
@@ -139,20 +143,124 @@ impl DecadenceField {
             }
         }
 
-        // 5. Reservoir = the farthest REACHABLE cells (the far edge opposite the capital — the tide
-        //    origin). Sort by (distance desc, axial) for a deterministic seed band, take the top few.
-        //    Empty if nothing is reachable (no capital / disconnected) — then there is no winnable tide.
-        let mut reachable: Vec<u32> = (0..cells.len() as u32)
-            .filter(|&i| dist_to_capital[i as usize] != u32::MAX && dist_to_capital[i as usize] > 0)
-            .collect();
-        reachable.sort_by(|&a, &b| {
+        // 5. Reservoir = the far-edge BAND: every reachable cell within `RESERVOIR_BAND` hops of the
+        //    maximum creep distance (the far edge opposite the capital — the tide origin). A band (not a
+        //    top-N truncation) so the seed is mirror-symmetric on a symmetric map; sorted (dist desc,
+        //    axial) for a deterministic order. Empty if nothing is reachable (no capital / disconnected).
+        let maxd = dist_to_capital.iter().copied().filter(|&d| d != u32::MAX).max().unwrap_or(0);
+        let mut reservoir: Vec<u32> = if maxd > 0 {
+            (0..cells.len() as u32)
+                .filter(|&i| {
+                    let d = dist_to_capital[i as usize];
+                    d != u32::MAX && d > 0 && d + RESERVOIR_BAND >= maxd
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        reservoir.sort_by(|&a, &b| {
             dist_to_capital[b as usize]
                 .cmp(&dist_to_capital[a as usize])
                 .then(cells[a as usize].cmp(&cells[b as usize]))
         });
-        reachable.truncate(RESERVOIR_SEEDS);
-        let reservoir = reachable;
 
-        DecadenceField { cells, nbr_start, nbr_flat, dist_to_capital, capital, reservoir }
+        DecadenceField { cells, nbr_start, nbr_flat, dist_to_capital, capital, reservoir, index }
     }
+}
+
+// ── S10b: the dynamic decadence CA (the creeping tide) ────────────────────────────────────────────
+// The hashed per-cell field (`World::decadence_cells`, dense over `DecadenceField::cells`) evolves by a
+// DOUBLE-BUFFERED integer diffusion that creeps from the reservoir toward the capital, with PURGE (the
+// player's rail network holds the line) STRICTLY DOMINATING DIFFUSE. Determinism: integer, index-ordered;
+// the only map read is `index.get` (queried, never iterated). Bounded per tick by the domain size (the
+// hard cap `MAX_CA_CELLS`, binding condition #3) — a bench-gate test pins the per-tick work.
+//
+// S10b-1 scope: the engine runs PARALLEL to the scalar `decadence` lose meter (unchanged). Rewiring the
+// lose condition to the field reaching the capital + re-tuning the creep against the baked world is S10b-2.
+
+/// Fully-corrupted cell value — the saturation ceiling + the reservoir seed level.
+pub const DECAD_MAX: i32 = 1000;
+/// A cell advances (the tide flows in) only from a FARTHER-from-capital neighbour at least this corrupt,
+/// so the front is a gradient creeping capital-ward, not an instant flood. (S10b-1 placeholder; the creep
+/// rate is calibrated against the baked world in S10b-2.)
+const ADVANCE_THRESHOLD: i32 = 100;
+/// Diffusion gain per sim-second for an advancing cell (→ +10 per 50 ms tick, integer-exact at dt=50).
+const DIFFUSE_GAIN_PER_S: i64 = 200;
+/// PURGE per sim-second for a network-covered cell (→ −100 per tick): 10× the diffuse gain, so PURGE
+/// STRICTLY DOMINATES DIFFUSE — held ground trends to 0 (the build-plan invariant).
+const PURGE_PER_S: i64 = 2000;
+/// Hex radius the player's network purges around each station (the rail presence holds the frontier).
+const PURGE_RADIUS: u32 = 2;
+/// Hard cap on CA domain cells (binding condition #3 — the perf-cliff guard). A baked world is sized
+/// conservatively below this (the map-gen "Open decisions"); a larger domain DISABLES the CA rather than
+/// risk a per-tick bloom. The step is O(domain) ≤ O(MAX_CA_CELLS) — trivially within the 20–30 Hz budget.
+pub const MAX_CA_CELLS: usize = 30_000;
+
+/// One CA tick on the baked decadence field. Double-buffered (read `cur`, write a scratch `next`) so the
+/// neighbour-reading diffusion never reads half-updated cells. No-op when there is no field (transit /
+/// demo) or the domain exceeds the hard cap. Integer + index-ordered ⇒ deterministic.
+pub(crate) fn step(world: &mut World, dt_ms: i64) {
+    let n = world.decadence_field.len();
+    if n == 0 || n > MAX_CA_CELLS {
+        return;
+    }
+    if world.decadence_cells.len() != n {
+        world.decadence_cells.resize(n, 0);
+    }
+    let dt = dt_ms.max(0);
+    let gain = (DIFFUSE_GAIN_PER_S.saturating_mul(dt) / 1000) as i32;
+    let purge = (PURGE_PER_S.saturating_mul(dt) / 1000) as i32;
+    let field = &world.decadence_field;
+
+    // PURGE mask: cells within PURGE_RADIUS of a live player station (a bounded BFS per station over the
+    // field adjacency). Index-ordered ⇒ deterministic; `index.get` is a query, never an iteration.
+    let mut purged = vec![false; n];
+    let size = world.city.grid_cell_mm.max(1);
+    for s in &world.stations {
+        if s.removed {
+            continue;
+        }
+        let Some(&start) = field.index.get(&hexgrid::axial_of(s.pos, size)) else { continue };
+        let mut frontier = vec![start];
+        purged[start as usize] = true;
+        for _ in 0..PURGE_RADIUS {
+            let mut nextf = Vec::new();
+            for &c in &frontier {
+                for &nb in field.neighbors(c) {
+                    if !purged[nb as usize] {
+                        purged[nb as usize] = true;
+                        nextf.push(nb);
+                    }
+                }
+            }
+            frontier = nextf;
+        }
+    }
+
+    // Double-buffered creep: read `cur`, write `next`.
+    let cur = &world.decadence_cells;
+    let mut next = cur.clone();
+    // 1. SEED the reservoir (the inexhaustible far-edge source).
+    for &res in &field.reservoir {
+        next[res as usize] = DECAD_MAX;
+    }
+    // 2. DIFFUSE toward the capital: a cell gains iff a FARTHER-from-capital neighbour is corrupt enough.
+    for c in 0..n {
+        let dc = field.dist_to_capital[c];
+        let s = field.nbr_start[c] as usize;
+        let e = field.nbr_start[c + 1] as usize;
+        let advancing = field.nbr_flat[s..e]
+            .iter()
+            .any(|&nb| field.dist_to_capital[nb as usize] > dc && cur[nb as usize] >= ADVANCE_THRESHOLD);
+        if advancing {
+            next[c] = (next[c] + gain).min(DECAD_MAX);
+        }
+    }
+    // 3. PURGE: the network holds the line — strictly dominates the diffuse gain ⇒ held ground → 0.
+    for c in 0..n {
+        if purged[c] {
+            next[c] = (next[c] - purge).max(0);
+        }
+    }
+    world.decadence_cells = next;
 }

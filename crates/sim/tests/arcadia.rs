@@ -175,7 +175,10 @@ fn arcadia_tribute_is_monotonic() {
 // (was 40/s under truncation) ⇒ `decadence` evolves further over the 1200-tick run. Intended re-pin;
 // the accumulator is excluded from Canonical and transit stays 0, so the TRANSIT golden is unchanged.
 // Prior (pre-accumulator): 0x5375_1cb0_558d_3b0f.
-const GOLDEN_ARCADIA_HASH: u64 = 0x52d2_05b0_5502_b2aa;
+// S10b: the spatial decadence CA — the empty `decadence_cells` slice joins Canonical (the demo arcadia
+// fixture has no buildability ⇒ no CA domain ⇒ the slice stays empty; only the appended length-0 byte
+// shifts the hash). Prior (pre-S10b): 0x52d2_05b0_5502_b2aa.
+const GOLDEN_ARCADIA_HASH: u64 = 0xbd92_54a0_7395_96de;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

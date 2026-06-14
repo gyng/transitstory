@@ -133,6 +133,71 @@ fn field_build_is_deterministic() {
     assert_eq!(a.capital, b.capital);
 }
 
+// ── S10b: the dynamic creep CA (the risk battery — structural, never run()==run()) ────────────────
+
+/// Decadence at a domain cell (or −1 if not a cell). The CA runs in `war_step`, so build an arcadia
+/// world, place any stations, set running, and tick.
+fn dec_at(w: &World, a: Axial) -> i32 {
+    w.decadence_field.cells.iter().position(|&c| c == a).map(|i| w.decadence_cells[i as usize]).unwrap_or(-1)
+}
+fn run_ticks(city: &CityData, stations: &[Axial], ticks: usize) -> World {
+    let mut w = World::new(12, city.clone());
+    for &a in stations {
+        let p = hexgrid::center_of(a, SIZE);
+        w.apply(&Command::PlaceStation { x_mm: p.x_mm, y_mm: p.y_mm, name: None });
+    }
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..ticks {
+        w.tick(50);
+    }
+    w
+}
+
+#[test]
+fn tide_creeps_from_the_reservoir_toward_the_capital() {
+    let w = run_ticks(&hex_world(12, 12, (0, 0), &[]), &[], 250);
+    // The reservoir (the far-edge source) saturates.
+    assert_eq!(dec_at(&w, (11, 11)), sim::decadence_field::DECAD_MAX, "the reservoir is the saturated source");
+    // The tide advanced inward — a deep cell is corrupt now.
+    assert!(dec_at(&w, (2, 2)) > 0, "the tide crept inward toward the capital");
+    // Gradient: a cell near the reservoir is at least as corrupt as one near the capital (creep direction).
+    assert!(dec_at(&w, (10, 10)) >= dec_at(&w, (2, 2)), "corruption falls off toward the capital");
+}
+
+#[test]
+fn purge_strictly_dominates_diffuse() {
+    // The build-plan invariant: a cell the player's network covers reaches 0 even amid the tide. Contrast
+    // a mid cell WITH a station on it vs WITHOUT — same tide, but the held cell is purged to nothing.
+    let city = hex_world(12, 12, (0, 0), &[]);
+    let with = run_ticks(&city, &[(5, 5)], 250);
+    let without = run_ticks(&city, &[], 250);
+    assert!(dec_at(&without, (5, 5)) > 0, "without a station the tide corrupts the cell");
+    assert_eq!(dec_at(&with, (5, 5)), 0, "PURGE strictly dominates DIFFUSE — held ground reaches 0");
+}
+
+#[test]
+fn the_ca_replays_bit_for_bit() {
+    let city = hex_world(10, 10, (0, 0), &[]);
+    let a = run_ticks(&city, &[(4, 4)], 180);
+    let b = run_ticks(&city, &[(4, 4)], 180);
+    assert_eq!(a.decadence_cells, b.decadence_cells, "the tide field replays identically");
+    assert_eq!(a.state_hash(), b.state_hash(), "and the hashed state replays bit-for-bit");
+}
+
+#[test]
+fn the_ca_has_no_lattice_axis_bias() {
+    // Directional symmetry: a square q×q domain with the capital at (0,0) is invariant under the q↔r
+    // reflection (the domain, the capital, the hex adjacency, and the farthest-cell reservoir all map to
+    // themselves), so the evolved field must too — no spurious axis bias.
+    let w = run_ticks(&hex_world(8, 8, (0, 0), &[]), &[], 120);
+    assert!(w.decadence_cells.iter().any(|&d| d > 0), "the tide is active (a non-trivial field to compare)");
+    for q in 0..8i64 {
+        for r in (q + 1)..8i64 {
+            assert_eq!(dec_at(&w, (q, r)), dec_at(&w, (r, q)), "cell ({q},{r}) and its q↔r mirror must match");
+        }
+    }
+}
+
 #[test]
 fn world_new_wires_the_field_and_stays_golden_neutral() {
     // The field is built into World, but it is un-hashed (a pure function of CityData), so a fantasy
