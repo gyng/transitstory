@@ -53,6 +53,10 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   const d = Math.round(s.decadencePct);
   // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
   const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "#e69f00" : "#7a93ad";
+  // Realm STANDING — the progress gauge (supply reach + conquest), the rising counterpart to the
+  // decadence gauge ("two gauges, two jobs"): what you've built + hold, vs. the rot you're racing.
+  const standing = Math.round(s.coverageScore);
+  const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "#e69f00" : "#7a93ad";
   return (
     <div id="stats-bar" data-testid="stats-bar" style={BAR_STYLE}>
       <div>
@@ -62,6 +66,20 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
       <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }} />
       <div data-testid="tribute" title="Tribute — towns you supply pay this; it funds your legions.">
         ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> tribute
+      </div>
+      <div
+        data-testid="standing-gauge"
+        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}
+        title="Realm standing — how much of the realm you supply and hold. Build rail to towns and conquer them to raise it (the rising counterpart to the decadence you're racing)."
+      >
+        🛡 Standing
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "#e7eaee", borderRadius: "6px", overflow: "hidden" }}>
+          <div
+            data-testid="standing-bar"
+            style={{ position: "absolute", inset: "0 auto 0 0", width: `${standing}%`, background: sColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
+          />
+        </div>
+        <b style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{standing}</b>
       </div>
       <div
         data-testid="decadence-gauge"

@@ -2368,6 +2368,17 @@ falls. **Golden-neutral** (a derived stats read, f32, never hashed; both goldens
 tribute→treasury economy (spend/opex), the `UnlockTech` bitset, the rival-kingdom seam; plus the deferred
 S7e multi-stage processing.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 7: S11b, surface the standing gauge (two gauges, two jobs), 2026-06-14.**
+The S11a progress gauge was computed but the fantasy HUD only showed the decadence gauge — so the design's
+"two gauges, two jobs" (fantasy-game-design §4) was half-rendered. Added a **🛡 Standing** gauge to
+`FantasyStatsBar` beside **☠ Decadence**: standing (supply reach + conquest, rises as you build/hold) vs
+decadence (the rot, rises as it creeps) — the realm you're building against the rot you're racing.
+Frontend-only, golden-neutral. Browser-corroborated: built a network on the baked world, **Standing 65 vs
+Decadence 31%**, 0 console errors ([docs/progress/fantasy-two-gauges.png](docs/progress/fantasy-two-gauges.png)).
+tsc clean; arcadia ×2 + conquest e2e green (existing testids preserved, `standing-gauge`/`standing-bar`
+added). **Next S11 chunks:** tribute→treasury economy + opex, the `UnlockTech` bitset, the rival seam;
+plus the deferred S7e multi-stage.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
