@@ -55,6 +55,14 @@ test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ pag
     }
   });
 
+  // SETTLE: advance a few more sim-minutes in SEPARATE turns, pausing between so the ~3 Hz StatsRecorder
+  // samples each — this populates the rolling history that drives the per-minute flow-rate pills + the
+  // decadence ETA (the synchronous loop above never yields to the recorder). Mirrors real continuous play.
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => (window as any).__ot_test.tickMs(60000));
+    await page.waitForTimeout(450);
+  }
+
   // The spell bar is present (Arcane Awakening unlocked) with its three spells + the autocast toggle.
   await expect(page.getByTestId("spell-bar")).toBeVisible();
   await expect(page.getByTestId("spell-0")).toBeVisible(); // Purge

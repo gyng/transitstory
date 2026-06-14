@@ -21,6 +21,12 @@ export interface Sample {
   deniedBoardings: number;
   avgLoad: number;
   avgWaitMs: number;
+  // Fantasy (arcadia) economy channels — 0 in transit. Drive the per-minute flow-rate readouts.
+  tribute: number;
+  mana: number;
+  manpower: number;
+  // Fantasy decadence lose-meter (0–100) — drives the threat ETA projection.
+  decadencePct: number;
 }
 
 /** Max retained samples; older ones are dropped (the chart window slides). */
@@ -60,6 +66,10 @@ export function recordStats(s: Stats): void {
     deniedBoardings: s.deniedBoardings,
     avgLoad: s.avgLoadFactor,
     avgWaitMs: s.avgWaitMs,
+    tribute: s.tribute,
+    mana: s.mana,
+    manpower: s.manpower,
+    decadencePct: s.decadencePct,
   });
   if (HISTORY.length > MAX) HISTORY = HISTORY.slice(HISTORY.length - MAX);
   emit();
@@ -87,6 +97,35 @@ export function cashTrend(balance: number): { perDay: number; runwayDays: number
 
 export function getHistory(): Sample[] {
   return HISTORY;
+}
+
+/** Per-sim-minute flow rate of the three fantasy economy channels, over the recent window — the "am I
+ *  net-positive?" legibility a logistics economy needs (gold/mana/manpower velocity, not just stock). A
+ *  sim-minute = 60_000 sim-ms (the playtest's telemetry granularity). Null until there's enough signal. */
+export function channelRates(): { gold: number; mana: number; manpower: number } | null {
+  if (HISTORY.length < 3) return null;
+  const recent = HISTORY.slice(-6);
+  const a = recent[0];
+  const b = recent[recent.length - 1];
+  const dtMs = b.clockMs - a.clockMs;
+  if (dtMs < 2 * 60_000) return null; // need a couple samples' worth of window
+  const per = (da: number) => (da / dtMs) * 60_000;
+  return { gold: per(b.tribute - a.tribute), mana: per(b.mana - a.mana), manpower: per(b.manpower - a.manpower) };
+}
+
+/** Decadence trajectory from recent history: the lose-meter's per-sim-minute change and a projected ETA
+ *  (sim-minutes until it hits 100 = the realm falls) when it's RISING. `etaMin` is null when the rot is
+ *  flat or receding (you're holding the line) — the threat HUD shows the countdown only when it's real. */
+export function decadenceTrend(currentPct: number): { perMin: number; etaMin: number | null } | null {
+  if (HISTORY.length < 3) return null;
+  const recent = HISTORY.slice(-6);
+  const a = recent[0];
+  const b = recent[recent.length - 1];
+  const dtMs = b.clockMs - a.clockMs;
+  if (dtMs < 2 * 60_000) return null;
+  const perMin = ((b.decadencePct - a.decadencePct) / dtMs) * 60_000;
+  const etaMin = perMin > 0.05 ? (100 - currentPct) / perMin : null;
+  return { perMin, etaMin };
 }
 
 /** Invisible component — mount ONCE near the root so history accrues regardless of dashboard

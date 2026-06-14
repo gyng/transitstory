@@ -7,7 +7,7 @@ import { useStats } from "./GameContext";
 import { SIM_MS_PER_CLOCK_MIN, fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
-import { cashTrend } from "./statsHistory";
+import { cashTrend, channelRates, decadenceTrend } from "./statsHistory";
 
 /** This run's city anchor (the real network's coverage score) — read once; the URL is stable
  *  after boot (deep link, or the menu mirrors the start into it). */
@@ -46,17 +46,36 @@ const BAR_STYLE: CSSProperties = {
 
 /** Fantasy (arcadia) HUD: the supply→conquest→decadence readout — tribute, the lose-meter gauge,
  *  towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
+/** A per-minute flow-rate pill (▲ earning / ▼ draining) for an economy channel — the "am I net-positive?"
+ *  legibility a logistics economy needs. Hidden when ~flat (|rate| < 1) so it's never noise. */
+function RatePill({ rate, color }: { rate: number | undefined; color: string }) {
+  if (rate === undefined || Math.abs(rate) < 1) return null;
+  const up = rate > 0;
+  return (
+    <span style={{ marginLeft: 4, fontSize: 11, color: up ? color : "#b07000", fontVariantNumeric: "tabular-nums" }}>
+      {up ? "▲" : "▼"}{Math.abs(Math.round(rate))}/min
+    </span>
+  );
+}
+
 function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   const tribute = Math.round(s.tribute);
   // S11 economy split — the two specialised channels show only once they've been earned (a clean HUD for
   // a realm that hasn't built an aether/arms chain yet; they appear the moment one does).
   const mana = Math.round(s.mana);
   const manpower = Math.round(s.manpower);
+  // Per-minute flow rates (velocity), from the rolling history — pairs each stock with its trend.
+  const rates = channelRates();
   const towns = Math.round(s.townsCaptured);
   const armies = Math.round(s.armyCount);
   const d = Math.round(s.decadencePct);
   // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
   const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "#e69f00" : "#7a93ad";
+  // Threat projection: how fast the rot is rising + a sim-minute ETA to a fallen realm (only while it's
+  // actually rising). The doom clock made legible — and the pulse below escalates as the ETA shortens.
+  const dt = decadenceTrend(s.decadencePct);
+  const eta = dt?.etaMin ?? null;
+  const critical = d >= 66 && eta !== null; // rising AND deep → the gauge pulses (escalating dread)
   // Realm STANDING — the progress gauge (supply reach + conquest), the rising counterpart to the
   // decadence gauge ("two gauges, two jobs"): what you've built + hold, vs. the rot you're racing.
   const standing = Math.round(s.coverageScore);
@@ -68,17 +87,20 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         <span data-testid="period" style={{ color: "#7a818a" }}>Arcadia</span>
       </div>
       <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }} />
-      <div data-testid="tribute" title="Gold — every town you supply pays this; it funds legions and general tech.">
+      <div data-testid="tribute" title="Gold — every town you supply pays this; it funds bounties and building.">
         ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> gold
+        <RatePill rate={rates?.gold} color="#1c2024" />
       </div>
       {mana > 0 && (
-        <div data-testid="mana" title="Mana — minted by aether supply chains; funds arcane tech (Sappers)." style={{ color: "#7a4ed2" }}>
+        <div data-testid="mana" title="Mana — minted by aether/fuel supply chains; the sole tech resource AND your spell fuel." style={{ color: "#7a4ed2" }}>
           ✦ <b style={{ fontVariantNumeric: "tabular-nums" }}>{mana}</b> mana
+          <RatePill rate={rates?.mana} color="#7a4ed2" />
         </div>
       )}
       {manpower > 0 && (
-        <div data-testid="manpower" title="Manpower — minted by arms (ingot) supply chains; funds military tech (Conscription)." style={{ color: "#b5651d" }}>
+        <div data-testid="manpower" title="Manpower — minted by grain/arms supply chains; raises the AI's legions." style={{ color: "#b5651d" }}>
           ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower
+          <RatePill rate={rates?.manpower} color="#b5651d" />
         </div>
       )}
       <div
@@ -97,8 +119,13 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
       </div>
       <div
         data-testid="decadence-gauge"
-        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}
-        title="The Decadence — spreading corruption. If it reaches your capital, the realm falls. Conquest holds it back."
+        className={critical ? "ot-pulse" : undefined}
+        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help", padding: "2px 6px", borderRadius: 7 }}
+        title={
+          eta !== null
+            ? `The Decadence — spreading corruption rising ${dt!.perMin.toFixed(1)}/min. At this rate the realm falls in ~${Math.max(1, Math.round(eta))} min. Conquer towns and Purge to hold it back.`
+            : "The Decadence — spreading corruption. If it overruns your capital, the realm falls. Conquest and Purge hold it back."
+        }
       >
         ☠ Decadence
         <div style={{ position: "relative", width: "90px", height: "10px", background: "#e7eaee", borderRadius: "6px", overflow: "hidden" }}>
@@ -108,8 +135,13 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
           />
         </div>
         <b style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d}</b>
+        {eta !== null && (
+          <span data-testid="decadence-eta" style={{ fontSize: 11, color: critical ? "var(--ot-gauge-bad)" : "#b07000", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+            ⏳~{Math.max(1, Math.round(eta))}m
+          </span>
+        )}
       </div>
-      <div data-testid="towns-captured" style={{ color: "#7a818a", cursor: "help" }} title="Towns conquered. Each captured town pushes the decadence back.">
+      <div data-testid="towns-captured" style={{ color: "#7a818a", cursor: "help" }} title="Towns conquered. Each captured town pushes the decadence back — your main brake on the doom clock.">
         🏰 <b style={{ color: "#1c2024" }}>{towns}</b> taken
       </div>
       {armies > 0 && (

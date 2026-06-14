@@ -97,6 +97,21 @@ body {
   }
 }
 
+/* Escalating-dread throb for a CRITICAL, rising decadence gauge (the doom clock) — a slow red wash so the
+   threat is felt peripherally without distracting. Off under prefers-reduced-motion (the block below). */
+.ot-pulse {
+  animation: ot-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ot-pulse {
+  0%,
+  100% {
+    background: transparent;
+  }
+  50% {
+    background: rgba(214, 40, 40, 0.16);
+  }
+}
+
 /* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */
 @media (prefers-reduced-motion: reduce) {
   #ui *,
