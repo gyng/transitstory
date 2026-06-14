@@ -27,9 +27,13 @@ test("fantasy baked world is winnable: supply → legions → conquest, realm ho
     const tt = (window as any).__ot_test;
     const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
     const sinks = sg.towns.map((t: any, i: number) => ({ t, i })).filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2);
+    // Supply via the 2-stage BREAD towns (raw recipe, commodity < 4) — directly railable from raw sources.
+    // ARMS towns are now 3-stage (need INGOT from a forge, commodity ≥ 4); their chain is exercised by
+    // fantasy-multistage.spec.ts. Tribute from BREAD funds the legions all the same.
+    const breadSinks = sinks.filter((x: any) => x.t.recipe.every((c: number) => c < 4));
     let line = 0;
-    // Supply: connect two towns' full chains (src1→town→src2) so the two-chain Liebig tribute flows.
-    for (const { t, i } of sinks.slice(0, 2)) {
+    // Supply: connect two BREAD towns' full chains (src1→town→src2) so the two-chain Liebig tribute flows.
+    for (const { t, i } of breadSinks.slice(0, 2)) {
       tt.drawLine([nearestSrc(t, t.recipe[0]), i, nearestSrc(t, t.recipe[1])]);
       tt.assignTrainset(line, 4);
       tt.setHeadwayMs(line, 120000);

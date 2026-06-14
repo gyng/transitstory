@@ -167,6 +167,7 @@ function resourceColor(kind: string): [number, number, number] {
     case "grain": return [230, 159, 0];   // wheat gold
     case "fuel": return [0, 158, 115];    // forest green
     case "aether": return [148, 96, 210]; // arcane violet
+    case "forge": return [120, 124, 130];  // steel grey — a PROCESSOR (ore → INGOT), S7e multi-stage
     default: return [200, 200, 200];
   }
 }

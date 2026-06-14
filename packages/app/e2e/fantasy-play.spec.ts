@@ -33,10 +33,12 @@ test("fantasy baked world is playable: supply flows to tribute", async ({ page }
     const nt = sg.towns.length;
     const KIND: Record<string, number> = { ore: 0, grain: 1, aether: 2, fuel: 3 };
     const hex = (a: any, b: any) => (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
-    // S7e-2: a baked town demands BOTH inputs of its chain (BREAD = grain+fuel, ARMS = ore+aether) — Liebig.
-    // Pick a 2-input town, find the nearest source of EACH required commodity, and run a line src1→town→src2
-    // so both chains reach it (one input alone yields no tribute). Station ids: towns 0..nt-1, then resources.
-    const ti = sg.towns.findIndex((t: any) => t.kind !== "capital" && t.recipe?.length === 2);
+    // S7e-2: a baked town demands BOTH inputs of its chain — Liebig. Pick a 2-stage BREAD town (recipe =
+    // grain+fuel, both commodities < 4 → railable directly from raw sources), find the nearest source of
+    // EACH required commodity, and run a line src1→town→src2 so both chains reach it (one input alone yields
+    // no tribute). The 3-stage ARMS towns (recipe includes INGOT=4, which has no source — it's forged) are
+    // proven separately by fantasy-multistage.spec.ts. Station ids: towns 0..nt-1, then resources.
+    const ti = sg.towns.findIndex((t: any) => t.kind !== "capital" && t.recipe?.length === 2 && t.recipe.every((c: number) => c < 4));
     const town = sg.towns[ti];
     const nearestSrc = (comm: number) => {
       let bi = -1, bd = 1e9;

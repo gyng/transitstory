@@ -2470,6 +2470,33 @@ golden-neutral by construction** (gated on `has_multistage`), adversarially veri
   (S7e step 2, optional):** the bake places forge nodes + 3-stage chains on the continent (a re-bake +
   conquest-e2e re-verify, since it changes the baked supply topology) — the engine is ready for it.
 
+**S7e STEP 2 — the 3-stage Forge-Line lands on the BAKED continent, 2026-06-14.** The engine from
+iteration 11 is now WIRED into the procedural world: the bake sites FORGE (processor) nodes and the ARMS
+towns demand `[INGOT, AETHER]` (3-stage: ore → forge → INGOT → arms town), while BREAD towns stay the
+2-stage grain+fuel chain. Adding a processed good flips `has_multistage` true for the baked world, so
+commodity-aware routing is now LIVE end-to-end on the real bundle — re-verified, still winnable.
+
+- **Bake (`build_world.py`):** `INGOT=4`, `ARMS_RECIPE=[INGOT,AETHER]`, `BREAD_RECIPE=[grain,fuel]`;
+  `place_forges` sites one forge per ARMS town **on the ore→ARMS-town corridor** (the passable cell nearest
+  the midpoint of that town and its nearest ore). `emit` gives each forge an INGOT-origin + ORE-dest demand
+  cell (the sim classifies it a processor); forges ride the `resources` path so `networkFromSupplyGraph`
+  places them as stations. Selftest extended (forge count ≥1, ARMS/BREAD recipe chain-check, forge
+  placement deterministic across two bakes) — **PASS**.
+- **The corridor fix (the load-bearing geometry):** the FIRST cut sited forges on the ore→**capital**
+  corridor — but ARMS towns sit by the ore HIGHLAND, not the capital, so forges stranded ~43 km from the
+  towns they feed and the chain never primed (the `fantasy-multistage` e2e caught this: tribute=0 over
+  75 sim-min). Re-sited to the ore→**ARMS-town** corridor: all three legs are now ~8–14 km and the chain
+  closes (tribute at ~25 sim-min). Good gameplay AND a passing gate — the e2e was the design check.
+- **wasm rebuilt** with the iteration-11 engine (`packages/wasm-sim` was stale, predating the S7e commit) —
+  so the forge processor + commodity routing are actually in the bundle the e2e drives.
+- **e2e:** new `fantasy-multistage.spec.ts` rails ore→forge + forge→arms-town + aether→arms-town on the REAL
+  baked world and asserts tribute>0 (only possible if the forge converted ore→ingot AND commodity routing
+  carried each good to the right node). `fantasy-play`/`fantasy-conquest` supply via the 2-stage BREAD towns
+  (raw recipe, commodity < 4) so a 3-stage ARMS town can't break their `nearestSrc` wiring.
+- Tiers: cargo **202/0** (engine untouched since iteration 11 ⇒ both goldens still unchanged) ·
+  `build_world --selftest` **PASS** · full e2e **22/22** (incl. the new 3-stage gate; conquest still
+  winnable + realm holds) · vitest **21/21** · `tsc` clean. Bake/frontend-only — no core change, no re-pin.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

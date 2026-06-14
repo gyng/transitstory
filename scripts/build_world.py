@@ -72,11 +72,15 @@ RES_GLYPH = {"ore": "O", "grain": "G", "fuel": "F", "aether": "A"}
 # Forge-Line commodity index per resource kind — MUST match crates/sim/forge.rs (ORE=0, GRAIN=1, AETHER=2,
 # FUEL=3). A source's demand cell carries this so the sim assigns the station's output commodity (S7e).
 COMMODITY_IDX = {"ore": 0, "grain": 1, "aether": 2, "fuel": 3}
-# The two disjoint chains (S7e-2 Liebig recipes): BREAD = grain+fuel feeds towns; ARMS = ore+aether arms
-# legions. A town's recipe is the chain its NEAREST resource belongs to — so breadbasket towns demand BREAD,
-# highland towns demand ARMS, and the two chains stay geographically separate (the disjoint-chain payoff).
-BREAD_KINDS = ["grain", "fuel"]
-ARMS_KINDS = ["ore", "aether"]
+INGOT = 4  # a MID good (>= forge::FIRST_MID=4): a FORGE processes ORE → INGOT (S7e multi-stage)
+# The two disjoint chains. BREAD = grain+fuel (2-stage) feeds towns. ARMS is now 3-STAGE (S7e multi-stage):
+# ORE is mined → a FORGE forges it into INGOT → an ARMS town consumes INGOT + AETHER. So ARMS towns demand
+# [INGOT, AETHER] (not raw ore), and the player must rail ore → forge → town. BREAD stays the 2-stage
+# grain+fuel chain. Commodity indices MUST match crates/sim/forge.rs.
+BREAD_RECIPE = [COMMODITY_IDX["grain"], COMMODITY_IDX["fuel"]]
+ARMS_RECIPE = [INGOT, COMMODITY_IDX["aether"]]
+# How many INGOT forges to site (in the corridor between the ore highland and the lowland ARMS towns).
+FORGE_BUDGET = 4
 
 # --- S3 towns (docs/fantasy-map.md): the supply SINKS (consume delivered goods → tribute) AND the
 #     conquest targets. Suitability-sited near resource clusters (so they're worth taking + can be fed/
@@ -353,6 +357,36 @@ def place_resources(biome, capital, rough):
     return out
 
 
+def place_forges(biome, resources, towns):
+    """S7e multi-stage: site INGOT forges ON THE ORE → ARMS-TOWN CORRIDOR, so the player rails ORE → forge →
+    ARMS town over two reasonable legs (a forge sited toward the capital instead would strand it ~40 km from
+    the ARMS towns it feeds — the chain would never prime). One forge per ARMS town (the towns whose recipe
+    needs INGOT), placed at the passable cell nearest the midpoint of that town and its NEAREST ore resource.
+    Deterministic; a forge is a PROCESSOR (origin INGOT + dest ORE) the sim classifies from its demand cells.
+    Returns dicts {kind:"forge", q, r, yield}."""
+    ore_res = [(x["q"], x["r"]) for x in resources if x["kind"] == "ore"]
+    arms_towns = [t for t in towns if t.get("recipe") and INGOT in t["recipe"]]
+    forges, used = [], set()
+    for t in arms_towns:
+        if len(forges) >= FORGE_BUDGET or not ore_res:
+            break
+        tq, tr = t["q"], t["r"]
+        oq, orr = min(ore_res, key=lambda o: (hex_dist(o, (tq, tr)), o[1], o[0]))  # ore nearest THIS town
+        mq, mr = (oq + tq) // 2, (orr + tr) // 2  # corridor midpoint ore ↔ arms town
+        best, bd = None, 1 << 30
+        for r in range(H):
+            for q in range(W):
+                if biome[r, q] in (WATER, MOUNTAIN) or (q, r) in used:
+                    continue
+                d = hex_dist((q, r), (mq, mr))
+                if d < bd:
+                    bd, best = d, (q, r)
+        if best is not None:
+            used.add(best)
+            forges.append({"kind": "forge", "q": int(best[0]), "r": int(best[1]), "yield": 80})
+    return forges
+
+
 def place_towns(biome, capital, resources, rough, ore_att):
     """S3: the capital + Poisson-spread neutral towns, suitability-sited near resource clusters and graded
     by distance from the capital into the expansion arc. Each town carries an i64 value and a 2–3-good
@@ -395,8 +429,9 @@ def place_towns(biome, capital, resources, rough, ore_att):
     sinks.sort(key=lambda t: (hex_dist((t["q"], t["r"]), ore_att), t["r"], t["q"]))
     n_arms = max(1, len(sinks) // 3)
     for i, t in enumerate(sinks):
-        kinds = ARMS_KINDS if i < n_arms else BREAD_KINDS
-        t["recipe"] = [COMMODITY_IDX[k] for k in kinds]
+        # ARMS towns are 3-stage (need INGOT from a forge + aether); BREAD towns are 2-stage (grain+fuel).
+        t["recipe"] = list(ARMS_RECIPE) if i < n_arms else list(BREAD_RECIPE)
+        t["chain"] = "arms" if i < n_arms else "bread"
     return towns
 
 
@@ -546,10 +581,13 @@ def generate(seed):
     ore_att, bread_att = pick_attractors(biome, capital)
     # S3: capital + Poisson-spread neutral towns, suitability-sited near resources, expansion-arc graded.
     towns = place_towns(biome, capital, resources, rough, ore_att)
+    # S7e multi-stage: INGOT forges on the ore→ARMS-town corridor (placed AFTER towns so each ARMS town's
+    # forge sits between it and its nearest ore — kept in a separate list: infrastructure, not an attractor).
+    forges = place_forges(biome, resources, towns)
     # S4: seed the decadence (per-town floor + far-edge reservoir + capital grace).
     decadence = seed_decadence(biome, capital, towns)
     return biome, capital, {"elev": elev, "moisture": moisture, "passes": passes, "land": land,
-                            "resources": resources, "towns": towns, "decadence": decadence,
+                            "resources": resources, "forges": forges, "towns": towns, "decadence": decadence,
                             "ore_att": ore_att, "bread_att": bread_att}
 
 
@@ -623,8 +661,9 @@ def cell_lonlat(q, r):
     return round(lng, 6), round(lat, 6)
 
 
-def emit(cid, seed, biome, capital, resources, towns, decadence):
+def emit(cid, seed, biome, capital, resources, towns, decadence, forges=None):
     """Serialize the world + buildability + demand packs. Returns the cells list (for the self-test)."""
+    forges = forges or []
     land = biome != WATER
     # emit every land cell + a 1-ring water margin (the coastline); skip deep ocean to bound size
     near_land = land.copy()
@@ -667,6 +706,12 @@ def emit(cid, seed, biome, capital, resources, towns, decadence):
         dw = float(town["value"]) / 100.0
         for c in town["recipe"]:
             dcells.append({"lon": tlng, "lat": tlat, "originWeight": 1.0, "destWeight": dw, "commodity": c})
+    for forge in forges:                             # S7e: a forge is a PROCESSOR — it CONSUMES ore (dest
+        flng, flat = cell_lonlat(forge["q"], forge["r"])  # ORE) and PRODUCES ingot (origin INGOT) shipped on.
+        dcells.append({"lon": flng, "lat": flat, "originWeight": float(forge["yield"]) / 10.0,
+                       "destWeight": 1.0, "commodity": INGOT})            # output: it makes INGOT
+        dcells.append({"lon": flng, "lat": flat, "originWeight": 1.0,
+                       "destWeight": float(forge["yield"]) / 10.0, "commodity": COMMODITY_IDX["ore"]})  # input: ore
     demand = {"cellM": GRID_CELL_MM / 1000.0, "bbox": bbox, "cells": dcells}
     json.dump(demand, open(os.path.join(OUT, f"{cid}_demand.json"), "w"), separators=(",", ":"))
 
@@ -678,7 +723,7 @@ def emit(cid, seed, biome, capital, resources, towns, decadence):
                 round(float(GRID_CELL_MM) * (1.5 * r)))
 
     sg_resources = []
-    for res in resources:
+    for res in resources + forges:  # forges ride the resources path → networkFromSupplyGraph places them
         x_mm, y_mm = to_mm(res["q"], res["r"])
         sg_resources.append({"kind": res["kind"], "q": res["q"], "r": res["r"],
                              "xMm": x_mm, "yMm": y_mm, "yield": res["yield"]})
@@ -822,14 +867,15 @@ def selftest(seed):
           >= min(neutrals, key=lambda t: hex_dist((t["q"], t["r"]), cap1))["value"])
     check("every town has a 2–3 good demand set", all(1 <= len(t["demands"]) <= 3 for t in towns))
     check("determinism: town placement identical across two bakes", towns == f2["towns"])
-    # S7e-2: every sink town has a 2-input chain recipe (BREAD grain+fuel or ARMS ore+aether), and BOTH
-    # chains have consumers (so ore+aether AND grain+fuel all matter — the disjoint-chain payoff).
-    BREAD, ARMS = [COMMODITY_IDX["grain"], COMMODITY_IDX["fuel"]], [COMMODITY_IDX["ore"], COMMODITY_IDX["aether"]]
+    # S7e-2 + S7e multi-stage: every sink town has a 2-input chain recipe — BREAD = grain+fuel (2-stage) or
+    # ARMS = INGOT+aether (3-STAGE: ore→forge→INGOT). BOTH chains have consumers (the disjoint-chain payoff).
     sink_recipes = [sorted(t["recipe"]) for t in towns if t["kind"] != "capital"]
-    n_bread = sum(1 for r in sink_recipes if r == sorted(BREAD))
-    n_arms = sum(1 for r in sink_recipes if r == sorted(ARMS))
+    n_bread = sum(1 for r in sink_recipes if r == sorted(BREAD_RECIPE))
+    n_arms = sum(1 for r in sink_recipes if r == sorted(ARMS_RECIPE))
     check(f"every sink town demands a full chain (BREAD×{n_bread} + ARMS×{n_arms}); both chains consumed",
-          all(sorted(r) in (sorted(BREAD), sorted(ARMS)) for r in sink_recipes) and n_bread > 0 and n_arms > 0)
+          all(sorted(r) in (sorted(BREAD_RECIPE), sorted(ARMS_RECIPE)) for r in sink_recipes) and n_bread > 0 and n_arms > 0)
+    # S7e multi-stage: the ARMS chain needs forges (ore→INGOT) — at least one, reachable from the capital.
+    check(f"S7e: forges sited for the 3-stage ARMS chain ({len(f1['forges'])})", len(f1["forges"]) >= 1)
 
     # --- S4 decadence seed: clean capital + grace, corrupt frontier, loseable reservoir ---
     dec = f1["decadence"]
@@ -874,9 +920,10 @@ def selftest(seed):
           V_AETHER_MIN <= by_cert["aether"] <= V_AETHER_MAX
           and all(by_cert[k] >= V_MIN_PER_KIND for k in ("grain", "fuel", "ore")))
 
+    check("determinism: forge placement identical across two bakes (S7e multi-stage)", f1["forges"] == f2["forges"])
     # determinism through serialization (the frozen artifact is byte-stable)
-    c1 = emit("__selftest_a", seed, b1, cap1, res, towns, dec)
-    c2 = emit("__selftest_b", seed, b2, cap2, f1["resources"], f1["towns"], f2["decadence"])
+    c1 = emit("__selftest_a", seed, b1, cap1, res, towns, dec, f1["forges"])
+    c2 = emit("__selftest_b", seed, b2, cap2, f1["resources"], f1["towns"], f2["decadence"], f2["forges"])
     check("determinism: serialized cells byte-identical",
           json.dumps(c1, sort_keys=True) == json.dumps(c2, sort_keys=True))
     for suf in ("a", "b"):
@@ -914,7 +961,7 @@ def main():
     elif cert != seed:
         print(f"  [S6] requested seed {seed} not winnable; certified seed {cert}")
     seed = cert
-    cells = emit(cid, seed, biome, capital, fields["resources"], fields["towns"], fields["decadence"])
+    cells = emit(cid, seed, biome, capital, fields["resources"], fields["towns"], fields["decadence"], fields["forges"])
     hist = biome_hist(biome)
     from collections import Counter
     rby = Counter(x["kind"] for x in fields["resources"])
