@@ -2428,6 +2428,18 @@ The **rival kingdom** is a `war_step(owner != PLAYER)` seam the design explicitl
 multi-stage processing** (raw→mid→final) is a tracked supply-depth refinement. Default held: the felt race.
 **~12 commits sit on `fantasy-fork`, unpushed** (standing "commit only / push only when asked").
 
+**AUTONOMOUS ROADMAP LOOP — iteration 10: the fantasy onboarding objective, 2026-06-14.** The fantasy
+campaign had NO onboarding: `OnboardingCoach` is gated on `stationCount === 0`, but the baked world ships
+~40 pre-placed source/town nodes, so it never showed — and its copy ("place 2 stations") is transit-only
+anyway. Made it **mode-aware**: arcadia shows "**Forge your dominion ⚜** — ① rail a resource → a town for
+tribute · ② raise legions at your capital + post a Bounty to aim them · ③ hold the ☠ Decadence back before
+it reaches your capital", gated on `lineCount === 0` (the baked stations are pre-placed, so the first real
+act is railing them) and auto-dismissed on the first line, under its own localStorage key (independent of
+the transit coach). Gold-tinted ghost gesture. Frontend-only, golden-neutral. Browser-verified: shows on
+the baked world (lineCount 0, stationCount 42), dismisses after the first line
+([docs/progress/fantasy-onboarding.png](docs/progress/fantasy-onboarding.png)); tsc clean; no e2e depends
+on the onboarding. The fantasy game now states its goal on entry.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
