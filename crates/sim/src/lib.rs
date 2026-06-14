@@ -11,6 +11,7 @@ pub mod army;
 pub mod city;
 pub mod command;
 pub mod decadence;
+pub mod decadence_field;
 mod demand;
 mod dispatch;
 pub mod forge;
@@ -35,6 +36,7 @@ pub mod walkshed;
 pub mod world;
 
 pub use city::{BuildCell, BuildabilityGrid, CityData, DemandCell, DemandGrid};
+pub use decadence_field::DecadenceField;
 pub use command::{Command, Event};
 pub use geo_local::PointMm;
 pub use ids::{LineId, PaxId, StationId, TrainsetId, VehicleId};

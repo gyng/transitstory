@@ -55,6 +55,16 @@ pub struct CityData {
     /// default the marching `s_mm` trajectory is unchanged; only a baked world that sets it diverges).
     #[serde(default)]
     pub army_speed_mm_s: i64,
+    /// Fantasy (arcadia) S10: the baked CAPITAL cell in sim mm (the seat the decadence tide races toward
+    /// — the lose target + the creep-gradient origin). Seeded by `scripts/build_world.py` from the
+    /// capital town. **(0, 0) (the serde + `Default` value) ⇒ no capital ⇒ no decadence CA** — every
+    /// transit city, the arcadia golden fixture, and native tests build an empty `DecadenceField`
+    /// (golden-neutral; the field is static/un-hashed anyway). A pure construction-time map property,
+    /// NOT a Command.
+    #[serde(default)]
+    pub capital_x_mm: i64,
+    #[serde(default)]
+    pub capital_y_mm: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

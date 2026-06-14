@@ -422,9 +422,14 @@ def seed_decadence(biome, capital, towns):
     # inherits). i64. World::new seeds world.decadence from it (a more-corrupt continent = more urgency).
     floors = [t["decadence"] for t in towns if t["kind"] == "neutral"]
     initial = int(round(sum(floors) / len(floors))) if floors else 0
+    # The capital cell in mm (S10): the seat the decadence tide races toward — the lose target + the
+    # creep-gradient origin for the in-core DecadenceField. Same hex transform as the reservoir.
+    cap_x_mm = round(float(GRID_CELL_MM) * (SQRT3 * capital[0] + SQRT3 / 2.0 * capital[1]))
+    cap_y_mm = round(float(GRID_CELL_MM) * (1.5 * capital[1]))
     return {"capitalGraceHexes": CAPITAL_GRACE_HEXES, "reservoir": reservoir,
             "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
-            "armySpeedMmS": ARMY_SPEED_MM_S}
+            "armySpeedMmS": ARMY_SPEED_MM_S,
+            "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
 
 
 def validate(biome, capital, fields):

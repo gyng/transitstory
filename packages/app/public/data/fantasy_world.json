@@ -495,7 +495,9 @@
       ],
       "initialDecadence": 5345,
       "growthPerS": 6,
-      "armySpeedMmS": 200000
+      "armySpeedMmS": 200000,
+      "capitalXMm": 14722432,
+      "capitalYMm": 8250000
     }
   }
 }

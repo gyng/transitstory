@@ -2216,6 +2216,41 @@ PROBE roadmap item; cargo 183/0 · vitest 21/21 · e2e 21/21 · selftest PASS; a
   (build plan): PURGE>DIFFUSE reaches 0 · identical-field-after-K-days-twice · directional symmetry ·
   bounded (hard cap) · per-tick bench within the 20–30 Hz budget — assert structurally, never `run()==run()`.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 2: S10a, the decadence-CA static board, 2026-06-14.** First sub-step
+of S10 (the spatial decadence area-control CA — the build plan's "largest subsystem"). S10a builds the
+BOARD the tide will diffuse over; the dynamic hashed tide + CA step are S10b. **Golden-neutral by
+construction** (the board is a pure function of `CityData`, reconstructible on replay, so it is NOT hashed
+— both goldens verified unchanged, no re-pin).
+
+- **`decadence_field.rs` — `DecadenceField::build(&CityData)`:** derives, once at construction, the hex-cell
+  **domain** (passable land — classes HILL/FOREST/LEY/PLAIN, excluding WATER + impassable MOUNTAIN —
+  reinterpreted as axial via the same `hexgrid` transform the bake quantised with; sorted ⇒ index-stable),
+  **CSR hex adjacency** (the 6 pointy-top neighbours present in the domain), the **creep-distance gradient**
+  (integer BFS hop-distance from the capital — the cheap toward-the-capital telegraph, computed once not
+  per tick), the **capital** cell (exact-or-nearest to the baked capital mm), and the **reservoir** seed
+  (the 8 farthest-reachable cells — the far edge opposite the capital, the tide origin). Empty for transit
+  / demo-arcadia (no terrain) ⇒ no CA.
+- **Plumbing:** `CityData.capital_x_mm/_y_mm` (serde-default 0); `World.decadence_field` (un-hashed, built
+  in `World::new`); `build_world.py` emits `decadenceSeed.capitalXMm/YMm`; `buildCoreCity` passes them
+  through. Re-baked: certified seed still **12** (capital cell q,r=(23,22) → mm (14722432, 8250000));
+  demand/buildability packs byte-identical, only the manifest's new capital fields changed.
+- **Tests (`tests/decadence_field.rs`, the S10 risk battery — asserted STRUCTURALLY, never `run()==run()`):**
+  passable domain + **symmetric adjacency** (every neighbour relation is mutual, distance-1; an interior hex
+  has 6) · **monotone creep gradient** (capital at 0; every cell has a downhill neighbour one step closer) ·
+  **reservoir is the far edge AND reaches the capital** (loseability — a walled-off capital is unloseable) ·
+  **BFS routes through a carved pass** in a MOUNTAIN wall (the connectivity guarantee) · water/mountain
+  excluded · terrainless ⇒ empty · **deterministic build** (twice ⇒ bit-identical) · `World::new` wires it +
+  the un-hashed board never moves `state_hash`.
+- Tiers: cargo **191/0** (38 suites + the new `decadence_field` 8; both goldens pinned, no re-pin) · tsc
+  clean · the 5 fantasy/arcadia e2e green on the rebuilt bundle (the new capital field doesn't perturb
+  ingestion). Progress screenshot of the playable balanced baked continent:
+  [docs/progress/fantasy-baked-balanced.png](docs/progress/fantasy-baked-balanced.png) (4 legions, a town
+  taken, decadence reversing — the loop, on the procedural map).
+- **Next (S10b):** the CA engine — a hashed sparse per-cell decadence Vec, double-buffered integer
+  diffusion (read prev → write next) seeded from the reservoir, **PURGE strictly dominates DIFFUSE** (fed/
+  captured ground → decadence 0), a **hard cell cap + per-tick bench gate** (binding condition #3), and the
+  global `decadence` lose meter re-derived from the field reaching the capital. Golden re-pin RED-first.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

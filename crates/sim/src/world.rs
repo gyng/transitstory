@@ -150,6 +150,11 @@ pub struct World {
     /// Buildability lookup: (cell_x, cell_y) -> class code. Built once from CityData; lookup-only.
     pub build_lookup: rustc_hash::FxHashMap<(i32, i32), u8>,
     pub build_cell_mm: i64,
+    /// Fantasy (arcadia) S10: STATIC topology of the decadence area-control field — the hex-cell domain,
+    /// adjacency, creep-to-capital gradient, and reservoir seed. Built once from `CityData` (a pure
+    /// function of it, reconstructible on replay), so NOT hashed. Empty for transit / demo arcadia. The
+    /// dynamic, hashed per-cell tide values (S10b) layer on top of this board.
+    pub decadence_field: crate::decadence_field::DecadenceField,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -371,6 +376,10 @@ impl World {
         // meter. 0 for every transit city / the golden fixture / native tests ⇒ byte-identical (zero
         // re-pins). Clamped ≥ 0 (a negative bake can't bank surplus).
         let initial_decadence = city.initial_decadence.max(0);
+        // Fantasy S10: derive the decadence CA's static board (hex domain + creep gradient + reservoir)
+        // from the baked terrain. Empty unless a baked world supplies buildability + a capital, so this
+        // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
+        let decadence_field = crate::decadence_field::DecadenceField::build(&city);
         World {
             seed,
             clock_ms: 0,
@@ -417,6 +426,7 @@ impl World {
             access_cache: rustc_hash::FxHashMap::default(),
             build_lookup,
             build_cell_mm,
+            decadence_field,
             demand_dirty: false,
             last_growth_day: 0,
             growth_cap_w,
