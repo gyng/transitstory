@@ -31,6 +31,9 @@ pub const DEFAULT_HEADWAY_MS: i64 = 10_000; // 5 clock-min
 // accrue per boarding. The disruption metric feeds the surface land-taking premium.
 pub const START_BUDGET: i64 = 2_000_000_000;
 pub const FARE: i64 = 2; // $ per boarding
+/// GOLD to post a bounty (fantasy/arcadia, V3 — steering the legions costs the realm's treasury). A flat
+/// decree cost; clearing a bounty (amount 0) is free. The bounty `amount` is the steering WEIGHT, not gold.
+const BOUNTY_COST: i64 = 10;
 const PER_KM_SURFACE: i64 = 8_000_000;
 const PER_KM_ELEVATED: i64 = 30_000_000;
 const PER_KM_TUNNEL: i64 = 90_000_000;
@@ -1087,7 +1090,13 @@ impl World {
                 let s = station.index();
                 if s >= self.stations.len() || self.stations[s].removed {
                     vec![Event::Rejected { reason: "PostBounty: unknown station".into() }]
+                } else if *amount > 0 && self.tribute < BOUNTY_COST {
+                    // V3: posting a bounty costs GOLD (a decree on the treasury); clearing (0) is free.
+                    vec![Event::Rejected { reason: "PostBounty: not enough gold".into() }]
                 } else {
+                    if *amount > 0 {
+                        self.tribute -= BOUNTY_COST;
+                    }
                     while self.bounty.len() < self.stations.len() {
                         self.bounty.push(0);
                     }

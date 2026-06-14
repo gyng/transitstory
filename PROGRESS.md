@@ -2733,7 +2733,35 @@ mana-cost-rate-limited (no rng, no cooldown state):
 - **Frontend:** `Arcane Awakening` in the tech panel; a `✦ N cast` HUD readout; spell-flash bursts on the
   map (`spellFlashLayer` — teal Purge / gold Smite / crimson Warpath, fading), copied out per frame.
 - Tiers: cargo **232/0** (goldens re-pinned green) · full e2e **25/25** · vitest **27/27** · tsc clean.
-- **Next:** V3 — the economy re-map (legions→manpower, bounties→gold) + balance re-tune.
+
+**V3 — the ECONOMY RE-MAP (each channel its job).** The locked model goes live: **gold = the player's
+economy (general + bounties) · manpower = legions · mana = tech + spells.** The consume stays ADDITIVE
+(every delivery mints GOLD — the universal trade currency, "gold = general"), and specialized supply ALSO
+mints its channel: GRAIN + INGOT/ARMS → manpower, AETHER → mana. So composition matters without making any
+chain useless.
+
+- **`channel_of`: GRAIN → MANPOWER** (food → soldiers). The key accessibility call (owner-chosen): legions
+  are fielded via the EARLY bread chain — you don't need a forge to make war; arms add more manpower.
+- **Legions cost MANPOWER** (`army::maybe_launch` spends `world.manpower`; Conscription halves it) — gives
+  manpower its purpose; gold no longer drains to the army (it accumulates for steering/building).
+- **Bounties cost GOLD** (`PostBounty`: a flat `BOUNTY_COST` from the treasury when posting; clearing is
+  free) — gives gold a sink + makes steering a deliberate spend. (Note: bounties need gold income first, so
+  there's no turn-0 bounty — a real consequence; the conquest line targets its far-end by default anyway.)
+- **Golden-neutral (no re-pin):** the goldens consume only ORE (→ gold) with no barracks/bounty, so none of
+  the changed paths (grain/legion-cost/bounty-cost) touch them — verified, both goldens unchanged.
+- **Balance re-tune (the design's biggest risk, gated):** every war fixture re-pointed to GRAIN so legions
+  fund from manpower — `balance.rs` (play/play_continent), `army.rs`, `decadence.rs`, `garrison.rs`, and the
+  arcadia demo's `arcadia_demand.json`. The winnable+bites gates + the baked conquest e2e all stay GREEN
+  (the realm still supplies → fields → conquers → holds; the conquest trajectory now shows gold ACCUMULATING
+  since legions draw manpower).
+- **Tests (`economy_split.rs` +2):** legions cost manpower not gold (a gold-rich ore realm fields none; a
+  grain realm fields legions); bounties cost gold (rejected when broke, deduct the flat cost, clearing free).
+- Tiers: cargo **234/0** (goldens UNCHANGED — golden-neutral) · full e2e **25/25** · vitest **27/27** · tsc clean.
+
+> **The arcadia overhaul is COMPLETE** (V1 tech tree + rail-gate · V2 spell arm · V3 economy re-map). The
+> fantasy economy is now a legible three-channel whole: gold (trade/steering) · manpower (legions) · mana
+> (tech + spells), with a 12-tech tree, three auto-cast spells, rail-gated construction, and Heavy Rail as
+> a tech unlock.
 
 ## Known gaps / deferred
 

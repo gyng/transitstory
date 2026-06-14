@@ -103,8 +103,8 @@ fn a_max_garrison_town_is_still_conquerable() {
     city.demand = DemandGrid {
         cell_m: 500.0,
         cells: vec![
-            DemandCell { x_mm: src.x_mm, y_mm: src.y_mm, origin_w: 90.0, dest_w: 2.0, commodity: 0 },
-            DemandCell { x_mm: sink.x_mm, y_mm: sink.y_mm, origin_w: 2.0, dest_w: 90.0, commodity: 0 },
+            DemandCell { x_mm: src.x_mm, y_mm: src.y_mm, origin_w: 90.0, dest_w: 2.0, commodity: 1 }, // GRAIN (V3: → MANPOWER → legions)
+            DemandCell { x_mm: sink.x_mm, y_mm: sink.y_mm, origin_w: 2.0, dest_w: 90.0, commodity: 1 },
         ],
     };
     let mut w = World::new(12, city);

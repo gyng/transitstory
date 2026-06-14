@@ -48,8 +48,8 @@ fn run_realm(with_barracks: bool, ticks: usize) -> World {
     let mut w = World::new(
         11,
         arcadia(vec![
-            DemandCell { x_mm: 0, y_mm: 0, origin_w: 80.0, dest_w: 2.0, commodity: 0 }, // source (+ barracks)
-            DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: 0 }, // town
+            DemandCell { x_mm: 0, y_mm: 0, origin_w: 80.0, dest_w: 2.0, commodity: 1 }, // GRAIN source (+ barracks) — V3: → MANPOWER → legions
+            DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: 1 }, // town (grain → manpower)
         ]),
     );
     if with_barracks {

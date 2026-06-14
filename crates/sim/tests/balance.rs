@@ -36,8 +36,8 @@ fn play_tech(seed: u64, horizon: usize, auto_tech: Option<usize>) -> Telemetry {
         demand: DemandGrid {
             cell_m: 500.0,
             cells: vec![
-                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: 0 }, // barracks + ore source
-                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // the town to feed + take
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: 1 }, // barracks + GRAIN source (V3: → MANPOWER → legions)
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: 1 }, // the town to feed + take (grain → manpower)
             ],
         },
         ..Default::default()
@@ -190,9 +190,9 @@ fn play_continent(army_speed_mm_s: i64, with_conquest: bool, horizon: usize) -> 
             cells: vec![
                 // ARMS supply chain at CONTINENT scale (ore + aether sources ~30 km from the ARMS town,
                 // matching the real bake where sources sit tens of km out): Liebig ore+aether → tribute.
-                DemandCell { x_mm: 0, y_mm: 60_000_000, origin_w: 90.0, dest_w: 2.0, commodity: 0 }, // ore source (60 km N)
+                DemandCell { x_mm: 0, y_mm: 60_000_000, origin_w: 90.0, dest_w: 2.0, commodity: 1 }, // GRAIN source (60 km N — V3: → MANPOWER)
                 DemandCell { x_mm: 30_000_000, y_mm: 30_000_000, origin_w: 90.0, dest_w: 2.0, commodity: 2 }, // aether source (~42 km out)
-                DemandCell { x_mm: 0, y_mm: 30_000_000, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // ARMS town: ore demand (30 km N)
+                DemandCell { x_mm: 0, y_mm: 30_000_000, origin_w: 2.0, dest_w: 90.0, commodity: 1 }, // war town: GRAIN demand (30 km N → manpower)
                 DemandCell { x_mm: 0, y_mm: 30_000_000, origin_w: 2.0, dest_w: 90.0, commodity: 2 }, // ARMS town: aether demand
                 // conquest target town, 60 km E of the capital (the baked nearest-town reach)
                 DemandCell { x_mm: 60_000_000, y_mm: 0, origin_w: 2.0, dest_w: 40.0, commodity: 0 },

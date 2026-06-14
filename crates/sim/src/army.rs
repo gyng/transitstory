@@ -90,7 +90,8 @@ pub(crate) fn maybe_launch(world: &mut World) {
     } else {
         LAUNCH_COST
     };
-    if world.tribute < launch_cost || world.armies.len() >= MAX_ARMIES {
+    // V3 economy: legions are fielded with MANPOWER (the arms+food economy — grain/ingot), not gold.
+    if world.manpower < launch_cost || world.armies.len() >= MAX_ARMIES {
         return;
     }
     // Launch from a BARRACKS on a built route (the player's agency: no barracks ⇒ no army). The first
@@ -119,7 +120,7 @@ pub(crate) fn maybe_launch(world: &mut World) {
         Some((li, b_arc, target))
     });
     if let Some((li, b_arc, target)) = launch {
-        world.tribute -= launch_cost;
+        world.manpower -= launch_cost; // V3: legions drawn from manpower
         // Strength stays the nominal LAUNCH_COST (a CONSCRIPTION legion is cheaper, not weaker).
         world.armies.push(LineId(li as u32), 0, b_arc, 1, LAUNCH_COST, target);
     }

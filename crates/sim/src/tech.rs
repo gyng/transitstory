@@ -53,13 +53,15 @@ impl Channel {
     }
 }
 
-/// Which channel a DELIVERED commodity mints (alongside gold). AETHER → mana; a processed war good
-/// (INGOT/ARMS, ≥ `forge::FIRST_MID`) → manpower; everything mundane (ore/grain/fuel) → gold only.
+/// Which channel a DELIVERED commodity mints. The owner-locked roles (V3): AETHER → MANA (the tech+magic
+/// arm); GRAIN (food → soldiers) + INGOT/ARMS (war materiel, ≥ `forge::FIRST_MID`) → MANPOWER (the legion
+/// economy); ORE + FUEL → GOLD (the player's trade economy). Grain makes manpower ACCESSIBLE via the early
+/// BREAD chain (you don't need a forge to field legions); arms add more.
 #[inline]
 pub fn channel_of(commodity: usize) -> Channel {
     if commodity == crate::forge::AETHER {
         Channel::Mana
-    } else if commodity >= crate::forge::FIRST_MID {
+    } else if commodity == crate::forge::GRAIN || commodity >= crate::forge::FIRST_MID {
         Channel::Manpower
     } else {
         Channel::Gold

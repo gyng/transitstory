@@ -7,6 +7,7 @@ use sim::tech::{channel_of, Channel, FORGE_MASTERY, PRODUCTION_SURGE, TECHS};
 use sim::*;
 
 const ORE: u8 = 0;
+const GRAIN: u8 = 1;
 const AETHER: u8 = 2;
 const INGOT: u8 = 4;
 
@@ -24,7 +25,7 @@ fn arcadia(cells: Vec<DemandCell>) -> CityData {
 #[test]
 fn channel_of_maps_commodities_to_their_yield() {
     assert_eq!(channel_of(0), Channel::Gold, "ORE → gold");
-    assert_eq!(channel_of(1), Channel::Gold, "GRAIN → gold");
+    assert_eq!(channel_of(1), Channel::Manpower, "GRAIN → manpower (V3: food → soldiers)");
     assert_eq!(channel_of(2), Channel::Mana, "AETHER → mana");
     assert_eq!(channel_of(3), Channel::Gold, "FUEL → gold");
     assert_eq!(channel_of(4), Channel::Manpower, "INGOT (a war good) → manpower");
@@ -147,4 +148,56 @@ fn a_tier_2_tech_needs_its_prerequisite() {
 #[test]
 fn the_split_economy_replays_bit_for_bit() {
     assert_eq!(run_war_chain(9000).state_hash(), run_war_chain(9000).state_hash(), "the split economy replays bit-for-bit");
+}
+
+/// V3: legions are fielded with MANPOWER, not gold. A barracks realm rich in GOLD (ore) fields NO legions;
+/// one supplied with GRAIN (→ manpower) does. (Grain makes the army economy accessible without a forge.)
+#[test]
+fn legions_cost_manpower_not_gold() {
+    fn realm(comm: u8) -> World {
+        let mut w = World::new(
+            11,
+            arcadia(vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: comm },
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: comm },
+            ]),
+        );
+        w.apply(&Command::PlaceBarracks { x_mm: 0, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None });
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+        w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 4 });
+        w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 60_000 });
+        w.apply(&Command::SetRunning { running: true });
+        for _ in 0..15000 {
+            w.tick(50);
+        }
+        w
+    }
+    let gold = realm(ORE);
+    assert!(gold.tribute > 0, "the ore realm is rich in gold: {}", gold.tribute);
+    assert_eq!(gold.armies.len(), 0, "gold alone fields NO legions (legions cost manpower)");
+    let grain = realm(GRAIN);
+    assert!(grain.manpower > 0, "the grain realm earned manpower: {}", grain.manpower);
+    assert!(grain.armies.len() >= 1, "grain (manpower) fields legions: {}", grain.armies.len());
+}
+
+/// V3: posting a bounty costs GOLD (the treasury funds a decree). No gold ⇒ rejected; with gold ⇒ posts
+/// and deducts the flat cost. (Clearing a bounty — amount 0 — is free, so it isn't blocked when broke.)
+#[test]
+fn bounties_cost_gold() {
+    const BOUNTY_COST: i64 = 10; // mirrors world.rs
+    let mut w = run_supply(ORE, 6000); // earns gold
+    assert!(w.tribute >= BOUNTY_COST, "earned gold for a decree: {}", w.tribute);
+    let before = w.tribute;
+    let ev = w.apply(&Command::PostBounty { station: StationId(0), amount: 100 });
+    assert!(matches!(ev.as_slice(), [Event::BountyPosted { .. }]), "with gold the bounty posts: {ev:?}");
+    assert_eq!(w.tribute, before - BOUNTY_COST, "posting deducts the flat gold cost");
+
+    // A gold-less realm can't post a bounty (but clearing is still free).
+    let mut poor = World::new(11, arcadia(vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 1.0, dest_w: 1.0, commodity: ORE }]));
+    poor.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    assert!(matches!(poor.apply(&Command::PostBounty { station: StationId(0), amount: 100 }).as_slice(), [Event::Rejected { .. }]), "no gold ⇒ bounty rejected");
+    assert!(matches!(poor.apply(&Command::PostBounty { station: StationId(0), amount: 0 }).as_slice(), [Event::BountyPosted { .. }]), "clearing (0) is free");
 }

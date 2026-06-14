@@ -15,8 +15,8 @@ fn war_world() -> World {
         demand: DemandGrid {
             cell_m: 500.0,
             cells: vec![
-                DemandCell { x_mm: 0, y_mm: 0, origin_w: 80.0, dest_w: 2.0, commodity: 0 }, // source (funds tribute)
-                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: 0 }, // town (consumes→tribute)
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 80.0, dest_w: 2.0, commodity: 1 }, // GRAIN source (V3: funds MANPOWER → legions)
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: 1 }, // town (consumes grain → manpower)
             ],
         },
         ..Default::default()
@@ -126,9 +126,13 @@ fn a_bounty_steers_a_legion_to_a_mid_route_town() {
         w.apply(&Command::AddStop { line: LineId(0), station: StationId(2), after: None });
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 4 });
         w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 });
-        // Bait legions to the MID town — without this they'd march past it to st2.
-        w.apply(&Command::PostBounty { station: StationId(1), amount: 1000 });
         w.apply(&Command::SetRunning { running: true });
+        // Isolate the STEERING test from the (separately-tested) economy: grant the MANPOWER legions cost +
+        // the GOLD a bounty costs (both producible via supply). This test is about TARGETING, not minting.
+        w.manpower = 1000;
+        w.tribute = 1000;
+        // Bait legions to the MID town — without this they'd march past it to st2. (Bounty costs gold now.)
+        w.apply(&Command::PostBounty { station: StationId(1), amount: 1000 });
         for _ in 0..12000 {
             w.tick(50);
         }
