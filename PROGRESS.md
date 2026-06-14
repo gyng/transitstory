@@ -2680,6 +2680,41 @@ mechanical reset, to respect the thin-loop discipline).
 > frontier garrisons, the scored victory, the economy split (gold/mana/manpower), the rival kingdom, AND
 > endless/prestige. **The build plan's entire S0→S11 roadmap is delivered.**
 
+---
+
+## Post-S11 — the ARCADIA OVERHAUL (owner-directed, 2026-06-15)
+
+A design pass reshaping the fantasy economy + tech tree into a fun, legible whole. The owner-locked model:
+**gold = the player's economy (bounties + building) · manpower = legions · mana = the tech+magic arm**
+(mana is the SOLE tech resource AND fuels spells — aether is your "science"; tech and spells share the pool,
+a live invest-vs-cast tension). Built as a judge-panel design (4 lenses + synthesis) then three green verticals.
+
+**V1 — the fleshed-out tech tree + rail-gate (golden-neutral, no re-pin).** 11 techs across three thematic
+spines, MANA-costed, tier-gated by a prereq (the panel reads as a tree). Adding techs is just more bits in
+the existing `tech_unlocked` u32, and every effect falls back to its shipped constant when the bit is unset —
+so transit + both goldens are byte-identical (verified: no re-pin).
+
+- **`tech.rs`:** `Tech { bit, cost, prereq }` + `TECHS[11]` + `prereq_met`. Spines (tier-1): FORGE_MASTERY,
+  CONSCRIPTION, SAPPERS. Branches (tier-2, each ← its spine): PRODUCTION_SURGE (×3 production), BOUNTY_MASTERY
+  (bountied-town siege +50%), HEAVY_RAIL (unlock the mode), SIEGE_DOCTRINE (all sieges +50%), STANDING_GARRISON
+  (captured towns cut down raiders — conquest→defence), WAR_MARCH (legions +50% speed), AETHERIC_FONT (aether
+  mints +50% mana), WARD_LINES (rail cordon raider-range +50%). `UnlockTech` now spends MANA + enforces the prereq.
+- **Effect hooks (all gated, golden-neutral):** `forge.rs` (production mult + mana-mint mult), `army.rs` (march
+  speed + siege grind, incl. the bountied-target bonus), `raider.rs` (captured-town interception + ward range).
+- **The landmine I caught:** the panel's "purge radius 2→3" tech would make a lone capital UNLOSEABLE (radius ≥
+  LOSE_DIST). Repurposed it to WARD_LINES (raider-range, safe) rather than ship an unloseable realm.
+- **Rail-gate + Heavy Rail:** arcadia builds RAIL only (bus/ferry/plane rejected); HEAVY rail (an
+  already-specced mode) unlocks via the HEAVY_RAIL tech. Enforced in `apply` (not `validate`, which can't see
+  `tech_unlocked`); the toolbar shows only Rail (+ Heavy once teched), enabledModes gates the chord/settings.
+- **Frontend:** the `TechPanel` renders the 11-tech tree (tiers indented, prereq-locked rows 🔒, mana costs ✦);
+  the toolbar filters modes by ruleset+tech. Screenshot `docs/progress/fantasy-tech.png`.
+- **Tests:** `tech.rs` + `economy_split.rs` reworked for mana-sole-tech + the new prereq gate; new
+  `tech_effects.rs` (rail-gate: rail builds, bus/ferry/plane rejected, heavy unlocks with the tech; transit
+  unaffected). `e2e/fantasy-tech.spec.ts` → the rail-gate + tech panel on the real bundle.
+- Tiers: cargo **226/0** (goldens UNCHANGED — golden-neutral) · full e2e **25/25** · vitest **27/27** · tsc clean.
+- **Next:** V2 — the SPELL ARM (SPELLCRAFT unlocks mana auto-cast Purge/Smite/Warpath). V3 — the economy
+  re-map (legions→manpower, bounties→gold) + balance re-tune.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

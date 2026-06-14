@@ -1033,6 +1033,20 @@ impl World {
         if let Err(reason) = self.ruleset.validate(cmd) {
             return vec![Event::Rejected { reason }];
         }
+        // S11 RAIL-GATE (arcadia): the realm builds RAIL only; bus/ferry/plane are not available, and HEAVY
+        // rail (mode 4) unlocks via the HEAVY_RAIL tech. Done here (not in `ruleset.validate`) because it
+        // depends on `tech_unlocked`, which `validate` can't see. Transit is untouched (all modes allowed).
+        if crate::ruleset::canon(&self.city.ruleset) == "arcadia" {
+            if let Command::CreateLine { mode, .. } = cmd {
+                let allowed =
+                    *mode == 0 || (*mode == 4 && crate::tech::is_unlocked(self.tech_unlocked, crate::tech::HEAVY_RAIL));
+                if !allowed {
+                    return vec![Event::Rejected {
+                        reason: "Arcadia builds rail only — heavy rail needs the Heavy Rail tech".into(),
+                    }];
+                }
+            }
+        }
         let events = match cmd {
             Command::PlaceStation { x_mm, y_mm, name } => {
                 let id = StationId(self.stations.len() as u32);
@@ -1070,22 +1084,26 @@ impl World {
                 }
             }
             Command::UnlockTech { tech } => {
-                // Buy a tech with its CHANNEL (S11 economy split — gold/mana/manpower). Validate id, refuse
-                // a repeat (the bit is already set), then afford-gate against THAT channel — so the spend is
-                // exactly once and never drives the channel negative. Reject (no mutation) on any failure.
+                // Buy a tech with MANA (the sole tech resource, S11). Validate id, refuse a repeat (bit set),
+                // require the PREREQ (tier gate), then afford-gate against mana — so the spend is exactly once
+                // and never drives mana negative. Reject (no mutation) on any failure.
                 let id = *tech as usize;
+                let ch = crate::tech::TECH_CHANNEL;
                 match crate::tech::TECHS.get(id).copied() {
                     None => vec![Event::Rejected { reason: "UnlockTech: unknown tech".into() }],
                     Some(t) if self.tech_unlocked & (1u32 << t.bit) != 0 => {
                         vec![Event::Rejected { reason: "UnlockTech: already unlocked".into() }]
                     }
-                    Some(t) if t.channel.balance(self) < t.cost => {
-                        vec![Event::Rejected { reason: format!("UnlockTech: not enough {}", t.channel.label()) }]
+                    Some(_) if !crate::tech::prereq_met(self.tech_unlocked, id) => {
+                        vec![Event::Rejected { reason: "UnlockTech: prerequisite not unlocked".into() }]
+                    }
+                    Some(t) if ch.balance(self) < t.cost => {
+                        vec![Event::Rejected { reason: "UnlockTech: not enough mana".into() }]
                     }
                     Some(t) => {
-                        t.channel.spend(self, t.cost);
+                        ch.spend(self, t.cost);
                         self.tech_unlocked |= 1u32 << t.bit;
-                        vec![Event::TechUnlocked { tech: *tech, balance_left: t.channel.balance(self) }]
+                        vec![Event::TechUnlocked { tech: *tech, balance_left: ch.balance(self) }]
                     }
                 }
             }

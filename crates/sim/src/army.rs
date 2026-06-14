@@ -132,7 +132,9 @@ pub(crate) fn advance_armies(world: &mut World, dt_ms: i64) {
     let dt = dt_ms.max(0);
     // March pace is a per-city knob (externalised so the large baked continent's legions move at
     // continent scale). 0 ⇒ the `ARMY_SPEED_MM_S` default, so the demo + golden fixture are unchanged.
-    let speed = if world.city.army_speed_mm_s > 0 { world.city.army_speed_mm_s } else { ARMY_SPEED_MM_S };
+    let base = if world.city.army_speed_mm_s > 0 { world.city.army_speed_mm_s } else { ARMY_SPEED_MM_S };
+    // S11 WAR_MARCH: legions march +50% faster (×3/2). 0 ⇒ ×1, byte-identical.
+    let speed = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::WAR_MARCH) { base * 3 / 2 } else { base };
     let step = speed.saturating_mul(dt) / 1000;
     for i in 0..world.armies.len() {
         if world.armies.state[i] != MARCHING {
@@ -213,7 +215,18 @@ pub(crate) fn siege(world: &mut World) {
             continue;
         }
         if world.town_value[t] > 0 {
-            let strength = world.armies.strength[i].max(1);
+            // S11 siege techs: SIEGE_DOCTRINE grinds all sieges +50%; BOUNTY_MASTERY grinds a BOUNTIED
+            // target an ADDITIONAL +50% (focus-fire your steered target). Multiplicative, integer. 0 techs
+            // ⇒ ×1 ⇒ the shipped grind, byte-identical.
+            let mut strength = world.armies.strength[i].max(1);
+            if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::SIEGE_DOCTRINE) {
+                strength = strength * 3 / 2;
+            }
+            if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::BOUNTY_MASTERY)
+                && world.bounty.get(t).copied().unwrap_or(0) > 0
+            {
+                strength = strength * 3 / 2;
+            }
             world.town_value[t] = (world.town_value[t] - strength).max(0);
             if world.town_value[t] == 0 {
                 // The town falls — counted ONCE, on the grind→flip transition.

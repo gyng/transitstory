@@ -53,6 +53,10 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   const bridge = new SimBridge(city.seed, city.coreCityJson);
   const game = new Game(bridge, map, overlay, new Buildability(city.buildability));
   game.ruleset = city.raw.ruleset ?? "transit"; // mode-aware chrome (fantasy build tools etc.)
+  // S11 rail-gate: arcadia builds RAIL only (+ Heavy Rail once teched). Enable rail + heavy here so the
+  // chord/settings can't select bus/ferry/plane; the toolbar only SHOWS heavy once HEAVY_RAIL is unlocked,
+  // and the sim rejects an un-teched heavy line regardless (the source of truth).
+  if (game.ruleset === "arcadia") game.enabledModes = new Set([0, 4]);
   game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   game.demandCellM = city.demandCellM; // sizes the demand-heat hexagons to the grid pitch
   // Fantasy baked terrain IS the map: feed the raw buildability cells (exact hex centres — NOT the

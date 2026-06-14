@@ -56,10 +56,18 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
         world.forge_accum.resize(n, 0);
     }
     let dt = dt_ms.max(0);
-    // S11 FORGE_MASTERY: raw production rate ×2 when the tech is unlocked. Read once (copy out of the
-    // borrow); 0 ⇒ ×1 ⇒ the shipped accrual, byte-identical (transit + pre-tech arcadia never set it).
-    let rate = RATE_MICRO_PER_WEIGHT_MS
-        * if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::FORGE_MASTERY) { 2 } else { 1 };
+    // S11 production tech: PRODUCTION_SURGE ⇒ ×3, else FORGE_MASTERY ⇒ ×2, else ×1 (the shipped accrual,
+    // byte-identical when no tech). Read once (copy out of the borrow).
+    let prod_mult = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::PRODUCTION_SURGE) {
+        3
+    } else if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::FORGE_MASTERY) {
+        2
+    } else {
+        1
+    };
+    let rate = RATE_MICRO_PER_WEIGHT_MS * prod_mult;
+    // S11 AETHERIC_FONT: aether chains mint +50% MANA (×3/2). 0 ⇒ ×1, byte-identical.
+    let mana_num = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::AETHERIC_FONT) { 3 } else { 2 };
     for s in 0..n {
         let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
         let base = s * N_COMMODITIES;
@@ -146,7 +154,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
                     world.forge_stock[base + c as usize] -= limit;
                     // S11 ECONOMY SPLIT: each consumed input mints its specialised channel alongside gold.
                     match crate::tech::channel_of(c as usize) {
-                        crate::tech::Channel::Mana => mana = mana.saturating_add(limit),
+                        crate::tech::Channel::Mana => mana = mana.saturating_add(limit * mana_num / 2),
                         crate::tech::Channel::Manpower => manpower = manpower.saturating_add(limit),
                         crate::tech::Channel::Gold => {}
                     }
@@ -166,7 +174,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
                 if amt > 0 {
                     got = got.saturating_add(amt);
                     match crate::tech::channel_of(c) {
-                        crate::tech::Channel::Mana => mana = mana.saturating_add(amt),
+                        crate::tech::Channel::Mana => mana = mana.saturating_add(amt * mana_num / 2),
                         crate::tech::Channel::Manpower => manpower = manpower.saturating_add(amt),
                         crate::tech::Channel::Gold => {}
                     }

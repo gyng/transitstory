@@ -69,12 +69,22 @@ export const CHANNELS: Record<Channel, { glyph: string; statKey: "tribute" | "ma
   mana: { glyph: "✦", statKey: "mana" },
   manpower: { glyph: "⚔", statKey: "manpower" },
 };
-/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, cost + the CHANNEL it's paid in).
- *  The HUD reads `Stats.techUnlocked` (bit per id) + the channel balance to render locked/affordable/owned. */
-export const TECHS: { id: number; name: string; cost: number; channel: Channel; blurb: string }[] = [
-  { id: 0, name: "Forge Mastery", cost: 24, channel: "gold", blurb: "Sources produce twice as fast" },
-  { id: 1, name: "Conscription", cost: 40, channel: "manpower", blurb: "Legions cost half the gold (needs an arms economy)" },
-  { id: 2, name: "Sappers", cost: 56, channel: "mana", blurb: "The decadence tide creeps half as fast (needs an aether economy)" },
+/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, mana cost, prereq). All tech is
+ *  bought with MANA (the sole tech resource). `tier` + `prereq` drive the panel's tree layout + gating.
+ *  The HUD reads `Stats.techUnlocked` (bit per id) + `Stats.mana` to render locked/affordable/owned. */
+export interface TechDef { id: number; name: string; cost: number; tier: number; prereq: number; blurb: string }
+export const TECHS: TechDef[] = [
+  { id: 0, name: "Forge Mastery", cost: 30, tier: 1, prereq: -1, blurb: "Sources produce twice as fast" },
+  { id: 1, name: "Conscription", cost: 35, tier: 1, prereq: -1, blurb: "Legions cost half the manpower" },
+  { id: 2, name: "Sappers", cost: 30, tier: 1, prereq: -1, blurb: "The decadence tide creeps half as fast" },
+  { id: 3, name: "Production Surge", cost: 60, tier: 2, prereq: 0, blurb: "Sources produce three times as fast" },
+  { id: 4, name: "Bounty Mastery", cost: 45, tier: 2, prereq: 1, blurb: "Legions besieging a bountied town grind +50%" },
+  { id: 5, name: "Heavy Rail", cost: 70, tier: 2, prereq: 0, blurb: "Unlocks heavy rail — high-capacity arterial track" },
+  { id: 6, name: "Siege Doctrine", cost: 65, tier: 2, prereq: 1, blurb: "All besieging legions grind +50%" },
+  { id: 7, name: "Standing Garrison", cost: 55, tier: 2, prereq: 1, blurb: "Captured towns cut down raiders" },
+  { id: 8, name: "Forced March", cost: 55, tier: 2, prereq: 1, blurb: "Legions march +50% faster" },
+  { id: 9, name: "Ley Tap", cost: 45, tier: 2, prereq: 2, blurb: "Aether mints +50% mana" },
+  { id: 10, name: "Ward Lines", cost: 55, tier: 2, prereq: 2, blurb: "Your rails cut raiders down from +50% range" },
 ];
 /** True iff tech `id` is unlocked in the bitset (mirrors tech::is_unlocked; bit == id for the shipped set). */
 export const techUnlocked = (bits: number, id: number): boolean => (bits & (1 << id)) !== 0;

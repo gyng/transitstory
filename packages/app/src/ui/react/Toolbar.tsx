@@ -5,8 +5,9 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Tool } from "../../game";
-import { useGame, useGameUI, useLoop } from "./GameContext";
+import { useGame, useGameUI, useLoop, useStats } from "./GameContext";
 import { MODES, type ModeDef } from "./shared";
+import { techUnlocked } from "../../commands/codec";
 import { Settings } from "./Settings";
 import { BuildHud } from "./BuildHud";
 
@@ -138,6 +139,7 @@ export function Toolbar() {
   const game = useGame();
   const loop = useLoop();
   const ui = useGameUI();
+  const stats = useStats();
 
   const [speed, setSpeed] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -159,6 +161,13 @@ export function Toolbar() {
   }, [game]);
 
   const enabled = new Set(ui.enabledModes);
+  // S11 RAIL-GATE: arcadia builds RAIL only; Heavy Rail (mode 4) appears once its tech is unlocked.
+  // Transit shows every mode. (The sim enforces this regardless; this is the matching chrome.)
+  const HEAVY_RAIL_TECH = 5; // crates/sim/tech.rs HEAVY_RAIL id
+  const visibleModes =
+    ui.ruleset === "arcadia"
+      ? MODES.filter((m) => m.id === 0 || (m.id === 4 && techUnlocked(stats.techUnlocked, HEAVY_RAIL_TECH)))
+      : MODES;
   const activeMode = MODES.find((x) => x.id === ui.transport) ?? MODES[0];
   const running = ui.mode === "run";
 
@@ -249,7 +258,7 @@ export function Toolbar() {
             pointerEvents: "auto",
           }}
         >
-          {MODES.map((m) => (
+          {visibleModes.map((m) => (
           <BigModeButton
             key={m.id}
             m={m}

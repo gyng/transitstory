@@ -162,7 +162,13 @@ fn march(world: &mut World, dt_ms: i64) {
 /// ordered ⇒ deterministic. The DONE slot is recyclable by the next spawn (bounded SoA).
 fn resolve(world: &mut World) {
     let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
-    let def2 = DEFENSE_RANGE_MM.saturating_mul(DEFENSE_RANGE_MM);
+    // S11 WARD_LINES: arcane wards extend the rail cordon's reach +50% (range ×3/2). 0 ⇒ ×1, byte-identical.
+    let def_range = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::WARD_LINES) {
+        DEFENSE_RANGE_MM * 3 / 2
+    } else {
+        DEFENSE_RANGE_MM
+    };
+    let def2 = def_range.saturating_mul(def_range);
     let arr2 = ARRIVE_MM.saturating_mul(ARRIVE_MM);
     for i in 0..world.raiders.len() {
         if world.raiders.state[i] != MARCHING {
@@ -202,6 +208,18 @@ fn intercepted(world: &World, x: i64, y: i64, def2: i64) -> bool {
             let (dx, dy) = (s.pos.x_mm - x, s.pos.y_mm - y);
             if dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy)) <= def2 {
                 return true;
+            }
+        }
+    }
+    // S11 STANDING_GARRISON: CAPTURED towns (town_value ground to 0) also cut raiders down — conquest
+    // extends the cordon to the frontier you've taken, even off-rail. Gated on the tech; 0 ⇒ skipped.
+    if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::STANDING_GARRISON) {
+        for s in 0..world.stations.len() {
+            if world.town_value.get(s).copied() == Some(0) && !world.stations[s].removed {
+                let (dx, dy) = (world.stations[s].pos.x_mm - x, world.stations[s].pos.y_mm - y);
+                if dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy)) <= def2 {
+                    return true;
+                }
             }
         }
     }

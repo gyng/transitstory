@@ -58,7 +58,10 @@ fn play_tech(seed: u64, horizon: usize, auto_tech: Option<usize>) -> Telemetry {
         w.tick(50);
         // Buy the tech the moment it's affordable (the player's natural first move once supply pays out).
         if let Some(id) = auto_tech {
-            if !bought && w.tribute >= sim::tech::TECHS[id].cost {
+            // Tech is bought with MANA now (the sole tech resource). The demo `play` world is ore-only
+            // (no aether ⇒ no mana), so this is a no-op there — the gate still asserts the tech doesn't
+            // BREAK pacing; the tech EFFECT is proven in tech.rs (aether world). V3 re-tunes balance.
+            if !bought && w.mana >= sim::tech::TECHS[id].cost {
                 w.apply(&Command::UnlockTech { tech: id as u8 });
                 bought = true;
             }

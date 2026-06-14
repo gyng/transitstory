@@ -3,7 +3,7 @@
 //! Gold's VOLUME is untouched (the war-chest balance is preserved); mana/manpower are additive specialised
 //! yields that gate channel-specific tech. These prove the minting (by commodity), the gold invariant, and
 //! that a tech can only be bought with ITS channel — all through the command/tick path.
-use sim::tech::{channel_of, Channel, CONSCRIPTION, FORGE_MASTERY, SAPPERS, TECHS};
+use sim::tech::{channel_of, Channel, FORGE_MASTERY, PRODUCTION_SURGE, TECHS};
 use sim::*;
 
 const ORE: u8 = 0;
@@ -109,31 +109,39 @@ fn the_arms_chain_mints_manpower() {
 }
 
 #[test]
-fn a_tech_is_bought_only_with_its_channel() {
-    // SAPPERS costs MANA. A gold-only (ore) realm can NEVER afford it; an aether realm can.
-    assert_eq!(TECHS[SAPPERS].channel, Channel::Mana);
+fn tech_is_bought_only_with_mana() {
+    // ALL tech costs MANA (mana is the sole tech resource). A gold-only (ore) realm — even RICH in gold —
+    // can't buy any tech; only an aether (mana) realm can. Aether is your science.
+    assert_eq!(sim::tech::TECH_CHANNEL, Channel::Mana);
     let mut ore = run_supply(ORE, 12000);
-    assert!(ore.tribute >= TECHS[SAPPERS].cost, "the ore realm is rich in GOLD…");
-    let ev = ore.apply(&Command::UnlockTech { tech: SAPPERS as u8 });
-    assert!(matches!(ev.as_slice(), [Event::Rejected { .. }]), "…but gold can't buy a MANA tech");
+    assert!(ore.tribute >= TECHS[FORGE_MASTERY].cost, "the ore realm is rich in gold…");
+    assert_eq!(ore.mana, 0, "…but has no mana");
+    let ev = ore.apply(&Command::UnlockTech { tech: FORGE_MASTERY as u8 });
+    assert!(matches!(ev.as_slice(), [Event::Rejected { .. }]), "…so gold alone can't buy a tech");
     assert_eq!(ore.tech_unlocked, 0);
 
     let mut aether = run_supply(AETHER, 12000);
-    assert!(aether.mana >= TECHS[SAPPERS].cost, "the aether realm earned mana: {}", aether.mana);
+    assert!(aether.mana >= TECHS[FORGE_MASTERY].cost, "the aether realm earned mana: {}", aether.mana);
     let mana_before = aether.mana;
-    let ev = aether.apply(&Command::UnlockTech { tech: SAPPERS as u8 });
-    assert!(matches!(ev.as_slice(), [Event::TechUnlocked { .. }]), "mana buys the mana tech: {ev:?}");
-    assert_eq!(aether.mana, mana_before - TECHS[SAPPERS].cost, "exactly the cost is spent FROM MANA");
-    assert!(sim::tech::is_unlocked(aether.tech_unlocked, SAPPERS), "SAPPERS is unlocked");
-
-    // CONSCRIPTION costs MANPOWER — the war chain affords it; a gold/mana realm cannot.
-    assert_eq!(TECHS[CONSCRIPTION].channel, Channel::Manpower);
-    let ev = aether.apply(&Command::UnlockTech { tech: CONSCRIPTION as u8 });
-    assert!(matches!(ev.as_slice(), [Event::Rejected { .. }]), "no manpower ⇒ no military tech");
-    // FORGE_MASTERY (gold) is still affordable in the aether realm (it minted gold too).
-    assert_eq!(TECHS[FORGE_MASTERY].channel, Channel::Gold);
     let ev = aether.apply(&Command::UnlockTech { tech: FORGE_MASTERY as u8 });
-    assert!(matches!(ev.as_slice(), [Event::TechUnlocked { .. }]), "gold still buys the gold tech: {ev:?}");
+    assert!(matches!(ev.as_slice(), [Event::TechUnlocked { .. }]), "mana buys tech: {ev:?}");
+    assert_eq!(aether.mana, mana_before - TECHS[FORGE_MASTERY].cost, "exactly the cost is spent FROM MANA");
+    assert!(sim::tech::is_unlocked(aether.tech_unlocked, FORGE_MASTERY), "FORGE_MASTERY is unlocked");
+}
+
+#[test]
+fn a_tier_2_tech_needs_its_prerequisite() {
+    // PRODUCTION_SURGE (tier 2) requires FORGE_MASTERY (its tier-1 spine) first, even with mana to spare.
+    let mut w = run_supply(AETHER, 30000); // mana-rich
+    assert!(w.mana >= TECHS[PRODUCTION_SURGE].cost + TECHS[FORGE_MASTERY].cost, "enough mana for both: {}", w.mana);
+    let ev = w.apply(&Command::UnlockTech { tech: PRODUCTION_SURGE as u8 });
+    assert!(matches!(ev.as_slice(), [Event::Rejected { .. }]), "the tier-2 tech is rejected without its prereq");
+    assert!(!sim::tech::is_unlocked(w.tech_unlocked, PRODUCTION_SURGE));
+    // Unlock the spine, then the branch succeeds.
+    w.apply(&Command::UnlockTech { tech: FORGE_MASTERY as u8 });
+    let ev = w.apply(&Command::UnlockTech { tech: PRODUCTION_SURGE as u8 });
+    assert!(matches!(ev.as_slice(), [Event::TechUnlocked { .. }]), "with the prereq, the branch unlocks: {ev:?}");
+    assert!(sim::tech::is_unlocked(w.tech_unlocked, PRODUCTION_SURGE));
 }
 
 #[test]
