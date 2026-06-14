@@ -890,6 +890,25 @@ export function armyLayer(positionsLngLat: Float32Array, count: number): Layer {
   });
 }
 
+/** Decadence-RAIDER dots (fantasy/arcadia, S11 — the rival): enemy marauders marching the capital off-rail.
+ *  A sickly decay-green with a dark ring so they read as a THREAT, distinct from the crimson legions and the
+ *  line-tinted carts. `positionsLngLat` interleaved lng/lat (caller converts from metres). Capped + few, so
+ *  a plain per-compose ScatterplotLayer is cheap. Drawn above legions (the incoming danger sits on top). */
+export function raiderLayer(positionsLngLat: Float32Array, count: number): Layer {
+  return new ScatterplotLayer({
+    id: "raiders",
+    data: { length: count, attributes: { getPosition: { value: positionsLngLat, size: 2 } } },
+    getFillColor: [120, 170, 70],
+    getLineColor: [30, 40, 24],
+    stroked: true,
+    lineWidthMinPixels: 1.5,
+    getRadius: 5,
+    radiusUnits: "pixels",
+    radiusMinPixels: 4,
+    radiusMaxPixels: 9,
+  });
+}
+
 /** Individual rider "peeps" via deck BINARY attributes (data.attributes) — NO per-object accessors,
  *  so it scales to the core's MAX_VISIBLE_PEEPS at 60fps where an object-array layer would cliff.
  *  `positionsLngLat` is interleaved [lng,lat,...] (f32) and `colors` interleaved RGBA (u8); both are

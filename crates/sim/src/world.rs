@@ -101,6 +101,21 @@ pub struct World {
     /// `v.clear()` (every `SetHeadway`) can't teleport a marching army (binding condition #2). Its
     /// authoritative fields are hashed; empty for transit. See [`crate::army`].
     pub armies: crate::army::ArmySoA,
+    /// The RIVAL (fantasy, S11): decadence raiders — a separate hashed SoA (free 2-D off-rail position),
+    /// fielded from the reservoir, marching the capital. Empty for transit/demo (no reservoir).
+    pub raiders: crate::raider::RaiderSoA,
+    /// Raider spawn-cadence accumulator (ms) + the reservoir cursor — hashed (gameplay-causal), but no rng:
+    /// a fixed accumulator + a cycling counter keep the rival deterministic. 0 for transit/demo.
+    pub raider_spawn_accum_ms: i64,
+    pub raider_cursor: u32,
+    /// Lose-meter floor-raise from raiders that REACHED the capital (S11). The field-derived `decadence`
+    /// is overwritten each tick, so raiders accumulate their damage HERE; the field step adds it back on
+    /// top (bounded by the capital threshold). DECAYS toward 0 via `heal_breach` (the realm recovers when
+    /// the network holds — no point-of-no-return). 0 for transit/demo (no raiders). Hashed.
+    pub raider_breach: i64,
+    /// Sub-unit accumulator for the breach HEAL (so a slow per-tick decay rate isn't truncated to 0). 0
+    /// for transit/demo. Hashed.
+    pub raider_breach_heal_accum: i64,
     /// Per-town resistance (siege HP, fantasy S8b): a defended town grinds down under siege; 0 = fallen.
     /// **Hashed.** Lazily sized to the node count (empty for transit). Index = StationId.
     pub town_value: Vec<i64>,
@@ -368,6 +383,16 @@ struct Canonical<'a> {
     /// (no aether/ingot delivered), so the re-pin is appended zero bytes, behaviour byte-identical.
     mana: i64,
     manpower: i64,
+    /// The S11 RIVAL — raider 2-D positions + state + spawn cadence/cursor (fantasy). Appended LAST —
+    /// empty/0 for transit + demo arcadia (no reservoir ⇒ no raiders), so the re-pin is appended zero
+    /// bytes, behaviour byte-identical. Free 2-D position IS the authority (off-rail) ⇒ hashed.
+    raider_x_mm: &'a [i64],
+    raider_y_mm: &'a [i64],
+    raider_state: &'a [u8],
+    raider_spawn_accum_ms: i64,
+    raider_cursor: u32,
+    raider_breach: i64,
+    raider_breach_heal_accum: i64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -450,6 +475,11 @@ impl World {
             forge_stock: Vec::new(),
             forge_accum: Vec::new(),
             armies: crate::army::ArmySoA::default(),
+            raiders: crate::raider::RaiderSoA::default(),
+            raider_spawn_accum_ms: 0,
+            raider_cursor: 0,
+            raider_breach: 0,
+            raider_breach_heal_accum: 0,
             town_value: Vec::new(),
             towns_captured: 0,
             is_barracks: Vec::new(),
@@ -924,6 +954,7 @@ impl World {
             decadence_pct: crate::decadence::pct(self),
             towns_captured: self.towns_captured as f64,
             army_count: self.armies.len() as u32,
+            raider_count: self.raiders.live() as u32,
             realm_lost: crate::decadence::is_lost(self),
             tech_unlocked: self.tech_unlocked,
         }
@@ -1477,6 +1508,13 @@ impl World {
             tech_unlocked: self.tech_unlocked,
             mana: self.mana,
             manpower: self.manpower,
+            raider_x_mm: &self.raiders.x_mm,
+            raider_y_mm: &self.raiders.y_mm,
+            raider_state: &self.raiders.state,
+            raider_spawn_accum_ms: self.raider_spawn_accum_ms,
+            raider_cursor: self.raider_cursor,
+            raider_breach: self.raider_breach,
+            raider_breach_heal_accum: self.raider_breach_heal_accum,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

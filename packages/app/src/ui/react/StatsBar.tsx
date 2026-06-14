@@ -117,6 +117,11 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
           ⚔ {armies} legion{armies === 1 ? "" : "s"}
         </div>
       )}
+      {Math.round(s.raiderCount) > 0 && (
+        <div data-testid="raiders" style={{ color: "#5c7a2e", fontWeight: 600 }} title="Decadence raiders marching on your capital. Your rail network cuts them down — cover the approaches, or they deepen the rot.">
+          ☣ {Math.round(s.raiderCount)} raider{Math.round(s.raiderCount) === 1 ? "" : "s"}
+        </div>
+      )}
       {s.realmLost && (
         <div data-testid="realm-lost" style={{ color: "var(--ot-gauge-bad)", fontWeight: 700 }}>
           ☠ THE REALM HAS FALLEN

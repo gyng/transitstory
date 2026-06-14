@@ -90,6 +90,13 @@ impl Sim {
         sim::render_buf::army_positions_m(&self.world)
     }
 
+    /// Interleaved RAIDER positions `[x0,y0,...]` in metres (fantasy, S11 — the rival). Empty for transit /
+    /// a realm the rival hasn't reached. Read each frame like army positions; bounded (capped raiders).
+    #[wasm_bindgen(js_name = raiderPositions)]
+    pub fn raider_positions(&self) -> Vec<f32> {
+        sim::render_buf::raider_positions_m(&self.world)
+    }
+
     /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {

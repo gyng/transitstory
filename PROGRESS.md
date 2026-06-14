@@ -2612,6 +2612,56 @@ not just its volume — an aether economy buys arcane tech, an arms economy buys
 - Tiers: cargo **217/0** (goldens re-pinned green; war-chest gates unchanged) · `build_world --selftest`
   **PASS** · full e2e **24/24** · vitest **24/24** · `tsc` clean.
 
+**S11 — the RIVAL KINGDOM: decadence raiders (user-chosen 2026-06-15).** The last deferred S11 item, and the
+one the design flags as "the biggest gate-blind risk — a livelocking/oscillating rival passes `run==run`,
+and a visible enemy army invites the defend-order RTS trap." Built to the design's gate-safe Tier-1-LITE
+shape and **adversarially verified** (3-lens workflow). The decadence is no longer just a passive tide: it
+FIELDS marauders.
+
+- **`raider.rs` — a separate hashed `RaiderSoA`** (free 2-D position IS the authority, off-rail — like the
+  "army is its own SoA, not a shared kind byte" rule). Raiders SPAWN from the far-edge reservoir, MARCH
+  straight at the capital, and if they reach it RAISE `raider_breach` (a permanent floor the field step
+  folds INTO the lose meter — `world.decadence` is re-derived each tick, so a raider can't shove that scalar
+  directly). The player's RAIL NETWORK cuts them down: a raider within range of a station on a built line is
+  destroyed (coverage = defence, reinforcing the core loop — Majesty-style, NO RTS micro).
+- **Gate-safe BY CONSTRUCTION** (the design's named hazards, asserted structurally in `tests/raider.rs`, not
+  via `run==run`): **no livelock** — a raider marches straight at the FIXED capital so its distance-to-capital
+  is monotone non-increasing (integer-exact `i64::isqrt`); **no sawtooth / bounded system-wide** — a hard
+  `MAX_RAIDERS` slot cap with DONE-slot RECYCLING (the SoA never grows past the cap, spawning continues at
+  steady state); **deterministic** — NO rng (a fixed cadence accumulator + a reservoir cursor), integer-only,
+  index-ordered, replays bit-for-bit; **no RTS trap** — defence is automatic (the network), not unit control.
+- **Decadence-fed cadence:** the spawn period shortens as decadence rises (`BASE/(1+decadence/SCALE)`,
+  floored) — raiders are rare in the early conquest window and swarm late ("their economy IS the decadence").
+- **Golden-neutral:** no reservoir (transit + demo arcadia have no decadence field) ⇒ no spawns ⇒ empty SoA +
+  0 breach. Re-pin (RED-first): the raider SoA slices + spawn-accum/cursor/breach join `Canonical` LAST ⇒
+  both goldens shift once (appended zeros, behaviour byte-identical). Transit `0xcd39…1d09 → 0xaeef…6d01`;
+  arcadia `0x1757…0a4a → 0xf4e1…867a`, with provenance.
+- **Balance preserved:** the synthetic `balance.rs` worlds have no reservoir ⇒ no raiders ⇒ the winnable/
+  bites/tech gates are unchanged; the baked conquest e2e STILL HOLDS (raiders are a gentle early threat the
+  network absorbs — conquest still lands at step 4, decadence trajectory within rounding).
+- **Tests:** `tests/raider.rs` (+8) — fields-from-reservoir, bounded-no-sawtooth, monotone-march-no-livelock,
+  network-cuts-them-down, breach-raises-the-meter, held-network-RECOVERS-no-point-of-no-return,
+  no-reservoir-golden-neutral, replays-bit-for-bit. `e2e/fantasy-rival.spec.ts` — the rival fields raiders on
+  the REAL baked world AND the realm still holds.
+- **Frontend:** raiders render as sickly decay-green dots above the legions (`raiderLayer`, the same
+  metres→lng/lat copy-out path as armies); the StatsBar shows a ☣ raider count when the rival is afield.
+  Screenshot: `docs/progress/fantasy-rival.png`.
+- **Adversarial verification (3-lens workflow):** livelock/sawtooth + determinism/golden-neutrality both
+  returned **0 issues** (one ran an EXHAUSTIVE integer search over the march band confirming distance is
+  monotone; the other traced every Canonical field + golden-neutrality and ran the suites green). The
+  panic-safety/overflow lens confirmed the hot path is panic/overflow-safe AND surfaced one REAL medium
+  gameplay flaw: `raider_breach` accumulated PERMANENTLY (no decay) ⇒ an invisible irreversible
+  point-of-no-return once ~167 raiders breached, contradicting "conquest/holding is a brake." **Fixed:**
+  `heal_breach` decays the breach toward 0 (a held network fully recovers — proven by the new recovery test),
+  per-raid damage bumped + capped so the threat keeps teeth under sustained assault. The low test-hygiene nit
+  (an unchecked multiply in a test helper) was fixed too.
+- Tiers: cargo **225/0** (goldens re-pinned green; balance gates unchanged) · `build_world --selftest` **PASS**
+  · full e2e **25/25** · vitest **24/24** · `tsc` clean.
+
+> **The fantasy fork's S11 is now COMPLETE** — gauges, capacity stack, baked 3-stage Forge-Line, tech tree,
+> frontier garrisons, the scored victory, the economy split, and the rival kingdom. The build plan's S0→S11
+> roadmap is delivered.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

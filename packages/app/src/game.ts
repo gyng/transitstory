@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyLayer, raiderLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -54,6 +54,7 @@ const EMPTY_STATS: Stats = {
   decadencePct: 0,
   townsCaptured: 0,
   armyCount: 0,
+  raiderCount: 0,
   realmLost: false,
   techUnlocked: 0,
 };
@@ -1575,6 +1576,16 @@ export class Game {
     return armyLayer(xy, count);
   }
 
+  /** Decadence-raider dots (fantasy, S11 — the rival). Same metres→lng/lat-in-place path as legions.
+   *  Null when no raiders march (transit always; arcadia until the rival fields one). */
+  raiderLayerAt(): Layer | null {
+    const xy = this.bridge.raiderPositions();
+    const count = xy.length >> 1;
+    if (count === 0) return null;
+    for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
+    return raiderLayer(xy, count);
+  }
+
   /** The decadence tide's corrupted cells (fantasy S10c), read on each ~3 Hz refresh (the tide creeps
    *  slowly, never per frame). `[x_m,y_m,v,...]` metres → lng/lat. Empty for transit / before it starts. */
   private decadenceTideAt(): TideCell[] {
@@ -1591,6 +1602,8 @@ export class Game {
     const peep = peeps ? [peeps] : [];
     const armies = this.armyLayerAt();
     const army = armies ? [armies] : []; // legions above carts, below peeps/labels (z-order)
+    const raiders = this.raiderLayerAt();
+    const raider = raiders ? [raiders] : []; // the rival's marauders, above legions (the incoming threat)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
     // only the network — drop the per-station waiting halos, the pinned label, and the vehicle
     // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
@@ -1602,7 +1615,7 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
-    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...peep, ...above] });
+    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...raider, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */

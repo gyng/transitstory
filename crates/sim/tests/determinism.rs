@@ -59,7 +59,9 @@ fn replay_equality() {
 //   0xfd8e_5b04_8a81_c31b — S10b decadence CA (the empty `decadence_cells` slice appended)
 //   0x5aa7_c3b7_5a7e_86e1 — S11 tech (the `tech_unlocked` u32 appended, 0 for transit)
 //   0xcd39_4898_bd9f_1d09 — S11 economy split (the `mana`+`manpower` i64s appended, 0 for transit)
-const GOLDEN_TRANSIT_HASH: u64 = 0xcd39_4898_bd9f_1d09;
+//   0x9c0d_0265_845a_38b3 — S11 rival (the raider SoA slices + spawn-accum/cursor/breach/breach-heal-accum
+//                           appended, all empty/0 for transit — no reservoir ⇒ no raiders)
+const GOLDEN_TRANSIT_HASH: u64 = 0x9c0d_0265_845a_38b3;
 
 #[test]
 fn golden_transit_hash_pinned() {

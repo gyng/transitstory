@@ -227,6 +227,22 @@ pub fn army_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved RAIDER positions `[x0_m, y0_m, ...]` in metres (fantasy S11 — the rival). Raiders march
+/// free 2-D (their position IS the authoritative hashed state), so this is a direct copy-out of the
+/// MARCHING raiders. Empty for transit / a realm the rival hasn't reached.
+pub fn raider_positions_m(w: &World) -> Vec<f32> {
+    let r = &w.raiders;
+    let mut out = Vec::with_capacity(r.live() * 2);
+    for i in 0..r.len() {
+        if r.state[i] != crate::raider::MARCHING {
+            continue;
+        }
+        out.push(mm_to_m(r.x_mm[i]));
+        out.push(mm_to_m(r.y_mm[i]));
+    }
+    out
+}
+
 /// Interleaved decadence-tide cells `[x0_m, y0_m, v0, ...]` (fantasy S10c): each CORRUPTED CA cell
 /// (decadence > 0) as local metres + a 0..1 strength (`decadence / DECAD_MAX`) for the cold-tide overlay.
 /// Empty for transit / before the tide starts. Render-only — the field is hashed; this is a copy-out

@@ -47,6 +47,10 @@ impl Ruleset for ArcadiaRuleset {
         crate::army::maybe_launch(world);
         crate::army::advance_armies(world, dt_ms);
         crate::army::siege(world);
+        // The RIVAL (S11): decadence raiders field from the reservoir + march the capital, cut down by the
+        // rail network, breaching the lose meter if they get through. Runs BEFORE the tide is re-derived so
+        // a breach lands the same tick. Inert (no reservoir) for transit/demo ⇒ golden-neutral.
+        crate::raider::step(world, dt_ms);
         // Decadence — the lose meter (S9/S10). A baked world (a non-empty CA board) runs the SPATIAL
         // tide CA, which derives `decadence` from how far the front has crept toward the capital, pushed
         // back by the rail network's PURGE (S10b-2). A world without baked terrain (the demo / native

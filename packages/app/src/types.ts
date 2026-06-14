@@ -147,6 +147,8 @@ export interface Stats {
   townsCaptured: number;
   /** Legions currently fielded. */
   armyCount: number;
+  /** Decadence raiders marching (the rival, S11) — the mobile enemy your rail network must cut down. */
+  raiderCount: number;
   /** True once decadence has overrun the capital — the realm has fallen. */
   realmLost: boolean;
   /** Unlocked-tech bitset (S11) — bit `TECH[id].bit` set ⇒ that upgrade is active. The HUD reads it

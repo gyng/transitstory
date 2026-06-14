@@ -230,7 +230,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // S11 economy split: `mana`+`manpower` i64s join Canonical (0 — the fixture delivers only ORE, a GOLD
 // commodity, so both specialised channels stay 0; only the appended zero bytes shift the hash). Prior:
 // 0xb53c_aaa4_672f_5b3a.
-const GOLDEN_ARCADIA_HASH: u64 = 0x1757_0632_3aee_0a4a;
+// S11 rival: the raider SoA slices + spawn-accum/cursor/breach/breach-heal-accum join Canonical (empty/0 —
+// the demo fixture has no buildability ⇒ no decadence field ⇒ no reservoir ⇒ the rival never fields;
+// appended zero bytes only). Prior: 0x1757_0632_3aee_0a4a.
+const GOLDEN_ARCADIA_HASH: u64 = 0xbb8a_7ea7_9311_814e;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

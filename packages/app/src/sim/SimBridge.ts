@@ -114,6 +114,11 @@ export class SimBridge {
     return this.sim.armyPositions();
   }
 
+  /** Interleaved raider positions `[x0,y0,...]` in metres (fantasy/arcadia, S11 — the rival). Empty otherwise. */
+  raiderPositions(): Float32Array {
+    return this.sim.raiderPositions();
+  }
+
   /** Interleaved decadence-tide cells `[x0,y0,v0,...]` (metres + 0..1 strength) — the cold-tide overlay. */
   decadenceTide(): Float32Array {
     return this.sim.decadenceTide();

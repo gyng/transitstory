@@ -321,9 +321,11 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
     }
     let span = max_dist.saturating_sub(LOSE_DIST).max(1) as i64;
     let advanced = max_dist.saturating_sub(front) as i64;
-    world.decadence = crate::decadence::CAPITAL_THRESHOLD
-        .saturating_mul(advanced)
-        .saturating_div(span)
+    let front_meter = crate::decadence::CAPITAL_THRESHOLD.saturating_mul(advanced).saturating_div(span);
+    // S11 RIVAL: add the permanent raider-breach floor on top of the tide front (both bounded by the
+    // capital threshold). 0 without raiders ⇒ byte-identical to the pre-rival derivation.
+    world.decadence = front_meter
+        .saturating_add(world.raider_breach)
         .clamp(0, crate::decadence::CAPITAL_THRESHOLD);
 }
 

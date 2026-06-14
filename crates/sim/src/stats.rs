@@ -66,6 +66,9 @@ pub struct StatsSnapshot {
     pub towns_captured: f64,
     /// Legions currently fielded (the war machine's mobile force).
     pub army_count: u32,
+    /// Decadence RAIDERS marching (the rival, S11) — the mobile enemy your network must cut down. 0 for
+    /// transit + a realm with no decadence field.
+    pub raider_count: u32,
     /// True once decadence has overrun the capital — the realm has fallen.
     pub realm_lost: bool,
     /// Unlocked-tech bitset (S11) — bit `TECHS[id].bit` set ⇒ that upgrade is active. The HUD reads it
