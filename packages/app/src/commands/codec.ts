@@ -61,12 +61,20 @@ export const cmd = {
   unlockTech: (tech: number): Command => ({ UnlockTech: { tech } }),
 };
 
-/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, cost in tribute) + its effects.
- *  The HUD reads `Stats.techUnlocked` (bit per id) + `tribute` to render locked/affordable/unlocked. */
-export const TECHS: { id: number; name: string; cost: number; blurb: string }[] = [
-  { id: 0, name: "Forge Mastery", cost: 24, blurb: "Sources produce twice as fast" },
-  { id: 1, name: "Conscription", cost: 40, blurb: "Legions cost half the tribute" },
-  { id: 2, name: "Sappers", cost: 56, blurb: "The decadence tide creeps half as fast" },
+/** An economy channel (S11 split) — MUST mirror crates/sim/tech.rs `Channel`. */
+export type Channel = "gold" | "mana" | "manpower";
+/** Channel display metadata (glyph + the Stats field it reads). */
+export const CHANNELS: Record<Channel, { glyph: string; statKey: "tribute" | "mana" | "manpower" }> = {
+  gold: { glyph: "⚜", statKey: "tribute" },
+  mana: { glyph: "✦", statKey: "mana" },
+  manpower: { glyph: "⚔", statKey: "manpower" },
+};
+/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, cost + the CHANNEL it's paid in).
+ *  The HUD reads `Stats.techUnlocked` (bit per id) + the channel balance to render locked/affordable/owned. */
+export const TECHS: { id: number; name: string; cost: number; channel: Channel; blurb: string }[] = [
+  { id: 0, name: "Forge Mastery", cost: 24, channel: "gold", blurb: "Sources produce twice as fast" },
+  { id: 1, name: "Conscription", cost: 40, channel: "manpower", blurb: "Legions cost half the gold (needs an arms economy)" },
+  { id: 2, name: "Sappers", cost: 56, channel: "mana", blurb: "The decadence tide creeps half as fast (needs an aether economy)" },
 ];
 /** True iff tech `id` is unlocked in the bitset (mirrors tech::is_unlocked; bit == id for the shipped set). */
 export const techUnlocked = (bits: number, id: number): boolean => (bits & (1 << id)) !== 0;

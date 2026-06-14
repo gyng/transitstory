@@ -3,7 +3,7 @@
 //! These tests prove the COMMAND contract (spend-exactly-once / reject unknown·repeat·broke / transit
 //! refuses it) and that an unlocked bit actually CHANGES behaviour (FORGE_MASTERY doubles production),
 //! all through the `apply`/`tick` path — never by poking `World` internals.
-use sim::tech::{CONSCRIPTION, FORGE_MASTERY, SAPPERS, TECHS};
+use sim::tech::{FORGE_MASTERY, SAPPERS, TECHS};
 use sim::*;
 
 const ORE: u8 = 0;
@@ -63,8 +63,8 @@ fn unlock_spends_tribute_and_sets_the_bit() {
     assert_eq!(w.tribute, before - cost, "exactly the tech's cost is spent");
     assert!(w.tech_unlocked & (1 << TECHS[FORGE_MASTERY].bit) != 0, "the tech's bit is set");
     assert!(
-        matches!(events.as_slice(), [Event::TechUnlocked { tech, tribute_left }] if *tech == 0 && *tribute_left == w.tribute),
-        "UnlockTech emits TechUnlocked with the remaining tribute: {events:?}"
+        matches!(events.as_slice(), [Event::TechUnlocked { tech, balance_left }] if *tech == 0 && *balance_left == w.tribute),
+        "UnlockTech emits TechUnlocked with the spent channel's remaining balance (gold for FORGE_MASTERY): {events:?}"
     );
 }
 
@@ -148,15 +148,17 @@ fn forge_mastery_doubles_production() {
 #[test]
 fn the_tech_flow_replays_bit_for_bit() {
     // Determinism: the same supply + auto-unlock sequence yields an identical state_hash twice (so any
-    // tech-balance counterexample replays exactly). Covers the new hashed `tech_unlocked` field.
+    // tech-balance counterexample replays exactly). Covers the new hashed `tech_unlocked`/`mana`/`manpower`
+    // fields. FORGE_MASTERY is paid in GOLD — the ORE `supply_world` mints gold, so the unlock actually
+    // fires (CONSCRIPTION costs manpower, which an ore-only world never earns).
     fn run() -> u64 {
         let mut w = supply_world();
-        let cost = TECHS[CONSCRIPTION].cost;
+        let cost = TECHS[FORGE_MASTERY].cost;
         let mut done = false;
         for _ in 0..20_000 {
             w.tick(50);
             if !done && w.tribute >= cost {
-                w.apply(&Command::UnlockTech { tech: CONSCRIPTION as u8 });
+                w.apply(&Command::UnlockTech { tech: FORGE_MASTERY as u8 });
                 done = true;
             }
         }

@@ -71,4 +71,17 @@ test("fantasy baked world: 3-stage Forge-Line (ore → forge → arms town) yiel
   // eslint-disable-next-line no-console
   console.log("3-STAGE FORGE-LINE tribute trajectory:", JSON.stringify(traj));
   expect(tribute).toBeGreaterThan(0); // the full 3-stage chain closed on the real baked world
+
+  // S11 ECONOMY SPLIT: the arms town consumes INGOT + AETHER → it mints MANPOWER (from ingot) and MANA
+  // (from aether) ALONGSIDE gold. So an ARMS chain (unlike a BREAD chain, which is gold-only) feeds all
+  // three channels — proven here on the real bundle.
+  const econ = await page.evaluate(() => {
+    const s = (window as any).__ot_test.stats();
+    return { gold: s.tribute, mana: s.mana, manpower: s.manpower };
+  });
+  expect(econ.manpower).toBeGreaterThan(0); // INGOT delivered → manpower
+  expect(econ.mana).toBeGreaterThan(0); // AETHER delivered → mana
+  expect(econ.gold).toBeGreaterThan(0); // …and gold all the same
+
+  await page.screenshot({ path: "../../docs/progress/fantasy-economy-split.png" });
 });

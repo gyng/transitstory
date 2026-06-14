@@ -2581,6 +2581,37 @@ no core change.
   (`1/3`) on the real bundle. Screenshot: `docs/progress/fantasy-victory.png`.
 - Tiers: full e2e **24/24** · vitest **24/24** · `tsc` clean (cargo untouched — frontend-only, **212/0**).
 
+**S11 — the ECONOMY SPLIT (gold / mana / manpower), 2026-06-15.** The deferred S11 economy item (user-chosen
+2026-06-15). The single `tribute` becomes THREE channels — designed **balance-safe**: gold keeps its full
+volume (so every existing war-chest gate is unperturbed), while mana + manpower are ADDITIVE specialised
+yields that gate channel-specific tech. The point: the **composition** of your supply network now matters,
+not just its volume — an aether economy buys arcane tech, an arms economy buys military tech.
+
+- **Minting by commodity (`forge::produce` consume + `tech::channel_of`):** every delivery still mints GOLD
+  (`tribute`, unchanged volume); AETHER also mints MANA, INGOT/ARMS (≥ `FIRST_MID`) also mint MANPOWER —
+  routed in BOTH consume branches (Liebig + consume-all). A BREAD chain is gold-only; an ARMS chain feeds
+  all three.
+- **Spending by channel (`tech::Channel` + `UnlockTech`):** each tech is paid in its own channel —
+  FORGE_MASTERY in gold, SAPPERS in MANA (needs an aether economy), CONSCRIPTION in MANPOWER (needs an arms
+  economy). `Channel::{balance,spend}` afford-gate the right pool; a wrong-channel buy is rejected.
+- **Balance-safe by construction:** legions still cost GOLD (== old tribute, full volume) ⇒ the conquest
+  e2e, `balance.rs` winnable/bites, and the tech balance gate are ALL unchanged (verified green, no retune).
+  The split only *adds* the two channels + makes non-gold techs need their economy.
+- **Golden re-pin (RED-first):** `mana`+`manpower` i64s join `Canonical` LAST ⇒ both goldens shift once (0
+  for transit + the demo arcadia fixture, which delivers only ORE — a gold commodity — so both specialised
+  channels stay 0; appended zero bytes, behaviour byte-identical). Transit `0x5aa7…86e1 → 0xcd39…1d09`;
+  arcadia `0xb53c…5b3a → 0x1757…0a4a`, with provenance.
+- **Tests:** `tests/economy_split.rs` (+5) — `channel_of` mapping; aether mints mana (and `mana == gold`,
+  proving gold's volume is unreduced); ore mints gold only; the arms chain mints manpower+mana+gold; a tech
+  buys only with its channel (gold can't buy a mana tech, mana can; reject wrong channel); replays
+  bit-for-bit. `tests/tech.rs` updated for the channel costs. `e2e/fantasy-multistage.spec.ts` asserts the
+  arms chain mints all three on the real bundle.
+- **Frontend:** the StatsBar shows ⚜ gold + ✦ mana + ⚔ manpower (the two specialised channels appear once
+  earned); the TechPanel shows each tech's cost in its channel glyph + afford-checks its own pool. Screenshot:
+  `docs/progress/fantasy-economy-split.png`.
+- Tiers: cargo **217/0** (goldens re-pinned green; war-chest gates unchanged) · `build_world --selftest`
+  **PASS** · full e2e **24/24** · vitest **24/24** · `tsc` clean.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

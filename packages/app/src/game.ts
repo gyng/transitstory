@@ -48,6 +48,8 @@ const EMPTY_STATS: Stats = {
   perLine: [],
   ruleset: "transit",
   tribute: 0,
+  mana: 0,
+  manpower: 0,
   decadence: 0,
   decadencePct: 0,
   townsCaptured: 0,

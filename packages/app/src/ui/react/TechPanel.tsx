@@ -4,13 +4,12 @@
 // repeat/broke unlock, so the panel just resyncs from the next snapshot — no optimistic sim state).
 // Bottom-left anchor; only mounts in arcadia (returns null otherwise), so it's never transit chrome.
 import { useGame, useStats } from "./GameContext";
-import { TECHS, techUnlocked } from "../../commands/codec";
+import { CHANNELS, TECHS, techUnlocked } from "../../commands/codec";
 
 export function TechPanel() {
   const s = useStats();
   const game = useGame();
   if (s.ruleset !== "arcadia") return null;
-  const tribute = Math.round(s.tribute);
 
   return (
     <div
@@ -20,7 +19,7 @@ export function TechPanel() {
         bottom: 10,
         left: 10,
         zIndex: 9,
-        width: 196,
+        width: 210,
         padding: "10px 12px",
         borderRadius: 10,
         background: "rgba(255,255,255,.95)",
@@ -31,13 +30,15 @@ export function TechPanel() {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
         <b>⚒ Forge of Ages</b>
-        <span title="Tribute available to spend" style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums" }}>
-          ⚜ {tribute}
+        <span title="Gold · Mana · Manpower available" style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums", fontSize: 11 }}>
+          ⚜{Math.round(s.tribute)} ✦{Math.round(s.mana)} ⚔{Math.round(s.manpower)}
         </span>
       </div>
       {TECHS.map((t) => {
         const owned = techUnlocked(s.techUnlocked, t.id);
-        const affordable = !owned && tribute >= t.cost;
+        const ch = CHANNELS[t.channel];
+        const balance = Math.round(s[ch.statKey]); // afford-check against the tech's OWN channel
+        const affordable = !owned && balance >= t.cost;
         return (
           <button
             key={t.id}
@@ -62,7 +63,8 @@ export function TechPanel() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
               <span>{t.name}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{owned ? "✓ owned" : `⚜ ${t.cost}`}</span>
+              {/* Cost is shown in the tech's CHANNEL glyph (⚜ gold / ✦ mana / ⚔ manpower). */}
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{owned ? "✓ owned" : `${ch.glyph} ${t.cost}`}</span>
             </div>
             <div style={{ fontSize: 11, color: owned ? "#3a9b7e" : affordable ? "#7a818a" : "#aab0b7" }}>{t.blurb}</div>
           </button>

@@ -54,7 +54,7 @@ export type Event =
   | { DemandModeSet: { agents: boolean } }
   | { BarracksPlaced: { id: number; name: string } }
   | { BountyPosted: { station: number; amount: number } }
-  | { TechUnlocked: { tech: number; tribute_left: number } }
+  | { TechUnlocked: { tech: number; balance_left: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -132,8 +132,13 @@ export interface Stats {
   // --- fantasy (arcadia) read-out; 0/false/"transit" for the transit game ---
   /** Canonical ruleset ("transit" | "arcadia") — the HUD picks its readout from this. */
   ruleset: string;
-  /** Accumulated tribute — the supply score (towns consume delivered supply into this). */
+  /** GOLD — the universal war-chest (every delivery; funds legions + general tech). Named `tribute` for
+   *  back-compat; the S11 economy split kept gold's volume identical and added two specialised channels: */
   tribute: number;
+  /** MANA — minted by AETHER chains; funds arcane tech (Sappers). 0 until aether is delivered. */
+  mana: number;
+  /** MANPOWER — minted by INGOT/ARMS chains; funds military tech (Conscription). 0 until arms flow. */
+  manpower: number;
   /** Spreading-corruption pressure (the lose meter); `realmLost` once it reaches the capital. */
   decadence: number;
   /** Decadence as a 0–100 fraction of the capital threshold — the lose-meter gauge fill. */

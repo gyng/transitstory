@@ -58,7 +58,8 @@ fn replay_equality() {
 //   0xea4e_eb0a_03d9_74f9 — S9 decadence (the `decadence` i64 appended)
 //   0xfd8e_5b04_8a81_c31b — S10b decadence CA (the empty `decadence_cells` slice appended)
 //   0x5aa7_c3b7_5a7e_86e1 — S11 tech (the `tech_unlocked` u32 appended, 0 for transit)
-const GOLDEN_TRANSIT_HASH: u64 = 0x5aa7_c3b7_5a7e_86e1;
+//   0xcd39_4898_bd9f_1d09 — S11 economy split (the `mana`+`manpower` i64s appended, 0 for transit)
+const GOLDEN_TRANSIT_HASH: u64 = 0xcd39_4898_bd9f_1d09;
 
 #[test]
 fn golden_transit_hash_pinned() {

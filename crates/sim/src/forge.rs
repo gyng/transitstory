@@ -134,26 +134,49 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
         let multi = recipe.map(|r| r.len() >= 2).unwrap_or(false);
         if multi {
             // S7e-2 LIEBIG: a sink with a real ≥2-commodity recipe (a BREAD town = grain+fuel, an ARMS
-            // barracks = ore+aether) yields output = MIN over its required inputs — the scarcer input
+            // barracks = ingot+aether) yields output = MIN over its required inputs — the scarcer input
             // throttles, so you must supply BOTH chains. Consume `limit` of EACH required commodity;
             // non-recipe goods delivered here are left untouched (the sink doesn't want them).
             let r = recipe.unwrap();
             let limit = r.iter().map(|&c| world.forge_stock[base + c as usize]).min().unwrap_or(0);
             if limit > 0 {
+                let mut mana = 0i64;
+                let mut manpower = 0i64;
                 for &c in r {
                     world.forge_stock[base + c as usize] -= limit;
+                    // S11 ECONOMY SPLIT: each consumed input mints its specialised channel alongside gold.
+                    match crate::tech::channel_of(c as usize) {
+                        crate::tech::Channel::Mana => mana = mana.saturating_add(limit),
+                        crate::tech::Channel::Manpower => manpower = manpower.saturating_add(limit),
+                        crate::tech::Channel::Gold => {}
+                    }
                 }
-                world.tribute = world.tribute.saturating_add(limit);
+                world.tribute = world.tribute.saturating_add(limit); // GOLD — once per consume, unchanged
+                world.mana = world.mana.saturating_add(mana);
+                world.manpower = world.manpower.saturating_add(manpower);
             }
         } else {
-            // Single/empty recipe ⇒ consume-all (S7e-1). Commodity-0 worlds take this path ⇒ byte-identical.
+            // Single/empty recipe ⇒ consume-all (S7e-1). Commodity-0 worlds take this path ⇒ byte-identical
+            // (ORE is a GOLD commodity ⇒ mana/manpower stay 0 ⇒ the golden re-pin is appended zeros only).
             let mut got = 0i64;
+            let mut mana = 0i64;
+            let mut manpower = 0i64;
             for c in 0..N_COMMODITIES {
-                got = got.saturating_add(world.forge_stock[base + c]);
+                let amt = world.forge_stock[base + c];
+                if amt > 0 {
+                    got = got.saturating_add(amt);
+                    match crate::tech::channel_of(c) {
+                        crate::tech::Channel::Mana => mana = mana.saturating_add(amt),
+                        crate::tech::Channel::Manpower => manpower = manpower.saturating_add(amt),
+                        crate::tech::Channel::Gold => {}
+                    }
+                }
                 world.forge_stock[base + c] = 0;
             }
             if got > 0 {
-                world.tribute = world.tribute.saturating_add(got);
+                world.tribute = world.tribute.saturating_add(got); // GOLD, unchanged
+                world.mana = world.mana.saturating_add(mana);
+                world.manpower = world.manpower.saturating_add(manpower);
             }
         }
     }

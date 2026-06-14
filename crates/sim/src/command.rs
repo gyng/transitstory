@@ -176,6 +176,6 @@ pub enum Event {
     DemandModeSet { agents: bool },
     BarracksPlaced { id: StationId, name: String },
     BountyPosted { station: StationId, amount: i64 },
-    TechUnlocked { tech: u8, tribute_left: i64 },
+    TechUnlocked { tech: u8, balance_left: i64 },
     Rejected { reason: String },
 }

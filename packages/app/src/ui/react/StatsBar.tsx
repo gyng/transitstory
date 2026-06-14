@@ -48,6 +48,10 @@ const BAR_STYLE: CSSProperties = {
  *  towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
 function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   const tribute = Math.round(s.tribute);
+  // S11 economy split — the two specialised channels show only once they've been earned (a clean HUD for
+  // a realm that hasn't built an aether/arms chain yet; they appear the moment one does).
+  const mana = Math.round(s.mana);
+  const manpower = Math.round(s.manpower);
   const towns = Math.round(s.townsCaptured);
   const armies = Math.round(s.armyCount);
   const d = Math.round(s.decadencePct);
@@ -64,9 +68,19 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         <span data-testid="period" style={{ color: "#7a818a" }}>Arcadia</span>
       </div>
       <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }} />
-      <div data-testid="tribute" title="Tribute — towns you supply pay this; it funds your legions.">
-        ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> tribute
+      <div data-testid="tribute" title="Gold — every town you supply pays this; it funds legions and general tech.">
+        ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> gold
       </div>
+      {mana > 0 && (
+        <div data-testid="mana" title="Mana — minted by aether supply chains; funds arcane tech (Sappers)." style={{ color: "#7a4ed2" }}>
+          ✦ <b style={{ fontVariantNumeric: "tabular-nums" }}>{mana}</b> mana
+        </div>
+      )}
+      {manpower > 0 && (
+        <div data-testid="manpower" title="Manpower — minted by arms (ingot) supply chains; funds military tech (Conscription)." style={{ color: "#b5651d" }}>
+          ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower
+        </div>
+      )}
       <div
         data-testid="standing-gauge"
         style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}

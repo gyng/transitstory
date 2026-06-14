@@ -129,6 +129,14 @@ pub struct World {
     /// the transit hash (a re-pin) then stays byte-identical. The S11 economy splits this into
     /// gold/mana/manpower channels behind this same accumulator.
     pub tribute: i64,
+    /// The S11 ECONOMY SPLIT — two SPECIALISED channels minted ALONGSIDE gold (`tribute`) by WHICH
+    /// commodity a town consumes: `mana` from AETHER chains, `manpower` from INGOT/ARMS chains. Gold is
+    /// still minted by every delivery (unchanged), so the war-chest balance is untouched; mana/manpower
+    /// are ADDITIVE bonuses that gate channel-specific tech (so the COMPOSITION of your supply network
+    /// matters, not just its volume). **Hashed** (in `Canonical`). 0 for transit + any world that delivers
+    /// no aether/ingot (the demo arcadia golden ⇒ appended-zero re-pin, behaviour byte-identical).
+    pub mana: i64,
+    pub manpower: i64,
     /// Unlocked-tech bitset (fantasy, S11): bit `TECHS[id].bit` set ⇒ that upgrade is active. Bought with
     /// tribute via `Command::UnlockTech`; each bit gates a buff to an existing lever (forge rate / legion
     /// cost / decadence creep). **Hashed** (in `Canonical`). Always 0 for transit (the ruleset rejects
@@ -356,6 +364,10 @@ struct Canonical<'a> {
     /// Unlocked-tech bitset (fantasy, S11). Appended LAST so transit + the arcadia golden (both 0) re-pin
     /// exactly once, then stay byte-identical. 0 ⇒ no tech ⇒ every effect takes its shipped-constant path.
     tech_unlocked: u32,
+    /// The S11 economy-split channels (fantasy). Appended LAST — 0 for transit + the demo arcadia golden
+    /// (no aether/ingot delivered), so the re-pin is appended zero bytes, behaviour byte-identical.
+    mana: i64,
+    manpower: i64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -445,6 +457,8 @@ impl World {
             decadence: initial_decadence,
             decadence_accum: 0,
             tribute: 0,
+            mana: 0,
+            manpower: 0,
             tech_unlocked: 0,
             waiting: Vec::new(),
             ridership_total: 0,
@@ -904,6 +918,8 @@ impl World {
             per_line,
             ruleset: crate::ruleset::canon(&self.city.ruleset).to_string(),
             tribute: self.tribute as f64,
+            mana: self.mana as f64,
+            manpower: self.manpower as f64,
             decadence: self.decadence as f64,
             decadence_pct: crate::decadence::pct(self),
             towns_captured: self.towns_captured as f64,
@@ -1023,22 +1039,22 @@ impl World {
                 }
             }
             Command::UnlockTech { tech } => {
-                // Buy a tech upgrade with TRIBUTE (the legion war-chest). Validate id, refuse a repeat
-                // (the bit is already set), then afford-gate against tribute — so the spend is exactly
-                // once and never drives tribute negative. Reject (no mutation) on any failure.
+                // Buy a tech with its CHANNEL (S11 economy split — gold/mana/manpower). Validate id, refuse
+                // a repeat (the bit is already set), then afford-gate against THAT channel — so the spend is
+                // exactly once and never drives the channel negative. Reject (no mutation) on any failure.
                 let id = *tech as usize;
-                match crate::tech::TECHS.get(id) {
+                match crate::tech::TECHS.get(id).copied() {
                     None => vec![Event::Rejected { reason: "UnlockTech: unknown tech".into() }],
                     Some(t) if self.tech_unlocked & (1u32 << t.bit) != 0 => {
                         vec![Event::Rejected { reason: "UnlockTech: already unlocked".into() }]
                     }
-                    Some(t) if self.tribute < t.cost => {
-                        vec![Event::Rejected { reason: "UnlockTech: not enough tribute".into() }]
+                    Some(t) if t.channel.balance(self) < t.cost => {
+                        vec![Event::Rejected { reason: format!("UnlockTech: not enough {}", t.channel.label()) }]
                     }
                     Some(t) => {
-                        self.tribute -= t.cost;
+                        t.channel.spend(self, t.cost);
                         self.tech_unlocked |= 1u32 << t.bit;
-                        vec![Event::TechUnlocked { tech: *tech, tribute_left: self.tribute }]
+                        vec![Event::TechUnlocked { tech: *tech, balance_left: t.channel.balance(self) }]
                     }
                 }
             }
@@ -1459,6 +1475,8 @@ impl World {
             decadence: self.decadence,
             decadence_cells: &self.decadence_cells,
             tech_unlocked: self.tech_unlocked,
+            mana: self.mana,
+            manpower: self.manpower,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

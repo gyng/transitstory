@@ -227,7 +227,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // shifts the hash). Prior (pre-S10b): 0x52d2_05b0_5502_b2aa.
 // S11 tech: the `tech_unlocked` u32 joins Canonical (0 — the fixture's log predates UnlockTech, so its
 // behaviour is byte-identical; only the appended 4 zero bytes shift the hash). Prior: 0xbd92_54a0_7395_96de.
-const GOLDEN_ARCADIA_HASH: u64 = 0xb53c_aaa4_672f_5b3a;
+// S11 economy split: `mana`+`manpower` i64s join Canonical (0 — the fixture delivers only ORE, a GOLD
+// commodity, so both specialised channels stay 0; only the appended zero bytes shift the hash). Prior:
+// 0xb53c_aaa4_672f_5b3a.
+const GOLDEN_ARCADIA_HASH: u64 = 0x1757_0632_3aee_0a4a;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

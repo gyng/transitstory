@@ -51,8 +51,13 @@ pub struct StatsSnapshot {
     /// The canonicalised ruleset tag ("transit" | "arcadia") — lets the HUD pick the mode-appropriate
     /// readout (tribute/decadence vs riders/coverage) from the snapshot alone.
     pub ruleset: String,
-    /// Accumulated tribute — the supply score (towns consume delivered supply into this).
+    /// GOLD — the universal war-chest (every delivery mints it; funds legions + general tech). Named
+    /// `tribute` for back-compat (the channel split kept gold's volume identical). The S11 split adds:
     pub tribute: f64,
+    /// MANA — minted by AETHER chains; funds arcane tech (e.g. Sappers). 0 until aether is delivered.
+    pub mana: f64,
+    /// MANPOWER — minted by INGOT/ARMS chains; funds military tech (e.g. Conscription). 0 until arms flow.
+    pub manpower: f64,
     /// Spreading-corruption pressure (the lose meter); `realm_lost` once it reaches the capital.
     pub decadence: f64,
     /// Decadence as a 0–100 fraction of the capital threshold — the lose-meter gauge fill.
