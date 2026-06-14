@@ -2524,7 +2524,12 @@ The progress gauge reads coverage+conquest, NOT tribute, so spending never lower
 - **e2e (`fantasy-tech.spec.ts`):** on the REAL baked world, supply a BREAD town → earn tribute → unlock
   FORGE MASTERY and assert the gameplay facts (the bit flips, exactly the cost is deducted, a repeat spends
   nothing, the HUD marks it owned).
-- Tiers: cargo **207/0** (goldens re-pinned green) · `build_world --selftest` **PASS** · full e2e **23/23**
+- **Balance gate (`balance.rs`, +1):** the build plan's discipline — a new economy lever must pass the
+  winnable+bites bar. `fantasy_loop_with_tech_still_winnable_and_bites` buys FORGE MASTERY the instant it's
+  affordable and asserts, across 5 seeds, the loop STILL supplies → fields → conquers → holds within the
+  bite window AND ends RICHER than the un-teched control (the doubled production recoups the one-time spend
+  — the investment is sound, the lever is balance-safe).
+- Tiers: cargo **208/0** (goldens re-pinned green) · `build_world --selftest` **PASS** · full e2e **23/23**
   (the new tech gate; conquest/multistage still green) · vitest **21/21** · `tsc` clean.
 
 ## Known gaps / deferred

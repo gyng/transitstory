@@ -21,6 +21,13 @@ struct Telemetry {
 /// A standard "supply a town + field legions from a barracks" realm — the canonical fantasy loop. The
 /// source↔town are kept well past the ~500 m catchment so supply flows (the surfaced lesson).
 fn play(seed: u64, horizon: usize) -> Telemetry {
+    play_tech(seed, horizon, None)
+}
+
+/// As [`play`], but `auto_tech` (an index into `tech::TECHS`) is bought the instant the realm can afford
+/// it — so a tech-using playthrough can be gated against the SAME winnable+bites bar (S11: a new economy
+/// lever must not break pacing). `None` ⇒ the canonical loop (byte-identical to the original `play`).
+fn play_tech(seed: u64, horizon: usize, auto_tech: Option<usize>) -> Telemetry {
     let city = CityData {
         id: "arcadia".into(),
         ruleset: "arcadia".into(),
@@ -46,8 +53,16 @@ fn play(seed: u64, horizon: usize) -> Telemetry {
     w.apply(&Command::SetRunning { running: true });
 
     let mut t = Telemetry::default();
+    let mut bought = auto_tech.is_none();
     for tick in 1..=horizon {
         w.tick(50);
+        // Buy the tech the moment it's affordable (the player's natural first move once supply pays out).
+        if let Some(id) = auto_tech {
+            if !bought && w.tribute >= sim::tech::TECHS[id].cost {
+                w.apply(&Command::UnlockTech { tech: id as u8 });
+                bought = true;
+            }
+        }
         let s = w.stats_snapshot();
         if t.first_tribute == 0 && s.tribute > 0.0 {
             t.first_tribute = tick;
@@ -90,6 +105,38 @@ fn fantasy_loop_is_winnable_and_bites() {
         // would let the flywheel drag. A balance regression, not a correctness one — re-tune (don't
         // just bump the bound) if it trips.
         assert!(t.first_conquest <= 2400, "seed {seed}: first conquest @{} ticks — loop drags past the ~120s bite window", t.first_conquest);
+    }
+}
+
+/// S11 TECH balance gate: buying FORGE MASTERY the instant it's affordable must keep the loop winnable +
+/// biting (the new economy lever can't break pacing — the build plan's "a param set that violates the
+/// hard gate is auto-rejected"). The doubled production recoups the one-time tribute spend and the realm
+/// still supplies → fields → conquers → holds, within the same bite window, for every seed. Prints both
+/// trajectories so the tech's effect on timing stays observable.
+#[test]
+fn fantasy_loop_with_tech_still_winnable_and_bites() {
+    const HORIZON: usize = 12_000;
+    for seed in [1u64, 7, 42, 100, 2024] {
+        let base = play(seed, HORIZON);
+        let teched = play_tech(seed, HORIZON, Some(sim::tech::FORGE_MASTERY));
+        eprintln!(
+            "seed {seed}: base(conquest@{} final_tribute={}) FORGE_MASTERY(conquest@{} final_tribute={} lost={})",
+            base.first_conquest, base.final_tribute, teched.first_conquest, teched.final_tribute, teched.lost
+        );
+        assert!(teched.first_tribute > 0, "seed {seed}: teched run never produced tribute");
+        assert!(teched.first_legion > 0, "seed {seed}: teched run never fielded a legion");
+        assert!(teched.first_conquest > 0, "seed {seed}: teched run never conquered");
+        assert!(!teched.lost, "seed {seed}: teched realm overrun — the tech spend broke winnability");
+        assert!(teched.first_tribute <= teched.first_legion, "seed {seed}: legion before tribute?!");
+        assert!(teched.first_legion <= teched.first_conquest, "seed {seed}: conquest before a legion?!");
+        assert!(teched.first_conquest <= 2400, "seed {seed}: teched first conquest @{} drags past the bite window", teched.first_conquest);
+        // The flywheel pays off: by the horizon, FORGE MASTERY's doubled production leaves the realm
+        // RICHER than the un-teched control even after the one-time cost (the investment is sound).
+        assert!(
+            teched.final_tribute >= base.final_tribute,
+            "seed {seed}: FORGE_MASTERY should out-earn the control by the horizon (teched {} < base {})",
+            teched.final_tribute, base.final_tribute
+        );
     }
 }
 
