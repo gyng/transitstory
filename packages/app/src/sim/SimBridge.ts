@@ -114,6 +114,11 @@ export class SimBridge {
     return this.sim.armyPositions();
   }
 
+  /** Interleaved decadence-tide cells `[x0,y0,v0,...]` (metres + 0..1 strength) — the cold-tide overlay. */
+  decadenceTide(): Float32Array {
+    return this.sim.decadenceTide();
+  }
+
   /** Interleaved `[onboard0,cap0, onboard1,cap1, ...]` per vehicle — the train inspector's load. */
   vehicleLoads(): Uint16Array {
     return this.sim.vehicleLoads();

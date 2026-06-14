@@ -111,11 +111,12 @@ DECADENCE_GROWTH_PER_S = 6
 # runway. Balance knob; tests/balance.rs `fantasy_baked_continent_is_winnable` certifies it conquers + holds.
 ARMY_SPEED_MM_S = 200_000
 # Decadence-tide CREEP rate (diffuse gain per sim-second) for the S10 spatial CA on the baked continent —
-# FAR slower than the test default (200): the tide front advances one hex-ring per ~(ADVANCE_THRESHOLD/gain)
-# ticks, so at gain≈0.4/tick over the continent's ~200-ring span an undefended realm is overrun in ~40
-# game-minutes — a generous campaign runway you race with rail-network defenses. Balance knob (the conquest
-# e2e certifies winnable). Spatial-model only; the scalar growthPerS is vestigial for a baked world.
-DECADENCE_CREEP_PER_S = 8
+# FAR slower than the test default (200): at 20/s the integer gain floors to 1/tick, so the tide front
+# advances one hex-ring per ADVANCE_THRESHOLD(=100) ticks; over the continent's ~200-ring span an
+# undefended realm is overrun in ~17 game-minutes — an urgent-but-winnable campaign runway you race with
+# rail-network defenses. (Below 20/s the gain still floors to 1 — never freezes; a finer/slower runway
+# would need a per-cell remainder accumulator, deferred.) Balance knob; the conquest e2e certifies winnable.
+DECADENCE_CREEP_PER_S = 20
 
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a

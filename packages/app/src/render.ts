@@ -94,6 +94,15 @@ export interface TerrainCell {
   c: number;
 }
 
+/** One decadence-tide cell (fantasy S10c) — a corrupted CA hex + its 0..1 strength `v` (the cold creep
+ *  advancing toward the capital). Rendered as a low-chroma cold overlay (strength = alpha) over the
+ *  terrain, under the network. Empty for transit / before the tide starts. */
+export interface TideCell {
+  lng: number;
+  lat: number;
+  v: number;
+}
+
 /** One baked fantasy resource node (docs/fantasy-map.md S2) — a supply-chain source that terrain-gates
  *  the two chains (BREAD: grain+fuel; ARMS: ore+aether). Rendered as a coloured POI dot over the grey
  *  terrain. Empty for transit cities. */
@@ -224,6 +233,7 @@ export interface RenderView {
   roadCellM: number; // buildability cell pitch (m) → sizes the road hexagons to tile the grid
   terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
   terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
+  tideCells: TideCell[]; // fantasy S10c: corrupted decadence-CA hexes (the cold creep) — empty for transit
   resources: ResourceMarker[]; // baked fantasy supply-chain source nodes (POI dots) — empty for transit
   towns: TownMarker[]; // baked fantasy towns (sinks + conquest targets) — empty for transit
   decadenceAnchors: DecadenceAnchor[]; // baked far-edge reservoir anchors (the tide origin) — empty for transit
@@ -324,6 +334,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       filled: true,
       stroked: false,
       updateTriggers: { getFillColor: view.terrain.length },
+    }),
+    // DECADENCE TIDE (fantasy S10c, over terrain, under everything else): the cold corruption creeping
+    // from the far edge toward the warm capital. Value-not-hue per the art direction — a single
+    // low-chroma cold violet, STRENGTH = ALPHA (faint at the front, opaque deep). Same pointy-top hex
+    // geometry as the terrain so it tiles the lattice. Rebuilt on the ~3 Hz refresh (the tide creeps
+    // slowly), never per frame; empty for transit / before the tide starts.
+    new ColumnLayer({
+      id: "decadence-tide",
+      data: view.tideCells,
+      diskResolution: 6,
+      extruded: false,
+      radius: view.terrainCellM * 1.04,
+      radiusUnits: "meters",
+      angle: 30,
+      getPosition: (d: TideCell) => [d.lng, d.lat],
+      // cold low-chroma violet; alpha ramps with the tide strength (30..225) so the front reads faint.
+      getFillColor: (d: TideCell) => [78, 70, 120, Math.round(30 + Math.min(1, d.v) * 195)],
+      filled: true,
+      stroked: false,
+      updateTriggers: { getFillColor: view.tideCells.length },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
     // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the

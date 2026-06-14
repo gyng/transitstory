@@ -146,6 +146,14 @@ fn run_ticks(city: &CityData, stations: &[Axial], ticks: usize) -> World {
         let p = hexgrid::center_of(a, SIZE);
         w.apply(&Command::PlaceStation { x_mm: p.x_mm, y_mm: p.y_mm, name: None });
     }
+    // Rail any placed stations into a line so they PURGE — only the rail network holds the tide, not
+    // isolated unconnected nodes (the S10b-2 design). No stations ⇒ no line ⇒ the tide creeps freely.
+    if !stations.is_empty() {
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+        for sid in 0..stations.len() as u32 {
+            w.apply(&Command::AddStop { line: LineId(0), station: StationId(sid), after: None });
+        }
+    }
     w.apply(&Command::SetRunning { running: true });
     for _ in 0..ticks {
         w.tick(50);
@@ -222,19 +230,37 @@ fn the_spatial_tide_is_the_lose_condition_and_the_network_holds_it() {
     }
     assert!(lost_at > 0, "an undefended baked realm is overrun — the spatial tide reaches the capital");
 
-    // Defended: a wall of stations across the dist-4 approach (PURGE radius 2 ⇒ covers the inner rings)
+    // Defended: a wall of stations across the dist-4 approach, ON A LINE (only the rail network purges),
     // holds the tide out for well past the idle-loss time.
     let mut held = World::new(12, city.clone());
-    held.apply(&Command::PlaceBarracks { x_mm: cap.x_mm, y_mm: cap.y_mm, name: None });
-    for (q, r) in [(4, 0), (3, 1), (2, 2), (1, 3), (0, 4)] {
+    held.apply(&Command::PlaceBarracks { x_mm: cap.x_mm, y_mm: cap.y_mm, name: None }); // id 0
+    let wall = [(4, 0), (3, 1), (2, 2), (1, 3), (0, 4)];
+    for (q, r) in wall {
         let p = hexgrid::center_of((q, r), SIZE);
-        held.apply(&Command::PlaceStation { x_mm: p.x_mm, y_mm: p.y_mm, name: None });
+        held.apply(&Command::PlaceStation { x_mm: p.x_mm, y_mm: p.y_mm, name: None }); // ids 1..=5
+    }
+    // Rail the wall into a line (purge fires around stations on a built line, not isolated nodes).
+    held.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for sid in 1..=wall.len() as u32 {
+        held.apply(&Command::AddStop { line: LineId(0), station: StationId(sid), after: None });
     }
     held.apply(&Command::SetRunning { running: true });
     for _ in 0..(lost_at + 3000) {
         held.tick(50);
     }
-    assert!(!sim::decadence::is_lost(&held), "a network wall holds the tide out — PURGE defends the heartland");
+    assert!(!sim::decadence::is_lost(&held), "a railed network wall holds the tide out — PURGE defends the heartland");
+}
+
+#[test]
+fn a_slow_creep_rate_does_not_freeze_the_tide() {
+    // Freeze-bug guard: a slow creep (< 20/s) truncates `creep·dt/1000` to 0/tick, which would freeze the
+    // tide entirely. The gain floor (max 1) keeps it advancing. With creep=1 (gain 0 WITHOUT the floor)
+    // the front still creeps in ⇒ the derived lose meter rises. (Reads decadence==0 under the old code.)
+    let mut city = hex_world(20, 20, (0, 0), &[]);
+    city.decadence_creep_per_s = 1;
+    let w = run_ticks(&city, &[], 4000);
+    assert!(w.decadence_cells.iter().any(|&d| d > 0), "a slow creep still corrupts cells (no freeze)");
+    assert!(w.decadence > 0, "the front advanced ⇒ the lose meter rose (the tide isn't frozen at the edge)");
 }
 
 #[test]

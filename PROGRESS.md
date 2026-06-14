@@ -2320,6 +2320,42 @@ The decadence tide is now the baked world's actual lose condition — the corrup
   `--selftest` PASS · conquest + play e2e green. **Next (S10c):** render the cold tide (the "look") +
   screenshot — then S10 (the area-control identity) is complete end-to-end.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 5: S10c (render the tide) + two calibration bug-fixes, 2026-06-14.**
+S10 is now complete END-TO-END: the spatial decadence tide RENDERS, and driving it in-browser surfaced +
+fixed two real bugs that the earlier S10b-2 e2e had masked (the tide had been frozen, so "realm holds"
+was vacuous). The decadence race is now genuine and visible.
+[docs/progress/fantasy-decadence-tide.png](docs/progress/fantasy-decadence-tide.png) — the cold violet
+tide flooding the far half of the continent, creeping toward the warm SW capital + the player's rail
+network (Decadence 46%, mid-creep).
+
+- **S10c render:** `render_buf::decadence_tide_m` copies out corrupted CA cells `[x_m, y_m, v]` (v =
+  decadence/DECAD_MAX) → `sim-wasm decadenceTide()` → `SimBridge` → `Game.decadenceTideAt()` (metres →
+  lng/lat) → a `ColumnLayer` (`id:"decadence-tide"`) over the terrain, under the network. Value-not-hue
+  per the art direction: a single low-chroma cold violet, **strength = alpha** (faint at the front,
+  opaque deep), same pointy-top hex geometry as the terrain. Rebuilt on the ~3 Hz refresh (the tide
+  creeps slowly), never per frame; empty for transit. New `TideCell` type + `RenderView.tideCells`.
+- **Bug 1 — the gain-truncation FREEZE (the big one):** `creep·dt/1000` truncated the baked rate to **0
+  per tick** (`creep=8` → `8·50/1000 = 0`), so the tide never advanced — the same integer-truncation class
+  as the original decadence bug, and it made S10b-2's "realm holds" e2e PASS for the WRONG reason (a frozen
+  tide). Fixed: **floor the gain at 1** for any positive creep (never silently freeze); set baked
+  `creepPerS = 20` (gain exactly 1/tick). RED-first pin: `a_slow_creep_rate_does_not_freeze_the_tide`
+  (creep=1 ⇒ gain 0 under the old code ⇒ frozen ⇒ the lose meter stays 0).
+- **Bug 2 — PURGE around ALL stations suppressed the tide map-wide:** the baked world auto-seeds ~42
+  resource/town station nodes; PURGE fired around every station, so the map started immune to the tide.
+  Fixed: **PURGE only around stations ON A BUILT LINE** — the rail NETWORK holds the line, not isolated
+  unconnected nodes. Now the tide genuinely threatens (the baked nodes don't suppress it) and you race to
+  rail your defenses + supply. (`run_ticks` + the spatial test now rail their stations into a line.)
+- **The race is now real + winnable (re-verified on the real bundle):** the conquest e2e trajectory climbs
+  **decadence 16 → 31 → 46 → 62%** as legions field, and conquest captures a town at step 4 (62%) —
+  beating the tide (which reaches the capital ~step 8). `realmLost=false` because conquest WON the race
+  (not because the tide was frozen). An undefended/sparsely-railed realm IS overrun in ~20 game-min.
+- Tiers: cargo **197/0** (+1 freeze-guard test; both goldens unchanged — the CA is baked-only, golden-
+  neutral) · the conquest + play + arcadia×2 + transit slice e2e green on the production bundle.
+- **S10 — the area-control identity (the build plan's "largest subsystem") — is COMPLETE:** board (S10a) +
+  creep CA engine (S10b-1) + spatial lose condition (S10b-2) + render (S10c), the tide a genuine,
+  visible, winnable race over the procedural continent. **Next: S11** (economy / tech / endless+prestige /
+  rival), then the S7e multi-stage refinement.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

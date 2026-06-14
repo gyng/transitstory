@@ -96,6 +96,13 @@ impl Sim {
         sim::render_buf::vehicle_loads(&self.world)
     }
 
+    /// Interleaved decadence-tide cells `[x0_m,y0_m,v0,...]` (fantasy S10c) — corrupted CA cells in
+    /// metres + 0..1 strength, for the cold-tide overlay. Empty for transit / before the tide starts.
+    #[wasm_bindgen(js_name = decadenceTide)]
+    pub fn decadence_tide(&self) -> Vec<f32> {
+        sim::render_buf::decadence_tide_m(&self.world)
+    }
+
     /// Render-only "peep" dots (individual riders). One sweep at interpolation `alpha` (0..1) with
     /// the render `tick_ms` (for smooth walk motion) returns interleaved `[x0,y0,...]` metres and
     /// CACHES the paired RGBA, fetched by `peepColors()`. Determinism-free (no hashed state read or

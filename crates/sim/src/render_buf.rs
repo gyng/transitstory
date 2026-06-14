@@ -227,6 +227,31 @@ pub fn army_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved decadence-tide cells `[x0_m, y0_m, v0, ...]` (fantasy S10c): each CORRUPTED CA cell
+/// (decadence > 0) as local metres + a 0..1 strength (`decadence / DECAD_MAX`) for the cold-tide overlay.
+/// Empty for transit / before the tide starts. Render-only — the field is hashed; this is a copy-out
+/// (the strength feeds alpha, never state). Bounded by the (capped) CA domain.
+pub fn decadence_tide_m(w: &World) -> Vec<f32> {
+    let f = &w.decadence_field;
+    let size = w.city.grid_cell_mm;
+    if size <= 0 || f.is_empty() {
+        return Vec::new();
+    }
+    let n = w.decadence_cells.len().min(f.cells.len());
+    let mut out = Vec::new();
+    for c in 0..n {
+        let v = w.decadence_cells[c];
+        if v <= 0 {
+            continue;
+        }
+        let p = crate::hexgrid::center_of(f.cells[c], size);
+        out.push(mm_to_m(p.x_mm));
+        out.push(mm_to_m(p.y_mm));
+        out.push(v as f32 / crate::decadence_field::DECAD_MAX as f32);
+    }
+    out
+}
+
 /// Interleaved previous-tick positions `[x0,y0, ...]` in metres (for alpha interpolation).
 pub fn vehicle_prev_positions_m(w: &World) -> Vec<f32> {
     let v = &w.vehicles;

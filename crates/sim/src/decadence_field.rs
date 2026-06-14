@@ -222,32 +222,48 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
     } else {
         DEFAULT_CREEP_PER_S
     };
-    let gain = (creep.saturating_mul(dt) / 1000) as i32;
+    // Floor the integer gain at 1 for any positive creep: `creep·dt/1000` truncates a slow rate (< 20/s
+    // at dt=50) to 0, which would silently FREEZE the tide (the original decadence-truncation class of
+    // bug). With the floor, the slowest creep is 1 unit/tick ⇒ a ring fills (and the front advances one
+    // step) every `ADVANCE_THRESHOLD` ticks — a multi-game-minute crawl over a continent-sized span.
+    let gain = (creep.saturating_mul(dt) / 1000).max(1) as i32;
     let purge = (PURGE_PER_S.saturating_mul(dt) / 1000) as i32;
     let field = &world.decadence_field;
 
-    // PURGE mask: cells within PURGE_RADIUS of a live player station (a bounded BFS per station over the
-    // field adjacency). Index-ordered ⇒ deterministic; `index.get` is a query, never an iteration.
+    // PURGE mask: cells within PURGE_RADIUS of a station ON A BUILT LINE — the player's RAIL NETWORK
+    // holds the line, not isolated unconnected nodes (the baked world seeds ~40 resource/town stations
+    // with no track; those must NOT suppress the tide, or the map would start immune to it). So a station
+    // purges only once the player rails it into the network. Bounded BFS per stop over the field
+    // adjacency; index-ordered ⇒ deterministic; `index.get` is a query, never an iteration.
     let mut purged = vec![false; n];
     let size = world.city.grid_cell_mm.max(1);
-    for s in &world.stations {
-        if s.removed {
+    for line in &world.lines {
+        if line.removed {
             continue;
         }
-        let Some(&start) = field.index.get(&hexgrid::axial_of(s.pos, size)) else { continue };
-        let mut frontier = vec![start];
-        purged[start as usize] = true;
-        for _ in 0..PURGE_RADIUS {
-            let mut nextf = Vec::new();
-            for &c in &frontier {
-                for &nb in field.neighbors(c) {
-                    if !purged[nb as usize] {
-                        purged[nb as usize] = true;
-                        nextf.push(nb);
+        for stop in &line.stops {
+            let Some(s) = world.stations.get(stop.index()) else { continue };
+            if s.removed {
+                continue;
+            }
+            let Some(&start) = field.index.get(&hexgrid::axial_of(s.pos, size)) else { continue };
+            if purged[start as usize] {
+                continue; // already covered by another stop's disk
+            }
+            let mut frontier = vec![start];
+            purged[start as usize] = true;
+            for _ in 0..PURGE_RADIUS {
+                let mut nextf = Vec::new();
+                for &c in &frontier {
+                    for &nb in field.neighbors(c) {
+                        if !purged[nb as usize] {
+                            purged[nb as usize] = true;
+                            nextf.push(nb);
+                        }
                     }
                 }
+                frontier = nextf;
             }
-            frontier = nextf;
         }
     }
 

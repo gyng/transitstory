@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -1404,6 +1404,7 @@ export class Game {
       roadCellM: this.build.cellMm / 1000, // mm → m (the buildability grid pitch)
       terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
       terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
+      tideCells: this.decadenceTideAt(), // fantasy S10c: the cold decadence creep (read on each refresh)
       resources: this.resources, // baked fantasy supply-chain source nodes; empty for transit cities
       towns: this.towns, // baked fantasy towns (sinks + conquest targets); empty for transit cities
       decadenceAnchors: this.decadenceAnchors, // baked far-edge reservoir anchors; empty for transit cities
@@ -1559,6 +1560,18 @@ export class Game {
     if (count === 0) return null;
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
     return armyLayer(xy, count);
+  }
+
+  /** The decadence tide's corrupted cells (fantasy S10c), read on each ~3 Hz refresh (the tide creeps
+   *  slowly, never per frame). `[x_m,y_m,v,...]` metres → lng/lat. Empty for transit / before it starts. */
+  private decadenceTideAt(): TideCell[] {
+    const t = this.bridge.decadenceTide();
+    const out: TideCell[] = [];
+    for (let i = 0; i + 2 < t.length; i += 3) {
+      const [lng, lat] = metersToLngLat([t[i], t[i + 1]]);
+      out.push({ lng, lat, v: t[i + 2] });
+    }
+    return out;
   }
 
   composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
