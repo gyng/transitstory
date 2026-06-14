@@ -22,6 +22,7 @@ declare global {
       placeStationLngLat(lng: number, lat: number): number;
       placeBarracksLngLat(lng: number, lat: number): number;
       postBounty(station: number, amount: number): void;
+      unlockTech(tech: number): void;
       drawLine(stationIds: number[]): number;
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;

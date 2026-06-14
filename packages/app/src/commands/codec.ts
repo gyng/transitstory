@@ -57,7 +57,19 @@ export const cmd = {
   }),
   /** Fantasy/arcadia (S8): post a bounty on a town (Majesty steering). amount=0 clears it. */
   postBounty: (station: number, amount: number): Command => ({ PostBounty: { station, amount } }),
+  /** Fantasy/arcadia (S11): buy a tech upgrade (index into the tech table) with tribute. Rejected in transit. */
+  unlockTech: (tech: number): Command => ({ UnlockTech: { tech } }),
 };
+
+/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, cost in tribute) + its effects.
+ *  The HUD reads `Stats.techUnlocked` (bit per id) + `tribute` to render locked/affordable/unlocked. */
+export const TECHS: { id: number; name: string; cost: number; blurb: string }[] = [
+  { id: 0, name: "Forge Mastery", cost: 24, blurb: "Sources produce twice as fast" },
+  { id: 1, name: "Conscription", cost: 40, blurb: "Legions cost half the tribute" },
+  { id: 2, name: "Sappers", cost: 56, blurb: "The decadence tide creeps half as fast" },
+];
+/** True iff tech `id` is unlocked in the bitset (mirrors tech::is_unlocked; bit == id for the shipped set). */
+export const techUnlocked = (bits: number, id: number): boolean => (bits & (1 << id)) !== 0;
 
 export const WHOLE_LINE = 0xffffffff;
 export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;

@@ -217,11 +217,16 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         world.decadence_cells.resize(n, 0);
     }
     let dt = dt_ms.max(0);
-    let creep = if world.city.decadence_creep_per_s > 0 {
+    let mut creep = if world.city.decadence_creep_per_s > 0 {
         world.city.decadence_creep_per_s
     } else {
         DEFAULT_CREEP_PER_S
     };
+    // S11 SAPPERS: the tide creeps at HALF rate when the tech is unlocked (buys defensive runway). 0 ⇒
+    // full rate, byte-identical (transit has no field; pre-tech arcadia keeps `tech_unlocked` 0).
+    if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::SAPPERS) {
+        creep = (creep / 2).max(1);
+    }
     // CONTINUOUS gain via a sub-unit accumulator (replaces the old `.max(1)` floor): `creep·dt/1000`
     // truncates a slow rate (< 20/s at dt=50) to 0, which froze the tide; flooring at 1 fixed the freeze
     // but made every rate < 20/s identical (a coarse knob, min ~17-min runway). Now the milli-gain

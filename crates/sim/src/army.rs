@@ -75,7 +75,15 @@ impl ArmySoA {
 /// tribute — the supply economy pays for the army. One per call (cadence refined in S8b). Targeting a
 /// specific enemy town is S8b; S8a marches the route to learn the SoA is separate + deterministic.
 pub(crate) fn maybe_launch(world: &mut World) {
-    if world.tribute < LAUNCH_COST || world.armies.len() >= MAX_ARMIES {
+    // S11 CONSCRIPTION: fielding a legion costs HALF the tribute when the tech is unlocked (same legion,
+    // cheaper). 0 ⇒ the shipped `LAUNCH_COST`, byte-identical (transit never runs `war_step`; pre-tech
+    // arcadia keeps `tech_unlocked` 0). Floored at 1 so a legion is never free.
+    let launch_cost = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::CONSCRIPTION) {
+        (LAUNCH_COST / 2).max(1)
+    } else {
+        LAUNCH_COST
+    };
+    if world.tribute < launch_cost || world.armies.len() >= MAX_ARMIES {
         return;
     }
     // Launch from a BARRACKS on a built route (the player's agency: no barracks ⇒ no army). The first
@@ -104,7 +112,8 @@ pub(crate) fn maybe_launch(world: &mut World) {
         Some((li, b_arc, target))
     });
     if let Some((li, b_arc, target)) = launch {
-        world.tribute -= LAUNCH_COST;
+        world.tribute -= launch_cost;
+        // Strength stays the nominal LAUNCH_COST (a CONSCRIPTION legion is cheaper, not weaker).
         world.armies.push(LineId(li as u32), 0, b_arc, 1, LAUNCH_COST, target);
     }
 }

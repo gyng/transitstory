@@ -23,7 +23,7 @@ impl Ruleset for TransitRuleset {
         // a `PlaceBarracks` (which would replay against the wrong `apply` in a fantasy world).
         use crate::command::Command;
         match cmd {
-            Command::PlaceBarracks { .. } | Command::PostBounty { .. } => {
+            Command::PlaceBarracks { .. } | Command::PostBounty { .. } | Command::UnlockTech { .. } => {
                 Err("that is a fantasy (arcadia) command, not valid in the transit game".into())
             }
             _ => Ok(()),

@@ -30,7 +30,9 @@ export type Command =
   // fantasy/arcadia (S8): place a barracks (a node that fields AI legions). Rejected in transit.
   | { PlaceBarracks: { x_mm: number; y_mm: number; name: string | null } }
   // fantasy/arcadia (S8): post a bounty on a town (Majesty steering — baits AI legions). Rejected in transit.
-  | { PostBounty: { station: number; amount: number } };
+  | { PostBounty: { station: number; amount: number } }
+  // fantasy/arcadia (S11): buy a tech upgrade (index into the tech table) with tribute. Rejected in transit.
+  | { UnlockTech: { tech: number } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -52,6 +54,7 @@ export type Event =
   | { DemandModeSet: { agents: boolean } }
   | { BarracksPlaced: { id: number; name: string } }
   | { BountyPosted: { station: number; amount: number } }
+  | { TechUnlocked: { tech: number; tribute_left: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -138,6 +141,9 @@ export interface Stats {
   armyCount: number;
   /** True once decadence has overrun the capital — the realm has fallen. */
   realmLost: boolean;
+  /** Unlocked-tech bitset (S11) — bit `TECH[id].bit` set ⇒ that upgrade is active. The HUD reads it
+   *  with `tribute` to render each tech as locked / affordable / unlocked. */
+  techUnlocked: number;
 }
 
 export interface StationView {

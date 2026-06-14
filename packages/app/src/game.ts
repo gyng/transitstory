@@ -53,6 +53,7 @@ const EMPTY_STATS: Stats = {
   townsCaptured: 0,
   armyCount: 0,
   realmLost: false,
+  techUnlocked: 0,
 };
 
 export type Mode = "build" | "run";
@@ -443,6 +444,14 @@ export class Game {
    *  bounty tool resolves a click to the nearest town and calls this; the core sets `bounty[town]`. */
   postBounty(stationId: number, amount: number = BOUNTY_AMOUNT): void {
     this.bridge.apply(cmd.postBounty(stationId, amount));
+    this.refresh();
+  }
+
+  /** Buy a tech upgrade (fantasy, S11) — spends tribute, sets the tech's bit. The core afford-gates +
+   *  rejects a repeat/unknown/broke unlock (no mutation), so the UI can fire optimistically and resync
+   *  from the next snapshot. The tech panel calls this; `tech` is an index into the tech table. */
+  unlockTech(tech: number): void {
+    this.bridge.apply(cmd.unlockTech(tech));
     this.refresh();
   }
 

@@ -28,6 +28,7 @@ pub mod routing;
 pub mod ruleset;
 pub mod station;
 pub mod stats;
+pub mod tech;
 mod tick;
 pub mod tod;
 pub mod trainset;

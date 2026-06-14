@@ -56,6 +56,10 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
         world.forge_accum.resize(n, 0);
     }
     let dt = dt_ms.max(0);
+    // S11 FORGE_MASTERY: raw production rate ×2 when the tech is unlocked. Read once (copy out of the
+    // borrow); 0 ⇒ ×1 ⇒ the shipped accrual, byte-identical (transit + pre-tech arcadia never set it).
+    let rate = RATE_MICRO_PER_WEIGHT_MS
+        * if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::FORGE_MASTERY) { 2 } else { 1 };
     for s in 0..n {
         let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
         let base = s * N_COMMODITIES;
@@ -95,7 +99,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
             continue;
         }
         let acc = &mut world.forge_accum[s];
-        *acc = acc.saturating_add(net.saturating_mul(RATE_MICRO_PER_WEIGHT_MS).saturating_mul(dt));
+        *acc = acc.saturating_add(net.saturating_mul(rate).saturating_mul(dt));
         let units = *acc / MICRO;
         if units <= 0 {
             continue;

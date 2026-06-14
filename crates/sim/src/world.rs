@@ -129,6 +129,12 @@ pub struct World {
     /// the transit hash (a re-pin) then stays byte-identical. The S11 economy splits this into
     /// gold/mana/manpower channels behind this same accumulator.
     pub tribute: i64,
+    /// Unlocked-tech bitset (fantasy, S11): bit `TECHS[id].bit` set ⇒ that upgrade is active. Bought with
+    /// tribute via `Command::UnlockTech`; each bit gates a buff to an existing lever (forge rate / legion
+    /// cost / decadence creep). **Hashed** (in `Canonical`). Always 0 for transit (the ruleset rejects
+    /// `UnlockTech`) and the arcadia golden (its log predates tech), so it adds one u32 to both hashes
+    /// (a one-time re-pin) then stays byte-identical.
+    pub tech_unlocked: u32,
     /// Per-station FIFO queue of waiting passengers (each carrying a multi-leg route).
     pub waiting: Vec<VecDeque<crate::pax::Pax>>,
     /// Per-station lines serving it (operational only); rebuilt by the dispatcher for routing.
@@ -347,6 +353,9 @@ struct Canonical<'a> {
     /// The spatial decadence tide (fantasy, S10b) — per-cell corruption over the baked board. Appended
     /// LAST so transit (empty slice) re-pins once then byte-identical. Empty for transit / demo arcadia.
     decadence_cells: &'a [i32],
+    /// Unlocked-tech bitset (fantasy, S11). Appended LAST so transit + the arcadia golden (both 0) re-pin
+    /// exactly once, then stay byte-identical. 0 ⇒ no tech ⇒ every effect takes its shipped-constant path.
+    tech_unlocked: u32,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -436,6 +445,7 @@ impl World {
             decadence: initial_decadence,
             decadence_accum: 0,
             tribute: 0,
+            tech_unlocked: 0,
             waiting: Vec::new(),
             ridership_total: 0,
             boardings: Vec::new(),
@@ -898,6 +908,7 @@ impl World {
             towns_captured: self.towns_captured as f64,
             army_count: self.armies.len() as u32,
             realm_lost: crate::decadence::is_lost(self),
+            tech_unlocked: self.tech_unlocked,
         }
     }
 
@@ -1008,6 +1019,26 @@ impl World {
                     }
                     self.bounty[s] = (*amount).max(0); // clamp ≥ 0; 0 clears the bounty
                     vec![Event::BountyPosted { station: *station, amount: self.bounty[s] }]
+                }
+            }
+            Command::UnlockTech { tech } => {
+                // Buy a tech upgrade with TRIBUTE (the legion war-chest). Validate id, refuse a repeat
+                // (the bit is already set), then afford-gate against tribute — so the spend is exactly
+                // once and never drives tribute negative. Reject (no mutation) on any failure.
+                let id = *tech as usize;
+                match crate::tech::TECHS.get(id) {
+                    None => vec![Event::Rejected { reason: "UnlockTech: unknown tech".into() }],
+                    Some(t) if self.tech_unlocked & (1u32 << t.bit) != 0 => {
+                        vec![Event::Rejected { reason: "UnlockTech: already unlocked".into() }]
+                    }
+                    Some(t) if self.tribute < t.cost => {
+                        vec![Event::Rejected { reason: "UnlockTech: not enough tribute".into() }]
+                    }
+                    Some(t) => {
+                        self.tribute -= t.cost;
+                        self.tech_unlocked |= 1u32 << t.bit;
+                        vec![Event::TechUnlocked { tech: *tech, tribute_left: self.tribute }]
+                    }
                 }
             }
             Command::CreateLine { color, name, loop_line, mode, literal } => {
@@ -1426,6 +1457,7 @@ impl World {
             bounty: &self.bounty,
             decadence: self.decadence,
             decadence_cells: &self.decadence_cells,
+            tech_unlocked: self.tech_unlocked,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

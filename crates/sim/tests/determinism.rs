@@ -57,7 +57,8 @@ fn replay_equality() {
 //   0x6253_ac99_08d6_20a3 — S8 PostBounty (the empty `bounty` slice appended)
 //   0xea4e_eb0a_03d9_74f9 — S9 decadence (the `decadence` i64 appended)
 //   0xfd8e_5b04_8a81_c31b — S10b decadence CA (the empty `decadence_cells` slice appended)
-const GOLDEN_TRANSIT_HASH: u64 = 0xfd8e_5b04_8a81_c31b;
+//   0x5aa7_c3b7_5a7e_86e1 — S11 tech (the `tech_unlocked` u32 appended, 0 for transit)
+const GOLDEN_TRANSIT_HASH: u64 = 0x5aa7_c3b7_5a7e_86e1;
 
 #[test]
 fn golden_transit_hash_pinned() {

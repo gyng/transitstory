@@ -63,6 +63,9 @@ pub struct StatsSnapshot {
     pub army_count: u32,
     /// True once decadence has overrun the capital — the realm has fallen.
     pub realm_lost: bool,
+    /// Unlocked-tech bitset (S11) — bit `TECHS[id].bit` set ⇒ that upgrade is active. The HUD reads it
+    /// to render each tech as locked / affordable / unlocked (cost vs `tribute`).
+    pub tech_unlocked: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

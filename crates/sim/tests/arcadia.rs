@@ -225,7 +225,9 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // S10b: the spatial decadence CA — the empty `decadence_cells` slice joins Canonical (the demo arcadia
 // fixture has no buildability ⇒ no CA domain ⇒ the slice stays empty; only the appended length-0 byte
 // shifts the hash). Prior (pre-S10b): 0x52d2_05b0_5502_b2aa.
-const GOLDEN_ARCADIA_HASH: u64 = 0xbd92_54a0_7395_96de;
+// S11 tech: the `tech_unlocked` u32 joins Canonical (0 — the fixture's log predates UnlockTech, so its
+// behaviour is byte-identical; only the appended 4 zero bytes shift the hash). Prior: 0xbd92_54a0_7395_96de.
+const GOLDEN_ARCADIA_HASH: u64 = 0xb53c_aaa4_672f_5b3a;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

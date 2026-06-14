@@ -2497,6 +2497,36 @@ commodity-aware routing is now LIVE end-to-end on the real bundle — re-verifie
   `build_world --selftest` **PASS** · full e2e **22/22** (incl. the new 3-stage gate; conquest still
   winnable + realm holds) · vitest **21/21** · `tsc` clean. Bake/frontend-only — no core change, no re-pin.
 
+**S11 — the TECH TREE (`UnlockTech`): tribute buys upgrades, 2026-06-14.** The first of S11's remaining
+economy items. Tribute was already a SPENDABLE war-chest (`army::maybe_launch` deducts it to field
+legions); S11 gives it a second sink — permanent TECH upgrades — so accumulated supply becomes a real
+DECISION (legions now vs. a compounding upgrade), the depth the design's "two orthogonal levers" wanted.
+The progress gauge reads coverage+conquest, NOT tribute, so spending never lowers it (monotonicity intact).
+
+- **`tech.rs` + `tech_unlocked: u32` (hashed bitset):** 3 techs, each one bit gating a buff to an EXISTING
+  lever — FORGE MASTERY (×2 raw production, `forge::produce`), CONSCRIPTION (½ legion cost,
+  `army::maybe_launch`), SAPPERS (½ decadence creep, `decadence_field::step`). Every effect reads its bit
+  and falls back to the shipped constant when unset, so transit (the ruleset REJECTS `UnlockTech`) and the
+  arcadia golden (log predates tech) are behaviourally byte-identical.
+- **`Command::UnlockTech { tech }`** spends `TECHS[id].cost` tribute and sets the bit — afford-gated +
+  rejecting unknown·repeat·broke (no mutation), so the spend is **exactly-once**. The single write path;
+  the UI fires it optimistically and resyncs from the snapshot.
+- **Golden re-pin (RED-first, binding condition #1):** `tech_unlocked` joins `Canonical` LAST ⇒ both
+  goldens shift once (0 for transit + the pre-tech arcadia fixture — behaviour unchanged, only the appended
+  4 zero bytes move the hash). Transit `0xfd8e…c31b → 0x5aa7…86e1`; arcadia `0xbd92…96de → 0xb53c…5b3a`,
+  both with provenance.
+- **Tests (`tests/tech.rs`, +5):** unlock spends-exactly-its-cost + sets the bit + emits `TechUnlocked`;
+  rejects unknown·repeat·broke; transit refuses it; FORGE MASTERY's doubled production OUT-EARNS a control
+  over a long horizon (the bit changes behaviour, not just a flag); the tech flow replays bit-for-bit.
+- **Frontend:** `types.ts`/`codec.ts` (the `UnlockTech` command + `TECHS` table mirror + `techUnlocked`
+  stat), `Game.unlockTech`, the test hook, and a React **`TechPanel`** (bottom-left, arcadia-only) that
+  reads tribute + the bitset and renders each tech locked/affordable/owned — one Command per buy.
+- **e2e (`fantasy-tech.spec.ts`):** on the REAL baked world, supply a BREAD town → earn tribute → unlock
+  FORGE MASTERY and assert the gameplay facts (the bit flips, exactly the cost is deducted, a repeat spends
+  nothing, the HUD marks it owned).
+- Tiers: cargo **207/0** (goldens re-pinned green) · `build_world --selftest` **PASS** · full e2e **23/23**
+  (the new tech gate; conquest/multistage still green) · vitest **21/21** · `tsc` clean.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

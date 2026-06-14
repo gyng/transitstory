@@ -146,6 +146,13 @@ pub enum Command {
     SetDemandMode {
         agents: bool,
     },
+    /// Buy a tech upgrade (fantasy/arcadia, S11): `tech` is an index into `tech::TECHS`. Spends
+    /// `TECHS[tech].cost` TRIBUTE (the same pool that funds legions) and permanently sets the tech's
+    /// bit in `tech_unlocked`, which gates a buff to an existing lever. Rejected by transit, by an
+    /// unknown id, if already unlocked, or if tribute is short — so the spend is exactly-once.
+    UnlockTech {
+        tech: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -169,5 +176,6 @@ pub enum Event {
     DemandModeSet { agents: bool },
     BarracksPlaced { id: StationId, name: String },
     BountyPosted { station: StationId, amount: i64 },
+    TechUnlocked { tech: u8, tribute_left: i64 },
     Rejected { reason: String },
 }
