@@ -161,6 +161,13 @@ pub struct World {
     /// transit / demo arcadia (no terrain ⇒ the CA never runs), so it adds a length-0 slice to the hash
     /// (one re-pin, then byte-identical). Sized lazily by `decadence_field::step` on first arcadia tick.
     pub decadence_cells: Vec<i32>,
+    /// Sub-unit (milli-gain) decadence-creep remainder — the integer fixed-point accumulator that makes
+    /// the tide creep rate CONTINUOUS: a slow `creep_per_s` that would truncate `creep·dt/1000` to 0/tick
+    /// instead accrues across ticks. The per-tick gain is uniform across advancing cells, so a single
+    /// scalar. Derived/transient like `forge_accum` (regenerated bit-identically on replay), so NOT
+    /// folded into `Canonical`. A rate yielding an exact integer gain (e.g. the default/baked rates)
+    /// leaves this 0 ⇒ every current world is byte-identical to the old gain-floor.
+    pub decadence_gain_accum: i64,
     /// Cumulative boardings (the headline ridership counter).
     pub ridership_total: u64,
     pub boardings: Vec<u64>,
@@ -391,6 +398,7 @@ impl World {
         let decadence_field = crate::decadence_field::DecadenceField::build(&city);
         World {
             decadence_cells: Vec::new(),
+            decadence_gain_accum: 0,
             seed,
             clock_ms: 0,
             running: false,

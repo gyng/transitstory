@@ -254,13 +254,30 @@ fn the_spatial_tide_is_the_lose_condition_and_the_network_holds_it() {
 #[test]
 fn a_slow_creep_rate_does_not_freeze_the_tide() {
     // Freeze-bug guard: a slow creep (< 20/s) truncates `creep·dt/1000` to 0/tick, which would freeze the
-    // tide entirely. The gain floor (max 1) keeps it advancing. With creep=1 (gain 0 WITHOUT the floor)
-    // the front still creeps in ⇒ the derived lose meter rises. (Reads decadence==0 under the old code.)
+    // tide entirely. The sub-unit accumulator accrues the milli-gain across ticks so it still advances at
+    // its true average rate. With creep=1 the front still creeps in ⇒ the lose meter rises. (Reads
+    // decadence==0 under the original truncating code.)
     let mut city = hex_world(20, 20, (0, 0), &[]);
     city.decadence_creep_per_s = 1;
     let w = run_ticks(&city, &[], 4000);
     assert!(w.decadence_cells.iter().any(|&d| d > 0), "a slow creep still corrupts cells (no freeze)");
     assert!(w.decadence > 0, "the front advanced ⇒ the lose meter rose (the tide isn't frozen at the edge)");
+}
+
+#[test]
+fn the_creep_rate_is_continuous_not_floored() {
+    // The accumulator makes the creep knob CONTINUOUS: two slow rates that BOTH truncated to gain 0 (and
+    // the old `.max(1)` floor mapped to the SAME gain 1) now advance at distinct, proportional speeds —
+    // the faster rate's front is further in. Under the old floor these would be EQUAL (the RED-first pin).
+    let run = |creep: i64| {
+        let mut c = hex_world(24, 24, (0, 0), &[]);
+        c.decadence_creep_per_s = creep;
+        run_ticks(&c, &[], 3000).decadence
+    };
+    let slow = run(4); // 0.2 gain/tick (avg) — floored to 1/tick under the old code
+    let fast = run(12); // 0.6 gain/tick (avg) — also floored to 1/tick under the old code
+    assert!(slow > 0 && fast > 0, "both rates advance the tide");
+    assert!(fast > slow, "a faster creep advances the front further ({fast} > {slow}) — the knob is continuous");
 }
 
 #[test]

@@ -2379,6 +2379,31 @@ tsc clean; arcadia ×2 + conquest e2e green (existing testids preserved, `standi
 added). **Next S11 chunks:** tribute→treasury economy + opex, the `UnlockTech` bitset, the rival seam;
 plus the deferred S7e multi-stage.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 8: continuous creep accumulator (deferred S10c follow-up) +
+a timescale finding, 2026-06-14.** While scoping the S11 economy I found the day-based opex/growth
+mechanics barely fire: the baked decadence runway (~17–20 min at creep=20, gain 1/tick) is SHORTER than
+one in-game day (24×`HOUR_MS` = 48 sim-min), so "days" don't really turn in a decadence race — the economy
+is coupled to the game's timescale (a genuine design fork: a fast ~20-min race vs a multi-day economy
+campaign). The blocker to slowing the runway was the S10c gain FLOOR (`max(1)`), which made every
+`creep_per_s < 20` collapse to the same gain 1/tick.
+
+- **Fix (the deferred S10c follow-up):** replaced the floor with a sub-unit **accumulator**
+  (`world.decadence_gain_accum`, a scalar — the per-tick gain is uniform across advancing cells). The
+  milli-gain accrues across ticks and whole units are extracted, so the creep rate is now CONTINUOUS — a
+  slow `creep_per_s` advances at its true average (the front steps on rollover ticks), enabling a tunable
+  multi-minute → multi-day runway. Transient/unhashed (regenerated bit-identically on replay, like
+  `forge_accum`). **Golden-neutral**: a rate yielding an exact integer gain (the default 200 ⇒ 10/tick,
+  the baked 20 ⇒ 1/tick) leaves the accumulator 0 ⇒ byte-identical to the floor; both goldens unchanged.
+- **Tests (`decadence_field.rs`):** the freeze-guard still holds (creep=1 advances, not frozen); a new
+  `the_creep_rate_is_continuous_not_floored` pins it — creep=4 vs creep=12 now advance at distinct,
+  proportional speeds (under the old floor both were gain 1 ⇒ equal; the RED-first pin). cargo **199/0**.
+- **Decision surfaced (genuinely the user's):** the bigger S11 economy/tech depth (opex expander-brake,
+  tech ladder over days, endless/prestige) only becomes meaningful with a **multi-day runway** — which the
+  accumulator now ENABLES (set a slow baked `creep_per_s`), but choosing it changes the game's feel from a
+  ~20-min race to a longer campaign + needs a balance re-tune. Left the baked rate at the felt ~20-min race
+  (creep=20, accumulator inert there) pending that call. The rival kingdom is a `war_step(owner != PLAYER)`
+  seam the design explicitly DEFERS.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

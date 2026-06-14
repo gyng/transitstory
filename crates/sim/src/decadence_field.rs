@@ -222,11 +222,16 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
     } else {
         DEFAULT_CREEP_PER_S
     };
-    // Floor the integer gain at 1 for any positive creep: `creep·dt/1000` truncates a slow rate (< 20/s
-    // at dt=50) to 0, which would silently FREEZE the tide (the original decadence-truncation class of
-    // bug). With the floor, the slowest creep is 1 unit/tick ⇒ a ring fills (and the front advances one
-    // step) every `ADVANCE_THRESHOLD` ticks — a multi-game-minute crawl over a continent-sized span.
-    let gain = (creep.saturating_mul(dt) / 1000).max(1) as i32;
+    // CONTINUOUS gain via a sub-unit accumulator (replaces the old `.max(1)` floor): `creep·dt/1000`
+    // truncates a slow rate (< 20/s at dt=50) to 0, which froze the tide; flooring at 1 fixed the freeze
+    // but made every rate < 20/s identical (a coarse knob, min ~17-min runway). Now the milli-gain
+    // accrues across ticks (`decadence_gain_accum`) and whole units are extracted — so a slow creep
+    // advances at its true average rate (the front steps forward on rollover ticks), enabling a tunable
+    // multi-game-minute → multi-day runway. A rate ≥ 20/s rolls over every tick (exact integer gain, no
+    // remainder) ⇒ byte-identical to the floor for the default/baked rates.
+    world.decadence_gain_accum = world.decadence_gain_accum.saturating_add(creep.saturating_mul(dt));
+    let gain = (world.decadence_gain_accum / 1000) as i32;
+    world.decadence_gain_accum -= gain as i64 * 1000;
     let purge = (PURGE_PER_S.saturating_mul(dt) / 1000) as i32;
     let field = &world.decadence_field;
 
