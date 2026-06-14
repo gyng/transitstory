@@ -2288,6 +2288,38 @@ the render is S10c — so the carefully-tuned balance is not re-opened in one ri
   capital + re-verify/-tune the balance (the army pushback ↔ spatial PURGE); then **S10c** renders the cold
   tide (the "look") + a screenshot.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 4: S10b-2, the spatial lose condition (golden-neutral), 2026-06-14.**
+The decadence tide is now the baked world's actual lose condition — the corruption you race, spatially.
+
+- **The rewire (`war_step` branch):** a world with a baked CA board runs the spatial CA, which **derives
+  the global `decadence` lose meter from the tide's FRONT** — the nearest-to-capital corrupted cell,
+  scaled so it hits `CAPITAL_THRESHOLD` exactly when the front reaches `LOSE_DIST` (3) of the capital. A
+  world WITHOUT terrain (the demo / native harness / golden fixtures) has no field, so it runs the
+  unchanged abstract scalar meter — **byte-identical to S9 ⇒ golden-neutral, NO re-pin** (verified: both
+  goldens still `0xfd8e…c31b` / `0xbd92…96de`). Exactly one of the two runs ⇒ no double-count.
+- **The brake is the rail network (PURGE), not the abstract pushback:** holding/building track near the
+  front purges it back (lowers the meter); the front reaching the capital = the realm falls. `LOSE_DIST`
+  is LARGER than the capital barracks's `PURGE_RADIUS`, so a lone capital can't make the realm
+  unloseable — you must extend the purge ring outward to hold the heartland. Conquest still matters
+  (tribute + the line you build to a conquest target purges that region — area control falls out of the
+  build loop).
+- **Per-city creep knob + calibration:** `CityData.decadence_creep_per_s` (serde-default ⇒ the FAST test
+  rate, so the S10b-1 field tests are unaffected; the baked world sets a slow rate). Measured the real
+  continent: **9312 passable cells (all reachable, 0 stranded), max creep-distance 201 hops**; baked
+  `creepPerS=8` ⇒ the front advances ~1 ring/250 ticks ⇒ an **undefended realm is overrun in ~40
+  game-minutes** — a generous campaign runway. Threaded `decadenceSeed.creepPerS` → `buildCoreCity`;
+  re-baked (certified seed still 12, packs otherwise unchanged).
+- **Tests (`tests/decadence_field.rs` +1, structural):** `the_spatial_tide_is_the_lose_condition_and_the_
+  network_holds_it` — an undefended baked realm (just the capital) IS overrun by the tide; a WALL of
+  stations across the approach (PURGE) holds it out for well past the idle-loss time (earned survival).
+- **Real-world verification (production bundle):** the conquest + play e2e are green; the trajectory shows
+  the lose meter now front-derived (**decadencePct ~1%** in the 10-min window — the slow tide is still far
+  from the capital), realmLost=false, conquest completes — the spatial model is winnable on the real
+  continent, and the CA + derivation runs every tick within the perf budget (conquest e2e 6.7 s).
+- Tiers: cargo **196/0** (+1 spatial test; both goldens unchanged — golden-neutral) · build_world
+  `--selftest` PASS · conquest + play e2e green. **Next (S10c):** render the cold tide (the "look") +
+  screenshot — then S10 (the area-control identity) is complete end-to-end.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

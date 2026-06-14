@@ -20,7 +20,7 @@ const CLEAR_PER_TOWN_PER_S: i64 = 300;
 /// Decadence at/above this has reached the capital — the realm falls. Knob; S9 default sized so an
 /// idle realm is overrun in a few game-minutes — slower than a modest supply→conquest chain can field
 /// and march a legion — so conquest is a viable brake (the game is winnable). Balance-swept later.
-const CAPITAL_THRESHOLD: i64 = 20_000;
+pub(crate) const CAPITAL_THRESHOLD: i64 = 20_000;
 
 /// The decadence sub-phase of `war_step`: corruption spreads at `BASE_GROWTH`, pushed back by held
 /// (captured) towns. Net rate can go negative — a conquering realm claws ground back — clamped at 0

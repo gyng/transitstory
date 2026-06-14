@@ -304,8 +304,8 @@
         "yMm": 40125000,
         "value": 9900,
         "demands": [
-          "fuel",
           "grain",
+          "fuel",
           "aether"
         ],
         "decadence": 5360,
@@ -412,8 +412,8 @@
         "yMm": 35250000,
         "value": 9350,
         "demands": [
-          "fuel",
           "grain",
+          "fuel",
           "aether"
         ],
         "decadence": 5030,
@@ -448,8 +448,8 @@
         "yMm": 36750000,
         "value": 9000,
         "demands": [
-          "fuel",
           "grain",
+          "fuel",
           "aether"
         ],
         "decadence": 0,
@@ -496,6 +496,7 @@
       "initialDecadence": 5345,
       "growthPerS": 6,
       "armySpeedMmS": 200000,
+      "creepPerS": 8,
       "capitalXMm": 14722432,
       "capitalYMm": 8250000
     }

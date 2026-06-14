@@ -45,6 +45,9 @@ pub struct DecadenceField {
     pub dist_to_capital: Vec<u32>,
     /// The capital cell (the lose target), if the baked capital falls on / near a domain cell.
     pub capital: Option<u32>,
+    /// The maximum creep distance (the reservoir's distance to the capital) — the tide's full advance
+    /// span, used to scale the derived lose meter. 0 if no capital / disconnected.
+    pub max_dist: u32,
     /// Tide-origin seed cells: the cells farthest from the capital (the "far edge"), reachable to it.
     pub reservoir: Vec<u32>,
     /// Axial → CellId lookup (the inverse of `cells`). Static topology, queried not iterated (like
@@ -164,7 +167,7 @@ impl DecadenceField {
                 .then(cells[a as usize].cmp(&cells[b as usize]))
         });
 
-        DecadenceField { cells, nbr_start, nbr_flat, dist_to_capital, capital, reservoir, index }
+        DecadenceField { cells, nbr_start, nbr_flat, dist_to_capital, capital, reservoir, index, max_dist: maxd }
     }
 }
 
@@ -181,11 +184,17 @@ impl DecadenceField {
 /// Fully-corrupted cell value — the saturation ceiling + the reservoir seed level.
 pub const DECAD_MAX: i32 = 1000;
 /// A cell advances (the tide flows in) only from a FARTHER-from-capital neighbour at least this corrupt,
-/// so the front is a gradient creeping capital-ward, not an instant flood. (S10b-1 placeholder; the creep
-/// rate is calibrated against the baked world in S10b-2.)
+/// so the front is a gradient creeping capital-ward, not an instant flood. A ring reaches this in
+/// `ADVANCE_THRESHOLD / gain` ticks, so the front advances one ring at that cadence.
 const ADVANCE_THRESHOLD: i32 = 100;
-/// Diffusion gain per sim-second for an advancing cell (→ +10 per 50 ms tick, integer-exact at dt=50).
-const DIFFUSE_GAIN_PER_S: i64 = 200;
+/// Default diffuse gain per sim-second (→ +10 per 50 ms tick) when a city sets no `decadence_creep_per_s`
+/// — the FAST rate the S10b field tests rely on. A baked world overrides it with a slow rate (a
+/// multi-minute creep to the capital): at gain 1/tick the front advances one ring per ~100 ticks.
+pub const DEFAULT_CREEP_PER_S: i64 = 200;
+/// The tide has "reached the capital" (the realm falls) once its front is within this many hexes of the
+/// capital — LARGER than the capital barracks's `PURGE_RADIUS`, so a lone capital can't make the realm
+/// unloseable: the player must extend the network's purge ring outward to actually hold the heartland.
+const LOSE_DIST: u32 = 3;
 /// PURGE per sim-second for a network-covered cell (→ −100 per tick): 10× the diffuse gain, so PURGE
 /// STRICTLY DOMINATES DIFFUSE — held ground trends to 0 (the build-plan invariant).
 const PURGE_PER_S: i64 = 2000;
@@ -208,7 +217,12 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         world.decadence_cells.resize(n, 0);
     }
     let dt = dt_ms.max(0);
-    let gain = (DIFFUSE_GAIN_PER_S.saturating_mul(dt) / 1000) as i32;
+    let creep = if world.city.decadence_creep_per_s > 0 {
+        world.city.decadence_creep_per_s
+    } else {
+        DEFAULT_CREEP_PER_S
+    };
+    let gain = (creep.saturating_mul(dt) / 1000) as i32;
     let purge = (PURGE_PER_S.saturating_mul(dt) / 1000) as i32;
     let field = &world.decadence_field;
 
@@ -263,4 +277,30 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         }
     }
     world.decadence_cells = next;
+
+    // 4. S10b-2 — derive the global lose meter from the tide's FRONT (the nearest-to-capital corrupted
+    // cell), scaled so it hits `CAPITAL_THRESHOLD` exactly when the front reaches `LOSE_DIST`. The
+    // network's PURGE pushes the front back ⇒ lowers the meter (build/hold to survive); the tide reaching
+    // the capital ⇒ the realm falls. Overwrites the scalar `decadence` for baked worlds (the `war_step`
+    // branch runs THIS instead of `decadence::step` when a field exists ⇒ no double-count).
+    let max_dist = world.decadence_field.max_dist;
+    let mut front = max_dist;
+    for c in 0..n {
+        if world.decadence_cells[c] >= FRONT_THRESHOLD {
+            let d = world.decadence_field.dist_to_capital[c];
+            if d < front {
+                front = d;
+            }
+        }
+    }
+    let span = max_dist.saturating_sub(LOSE_DIST).max(1) as i64;
+    let advanced = max_dist.saturating_sub(front) as i64;
+    world.decadence = crate::decadence::CAPITAL_THRESHOLD
+        .saturating_mul(advanced)
+        .saturating_div(span)
+        .clamp(0, crate::decadence::CAPITAL_THRESHOLD);
 }
+
+/// A cell counts as part of the tide FRONT (for the derived lose meter) once it carries any corruption;
+/// a network-PURGEd cell drops back to 0 and stops counting, so holding the line retreats the front.
+const FRONT_THRESHOLD: i32 = 1;

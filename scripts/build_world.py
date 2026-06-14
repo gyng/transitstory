@@ -110,6 +110,12 @@ DECADENCE_GROWTH_PER_S = 6
 # crosses 60 km in ~5 min — a few-minute legion for an epic continent, well inside the ~40-min decadence
 # runway. Balance knob; tests/balance.rs `fantasy_baked_continent_is_winnable` certifies it conquers + holds.
 ARMY_SPEED_MM_S = 200_000
+# Decadence-tide CREEP rate (diffuse gain per sim-second) for the S10 spatial CA on the baked continent —
+# FAR slower than the test default (200): the tide front advances one hex-ring per ~(ADVANCE_THRESHOLD/gain)
+# ticks, so at gain≈0.4/tick over the continent's ~200-ring span an undefended realm is overrun in ~40
+# game-minutes — a generous campaign runway you race with rail-network defenses. Balance knob (the conquest
+# e2e certifies winnable). Spatial-model only; the scalar growthPerS is vestigial for a baked world.
+DECADENCE_CREEP_PER_S = 8
 
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a
@@ -428,7 +434,7 @@ def seed_decadence(biome, capital, towns):
     cap_y_mm = round(float(GRID_CELL_MM) * (1.5 * capital[1]))
     return {"capitalGraceHexes": CAPITAL_GRACE_HEXES, "reservoir": reservoir,
             "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
-            "armySpeedMmS": ARMY_SPEED_MM_S,
+            "armySpeedMmS": ARMY_SPEED_MM_S, "creepPerS": DECADENCE_CREEP_PER_S,
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
 
 

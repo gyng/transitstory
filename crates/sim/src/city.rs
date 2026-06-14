@@ -65,6 +65,13 @@ pub struct CityData {
     pub capital_x_mm: i64,
     #[serde(default)]
     pub capital_y_mm: i64,
+    /// Fantasy (arcadia) S10b: decadence-tide CREEP rate (the diffuse gain per sim-second) for the
+    /// spatial CA. A per-city knob — the large baked continent presses gently (a multi-minute creep to
+    /// the capital), the tests use the fast default. **0 (serde + `Default`) ⇒ the
+    /// `decadence_field::DEFAULT_CREEP_PER_S` default**, so the S10b-1 field tests + any empty-field world
+    /// are unaffected; only a baked world that sets it (slow) gets the calibrated runway.
+    #[serde(default)]
+    pub decadence_creep_per_s: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

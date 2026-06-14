@@ -199,6 +199,45 @@ fn the_ca_has_no_lattice_axis_bias() {
 }
 
 #[test]
+fn the_spatial_tide_is_the_lose_condition_and_the_network_holds_it() {
+    // S10b-2: for a baked world the global lose meter is DERIVED from the tide's front. An undefended
+    // realm (just the capital) FALLS as the tide reaches the capital; a network WALL across the approach
+    // PURGEs the front out and the realm SURVIVES the same run. (Default fast creep — the baked-slow
+    // runway is verified on the real continent by the conquest e2e.)
+    let city = hex_world(40, 40, (0, 0), &[]);
+    let cap = hexgrid::center_of((0, 0), SIZE);
+
+    // Idle: only the capital barracks → overrun.
+    let mut idle = World::new(12, city.clone());
+    idle.apply(&Command::PlaceBarracks { x_mm: cap.x_mm, y_mm: cap.y_mm, name: None });
+    idle.apply(&Command::SetRunning { running: true });
+    assert!(!sim::decadence::is_lost(&idle), "the realm starts uncorrupted (tide at the far edge)");
+    let mut lost_at = 0;
+    for t in 1..=6000 {
+        idle.tick(50);
+        if sim::decadence::is_lost(&idle) {
+            lost_at = t;
+            break;
+        }
+    }
+    assert!(lost_at > 0, "an undefended baked realm is overrun — the spatial tide reaches the capital");
+
+    // Defended: a wall of stations across the dist-4 approach (PURGE radius 2 ⇒ covers the inner rings)
+    // holds the tide out for well past the idle-loss time.
+    let mut held = World::new(12, city.clone());
+    held.apply(&Command::PlaceBarracks { x_mm: cap.x_mm, y_mm: cap.y_mm, name: None });
+    for (q, r) in [(4, 0), (3, 1), (2, 2), (1, 3), (0, 4)] {
+        let p = hexgrid::center_of((q, r), SIZE);
+        held.apply(&Command::PlaceStation { x_mm: p.x_mm, y_mm: p.y_mm, name: None });
+    }
+    held.apply(&Command::SetRunning { running: true });
+    for _ in 0..(lost_at + 3000) {
+        held.tick(50);
+    }
+    assert!(!sim::decadence::is_lost(&held), "a network wall holds the tide out — PURGE defends the heartland");
+}
+
+#[test]
 fn world_new_wires_the_field_and_stays_golden_neutral() {
     // The field is built into World, but it is un-hashed (a pure function of CityData), so a fantasy
     // world's state_hash is identical whether or not the field has cells — adding it re-pins NOTHING.

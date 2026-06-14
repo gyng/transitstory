@@ -46,12 +46,16 @@ impl Ruleset for ArcadiaRuleset {
         crate::army::maybe_launch(world);
         crate::army::advance_armies(world, dt_ms);
         crate::army::siege(world);
-        // Decadence (S9): the global lose-meter pressure — pushed back by conquest.
-        crate::decadence::step(world, dt_ms);
-        // Decadence (S10b): the SPATIAL tide — the per-cell creep CA over the baked board (no-op until a
-        // baked world supplies terrain). Runs PARALLEL to the scalar meter; the lose-condition rewire is
-        // S10b-2. Pushed back spatially by the player's rail network (PURGE).
-        crate::decadence_field::step(world, dt_ms);
+        // Decadence — the lose meter (S9/S10). A baked world (a non-empty CA board) runs the SPATIAL
+        // tide CA, which derives `decadence` from how far the front has crept toward the capital, pushed
+        // back by the rail network's PURGE (S10b-2). A world without baked terrain (the demo / native
+        // harness / golden fixtures) has no field, so it runs the abstract SCALAR meter — byte-identical
+        // to S9, so this branch is golden-neutral (no re-pin). Exactly one runs ⇒ no double-count.
+        if world.decadence_field.is_empty() {
+            crate::decadence::step(world, dt_ms);
+        } else {
+            crate::decadence_field::step(world, dt_ms);
+        }
     }
 }
 

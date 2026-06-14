@@ -34,7 +34,7 @@ export interface RawCity {
     towns?: { kind: string; q: number; r: number; xMm: number; yMm: number; value: number; demands: string[]; decadence: number; recipe?: number[] }[];
     /** S4 decadence seed: the far-edge reservoir (tide origin + raider anchors), the clean grace radius,
      *  and the realm's baked STARTING decadence (seeded into world.decadence). */
-    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number; capitalXMm?: number; capitalYMm?: number };
+    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number; creepPerS?: number; capitalXMm?: number; capitalYMm?: number };
   };
   /** Optional per-city rider patience (sim-ms) — overrides the core's default. The globe sets an
    *  air-scale value (90_000 = 45 clock-min): air travellers arrive for a departure rather than
@@ -89,6 +89,7 @@ export function buildCoreCity(
   if (dec?.armySpeedMmS) core.army_speed_mm_s = dec.armySpeedMmS; // baked legion march speed (continent scale)
   if (dec?.capitalXMm) core.capital_x_mm = dec.capitalXMm; // baked capital cell (S10 decadence-tide target)
   if (dec?.capitalYMm) core.capital_y_mm = dec.capitalYMm;
+  if (dec?.creepPerS) core.decadence_creep_per_s = dec.creepPerS; // baked tide creep rate (S10b-2)
   if (buildability) {
     core.buildability = {
       cell_m: buildability.cellM,
