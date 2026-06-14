@@ -2184,6 +2184,38 @@ by conquering — measured both natively (synthetic harness) and in-browser (rea
   (full-suite run in progress). The decadence accumulator is integer-exact (no float in the hashed path);
   determinism preserved.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 1 (balance pass + S10 scoped), 2026-06-14.** Started a `/loop`
+("continue until the roadmap/design doc is done, work deferred items, periodic screenshots/progress
+docs"). Iteration 1's substantive progress = the **baked-world balance pass** above (resolves the BALANCE
+PROBE roadmap item; cargo 183/0 · vitest 21/21 · e2e 21/21 · selftest PASS; adversarially verified).
+
+- **Browser-corroborated on the real seed-12 baked world** (production preview bundle): the full fantasy
+  loop now closes end-to-end — built 3 supply lines (2-input Liebig BREAD/ARMS) + 2 capital→town conquest
+  lines, ran a deterministic stretch, and observed **4 legions fielded, a town captured, decadence driven
+  27% → 0%** (the captured-town pushback overwhelms the baked 6/s rot), 116 riders, **0 console errors**.
+  (Committed screenshot deferred to the e2e screenshot pipeline — the playwright-MCP file lands in a
+  sandbox not reachable from the host; `fantasy-shot.spec.ts` is the durable artifact path.)
+- **Roadmap remaining (build plan S0→S11):** S0–S9 + S7e (disjoint chains) + the full map generator
+  (S1–S6) + the balance pass are DONE. Left: **S10** (the spatial decadence CA / area-control — "the
+  largest subsystem, the perf cliff") · **S11** (economy/tech/endless+prestige/rival) · the S7e
+  multi-stage refinement (raw→mid→final, e.g. ore→INGOT→ARMS).
+- **S10 plan (locked decisions, for the next iteration):** the current `decadence` is a global scalar;
+  S10 makes it a SPATIAL field — a hashed, **index-ordered sparse Vec** of contested cells
+  (owner/decadence), **double-buffered** integer diffusion (read prev → write next; in-place would read
+  half-updated neighbours), **PURGE strictly dominates DIFFUSE** (fed/captured ground reaches
+  decadence==0), seeded from the baked far-edge **reservoir anchors**, creeping toward the capital via the
+  baked creep-distance potential, with a **hard cell cap + a per-tick bench gate** (binding condition #3 —
+  a decadence bloom is a perf cliff). Golden re-pin RED-first (binding #1). **Plumbing gap found:** the
+  core only keeps a SQUARE buildability *lookup* (`build_lookup` HashMap), not the hex-cell graph the CA
+  needs, and the supplyGraph (reservoir/capital/creep-potential) never reaches `CityData` today — so S10
+  starts with **S10a: thread the hex-cell domain + reservoir anchors + capital + creep potential into
+  `CityData` (additive, default-empty ⇒ golden-neutral) + build the in-core hex adjacency**, then **S10b:
+  the CA engine** (re-pin) consuming it, then **S10c: render the cold tide + screenshot**. Decision per
+  docs/fantasy-map.md "Open decisions": share the terrain hex grid (cheapest; the baked world is 10,307
+  cells, inside the conservative ≤25k budget) — re-evaluate at the S10b per-tick bench. Risk battery
+  (build plan): PURGE>DIFFUSE reaches 0 · identical-field-after-K-days-twice · directional symmetry ·
+  bounded (hard cap) · per-tick bench within the 20–30 Hz budget — assert structurally, never `run()==run()`.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
