@@ -61,6 +61,9 @@ impl Ruleset for ArcadiaRuleset {
         } else {
             crate::decadence_field::step(world, dt_ms);
         }
+        // The SPELL ARM (S11): mana auto-cast spells at the biggest threat, AFTER the tide is derived so a
+        // Purge retreats the front for next tick + reads the settled field. Inert without SPELLCRAFT.
+        crate::spell::step(world, dt_ms);
     }
 }
 

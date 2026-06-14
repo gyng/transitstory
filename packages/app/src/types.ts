@@ -152,8 +152,10 @@ export interface Stats {
   /** True once decadence has overrun the capital — the realm has fallen. */
   realmLost: boolean;
   /** Unlocked-tech bitset (S11) — bit `TECH[id].bit` set ⇒ that upgrade is active. The HUD reads it
-   *  with `tribute` to render each tech as locked / affordable / unlocked. */
+   *  with `mana` to render each tech as locked / affordable / unlocked. */
   techUnlocked: number;
+  /** Cumulative spells the AI has cast (S11 spell arm) — shown in the HUD once SPELLCRAFT is unlocked. */
+  spellsCast: number;
 }
 
 export interface StationView {

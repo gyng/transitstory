@@ -243,6 +243,20 @@ pub fn raider_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved SPELL FLASHES `[x0_m, y0_m, kind0, alpha0, ...]` (fantasy S11 — the spell arm). A brief
+/// burst at each auto-cast site; `kind` (0 purge / 1 smite / 2 warpath) picks the colour, `alpha` (1→0
+/// over the flash's life) the fade. Render-only (the flashes are not hashed). Empty otherwise.
+pub fn spell_flashes_m(w: &World) -> Vec<f32> {
+    let mut out = Vec::with_capacity(w.spell_flashes.len() * 4);
+    for f in &w.spell_flashes {
+        out.push(mm_to_m(f.x_mm));
+        out.push(mm_to_m(f.y_mm));
+        out.push(f.kind as f32);
+        out.push((1.0 - f.age_ms as f32 / 1500.0).clamp(0.0, 1.0)); // 1500 = spell::FLASH_MS
+    }
+    out
+}
+
 /// Interleaved decadence-tide cells `[x0_m, y0_m, v0, ...]` (fantasy S10c): each CORRUPTED CA cell
 /// (decadence > 0) as local metres + a 0..1 strength (`decadence / DECAD_MAX`) for the cold-tide overlay.
 /// Empty for transit / before the tide starts. Render-only — the field is hashed; this is a copy-out

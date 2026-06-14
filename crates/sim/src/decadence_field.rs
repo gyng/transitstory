@@ -194,7 +194,7 @@ pub const DEFAULT_CREEP_PER_S: i64 = 200;
 /// The tide has "reached the capital" (the realm falls) once its front is within this many hexes of the
 /// capital — LARGER than the capital barracks's `PURGE_RADIUS`, so a lone capital can't make the realm
 /// unloseable: the player must extend the network's purge ring outward to actually hold the heartland.
-const LOSE_DIST: u32 = 3;
+pub(crate) const LOSE_DIST: u32 = 3;
 /// PURGE per sim-second for a network-covered cell (→ −100 per tick): 10× the diffuse gain, so PURGE
 /// STRICTLY DOMINATES DIFFUSE — held ground trends to 0 (the build-plan invariant).
 const PURGE_PER_S: i64 = 2000;
@@ -331,4 +331,4 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
 
 /// A cell counts as part of the tide FRONT (for the derived lose meter) once it carries any corruption;
 /// a network-PURGEd cell drops back to 0 and stops counting, so holding the line retreats the front.
-const FRONT_THRESHOLD: i32 = 1;
+pub(crate) const FRONT_THRESHOLD: i32 = 1;

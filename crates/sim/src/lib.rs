@@ -28,6 +28,7 @@ pub mod roadnav;
 pub mod routing;
 pub mod ruleset;
 pub mod station;
+pub mod spell;
 pub mod stats;
 pub mod tech;
 mod tick;

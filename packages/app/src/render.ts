@@ -909,6 +909,33 @@ export function raiderLayer(positionsLngLat: Float32Array, count: number): Layer
   });
 }
 
+/** Spell FLASH bursts (fantasy/arcadia, S11 — the spell arm): a brief coloured pop at each auto-cast site.
+ *  `data` is interleaved [lng,lat,kind,alpha,...] (caller converts metres→lng/lat). kind picks the hue
+ *  (0 Purge teal · 1 Smite gold · 2 Warpath crimson); alpha fades it out. Few + brief, so a plain
+ *  per-compose ScatterplotLayer with accessors is cheap. Drawn on top (the magic reads over everything). */
+const SPELL_HUE: [number, number, number][] = [
+  [68, 170, 153], // Purge — teal (matches the tide-purge theme)
+  [240, 200, 70], // Smite — gold bolt
+  [200, 60, 60], // Warpath — crimson
+];
+export function spellFlashLayer(flashes: { lng: number; lat: number; kind: number; alpha: number }[]): Layer {
+  return new ScatterplotLayer({
+    id: "spell-flashes",
+    data: flashes,
+    getPosition: (d: { lng: number; lat: number }) => [d.lng, d.lat],
+    getFillColor: (d: { kind: number; alpha: number }) => {
+      const [r, g, b] = SPELL_HUE[d.kind] ?? [255, 255, 255];
+      return [r, g, b, Math.round(200 * d.alpha)];
+    },
+    // Grow as it fades (a pop), pixel radius.
+    getRadius: (d: { alpha: number }) => 8 + (1 - d.alpha) * 18,
+    radiusUnits: "pixels",
+    radiusMinPixels: 6,
+    stroked: false,
+    updateTriggers: { getFillColor: flashes, getRadius: flashes },
+  });
+}
+
 /** Individual rider "peeps" via deck BINARY attributes (data.attributes) — NO per-object accessors,
  *  so it scales to the core's MAX_VISIBLE_PEEPS at 60fps where an object-array layer would cliff.
  *  `positionsLngLat` is interleaved [lng,lat,...] (f32) and `colors` interleaved RGBA (u8); both are

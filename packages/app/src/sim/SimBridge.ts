@@ -119,6 +119,11 @@ export class SimBridge {
     return this.sim.raiderPositions();
   }
 
+  /** Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy/arcadia, S11 — the spell arm). */
+  spellFlashes(): Float32Array {
+    return this.sim.spellFlashes();
+  }
+
   /** Interleaved decadence-tide cells `[x0,y0,v0,...]` (metres + 0..1 strength) — the cold-tide overlay. */
   decadenceTide(): Float32Array {
     return this.sim.decadenceTide();

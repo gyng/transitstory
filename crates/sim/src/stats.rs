@@ -72,8 +72,11 @@ pub struct StatsSnapshot {
     /// True once decadence has overrun the capital — the realm has fallen.
     pub realm_lost: bool,
     /// Unlocked-tech bitset (S11) — bit `TECHS[id].bit` set ⇒ that upgrade is active. The HUD reads it
-    /// to render each tech as locked / affordable / unlocked (cost vs `tribute`).
+    /// to render each tech as locked / affordable / unlocked (cost vs `mana`).
     pub tech_unlocked: u32,
+    /// Cumulative spells cast (S11 spell arm) — the HUD shows the realm's magic is active once SPELLCRAFT
+    /// is unlocked. 0 for transit / a realm without the spell arm.
+    pub spells_cast: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -152,6 +152,12 @@ pub struct World {
     /// no aether/ingot (the demo arcadia golden ⇒ appended-zero re-pin, behaviour byte-identical).
     pub mana: i64,
     pub manpower: i64,
+    /// Cumulative SPELLS cast (fantasy, S11 — the mana spell arm). Hashed (deterministic counter); 0 for
+    /// transit + any realm without SPELLCRAFT. The HUD reads it; `spell::step` increments it on each cast.
+    pub spells_cast: u32,
+    /// Recent spell FLASHES (render-only — a brief burst at each cast site, aged + retired in `spell::step`).
+    /// NOT hashed (like the army/raider cartesian render fields).
+    pub spell_flashes: Vec<crate::spell::SpellFlash>,
     /// Unlocked-tech bitset (fantasy, S11): bit `TECHS[id].bit` set ⇒ that upgrade is active. Bought with
     /// tribute via `Command::UnlockTech`; each bit gates a buff to an existing lever (forge rate / legion
     /// cost / decadence creep). **Hashed** (in `Canonical`). Always 0 for transit (the ruleset rejects
@@ -393,6 +399,9 @@ struct Canonical<'a> {
     raider_cursor: u32,
     raider_breach: i64,
     raider_breach_heal_accum: i64,
+    /// Cumulative spells cast (fantasy, S11). Appended LAST — 0 for transit + the goldens (no SPELLCRAFT),
+    /// so the re-pin is an appended zero, behaviour byte-identical.
+    spells_cast: u32,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -489,6 +498,8 @@ impl World {
             tribute: 0,
             mana: 0,
             manpower: 0,
+            spells_cast: 0,
+            spell_flashes: Vec::new(),
             tech_unlocked: 0,
             waiting: Vec::new(),
             ridership_total: 0,
@@ -957,6 +968,7 @@ impl World {
             raider_count: self.raiders.live() as u32,
             realm_lost: crate::decadence::is_lost(self),
             tech_unlocked: self.tech_unlocked,
+            spells_cast: self.spells_cast,
         }
     }
 
@@ -1533,6 +1545,7 @@ impl World {
             raider_cursor: self.raider_cursor,
             raider_breach: self.raider_breach,
             raider_breach_heal_accum: self.raider_breach_heal_accum,
+            spells_cast: self.spells_cast,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

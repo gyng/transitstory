@@ -61,7 +61,8 @@ fn replay_equality() {
 //   0xcd39_4898_bd9f_1d09 — S11 economy split (the `mana`+`manpower` i64s appended, 0 for transit)
 //   0x9c0d_0265_845a_38b3 — S11 rival (the raider SoA slices + spawn-accum/cursor/breach/breach-heal-accum
 //                           appended, all empty/0 for transit — no reservoir ⇒ no raiders)
-const GOLDEN_TRANSIT_HASH: u64 = 0x9c0d_0265_845a_38b3;
+//   0x8453_c57f_e54e_5829 — S11 spell arm (the `spells_cast` u32 appended, 0 for transit — no SPELLCRAFT)
+const GOLDEN_TRANSIT_HASH: u64 = 0x8453_c57f_e54e_5829;
 
 #[test]
 fn golden_transit_hash_pinned() {

@@ -102,10 +102,12 @@ pub const AETHERIC_FONT: usize = 9;
 /// (`raider::DEFENSE_RANGE` ×3/2). A SAFE defence buff — deliberately NOT a passive purge-radius bump,
 /// which at radius ≥ LOSE_DIST would make a lone capital unloseable (the active Purge spell handles the tide).
 pub const WARD_LINES: usize = 10;
+/// ARCANE AWAKENING (id 11, ← SAPPERS): unlocks the SPELL ARM (`spell::step`) — mana auto-cast Purge/Smite/
+/// Warpath at the biggest threat. The mana apex; spells drain the same pool as tech.
+pub const SPELLCRAFT: usize = 11;
 
 /// The shipped tech table. Index = the id a `Command::UnlockTech { tech }` carries. APPEND only.
-/// (SPELLCRAFT — the spell arm — appends next as id 11 with the spell system.)
-pub const TECHS: [Tech; 11] = [
+pub const TECHS: [Tech; 12] = [
     Tech { bit: 0, cost: 30, prereq: -1 }, // FORGE_MASTERY
     Tech { bit: 1, cost: 35, prereq: -1 }, // CONSCRIPTION
     Tech { bit: 2, cost: 30, prereq: -1 }, // SAPPERS
@@ -117,6 +119,7 @@ pub const TECHS: [Tech; 11] = [
     Tech { bit: 8, cost: 55, prereq: CONSCRIPTION as i32 }, // WAR_MARCH
     Tech { bit: 9, cost: 45, prereq: SAPPERS as i32 }, // AETHERIC_FONT
     Tech { bit: 10, cost: 55, prereq: SAPPERS as i32 }, // WARD_LINES
+    Tech { bit: 11, cost: 70, prereq: SAPPERS as i32 }, // SPELLCRAFT (the spell arm)
 ];
 
 /// The channel every tech is paid in — MANA (the sole tech resource).

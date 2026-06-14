@@ -85,6 +85,7 @@ export const TECHS: TechDef[] = [
   { id: 8, name: "Forced March", cost: 55, tier: 2, prereq: 1, blurb: "Legions march +50% faster" },
   { id: 9, name: "Ley Tap", cost: 45, tier: 2, prereq: 2, blurb: "Aether mints +50% mana" },
   { id: 10, name: "Ward Lines", cost: 55, tier: 2, prereq: 2, blurb: "Your rails cut raiders down from +50% range" },
+  { id: 11, name: "Arcane Awakening", cost: 70, tier: 2, prereq: 2, blurb: "Awakens spells — the AI auto-casts Purge, Smite & Warpath" },
 ];
 /** True iff tech `id` is unlocked in the bitset (mirrors tech::is_unlocked; bit == id for the shipped set). */
 export const techUnlocked = (bits: number, id: number): boolean => (bits & (1 << id)) !== 0;

@@ -97,6 +97,13 @@ impl Sim {
         sim::render_buf::raider_positions_m(&self.world)
     }
 
+    /// Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy, S11 — the spell arm). Empty
+    /// otherwise. Read each frame like positions; tiny (a handful of brief flashes).
+    #[wasm_bindgen(js_name = spellFlashes)]
+    pub fn spell_flashes(&self) -> Vec<f32> {
+        sim::render_buf::spell_flashes_m(&self.world)
+    }
+
     /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {

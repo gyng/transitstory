@@ -2712,8 +2712,28 @@ so transit + both goldens are byte-identical (verified: no re-pin).
   `tech_effects.rs` (rail-gate: rail builds, bus/ferry/plane rejected, heavy unlocks with the tech; transit
   unaffected). `e2e/fantasy-tech.spec.ts` → the rail-gate + tech panel on the real bundle.
 - Tiers: cargo **226/0** (goldens UNCHANGED — golden-neutral) · full e2e **25/25** · vitest **27/27** · tsc clean.
-- **Next:** V2 — the SPELL ARM (SPELLCRAFT unlocks mana auto-cast Purge/Smite/Warpath). V3 — the economy
-  re-map (legions→manpower, bounties→gold) + balance re-tune.
+
+**V2 — the SPELL ARM (mana auto-cast magic).** `Arcane Awakening` (SPELLCRAFT, tech 11 ← Sappers) unlocks
+`spell::step` — the magic counterpart to the legions: the AI auto-casts at the biggest threat, Majesty-style
+(no micro), drawing the SAME mana pool as tech (bank for an upgrade vs. let the spells fly). Three spells,
+mana-cost-rate-limited (no rng, no cooldown state):
+
+- **Purge Front** (30) — clears the corrupted cell nearest the capital (+ halves its ring), retreating the
+  lose-meter front; cast when the rot threatens the heartland (dist ≤ LOSE_DIST+2).
+- **Smite** (25) — kills the marching raider nearest the capital that slipped the rail cordon.
+- **Warpath** (35) — empowers the most-stalled siege +50% strength (capped at 2× launch), to crack a deep garrison.
+- **Determinism/gate-safety:** integer, index-ordered targeting, NO rng; runs in `war_step` AFTER the
+  decadence derivation (so a Purge retreats the front next tick + reads the settled field). Inert without
+  SPELLCRAFT ⇒ golden-neutral. New hashed `spells_cast` counter (re-pin, 0 for goldens); `spell_flashes`
+  are render-only (not hashed).
+- **Re-pin (RED-first):** `spells_cast` joins Canonical LAST. Transit `0x9c0d…38b3 → 0x8453…5829`;
+  arcadia `0xbb8a…814e → 0xbdd6…b78a`, with provenance.
+- **Tests (`tests/spell.rs`, +3):** the arm is inert without SPELLCRAFT (golden-neutral), casts + drains
+  mana once unlocked when threats reach the heartland, and replays bit-for-bit.
+- **Frontend:** `Arcane Awakening` in the tech panel; a `✦ N cast` HUD readout; spell-flash bursts on the
+  map (`spellFlashLayer` — teal Purge / gold Smite / crimson Warpath, fading), copied out per frame.
+- Tiers: cargo **232/0** (goldens re-pinned green) · full e2e **25/25** · vitest **27/27** · tsc clean.
+- **Next:** V3 — the economy re-map (legions→manpower, bounties→gold) + balance re-tune.
 
 ## Known gaps / deferred
 

@@ -20,7 +20,7 @@ const ARMY_SPEED_MM_S: i64 = 50_000;
 /// armies). The non-derivable launch knob; balance-swept later (externalised to `CityData` then). S8a:
 /// a flat, low cost so a modest supply network fields its first legion fast (harness-tuned: with the
 /// production-gated tribute rate, this funds a legion in ~1 game-minute → the loop bites in-window).
-const LAUNCH_COST: i64 = 8;
+pub(crate) const LAUNCH_COST: i64 = 8;
 /// A defended town's BASE resistance (siege HP) — every town defends at least this much. Knob.
 const RESISTANCE: i64 = 500;
 /// S11 FRONTIER GARRISONS (the design's gate-safe Tier-1-LITE enemy: "static town garrisons"). A town's

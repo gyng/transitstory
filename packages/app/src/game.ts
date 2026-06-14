@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyLayer, raiderLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -57,6 +57,7 @@ const EMPTY_STATS: Stats = {
   raiderCount: 0,
   realmLost: false,
   techUnlocked: 0,
+  spellsCast: 0,
 };
 
 export type Mode = "build" | "run";
@@ -1586,6 +1587,19 @@ export class Game {
     return raiderLayer(xy, count);
   }
 
+  /** Spell-flash bursts (fantasy, S11 — the spell arm). `[x_m,y_m,kind,alpha,...]` → lng/lat objects.
+   *  Null when nothing's casting (transit always; arcadia until SPELLCRAFT + a cast). */
+  spellFlashLayerAt(): Layer | null {
+    const f = this.bridge.spellFlashes();
+    if (f.length === 0) return null;
+    const flashes: { lng: number; lat: number; kind: number; alpha: number }[] = [];
+    for (let i = 0; i + 3 < f.length; i += 4) {
+      const [lng, lat] = metersToLngLat([f[i], f[i + 1]]);
+      flashes.push({ lng, lat, kind: f[i + 2], alpha: f[i + 3] });
+    }
+    return spellFlashLayer(flashes);
+  }
+
   /** The decadence tide's corrupted cells (fantasy S10c), read on each ~3 Hz refresh (the tide creeps
    *  slowly, never per frame). `[x_m,y_m,v,...]` metres → lng/lat. Empty for transit / before it starts. */
   private decadenceTideAt(): TideCell[] {
@@ -1604,6 +1618,8 @@ export class Game {
     const army = armies ? [armies] : []; // legions above carts, below peeps/labels (z-order)
     const raiders = this.raiderLayerAt();
     const raider = raiders ? [raiders] : []; // the rival's marauders, above legions (the incoming threat)
+    const flash = this.spellFlashLayerAt();
+    const spells = flash ? [flash] : []; // spell bursts on top (the magic reads over everything)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
     // only the network — drop the per-station waiting halos, the pinned label, and the vehicle
     // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
@@ -1615,7 +1631,7 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
-    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...raider, ...peep, ...above] });
+    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...raider, ...spells, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */
