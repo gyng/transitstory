@@ -85,6 +85,17 @@ export function attachPointer(game: Game): void {
       return;
     }
 
+    if (game.mode === "build" && game.tool === "barracks") {
+      game.placeBarracks(e.lngLat.lng, e.lngLat.lat); // fantasy: a node that fields legions. Sticky.
+      return;
+    }
+
+    if (game.mode === "build" && game.tool === "bounty") {
+      const town = game.nearestStation(px, py); // fantasy: bait legions toward the nearest town. Sticky.
+      if (town !== null) game.postBounty(town);
+      return;
+    }
+
     if (game.mode === "build" && game.tool === "line") {
       // Station chaining + control points are handled on mousedown/drag now; nothing to do here
       // (and crucially, don't fall through to Select and clear the draft).

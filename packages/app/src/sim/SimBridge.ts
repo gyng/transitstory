@@ -109,6 +109,11 @@ export class SimBridge {
     return this.sim.vehicleLineIds();
   }
 
+  /** Interleaved marching-legion positions `[x0,y0,...]` in metres (fantasy/arcadia). Empty otherwise. */
+  armyPositions(): Float32Array {
+    return this.sim.armyPositions();
+  }
+
   /** Interleaved `[onboard0,cap0, onboard1,cap1, ...]` per vehicle — the train inspector's load. */
   vehicleLoads(): Uint16Array {
     return this.sim.vehicleLoads();

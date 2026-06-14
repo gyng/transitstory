@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 pub struct CityData {
     #[serde(default)]
     pub id: String,
+    /// Which ruleset the engine constructs for this city — the fantasy-fork seam
+    /// (fantasy-fork.md). Frozen at construction, NEVER a Command. `"transit"` (the serde
+    /// default for any city JSON omitting it) selects the classic gravity/agent transit game;
+    /// future `"arcadia"` selects the hex 4X-logistics ruleset. `CityData::default()` leaves it
+    /// empty (`""`), which `World::new` treats identically to `"transit"`, so every existing
+    /// city and native test is byte-identical (zero re-pins). NOT part of `state_hash` — it is a
+    /// construction-time selector, not evolving state.
+    #[serde(default = "default_ruleset")]
+    pub ruleset: String,
     #[serde(default)]
     pub seed: u64,
     /// Demand grid in sim millimetres (the frontend converts lon/lat -> mm before embedding).
@@ -24,6 +33,20 @@ pub struct CityData {
     /// **0 = off (continuous)** ⇒ every existing city builds the exact same geometry (zero re-pins).
     #[serde(default)]
     pub grid_cell_mm: i64,
+    /// Fantasy (arcadia): the baked STARTING decadence — the ambient corruption the realm begins with,
+    /// seeded by `scripts/build_world.py` S4 from the per-town floors (a more-corrupt continent starts
+    /// further up the lose meter ⇒ more urgency). A bake property frozen at construction, NOT a Command;
+    /// `World::new` seeds `world.decadence` from it. **0 (the serde + `Default` value) ⇒ the realm starts
+    /// clean** — every existing city, the arcadia golden fixture, and every native test stay byte-identical
+    /// (zero re-pins); only a baked world that sets it starts corrupt.
+    #[serde(default)]
+    pub initial_decadence: i64,
+    /// Fantasy (arcadia) S7e/balance: decadence GROWTH per sim-second (the lose-meter fill rate). A
+    /// per-city knob (the large baked continent presses far gentler than the small demo). **0 (serde +
+    /// `Default`) ⇒ the `decadence::BASE_GROWTH_PER_S` default**, so every existing city + the golden
+    /// fixtures + native tests keep the shipped (demo) balance — byte-identical.
+    #[serde(default)]
+    pub decadence_growth_per_s: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy
@@ -50,6 +73,14 @@ pub struct CityData {
 /// Default transit-adjacent demand growth: +2.5% per in-game day (ambient = a third of this).
 fn default_growth_bp() -> i64 {
     250
+}
+
+/// The ruleset a city JSON selects when it omits `ruleset` — the classic transit game. Shared by
+/// both `CityData` and `SaveGame` so a save and the city it was played on agree on the seam. Note
+/// `CityData::default()` (the native-test constructor) still yields `""` via `#[derive(Default)]`;
+/// `World::new` canonicalises `"" | "transit"` to the transit ruleset, so both spell the same game.
+pub fn default_ruleset() -> String {
+    "transit".to_string()
 }
 
 /// Default rider patience for cities that don't specify one: 10 CLOCK-minutes (20_000 sim-ms in
@@ -103,6 +134,12 @@ pub struct DemandCell {
     /// Trip-origin weight (residents) and trip-destination weight (jobs/POIs).
     pub origin_w: f32,
     pub dest_w: f32,
+    /// Fantasy (arcadia) S7e: which Forge-Line commodity this cell produces/consumes (ORE=0, GRAIN=1,
+    /// AETHER=2, FUEL=3 …). A source station's output commodity is the dominant origin-commodity of its
+    /// captured cells. **0 (the serde + `Default` value) ⇒ ORE** — every transit city + the golden
+    /// fixtures stay byte-identical (transit has no forge), so this is a transit-neutral addition.
+    #[serde(default)]
+    pub commodity: u8,
 }
 
 impl CityData {

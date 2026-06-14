@@ -5,7 +5,7 @@ use sim::*;
 
 fn corridor_city() -> CityData {
     let cells = (0..16)
-        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 5.0, dest_w: 5.0 })
+        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 5.0, dest_w: 5.0, commodity: 0 })
         .collect();
     CityData { id: "od".into(), seed: 3, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() }
 }

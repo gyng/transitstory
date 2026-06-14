@@ -307,11 +307,15 @@ prefixes get identical vertices and identical arclen. Grid makes the in-flight s
   (re-derived sorted Vecs, never hashed), the two-clock alpha-interp render + `render_buf` copy-out +
   `composeAndSet` stable-identity splice, the metre-radius catchment/walkshed hex renderers (already
   a lattice-over-mm renderer), determinism/replay, and the dispatch capacity clamps.
-- **New (additive, behind a flag/ruleset tag):** a crisp grid-geometry mode (`samples=1` +
-  lattice-snap; **not** the `literal` flag, whose `LITERAL_SAMPLES=2` still rounds corners); optional
-  corner-fillet templates; a frontend tile quantizer on cursor **and** drag-handle mm; a degenerate
-  `geo.ts` (integer scale+offset); grid build/editor tooling; the grid `Ruleset`/`Demand` + logistics
-  objective.
+- **Built (additive, behind `CityData.grid_cell_mm`):** the crisp grid-geometry mode — `line.rs::grid_walk`
+  builds a dense octilinear lattice polyline (cell-centre vertices, canonical so `a→b` reverses `b→a`),
+  integer-exact (NOT `samples=1` on Catmull-Rom, which still float-rounds vertices across cell
+  boundaries — the exactness the cross-line `edge_key` needs); plus the cross-line mutex (above).
+- **Still to build (additive):** a frontend tile quantizer on cursor **and** drag-handle mm; an
+  **enable path** for grid mode (today `grid_cell_mm` is a frozen bake property with no Command/UI, so
+  the cross-line verb is coded+tested but operationally inert); a degenerate `geo.ts` (integer
+  scale+offset); grid build/editor tooling; the grid `Ruleset`/`Demand` + logistics objective; the
+  conservative-cap follow-up (per-block capacity + aging tiebreak).
 - **Corner speed is fine, not degenerate:** a 90° lattice corner is concyclic with circumradius
   `cell/√2`, so `cap_from_radius` is finite and scales with `√cell_size` (~71k mm/s at 10 m cells,
   ~225k at 100 m — comparable to STREET/OFF-ROAD caps). Tune with fixed-radius corner-tile fillets if
@@ -321,20 +325,26 @@ prefixes get identical vertices and identical arclen. Grid makes the in-flight s
 A TTD/Factorio grid logistics game's core verb is **shared physical track** (lay rail once, many
 lines route over one edge, signals/occupancy track-owned). But the engine is **mechanically
 line-owned**: `seg_key` packs `line<<40` (`vehicle.rs:119`), `junc_key` packs `line<<32` (`:165`),
-junctions derive from per-line `diverge_at`. Two lines on the same rail get distinct keys and **pass
-through each other** (the `#[ignore]`d `shared_trunk_..._is_p5` test proves it). **That gap *is* the
-deferred P5 `TrackGraph`** — confirmed unbuilt (a doc-only seam slot).
+junctions derive from per-line `diverge_at`. Two lines on the same rail used to get distinct keys and
+pass through each other — **that gap was the P5 `TrackGraph`, and it is now BUILT (2026-06-14).**
 
-- **A1 — line-owned (today): free.** A first grid slice reuses P1–P4 unchanged; lines lay their own
-  rails, no sharing. Proves glide + authority on tile track with zero core risk.
-- **A2 — shared *tile* `TrackGraph` (= P5): the genre verb, a deliberate phase.** Re-key occupancy
-  to physical tile-edge/node ids; move `track_type`/signals per-edge (a **hashed-state +
-  `SetSegmentTrack` contract change**); add a cross-path interlocking **liveness cap**. A *tile*
-  graph is materially **cheaper** than the continuous one the roadmap feared (clean integer edge
-  adjacency; the arclen-divergence bug is gone; `roadnav.rs` grid A* + the mm `BuildabilityGrid`
-  already exist) — but it is still the single largest net-new subsystem, and **must ship the
-  edge-mutex *with* the liveness cap in one change** (the ignored P5 test warns that physical keying
-  *without* liveness turns cosmetic pass-through into a *worse* deadlock — never the half-fix).
+- **A1 — line-owned: free.** Lines lay their own rails, no sharing; reuses P1–P4 unchanged.
+- **A2 — shared *tile* `TrackGraph` (= P5): ✅ BUILT (Phase 1+2, 2026-06-14).** Cross-line occupancy is
+  keyed on a line-independent `edge_key`/`block_id` (sorted lattice-node pair from `node_of =
+  div_euclid(cell)`); `derive_cross_blocks` (`dispatch.rs`) union-find-coalesces shared single edges
+  into components (cyclic iff `edges ≥ nodes`); the new **Phase B.6** atomic whole-block meet gate
+  reuses `occ_claim`/`group_overlap`. **Derived/unhashed, zero re-pins, inert unless
+  `grid_cell_mm > 0`** — so the `track_type`-per-edge re-pin this section once feared was avoided
+  (track_type stays per-`(line,path,span)`, read live). The liveness stack shipped in one commit
+  (atomic reservation + cross-line cap + cyclic-component mutex + fair tiebreak); 2 adversarial review
+  rounds. See [shared-rail.md](shared-rail.md) + [p5-shared-track-roadmap.md](p5-shared-track-roadmap.md).
+  **Deferred follow-ups (fantasy-fork prerequisites):** the cross-line cap currently ships
+  **conservative** (1 train/line globally — an 8–12× over-throttle for a line sharing a short tunnel),
+  inert today (no city sets `grid_cell_mm`); a per-block capacity + aging tiebreak is the cheap
+  (~30–50 line) fix to build gated to the first shared-track exposure. **FULL** (YAPF pathfinding) and
+  **L2** (player block/chain signals) remain opt-in advanced-mode seams (`trait TrackRouter` + a
+  signals ruleset), and a corridor shared *between* stops (express/local overtakes) needs the full
+  laid-track model (an `#[ignore]`d seam) — the Phase-2 contract is "shared consecutive stop-cells".
 
 **Recommendation:** A1 for the first grid slice; A2 as a named second phase only when shared rail is
 committed as a core verb. The in-flight track-physics work is an **asset** — the runtime mutex

@@ -100,6 +100,12 @@ pub(crate) fn prepare(world: &mut World) {
     let r = CATCHMENT_MM as f64;
     let mut origin = vec![0f32; n];
     let mut dest = vec![0f32; n];
+    // Fantasy S7e: per-station captured origin weight broken down BY commodity, so a station's output
+    // commodity = its argmax. Allocated regardless (cheap: n × N_COMMODITIES f32) but only meaningful for
+    // arcadia (transit cells are all commodity 0, so the argmax is trivially ORE and `produce` never runs).
+    let mut origin_by_comm = vec![[0f32; crate::forge::N_COMMODITIES]; n];
+    // ...and captured DEST weight by commodity, so a SINK's recipe = the commodities it requires (S7e-2).
+    let mut dest_by_comm = vec![[0f32; crate::forge::N_COMMODITIES]; n];
     let mut in_range: Vec<(usize, f64)> = Vec::new();
 
     for cell in cells {
@@ -122,13 +128,36 @@ pub(crate) fn prepare(world: &mut World) {
             sum_w += w;
         }
         if sum_w > 0.0 {
+            let comm = (cell.commodity as usize).min(crate::forge::N_COMMODITIES - 1);
             for &(si, w) in &in_range {
                 let frac = (w / sum_w) as f32;
                 origin[si] += cell.origin_w * frac;
                 dest[si] += cell.dest_w * frac;
+                origin_by_comm[si][comm] += cell.origin_w * frac;
+                dest_by_comm[si][comm] += cell.dest_w * frac;
             }
         }
     }
+    // Each station's output commodity = the commodity it captures the most ORIGIN weight of (argmax;
+    // ties → lowest index, deterministic). ORE (0) for any station with no captured origin (e.g. a sink).
+    let station_commodity: Vec<u8> = origin_by_comm
+        .iter()
+        .map(|by| {
+            let mut best = 0usize;
+            for c in 1..crate::forge::N_COMMODITIES {
+                if by[c] > by[best] {
+                    best = c;
+                }
+            }
+            best as u8
+        })
+        .collect();
+    // Each sink's RECIPE = the distinct commodities it captures DEST weight of (ascending). A
+    // commodity-0 world yields [0] everywhere ⇒ `consume` takes the consume-all path ⇒ byte-identical.
+    let station_recipe: Vec<Vec<u8>> = dest_by_comm
+        .iter()
+        .map(|by| (0..crate::forge::N_COMMODITIES).filter(|&c| by[c] > 0.0).map(|c| c as u8).collect())
+        .collect();
 
     // Footpath edges: nearby station pairs walkable on foot (an interchange by foot), with their
     // integer walk time. O(n²) but only on a station change. Index-ordered → deterministic.
@@ -151,6 +180,8 @@ pub(crate) fn prepare(world: &mut World) {
 
     world.captured_origin = origin;
     world.captured_dest = dest;
+    world.station_commodity = station_commodity;
+    world.station_recipe = station_recipe;
     world.spawn_accum.resize(n, 0.0);
     world.waiting.resize_with(n, Default::default);
     world.boardings.resize(n, 0);
@@ -162,14 +193,24 @@ pub(crate) fn prepare(world: &mut World) {
 /// Spawn passengers this tick at served stations (deterministic accumulator for count;
 /// seeded RNG only for the gravity destination pick).
 pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
+    // Transit gravity: time-of-day modulates overall volume + AM(home→work)/PM(work→home) direction.
+    let hour = crate::tod::hour_of_day(world.clock_ms);
+    let mult = crate::tod::demand_multiplier(hour);
+    let bias = crate::tod::work_bias(hour);
+    spawn_modulated(world, dt_ms, mult, bias, None);
+}
+
+/// The shared spawn+route body, parameterized by demand `mult` (overall volume) and `bias`
+/// (origin↔dest directionality: `bias=1.0` spawns at origins/sources and routes to dests/sinks).
+/// Gravity passes time-of-day values; the fantasy `SupplyChainDemand` passes steady `(1.0, 1.0)` for a
+/// constant source→sink commodity flow with no commuter rush. The `world.rng` draw order (per served
+/// station, then per spawned token via `pick_dest`) is IDENTICAL for both callers ⇒ each mode's golden
+/// pin is independently stable; the parameters only scale/steer, never reorder the draws.
+pub(crate) fn spawn_modulated(world: &mut World, dt_ms: i64, mult: f32, bias: f32, mut gate: Option<&mut [i64]>) {
     let n = world.stations.len();
     if n == 0 {
         return;
     }
-    // Time-of-day modulation: overall volume + AM(home→work)/PM(work→home) directionality.
-    let hour = crate::tod::hour_of_day(world.clock_ms);
-    let mult = crate::tod::demand_multiplier(hour);
-    let bias = crate::tod::work_bias(hour);
     let now = world.clock_ms;
     let max_legs = world.max_legs;
 
@@ -180,6 +221,7 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
         ref footpaths,
         ref captured_origin,
         ref captured_dest,
+        ref station_commodity,
         ref mut spawn_accum,
         ref mut waiting,
         ref mut rng,
@@ -211,6 +253,16 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
             .entry(s as u32)
             .or_insert_with(|| router.reachable(lines, serving, footpaths, StationId(s as u32), max_legs));
         while spawn_accum[s] >= 1.0 {
+            // Buffer gate (fantasy, S7b): a node ships only what it has produced. When its per-station
+            // ship budget is exhausted, stop and DROP the whole-unit backlog (keep only the sub-unit
+            // remainder) — a steady flow, not an order queue that would burst on refill. `None`
+            // (transit gravity) ⇒ unbounded, so the branch is skipped and behaviour is byte-identical.
+            if let Some(g) = gate.as_deref() {
+                if g.get(s).copied().unwrap_or(0) <= 0 {
+                    spawn_accum[s] = spawn_accum[s].fract();
+                    break;
+                }
+            }
             spawn_accum[s] -= 1.0;
             if let Some(dest) =
                 pick_dest(stations, serving, captured_origin, captured_dest, access, bias, s, rng)
@@ -221,12 +273,21 @@ pub(crate) fn spawn(world: &mut World, dt_ms: i64) {
                     .or_insert_with(|| router.plan(lines, serving, footpaths, StationId(s as u32), dest, max_legs));
                 if let Some(legs) = entry {
                     if !legs.is_empty() {
+                        // A commodity was actually shipped ⇒ consume one unit from the node's buffer.
+                        if let Some(g) = gate.as_deref_mut() {
+                            if let Some(v) = g.get_mut(s) {
+                                *v -= 1;
+                            }
+                        }
                         waiting[s].push_back(Pax {
                             legs: legs.clone(),
                             leg: 0,
                             t_spawn_ms: now,
                             t_wait_ms: now,
                             citizen_id: u32::MAX, // anonymous gravity trip
+                            // S7e: the cart carries its source's output commodity → delivered to the sink's
+                            // matching buffer slot. 0 (ORE) for transit (station_commodity all 0 there).
+                            commodity: station_commodity.get(s).copied().unwrap_or(0),
                         });
                     }
                 }

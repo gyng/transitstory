@@ -14,10 +14,28 @@ export interface RawCity {
   zoom: number;
   seed: number;
   demandGridPath: string;
+  /** Which engine ruleset to construct (fantasy-fork.md): absent/"transit" = the classic game;
+   *  "arcadia" = the hex 4X-logistics fantasy campaign. Mirrors `CityData.ruleset`. */
+  ruleset?: string;
+  /** Hex-lattice cell size (mm) for the fantasy map — mirrors `CityData.grid_cell_mm`. Absent/0 =
+   *  the continuous Catmull-Rom geometry (every transit city). >0 builds track on the hex lattice. */
+  gridCellMm?: number;
   /** Optional committed real-world starting network (e.g. the MRT). */
   networkPath?: string;
   /** Optional committed buildability grid (surface-rail cost signal). */
   buildabilityPath?: string;
+  /** Fantasy (arcadia) supply graph baked by scripts/build_world.py — an ADDITIVE manifest field
+   *  (serde-ignored elsewhere; never copied into the core city JSON). S2: resource nodes that fork the
+   *  two supply chains. Positions carried as axial (q,r) + i64 mm (= hexgrid::center_of); yields i64. */
+  supplyGraph?: {
+    resources: { kind: string; q: number; r: number; xMm: number; yMm: number; yield: number }[];
+    /** S3 towns: supply sinks + conquest targets. kind = "capital"|"starter"|"neutral"; value = i64
+     *  conquest reward; demands = nearest resource kinds; decadence = S4 per-town corruption floor. */
+    towns?: { kind: string; q: number; r: number; xMm: number; yMm: number; value: number; demands: string[]; decadence: number; recipe?: number[] }[];
+    /** S4 decadence seed: the far-edge reservoir (tide origin + raider anchors), the clean grace radius,
+     *  and the realm's baked STARTING decadence (seeded into world.decadence). */
+    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number };
+  };
   /** Optional per-city rider patience (sim-ms) — overrides the core's default. The globe sets an
    *  air-scale value (90_000 = 45 clock-min): air travellers arrive for a departure rather than
    *  drifting off after one missed metro interval, so its pressure is CAPACITY (denied boardings,
@@ -28,7 +46,8 @@ export interface RawCity {
 export interface RawDemand {
   cellM: number;
   bbox: [number, number, number, number];
-  cells: { lon: number; lat: number; originWeight: number; destWeight: number }[];
+  /** `commodity` (fantasy S7e): the Forge-Line commodity a source cell produces (ORE=0 default). */
+  cells: { lon: number; lat: number; originWeight: number; destWeight: number; commodity?: number }[];
 }
 
 export interface RawBuildability {
@@ -57,10 +76,16 @@ export function buildCoreCity(
 ): { json: string; cellCount: number } {
   const cells = demand.cells.map((c) => {
     const [x_mm, y_mm] = lngLatToMm([c.lon, c.lat]);
-    return { x_mm, y_mm, origin_w: c.originWeight, dest_w: c.destWeight };
+    // commodity (fantasy S7e): which Forge-Line good a source cell produces (omitted ⇒ 0=ORE, serde default).
+    return { x_mm, y_mm, origin_w: c.originWeight, dest_w: c.destWeight, commodity: c.commodity ?? 0 };
   });
   const core: Record<string, unknown> = { seed: raw.seed, demand: { cell_m: demand.cellM, cells } };
   if (raw.patienceMs !== undefined) core.patience_ms = raw.patienceMs; // per-city demand knob (city.rs)
+  if (raw.ruleset) core.ruleset = raw.ruleset; // the fantasy-fork seam (World::new selects the mode)
+  if (raw.gridCellMm) core.grid_cell_mm = raw.gridCellMm; // hex lattice for the fantasy map
+  const dec = raw.supplyGraph?.decadenceSeed;
+  if (dec?.initialDecadence) core.initial_decadence = dec.initialDecadence; // baked starting corruption (S4)
+  if (dec?.growthPerS) core.decadence_growth_per_s = dec.growthPerS; // baked lose-meter fill rate (balance)
   if (buildability) {
     core.buildability = {
       cell_m: buildability.cellM,

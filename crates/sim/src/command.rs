@@ -122,6 +122,24 @@ pub enum Command {
         line: LineId,
         waypoints: Vec<Vec<[i64; 2]>>,
     },
+    /// Place a BARRACKS (fantasy/arcadia, S8): a node that fields AI legions when tribute funds them.
+    /// Creates a station (the barracks) and flags it — armies launch only from a barracks on a built
+    /// route, so building one is the player's prerequisite for war (agency). FANTASY-ONLY: the transit
+    /// ruleset rejects it (the disjoint-save guard's first real cross-mode teeth).
+    PlaceBarracks {
+        x_mm: i64,
+        y_mm: i64,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Post a BOUNTY on a town (fantasy/arcadia, S8 — the Majesty steering lever). The player does NOT
+    /// command legions directly; they BAIT them — a bounty pulls AI armies toward that town (the
+    /// highest-bounty uncaptured town on a barracks's route becomes its target). `amount = 0` clears it.
+    /// FANTASY-ONLY: the transit ruleset rejects it.
+    PostBounty {
+        station: StationId,
+        amount: i64,
+    },
     /// Switch the demand model: `agents=true` swaps gravity flow for a seed-derived citizen
     /// population (home/work agents on a schedule); `false` restores gravity. Command-sourced so
     /// it lives in the save and replays deterministically (the population is regenerated from seed).
@@ -149,5 +167,7 @@ pub enum Event {
     LineRemoved { line: LineId },
     WaypointsSet { line: LineId },
     DemandModeSet { agents: bool },
+    BarracksPlaced { id: StationId, name: String },
+    BountyPosted { station: StationId, amount: i64 },
     Rejected { reason: String },
 }

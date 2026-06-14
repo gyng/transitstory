@@ -1,0 +1,13 @@
+{
+  "cityId": "arcadia",
+  "name": "Arcadia",
+  "stations": [
+    { "name": "The Forge", "lng": 0.0, "lat": 0.0, "barracks": true },
+    { "name": "Aldermere", "lng": 0.02, "lat": 0.0 },
+    { "name": "Greenhollow", "lng": 0.01, "lat": 0.018 }
+  ],
+  "lines": [
+    { "name": "Iron Road", "colorHex": "a020f0", "headwayMin": 4, "trains": 3, "stations": [0, 1] },
+    { "name": "Grain Way", "colorHex": "f0a020", "headwayMin": 4, "trains": 2, "stations": [0, 2] }
+  ]
+}

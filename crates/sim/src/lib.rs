@@ -7,12 +7,16 @@
 #![forbid(unsafe_code)]
 
 pub mod agents;
+pub mod army;
 pub mod city;
 pub mod command;
+pub mod decadence;
 mod demand;
 mod dispatch;
+pub mod forge;
 pub mod geo_local;
 pub mod hash;
+pub mod hexgrid;
 pub mod ids;
 pub mod journey;
 pub mod line;
@@ -20,6 +24,7 @@ pub mod pax;
 pub mod render_buf;
 pub mod roadnav;
 pub mod routing;
+pub mod ruleset;
 pub mod station;
 pub mod stats;
 mod tick;
@@ -36,6 +41,9 @@ pub use ids::{LineId, PaxId, StationId, TrainsetId, VehicleId};
 pub use line::{Branch, Line, Path};
 pub use pax::Pax;
 pub use routing::{plan_route, BfsRouter, Leg, RaptorRouter, Router, DEFAULT_MAX_LEGS};
+pub use ruleset::{
+    AgentDemand, ArcadiaRuleset, Demand, GravityDemand, Ruleset, SupplyChainDemand, TransitRuleset,
+};
 pub use station::Station;
 pub use stats::{LineStat, ShedCell, StationStat, StatsSnapshot};
 pub use trainset::{TrainsetAssignment, TrainsetSpec};

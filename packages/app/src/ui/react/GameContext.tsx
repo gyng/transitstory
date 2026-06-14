@@ -15,6 +15,8 @@ import { audio } from "../../fx/audio";
 export interface GameUI {
   mode: Game["mode"];
   tool: Game["tool"];
+  /** The loaded ruleset ("transit" | "arcadia") — drives mode-aware chrome (fantasy build tools). */
+  ruleset: string;
   transport: number;
   enabledModes: number[]; // sorted snapshot of the Set (stable array for render deps)
   showDemand: boolean;
@@ -34,6 +36,7 @@ function snapUI(g: Game): GameUI {
   return {
     mode: g.mode,
     tool: g.tool,
+    ruleset: g.ruleset,
     transport: g.transport,
     enabledModes: [...g.enabledModes].sort((a, b) => a - b),
     showDemand: g.showDemand,
@@ -53,6 +56,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
   return (
     a.mode === b.mode &&
     a.tool === b.tool &&
+    a.ruleset === b.ruleset &&
     a.transport === b.transport &&
     a.showDemand === b.showDemand &&
     a.showReach === b.showReach &&

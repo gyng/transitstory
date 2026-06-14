@@ -13,8 +13,8 @@ fn city(growth_bp: i64) -> CityData {
         demand: DemandGrid {
             cell_m: 300.0,
             cells: vec![
-                DemandCell { x_mm: 0, y_mm: 0, origin_w: 2.0, dest_w: 1.0 },
-                DemandCell { x_mm: 5_000_000, y_mm: 0, origin_w: 2.0, dest_w: 1.0 },
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 2.0, dest_w: 1.0, commodity: 0 },
+                DemandCell { x_mm: 5_000_000, y_mm: 0, origin_w: 2.0, dest_w: 1.0, commodity: 0 },
             ],
         },
         growth_bp_per_day: growth_bp,
@@ -77,7 +77,7 @@ fn agent_population_tops_up_with_growth_and_replays() {
     // A city with enough homes that the population target clears the 1k floor, so growth moves it.
     let mk = || {
         let cells = (0..20)
-            .map(|k| DemandCell { x_mm: 200_000 * k, y_mm: 0, origin_w: 2.0, dest_w: 2.0 })
+            .map(|k| DemandCell { x_mm: 200_000 * k, y_mm: 0, origin_w: 2.0, dest_w: 2.0, commodity: 0 })
             .collect();
         let mut w = World::new(7, CityData {
             id: "ag".into(),

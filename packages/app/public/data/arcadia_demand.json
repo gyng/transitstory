@@ -1,0 +1,9 @@
+{
+  "cellM": 250,
+  "bbox": [-0.1, -0.1, 0.1, 0.1],
+  "cells": [
+    { "lon": 0.0, "lat": 0.0, "originWeight": 250.0, "destWeight": 2.0 },
+    { "lon": 0.02, "lat": 0.0, "originWeight": 2.0, "destWeight": 120.0 },
+    { "lon": 0.01, "lat": 0.018, "originWeight": 2.0, "destWeight": 100.0 }
+  ]
+}

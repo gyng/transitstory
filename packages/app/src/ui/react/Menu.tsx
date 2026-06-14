@@ -86,6 +86,25 @@ const MENU_CSS = `
     #menu .ot-start:hover{transform:translateY(-2px) scale(1.03)}
     #menu .ot-start:active{transform:translateY(0) scale(.98)}
 
+    /* ---- PRIMARY mode: the fantasy campaign (the fork's headline) ---- */
+    #menu .ot-primary{pointer-events:auto;width:100%;margin-bottom:16px;padding:18px 20px;border-radius:14px;
+      border:2px solid rgba(155,89,222,.55);text-align:left;position:relative;overflow:hidden;color:#f3eefb;
+      background:linear-gradient(135deg,rgba(58,30,86,.94),rgba(26,28,58,.94));
+      box-shadow:0 12px 30px rgba(80,40,140,.32);animation:ot-fadeup .5s .2s both;cursor:not-allowed}
+    #menu .ot-primary[disabled]{opacity:.92}
+    #menu .ot-primary .ot-badge{position:absolute;top:12px;right:14px;font:700 10px system-ui;letter-spacing:.06em;
+      text-transform:uppercase;color:#e3d4ff;background:rgba(155,89,222,.28);padding:3px 9px;border-radius:999px;
+      border:1px solid rgba(155,89,222,.55)}
+    #menu .ot-primary h2{margin:0 0 5px;font:800 22px system-ui}
+    #menu .ot-primary p{margin:0;color:#c6bfdb;font-size:13px;line-height:1.45;max-width:48ch}
+
+    /* ---- SECONDARY section header: real cities, demoted below the campaign ---- */
+    #menu .ot-secthead{width:100%;display:flex;align-items:center;gap:10px;margin:0 0 10px;
+      color:#8a93a3;font:700 11px system-ui;letter-spacing:.06em;text-transform:uppercase;
+      animation:ot-fadeup .5s .3s both}
+    #menu .ot-secthead::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,#39414a,transparent)}
+    #menu .ot-grid .ot-city{opacity:.9}
+
     /* ---- bottom-left: clickable pigeon ---- */
     #menu .ot-mascot-wrap{position:fixed;left:clamp(8px,2vw,26px);bottom:clamp(6px,1.6vw,18px);
       width:clamp(96px,12vw,150px);z-index:2;pointer-events:none;animation:ot-pop .55s .75s cubic-bezier(.2,1.4,.4,1) both}
@@ -203,6 +222,27 @@ export function Menu({
       </div>
 
       <div className="ot-card">
+        {/* PRIMARY mode: the fantasy campaign — the fork's headline. Not yet playable (no fantasy
+            ruleset/world baked), so it renders as a prominent, disabled "in development" hero card.
+            When the fantasy world is baked this becomes a real selectable mode that calls onStart. */}
+        <button
+          className="ot-primary"
+          data-testid="mode-fantasy"
+          disabled
+          aria-disabled="true"
+          title="The fantasy campaign is in development"
+        >
+          <span className="ot-badge">In development</span>
+          <h2>⚔️ Arcadia — Fantasy Campaign</h2>
+          <p>
+            Supply your towns, forge armies, and conquer the realm from a lone capital. The new
+            primary mode — coming soon.
+          </p>
+        </button>
+
+        {/* SECONDARY mode: the classic real-map transit builder, demoted below the campaign. */}
+        <div className="ot-secthead">Real cities · classic transit</div>
+
         <div className="ot-grid">
           {CITIES.map((c, i) => (
             <button

@@ -1,0 +1,183 @@
+//! S6a — the first fantasy slice in the core: the `"arcadia"` ruleset constructs and runs a
+//! source→sink→cart commodity flow on the HEX lattice, deterministically, reusing the transit
+//! substrate (RaptorRouter + advance + board_alight) UNCHANGED. Proves the ruleset-at-construction
+//! fork lights up end-to-end. The richer supply chain (commodity ids, buffers, recipes) layers on at
+//! S7 behind the same seam; this pins the foundation it builds on.
+use sim::*;
+
+/// A minimal arcadia world: a hex-grid city with a SOURCE cell (high origin weight, "ore") near node
+/// A and a SINK cell (high dest weight, a "town") near node B, plus a route A→B running carts.
+fn arcadia_world() -> World {
+    let city = CityData {
+        id: "arcadia".into(),
+        ruleset: "arcadia".into(),
+        seed: 12345,
+        grid_cell_mm: 100_000, // the hex lattice is live (S5)
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 50.0, dest_w: 2.0, commodity: 0 }, // source (ore)
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 50.0, commodity: 0 }, // sink (town)
+            ],
+        },
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    // A node is a station, a route is a line, a cart is a trainset — the substrate, reused.
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 });
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+fn run(ticks: usize) -> World {
+    let mut w = arcadia_world();
+    for _ in 0..ticks {
+        w.tick(50);
+    }
+    w
+}
+
+/// The `"arcadia"` tag is preserved through construction (so `replay`'s disjoint-save guard sees it,
+/// and `ruleset::select` chose the fantasy boxes — the engine ran the arcadia mode end-to-end below).
+#[test]
+fn arcadia_world_carries_its_ruleset_tag() {
+    let w = arcadia_world();
+    assert_eq!(w.city.ruleset, "arcadia", "the fantasy ruleset tag survives construction");
+}
+
+/// A commodity actually flows source→sink on the arcadia ruleset (ridership accrues), AND the run is
+/// bit-for-bit reproducible — the fork reuses the deterministic movement core unchanged.
+#[test]
+fn arcadia_commodity_flows_and_replays() {
+    let w = run(4000);
+    assert!(
+        w.stats_snapshot().ridership_total > 0.0,
+        "a commodity rides source→sink on the arcadia ruleset (reusing RaptorRouter+advance+board_alight)"
+    );
+    assert_eq!(run(4000).state_hash(), run(4000).state_hash(), "arcadia replays bit-for-bit");
+}
+
+/// S7a: the Forge-Line production phase fills SOURCE buffers (and only sources), deterministically.
+/// Isolated from shipping by building NO line — so no station is "served", nothing ships, and the
+/// produced commodity accrues visibly in the buffer (with a line it would be drained by the S7b gate).
+#[test]
+fn arcadia_sources_produce_into_buffers() {
+    use sim::forge::{N_COMMODITIES, ORE};
+    let city = CityData {
+        ruleset: "arcadia".into(),
+        seed: 12345,
+        grid_cell_mm: 100_000,
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 50.0, dest_w: 2.0, commodity: 0 }, // source
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 50.0, commodity: 0 }, // sink
+            ],
+        },
+        ..Default::default()
+    };
+    let build = || {
+        let mut w = World::new(7, city.clone());
+        w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+        w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None });
+        w.apply(&Command::SetRunning { running: true }); // running, but no line ⇒ nothing ships
+        for _ in 0..2000 {
+            w.tick(50);
+        }
+        w
+    };
+    let w = build();
+    let src = w.forge_stock[ORE]; // station 0 = source (origin_w ≫ dest_w)
+    let sink = w.forge_stock[N_COMMODITIES + ORE]; // station 1 = sink (dest_w ≫ origin_w)
+    assert!(src > 0, "a source node accrues ORE into its buffer when unshipped (got {src})");
+    assert_eq!(sink, 0, "a sink node produces nothing (got {sink})");
+    assert_eq!(build().state_hash(), build().state_hash(), "forge production replays bit-for-bit");
+}
+
+/// S7b: shipping is GATED by production — a node ships only what its buffer holds. Shipping DEMAND
+/// (from source weight) far exceeds the production rate here, so every produced unit is shipped almost
+/// immediately and the source buffer stays drained near empty (the gate binds; production is the
+/// throttle). Rate-coupled by design — the gate's job is to couple shipping to production.
+#[test]
+fn arcadia_shipping_gated_by_production() {
+    use sim::forge::ORE;
+    let w = run(2000);
+    assert!(w.stats_snapshot().ridership_total > 0.0, "commodities still ship (the gate doesn't block all flow)");
+    let src = w.forge_stock[ORE];
+    assert!(
+        src < 5,
+        "the source buffer stays drained — shipping demand outpaces production, so the gate binds (got {src})"
+    );
+    assert_eq!(run(2000).state_hash(), run(2000).state_hash(), "gated shipping replays bit-for-bit");
+}
+
+/// A transit world NEVER runs `produce` (gravity/agent inherit the no-op), so the fantasy buffer state
+/// stays empty — proving `forge_stock` is genuinely fantasy-only and transit's only change is the
+/// one-time golden re-pin from the (empty) field appearing in `Canonical`.
+#[test]
+fn transit_has_no_forge_buffers() {
+    let mut w = World::new(7, CityData::default());
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 500_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..500 {
+        w.tick(50);
+    }
+    assert!(w.forge_stock.is_empty(), "transit never fills forge buffers (fantasy-only hashed state)");
+}
+
+/// S7c+S7d: the full supply loop — a commodity is produced at the source, shipped (draining the source
+/// buffer), ridden to the town, DELIVERED into its buffer, and CONSUMED into global TRIBUTE (the
+/// score). Tribute > 0 is the terminal proof the whole chain connected: produce→ship→deliver→consume.
+#[test]
+fn arcadia_commodity_loop_closes() {
+    let w = run(3000);
+    assert!(w.stats_snapshot().ridership_total > 0.0, "commodities ship");
+    assert!(w.tribute > 0, "delivered supply is consumed into tribute — the loop closed end-to-end (got {})", w.tribute);
+    assert_eq!(run(3000).state_hash(), run(3000).state_hash(), "the closed loop replays bit-for-bit");
+}
+
+/// Tribute is MONOTONIC non-decreasing (a town never un-feeds) — the supply-gauge invariant the design
+/// requires (fantasy-game-design.md: a strictly-better supply network never lowers the score).
+#[test]
+fn arcadia_tribute_is_monotonic() {
+    let mut w = arcadia_world();
+    let mut prev = w.tribute;
+    for _ in 0..3000 {
+        w.tick(50);
+        assert!(w.tribute >= prev, "tribute dropped from {prev} to {} — the supply gauge must be monotonic", w.tribute);
+        prev = w.tribute;
+    }
+    assert!(w.tribute > 0, "the town accrued tribute over the run");
+}
+
+/// The FANTASY golden pin (separate from the transit pin): the exact `state_hash` of the arcadia
+/// slice today. Guards the arcadia path against a uniform hash shift the `run()==run()` self-equality
+/// can't see — the same role `GOLDEN_TRANSIT_HASH` plays for transit. Re-pinned at every arcadia
+/// Canonical change (S7 buffers, S8 army SoA, S10 CA field).
+// Re-pinned at S7d: towns now CONSUME delivered supply into tribute (the loop closes end-to-end).
+// Prior: 0x88cd…93a5 (S6a gravity-flow), 0xe6a5…85b9 (S6b steady source→sink), 0x10d1…be61 (S7a buffers
+// fill), 0xb026…4c90 (S7b production-gated shipping), 0xbdca…fd34 (S7c deposit-at-sink).
+// S8: war_step + the is_barracks/bounty fields. S9: war_step now also advances `decadence` (which
+// GROWS for arcadia_world — it runs but never conquers), so the arcadia state evolves further.
+const GOLDEN_ARCADIA_HASH: u64 = 0x5375_1cb0_558d_3b0f;
+
+#[test]
+fn golden_arcadia_hash_pinned() {
+    let h = run(1200).state_hash();
+    assert_eq!(
+        h, GOLDEN_ARCADIA_HASH,
+        "arcadia golden state_hash drifted: 0x{h:016x} != 0x{GOLDEN_ARCADIA_HASH:016x}. \
+         Re-pin in a reviewed commit if this was an intentional arcadia Canonical change."
+    );
+}

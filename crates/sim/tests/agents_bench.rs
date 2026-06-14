@@ -27,7 +27,7 @@ fn build_tokyo_scale() -> World {
             let d2 = (dx * dx + dy * dy) / (centre * centre);
             let dest_w = (8.0 * (-2.0 * d2).exp()) as f32; // downtown jobs
             let origin_w = (1.5 + 2.0 * d2.min(1.0)) as f32; // suburban homes
-            cells.push(DemandCell { x_mm: x, y_mm: y, origin_w, dest_w });
+            cells.push(DemandCell { x_mm: x, y_mm: y, origin_w, dest_w, commodity: 0 });
         }
     }
     let city = CityData {
@@ -140,7 +140,7 @@ fn agent_demand_benchmark() {
 /// A small served grid (25 stations, 10 lines — every row + column) for the mode/determinism test.
 fn build_small() -> World {
     let cells: Vec<_> = (0..100)
-        .map(|k| DemandCell { x_mm: (k % 10) * 1_000_000, y_mm: (k / 10) * 1_000_000, origin_w: 3.0, dest_w: 3.0 })
+        .map(|k| DemandCell { x_mm: (k % 10) * 1_000_000, y_mm: (k / 10) * 1_000_000, origin_w: 3.0, dest_w: 3.0, commodity: 0 })
         .collect();
     let mut w = World::new(7, CityData { id: "s".into(), seed: 7, demand: DemandGrid { cell_m: 1000.0, cells }, ..Default::default() });
     for k in 0..25 {
@@ -205,8 +205,8 @@ fn agent_demand_picks_up_a_network_built_after_it_is_enabled() {
     // Enable agents BEFORE any line exists, then build — the cell→nearest-served-station map must
     // REFRESH on the network change (regression: it was frozen at "all unserved" → zero trips ever).
     let cells = vec![
-        DemandCell { x_mm: 0, y_mm: 0, origin_w: 20.0, dest_w: 2.0 }, // homes near station 0
-        DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 20.0 }, // jobs near station 1
+        DemandCell { x_mm: 0, y_mm: 0, origin_w: 20.0, dest_w: 2.0, commodity: 0 }, // homes near station 0
+        DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 20.0, commodity: 0 }, // jobs near station 1
     ];
     let mut w = World::new(7, CityData { id: "n".into(), seed: 7, demand: DemandGrid { cell_m: 500.0, cells }, ..Default::default() });
     w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });

@@ -461,7 +461,10 @@ fn derive_cross_blocks(world: &World) -> Vec<crate::world::CrossBlock> {
     }
     type Node = (i64, i64);
     type Edge = (Node, Node);
-    let node_of = |p: &crate::geo_local::PointMm| -> Node { (p.x_mm.div_euclid(cell), p.y_mm.div_euclid(cell)) };
+    // Hex cell identity (S5): the SAME `axial_of` `grid_walk` snapped vertices with, so a polyline
+    // vertex at a cell's centre recovers that exact cell (the centre round-trip invariant). Two lines
+    // sharing a physical cell therefore yield the SAME node ⇒ the same `edge_key` ⇒ the mutex engages.
+    let node_of = |p: &crate::geo_local::PointMm| -> Node { crate::hexgrid::axial_of(*p, cell) };
 
     // 1. Every grid edge-use: which (line,path) traverses which physical edge, single?, arclen window.
     struct Use {

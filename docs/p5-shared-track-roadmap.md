@@ -30,7 +30,7 @@ single-track and P4 junctions). What changes per layer is **only the block's ide
 | **P4** (done) | `(line, key_station)` — a switch cluster, per line | one line's paths | coalesce within a consist-length ⇒ one owner ⇒ acyclic |
 | **S1v1** (done) | *no mutex* — a **dispatch cap** on the shared trunk | one line's paths | cap the fleet to the section's single-track capacity |
 | **S2** (done) | the **junction window-block** — single spans are first-class blocks | one line's paths | coalesce single spans with the adjacent switch (P4's trick) |
-| **Track objects** | `TrackSegmentId` — a first-class physical edge | **any line's** trains | **resource ordering** across the segment graph (the new hard part) |
+| **Track objects** | `TrackSegmentId` — a first-class physical edge | **any line's** trains | atomic whole-path reservation to the next safe waiting point (PBS) — Phase 2's mechanism, extended to chosen routes (NOT resource-ordering — see the cliff section) |
 
 The reservation *mechanism* is constant; only the key derivation graduates from line-scoped to
 cross-line. So each layer is a small extension of a proven primitive, not a rewrite.
@@ -176,10 +176,19 @@ capacity for long single runs. Until then, a multi-span single section runs at m
   contend for one key — the reservation machinery is unchanged.
 - **The genuinely new hard part — cross-line deadlock-freedom.** P4's single-owner coalescing collapses
   *one line's* cycles; cross-line wait-for cycles span multiple lines and **cannot** be collapsed that
-  way. The discipline is **resource-ordering** (a train acquires shared segments in a global
-  segment-id order so no two trains acquire in opposite order — the classic deadlock-free rule), proven
-  by a multi-line never-freeze property test. The determinism gate is blind to this deadlock, so the
-  liveness test is the only safeguard.
+  way. **The discipline is NOT resource-ordering** — that was this roadmap's original plan, and the
+  Phase-2 adversarial review *broke* it: "acquire segments in global segment-id order" only prevents
+  cyclic wait-for if every train acquires in that order, but a train acquires in **physical-traversal**
+  order, and **opposing trains traverse the same segments in opposite order** (eastbound `s5→s9→s12`,
+  westbound `s12→s9→s5`), so the total order constrains nothing → classic 2-cycle deadlock (gate-blind:
+  it replays green). The proven discipline is the one Phase 2 shipped, extended to chosen routes:
+  **atomic reservation of the whole path to the next safe waiting point** (PBS — a train can't enter a
+  shared section unless it can reserve a clear run to a place it can wait *outside* the section, so a
+  waiter never holds a resource a mover needs ⇒ acyclic depth-1 forest) **+ a cross-line capacity cap**
+  (bound contention per shared block) **+ a global mutex on cyclic shared components** **+ a fair
+  (aging/round-robin) tiebreak** (lowest-index starves the higher-`LineId` line). Proven by a multi-line
+  never-freeze property test — the determinism gate is blind to this deadlock, so the liveness test is
+  the only safeguard.
 - Routing/RAPTOR extends to the track graph; junctions/signals/shared depots emerge from segments.
 - **Thin-loop guard:** the player-facing surface (drawing/sharing track) must stay inside the loop
   budget — likely "draw track, then assign lines to it" as the two gestures, with sharing **emergent**

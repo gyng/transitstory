@@ -22,20 +22,19 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
 
     // Dynamics only run while Running (Build mode is paused).
     if world.running {
-        // Phase 2 — once per in-game day, the city grows (transit-oriented demand growth);
-        // then recompute catchment capture if anything changed, then spawn+route pax.
-        // Trips come from gravity flow, OR (opt-in) a seed-derived citizen population.
-        crate::demand::grow(world);
-        crate::demand::prepare(world);
-        if world.agent_demand {
-            // Take the population out to avoid aliasing &mut World, spawn, then put it back.
-            if let Some(mut pop) = world.population.take() {
-                pop.spawn_trips(world, dt);
-                world.population = Some(pop);
-            }
-        } else {
-            crate::demand::spawn(world, dt);
-        }
+        // Phase 2 — once per in-game day the city grows; then recompute capture if anything
+        // changed; then spawn+route this tick's trips. All three run through the demand SEAM
+        // (fantasy-fork.md): take the box out so it can borrow `&mut World` without aliasing the
+        // field it lives in, run the model, then put it back (`NoopDemand` is a transient ZST
+        // placeholder, never observed). The gravity-vs-agents split now lives in the box
+        // (`GravityDemand` vs `AgentDemand::spawn`) — NOT an `agent_demand` if/else here. The exact
+        // grow→prepare→spawn order (and each model's internal `world.rng` draw order) is preserved.
+        let mut demand = std::mem::replace(&mut world.demand, Box::new(crate::ruleset::NoopDemand));
+        demand.grow(world);
+        demand.prepare(world);
+        demand.produce(world, dt); // fantasy production (Forge-Line); no-op for transit
+        demand.spawn(world, dt);
+        world.demand = demand;
         // Phase 4 — move trains along the line (records station arrivals).
         crate::vehicle::advance(world, dt);
         // Phase 5 — alight then board (capacity-capped).
@@ -45,5 +44,12 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         // Phase 6 — accounting: charge recurring maintenance (opex) when the economy is on.
         world.tick_economy(dt);
         //          The rest of stats is computed on demand in stats_snapshot().
+
+        // Phase 7 — the fantasy war trailer (S8): accrue→launch→march→(S8b grind→flip). Through the
+        // ruleset SEAM via a take-out swap (so it can borrow `&mut World`); `NoopRuleset` is a transient
+        // placeholder. No-op for transit (the army SoA stays empty), so transit is byte-identical.
+        let ruleset = std::mem::replace(&mut world.ruleset, Box::new(crate::ruleset::NoopRuleset));
+        ruleset.war_step(world, dt);
+        world.ruleset = ruleset;
     }
 }

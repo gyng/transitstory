@@ -177,7 +177,7 @@ fn raptor_reaches_everything_bfs_can() {
 /// develops and replay stays bit-identical — the determinism gate over the new routing path.
 fn crossing_world() -> World {
     let cells = (0..30)
-        .map(|k| DemandCell { x_mm: 200_000 * (k - 15), y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
+        .map(|k| DemandCell { x_mm: 200_000 * (k - 15), y_mm: 0, origin_w: 3.0, dest_w: 3.0, commodity: 0 })
         .collect();
     let mut w = World::new(7, CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells }, ..Default::default() });
     for k in 0..5 {

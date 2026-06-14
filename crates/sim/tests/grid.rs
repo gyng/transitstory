@@ -1,8 +1,10 @@
-//! Phase 1 — crisp GRID geometry mode (fantasy-fork.md §10 / shared-rail.md). When `CityData.grid_
-//! cell_mm > 0`, track is built on a lattice (octilinear, integer-exact) so two lines over the same
-//! corridor produce BYTE-IDENTICAL vertices — the foundation for the cross-line `edge_key` mutex
-//! (Phase 2). Tested through Commands + the public `Path.polyline`. Parity (a non-grid city is
-//! byte-identical) is covered by the rest of the suite staying green.
+//! GRID geometry mode (fantasy-fork.md §10 / shared-rail.md), now on a HEX lattice (S5). When
+//! `CityData.grid_cell_mm > 0`, track is built on pointy-top axial hex cells (`hexgrid`,
+//! integer-quantised) so two lines over the same corridor produce BYTE-IDENTICAL vertices — the
+//! foundation for the cross-line `edge_key` mutex. Tested through Commands + the public
+//! `Path.polyline`. Parity (a non-grid city is byte-identical) is covered by the rest of the suite
+//! staying green (and the determinism golden pin, which uses continuous geometry).
+use sim::hexgrid;
 use sim::*;
 
 fn grid_world(cell_mm: i64, seed: u64) -> World {
@@ -25,30 +27,29 @@ fn make_line(w: &mut World, stops: &[StationId]) -> LineId {
 }
 
 fn cell_of(p: &PointMm, cell: i64) -> (i64, i64) {
-    (p.x_mm.div_euclid(cell), p.y_mm.div_euclid(cell))
+    hexgrid::axial_of(*p, cell)
 }
 
 #[test]
 fn grid_vertices_land_on_the_lattice() {
     let cell = 100_000i64;
     let mut w = grid_world(cell, 1);
-    // Stops placed at arbitrary sub-cell positions — they must SNAP to cell centres.
+    // Stops placed at arbitrary sub-cell positions — they must SNAP to hex cell centres.
     let a = place(&mut w, 314_159, 271_828);
     let b = place(&mut w, 600_000, 900_001);
     let c = place(&mut w, 1_050_000, 250_000);
     make_line(&mut w, &[a, b, c]);
     let poly = &w.lines[0].paths[0].polyline;
     assert!(poly.len() >= 3, "a grid polyline is a dense lattice walk");
+    // Every vertex is a HEX cell CENTRE: it round-trips through axial_of → center_of back to itself.
     for p in poly {
-        // Every vertex is a cell centre: (cell_x*cell + cell/2, cell_y*cell + cell/2).
-        assert_eq!((p.x_mm - cell / 2).rem_euclid(cell), 0, "x off the lattice: {}", p.x_mm);
-        assert_eq!((p.y_mm - cell / 2).rem_euclid(cell), 0, "y off the lattice: {}", p.y_mm);
+        let c = hexgrid::axial_of(*p, cell);
+        assert_eq!(hexgrid::center_of(c, cell), *p, "vertex {p:?} is not a hex cell centre (cell {c:?})");
     }
-    // Consecutive vertices are adjacent cells (a unit octilinear step) ⇒ unit tile-edges.
+    // Consecutive vertices are adjacent hexes (a unit lattice step) ⇒ unit tile-edges.
     for w2 in poly.windows(2) {
         let (ca, cb) = (cell_of(&w2[0], cell), cell_of(&w2[1], cell));
-        let (dx, dy) = ((cb.0 - ca.0).abs(), (cb.1 - ca.1).abs());
-        assert!(dx <= 1 && dy <= 1 && (dx + dy) >= 1, "non-unit step {ca:?}->{cb:?}");
+        assert_eq!(hexgrid::distance(ca, cb), 1, "non-unit hex step {ca:?}->{cb:?}");
     }
 }
 
@@ -61,18 +62,21 @@ fn two_lines_share_byte_identical_edges_on_a_common_corridor() {
     // RED on continuous geometry: two Catmull-Rom curves never share exact vertices.
     let cell = 100_000i64;
     let mut w = grid_world(cell, 2);
-    let a = place(&mut w, 3 * cell + 10_000, 4_000); // cell (3,0)
-    let b = place(&mut w, 6 * cell + 20_000, 3 * cell + 30_000); // cell (6,3)
+    let a_pos = PointMm::new(3 * cell + 10_000, 4_000);
+    let b_pos = PointMm::new(6 * cell + 20_000, 3 * cell + 30_000);
+    let a = place(&mut w, a_pos.x_mm, a_pos.y_mm);
+    let b = place(&mut w, b_pos.x_mm, b_pos.y_mm);
     // Two lines sharing the A->B section, approaching/leaving from DIFFERENT ends.
-    let x = place(&mut w, 0, 0); // (0,0)
-    let y = place(&mut w, 9 * cell, 9 * cell); // (9,9)
-    let z = place(&mut w, 0, 5 * cell); // (0,5)
-    let q = place(&mut w, 9 * cell, 0); // (9,0)
+    let x = place(&mut w, 0, 0);
+    let y = place(&mut w, 9 * cell, 9 * cell);
+    let z = place(&mut w, 0, 5 * cell);
+    let q = place(&mut w, 9 * cell, 0);
     make_line(&mut w, &[x, a, b, y]);
     make_line(&mut w, &[z, a, b, q]);
 
-    let ca = (3i64, 0i64);
-    let cb = (6i64, 3i64);
+    // The hex cells stops A and B snap to (where the shared A->B section begins/ends).
+    let ca = hexgrid::axial_of(a_pos, cell);
+    let cb = hexgrid::axial_of(b_pos, cell);
     let section = |li: usize| -> Vec<PointMm> {
         let poly = &w.lines[li].paths[0].polyline;
         let ia = poly.iter().position(|p| cell_of(p, cell) == ca).expect("A vertex");
@@ -88,7 +92,7 @@ fn two_lines_share_byte_identical_edges_on_a_common_corridor() {
 
 /// FULL-track-model seam (`#[ignore]`d, un-ignore when lines reference explicit laid track). An
 /// EXPRESS line A→B and a LOCAL line A→M→B running the SAME physical rail (M placed exactly on the
-/// A→B line) emit DIFFERENT edges today, because grid_walk splits the octilinear walk at M. The narrow
+/// A→B line) emit DIFFERENT edges today, because grid_walk splits the hex line at M. The narrow
 /// LITE guarantee (shared consecutive stop-cells) does not cover a corridor shared BETWEEN stops — that
 /// needs explicit laid track both lines reference (the FULL track-objects model). Captured by the grid
 /// review so Phase 2's "shared consecutive stop-cells" contract is honest and the seam is tracked.

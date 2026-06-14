@@ -1,0 +1,13 @@
+{
+  "id": "arcadia",
+  "name": "Arcadia",
+  "originLngLat": [0.0, 0.0],
+  "bbox": [-0.1, -0.1, 0.1, 0.1],
+  "center": [0.01, 0.008],
+  "zoom": 13,
+  "seed": 20260614,
+  "ruleset": "arcadia",
+  "gridCellMm": 250000,
+  "demandGridPath": "/data/arcadia_demand.json",
+  "networkPath": "/data/networks/arcadia.json"
+}

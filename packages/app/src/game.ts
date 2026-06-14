@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { colorToRgb, peepLayer, topoLayers, vehicleLayers, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ShedHex, type VehicleDot, type WaitingDot } from "./render";
+import { armyLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -46,10 +46,20 @@ const EMPTY_STATS: Stats = {
   opexSpent: 0,
   perStation: [],
   perLine: [],
+  ruleset: "transit",
+  tribute: 0,
+  decadence: 0,
+  decadencePct: 0,
+  townsCaptured: 0,
+  armyCount: 0,
+  realmLost: false,
 };
 
 export type Mode = "build" | "run";
-export type Tool = "select" | "station" | "line" | "bulldozer";
+export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty";
+
+/** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
+const BOUNTY_AMOUNT = 1000;
 
 /** Shared card style for every inspector hover tooltip (station / train / line). */
 const TOOLTIP_STYLE: Record<string, string> = {
@@ -77,6 +87,9 @@ export interface ContextMenuState {
 export class Game {
   mode: Mode = "build";
   tool: Tool = "station";
+  /** The loaded city's ruleset ("transit" | "arcadia"), set in boot from the manifest. Drives the
+   *  mode-aware chrome (e.g. the fantasy build tools) without per-frame stats reads. */
+  ruleset = "transit";
   /** Active transport mode for new construction (0 rail,1 bus,2 ferry,3 air). The chorded
    *  bottom bar sets this; new lines are created with it and the buildability gate follows. */
   transport = 0;
@@ -95,6 +108,18 @@ export class Game {
    *  auto-shown while drawing a Bus line (so you see where to route it). Memoized lng/lat below. */
   showRoads = false;
   private roadCells: import("./render").RoadCell[] | null = null;
+  /** Baked fantasy terrain hexes (lng/lat + biome code) — the map itself. Set once at load from the
+   *  city's buildability raster (fantasy only; empty for transit cities), so the array identity is
+   *  stable across frames (no per-frame rebuild). `terrainCellM` = the hex circumradius in metres. */
+  terrain: TerrainCell[] = [];
+  terrainCellM = 0;
+  /** Baked fantasy resource nodes (lng/lat + kind + yield) — the supply-chain sources. Set once at load
+   *  from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity across frames. */
+  resources: ResourceMarker[] = [];
+  /** Baked fantasy towns (sinks + conquest targets) + the far-edge decadence reservoir anchors. Set once
+   *  at load from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity. */
+  towns: TownMarker[] = [];
+  decadenceAnchors: DecadenceAnchor[] = [];
   /** Toggle the individual-rider "peep" dots (Cities:Skylines-style). On by default; only drawn
    *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
    *  render-only read-out from the core — no sim state, no Command. */
@@ -396,6 +421,29 @@ export class Game {
     }
     this.refresh();
     return id;
+  }
+
+  /** Place a BARRACKS (fantasy) — a node that fields AI legions. Mirrors placeStation but emits the
+   *  fantasy command; the transit ruleset rejects it (no node created), so the tool is fantasy-only. */
+  placeBarracks(lng: number, lat: number): number {
+    const [x_mm, y_mm] = lngLatToMm([lng, lat]);
+    const events = this.bridge.apply(cmd.placeBarracks(x_mm, y_mm));
+    const placed = events.find((e) => "BarracksPlaced" in e) as { BarracksPlaced: { id: number } } | undefined;
+    const id = placed ? placed.BarracksPlaced.id : -1;
+    if (id >= 0) {
+      this.selectedStation = id;
+      this.effects.ripple(lng, lat);
+      audio.place();
+    }
+    this.refresh();
+    return id;
+  }
+
+  /** Post a BOUNTY on a town (fantasy, the Majesty steering lever) — baits AI legions toward it. The
+   *  bounty tool resolves a click to the nearest town and calls this; the core sets `bounty[town]`. */
+  postBounty(stationId: number, amount: number = BOUNTY_AMOUNT): void {
+    this.bridge.apply(cmd.postBounty(stationId, amount));
+    this.refresh();
   }
 
   /** Commit a line through the given ordered station ids (CreateLine + AddStop*). The
@@ -1214,6 +1262,7 @@ export class Game {
           selected: s.id === this.selectedStation,
           boardings: ps?.boardings ?? 0, // throughput → dot radius
           serving: ps?.serving ?? 0, // 0 = orphaned → muted fill
+          bounty: s.bounty, // fantasy: >0 → a ⚑ marker (the steering lever's visual feedback)
         };
       });
 
@@ -1353,6 +1402,11 @@ export class Game {
       roadHour,
       demandCellM: this.demandCellM,
       roadCellM: this.build.cellMm / 1000, // mm → m (the buildability grid pitch)
+      terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
+      terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
+      resources: this.resources, // baked fantasy supply-chain source nodes; empty for transit cities
+      towns: this.towns, // baked fantasy towns (sinks + conquest targets); empty for transit cities
+      decadenceAnchors: this.decadenceAnchors, // baked far-edge reservoir anchors; empty for transit cities
       vehicles: [],
       waiting,
       hazards,
@@ -1497,8 +1551,20 @@ export class Game {
   /** Set the overlay layers: stable cached topo with the vehicle layer + peep layer spliced into
    *  z-order (catchment/lines/blueprint < vehicles < peeps < stations < waiting). Reused topo
    *  instances mean deck only re-uploads the small per-frame vehicle + peep layers. */
+  /** Marching-legion dots (fantasy). Read each compose like the vehicle layer; metres→lng/lat in place.
+   *  Null when there are no legions (transit always; arcadia until the first launch). */
+  armyLayerAt(): Layer | null {
+    const xy = this.bridge.armyPositions();
+    const count = xy.length >> 1;
+    if (count === 0) return null;
+    for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
+    return armyLayer(xy, count);
+  }
+
   composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
+    const armies = this.armyLayerAt();
+    const army = armies ? [armies] : []; // legions above carts, below peeps/labels (z-order)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
     // only the network — drop the per-station waiting halos, the pinned label, and the vehicle
     // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
@@ -1510,7 +1576,7 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
-    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...peep, ...above] });
+    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */
@@ -1552,7 +1618,9 @@ export class Game {
   applyNetwork(net: import("./sim/network").Network): void {
     for (const s of net.stations) {
       const [x, y] = lngLatToMm([s.lng, s.lat]);
-      this.bridge.apply(cmd.placeStation(x, y, s.name));
+      // Fantasy: a flagged node is a BARRACKS (fields legions); otherwise a plain station. Both
+      // create a node at this index, so line references stay aligned either way.
+      this.bridge.apply(s.barracks ? cmd.placeBarracks(x, y, s.name) : cmd.placeStation(x, y, s.name));
     }
     net.lines.forEach((line, li) => {
       // Imported lines with real OSM geometry are LITERAL — they follow the supplied track

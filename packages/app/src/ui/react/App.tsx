@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createMap } from "../../map/basemap";
 import { createOverlay } from "../../map/overlay";
 import { loadCity } from "../../sim/city";
-import { loadNetwork } from "../../sim/network";
+import { mmToLngLat } from "../../coords/geo";
+import { loadNetwork, networkFromSupplyGraph } from "../../sim/network";
 import { cityById, type CityEntry } from "../../sim/cities";
 import { SimBridge } from "../../sim/SimBridge";
 import { Buildability } from "../../sim/buildability";
@@ -50,8 +51,35 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
   const game = new Game(bridge, map, overlay, new Buildability(city.buildability));
+  game.ruleset = city.raw.ruleset ?? "transit"; // mode-aware chrome (fantasy build tools etc.)
   game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   game.demandCellM = city.demandCellM; // sizes the demand-heat hexagons to the grid pitch
+  // Fantasy baked terrain IS the map: feed the raw buildability cells (exact hex centres — NOT the
+  // square-binned Buildability lookup) straight to the terrain layer. Fantasy only, so transit cities
+  // never draw it. terrainCellM = the hex circumradius (gridCellMm/1000).
+  if (game.ruleset === "arcadia" && city.buildability) {
+    game.terrain = city.buildability.cells.map((c) => ({ lng: c.lon, lat: c.lat, c: c.c }));
+    game.terrainCellM = (city.raw.gridCellMm ?? 0) / 1000;
+    // Baked supply-chain source nodes: i64 mm (= hexgrid::center_of) → lng/lat via the one geo boundary.
+    const sg = city.raw.supplyGraph;
+    if (sg) {
+      game.resources = sg.resources.map((r) => {
+        const [lng, lat] = mmToLngLat([r.xMm, r.yMm]);
+        return { lng, lat, kind: r.kind, yield: r.yield };
+      });
+      game.towns = (sg.towns ?? []).map((t) => {
+        const [lng, lat] = mmToLngLat([t.xMm, t.yMm]);
+        // recipe → chain: grain(1)+fuel(3) = BREAD, ore(0)+aether(2) = ARMS (rings the town accordingly).
+        const r = t.recipe ?? [];
+        const chain = r.includes(1) || r.includes(3) ? "bread" : r.includes(0) || r.includes(2) ? "arms" : "";
+        return { lng, lat, kind: t.kind, value: t.value, decadence: t.decadence, chain };
+      });
+      game.decadenceAnchors = (sg.decadenceSeed?.reservoir ?? []).map((a) => {
+        const [lng, lat] = mmToLngLat([a.xMm, a.yMm]);
+        return { lng, lat };
+      });
+    }
+  }
   const loop = new GameLoop(game);
   attachPointer(game);
   installTestHooks(game, loop);
@@ -65,6 +93,11 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     } catch (e) {
       console.warn("network load failed; starting empty", e);
     }
+  } else if (game.ruleset === "arcadia" && city.raw.supplyGraph) {
+    // The baked supply graph IS the world's fixed nodes (resources = sources, towns = sinks, capital =
+    // barracks). Place them via the command path; the player draws the rail connecting the chains. Not
+    // gated on `withNetwork` — these are map features, not an optional starting metro.
+    game.applyNetwork(networkFromSupplyGraph(city.raw.supplyGraph));
   }
 
   // Autosave from the first PLAYER action onward — wiring onCommit after the pre-seeded network

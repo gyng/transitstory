@@ -9,7 +9,7 @@ fn city() -> CityData {
 fn city_patience(patience_ms: i64) -> CityData {
     // Demand cells strung along the corridor so the stations have catchment.
     let cells = (0..20)
-        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
+        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0, commodity: 0 })
         .collect();
     CityData {
         id: "t".into(),

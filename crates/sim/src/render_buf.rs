@@ -208,6 +208,25 @@ pub fn vehicle_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved marching-legion positions `[x0,y0, ...]` in metres (fantasy, S8 render). Each army owns
+/// an arc-length `s_mm` on its route; we interpolate the route polyline (`Path::point_at`) to cartesian
+/// here in the copy-out (float allowed). Besieging/done legions sit at the target. Empty for transit.
+pub fn army_positions_m(w: &World) -> Vec<f32> {
+    let a = &w.armies;
+    let mut out = Vec::with_capacity(a.len() * 2);
+    for i in 0..a.len() {
+        let (x, y) = w
+            .lines
+            .get(a.line[i].index())
+            .and_then(|l| l.paths.get(a.path[i] as usize))
+            .map(|p| p.point_at(a.s_mm[i]))
+            .unwrap_or((0, 0));
+        out.push(mm_to_m(x));
+        out.push(mm_to_m(y));
+    }
+    out
+}
+
 /// Interleaved previous-tick positions `[x0,y0, ...]` in metres (for alpha interpolation).
 pub fn vehicle_prev_positions_m(w: &World) -> Vec<f32> {
     let v = &w.vehicles;

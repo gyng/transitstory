@@ -9,7 +9,7 @@ fn city_one_cell() -> CityData {
         seed: 1,
         demand: DemandGrid {
             cell_m: 600.0,
-            cells: vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 10.0, dest_w: 6.0 }],
+            cells: vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 10.0, dest_w: 6.0, commodity: 0 }],
         },
         ..Default::default()
     }

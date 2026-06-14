@@ -18,6 +18,8 @@ export interface StationDot {
   boardings: number;
   /** Operational lines serving this station; 0 = orphaned → muted fill until it gets service. */
   serving: number;
+  /** Posted bounty (fantasy) — >0 draws a ⚑ marker so the player sees where they've baited legions. */
+  bounty?: number;
 }
 export interface LinePath {
   id: number;
@@ -83,6 +85,99 @@ export interface RoadCell {
   density: number; // BUILT cells in its 3×3 (0..9) — drives live congestion colour with the hour
 }
 
+/** One baked fantasy terrain hex (docs/fantasy-map.md). `c` is the biome class code (4=WATER,
+ *  6=MOUNTAIN, 7=HILL, 8=FOREST, 9=LEY, 10=PLAIN). Rendered as the map itself — the buildability
+ *  raster IS the terrain. Empty for transit cities (no terrain layer drawn). */
+export interface TerrainCell {
+  lng: number;
+  lat: number;
+  c: number;
+}
+
+/** One baked fantasy resource node (docs/fantasy-map.md S2) — a supply-chain source that terrain-gates
+ *  the two chains (BREAD: grain+fuel; ARMS: ore+aether). Rendered as a coloured POI dot over the grey
+ *  terrain. Empty for transit cities. */
+export interface ResourceMarker {
+  lng: number;
+  lat: number;
+  kind: string; // "ore" | "grain" | "fuel" | "aether"
+  yield: number;
+}
+
+/** One baked fantasy town (docs/fantasy-map.md S3/S4) — a supply SINK + conquest target. `value` is the
+ *  i64 conquest reward; `decadence` is the S4 corruption floor (0 = clean). Empty for transit. */
+export interface TownMarker {
+  lng: number;
+  lat: number;
+  kind: string; // "capital" | "starter" | "neutral"
+  value: number;
+  decadence: number;
+  chain: string; // S7e: "bread" (needs grain+fuel) | "arms" (needs ore+aether) | "" (capital/none)
+}
+
+/** One decadence reservoir anchor (S4) — the far-edge tide origin / raider spawn. */
+export interface DecadenceAnchor {
+  lng: number;
+  lat: number;
+}
+
+/** Town colour (docs/fantasy-map.md "The look"): the CAPITAL + dominion is the only WARMTH on a dead
+ *  world (gold); neutral "good" towns read sickly COLD-bright, darkening + cooling as their decadence
+ *  floor rises (the corruption showing through). */
+function townColor(kind: string, decadence: number): [number, number, number, number] {
+  if (kind === "capital") return [235, 175, 45, 255]; // gold — the seat of warmth
+  if (kind === "starter") return [220, 150, 80, 255]; // warm amber — your first hold
+  const t = Math.max(0, Math.min(1, decadence / 5000)); // 0 clean … 1 deep frontier
+  const r = Math.round(150 - 80 * t);
+  const g = Math.round(175 - 85 * t);
+  const b = Math.round(185 - 55 * t); // sickly cold-bright → dark cold
+  return [r, g, b, 255];
+}
+/** Town RING colour = its supply CHAIN (S7e), so the player reads which good a town demands at a glance and
+ *  knows which sources to connect: BREAD towns (grain+fuel) ring wheat-gold, ARMS towns (ore+aether) ring
+ *  arcane-violet, the capital/none a neutral dark frame. */
+function townRingColor(chain: string): [number, number, number, number] {
+  if (chain === "bread") return [225, 180, 70, 235]; // wheat-gold — needs grain + fuel
+  if (chain === "arms") return [150, 100, 215, 235]; // arcane-violet — needs ore + aether
+  return [30, 30, 36, 230]; // capital / none
+}
+/** Town radius (px): capital largest, neutrals scale with conquest value. Sized LARGER than the station
+ *  dot (≤8px) so the kind-colour reads as a HALO around the placed station's dark dot, not hidden under it. */
+function townRadius(kind: string, value: number): number {
+  if (kind === "capital") return 15;
+  if (kind === "starter") return 12;
+  return Math.max(11, Math.min(14, 11 + value / 2500));
+}
+
+/** Resource POI palette — sparse, iconic gameplay markers (Okabe-Ito CB-safe), distinct from line hue:
+ *  ore = iron blue, grain = wheat gold, fuel = forest green, AETHER = violet (the arcane, the ley chroma).
+ *  Drawn with a white stroke so they pop on the muted grey continent. */
+function resourceColor(kind: string): [number, number, number] {
+  switch (kind) {
+    case "ore": return [0, 114, 178];     // iron blue
+    case "grain": return [230, 159, 0];   // wheat gold
+    case "fuel": return [0, 158, 115];    // forest green
+    case "aether": return [148, 96, 210]; // arcane violet
+    default: return [200, 200, 200];
+  }
+}
+
+/** Fantasy terrain palette — value-not-color (docs/fantasy-map.md "The look"): a muted ash-grey
+ *  ramp where elevation reads as VALUE (plains pale → mountains near-black), forest a touch cooler,
+ *  WATER a desaturated blue-grey, and LEY a faint violet — the ONLY ground chroma (the aether prize).
+ *  Hue is reserved for the player's network; the dead world stays grey so figure-ground holds. */
+function terrainColor(c: number): [number, number, number, number] {
+  switch (c) {
+    case 4: return [38, 52, 70, 255];     // WATER — desaturated blue-grey (sea)
+    case 10: return [150, 150, 142, 255]; // PLAIN — pale ash (buildable lowland)
+    case 8: return [108, 124, 110, 255];  // FOREST — cool green-grey (fuel country)
+    case 7: return [104, 100, 96, 255];   // HILL — mid grey (rising ground)
+    case 6: return [40, 38, 40, 255];     // MOUNTAIN — near-black ridge (impassable)
+    case 9: return [120, 96, 156, 255];   // LEY — faint violet (the arcane, the only chroma)
+    default: return [70, 70, 70, 255];
+  }
+}
+
 /** STRUCTURAL congestion % (50 jammed … 100 flowing) at a given in-game hour + local built-up
  *  density — mirrors the time + density terms of sim `tod::congestion_at` (keep in sync). The third
  *  term, self-induced bus traffic, is dynamic and read off the buses slowing, not this static
@@ -127,6 +222,11 @@ export interface RenderView {
   roadHour: number; // current in-game hour → recolours the roads overlay by live congestion
   demandCellM: number; // demand-grid cell pitch (m) → sizes the demand hexagons to tile the grid
   roadCellM: number; // buildability cell pitch (m) → sizes the road hexagons to tile the grid
+  terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
+  terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
+  resources: ResourceMarker[]; // baked fantasy supply-chain source nodes (POI dots) — empty for transit
+  towns: TownMarker[]; // baked fantasy towns (sinks + conquest targets) — empty for transit
+  decadenceAnchors: DecadenceAnchor[]; // baked far-edge reservoir anchors (the tide origin) — empty for transit
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
@@ -203,6 +303,86 @@ function reachBand(ms: number): 0 | 1 | 2 {
  *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
 export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] } {
   const below: Layer[] = [
+    // FANTASY TERRAIN (the very back — it IS the map): one flat hexagon per baked buildability cell,
+    // coloured by biome as VALUE not hue (ash-grey world, faint-violet ley). The hex circumradius =
+    // gridCellMm (terrainCellM) so the pointy-top lattice tiles edge-to-edge. `angle:0` matches deck's
+    // hexagon to the pointy-top axial lattice. Stable data identity per city (no per-frame rebuild);
+    // empty for transit cities so this layer is a no-op there.
+    new ColumnLayer({
+      id: "terrain",
+      data: view.terrain,
+      diskResolution: 6, // hexagon
+      extruded: false, // flat fill on the ground
+      // circumradius = hex size (×1.04 to kill sub-pixel seams; opaque back layer, overlap is benign).
+      // angle:30 rotates deck's default flat-top hexagon to POINTY-TOP, matching the axial lattice
+      // (centers spaced √3·size apart) so the honeycomb tiles edge-to-edge with no gaps.
+      radius: view.terrainCellM * 1.04,
+      radiusUnits: "meters",
+      angle: 30,
+      getPosition: (d: TerrainCell) => [d.lng, d.lat],
+      getFillColor: (d: TerrainCell) => terrainColor(d.c),
+      filled: true,
+      stroked: false,
+      updateTriggers: { getFillColor: view.terrain.length },
+    }),
+    // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
+    // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the
+    // coloured dots pop on the grey continent. Stable identity per city (baked, never per-frame).
+    new ScatterplotLayer({
+      id: "resources",
+      data: view.resources,
+      getPosition: (d: ResourceMarker) => [d.lng, d.lat],
+      getFillColor: (d: ResourceMarker) => resourceColor(d.kind),
+      getLineColor: [245, 245, 245, 200],
+      radiusUnits: "pixels",
+      // larger than the station dot (≤8px) so the kind-colour halos AROUND the placed source's dot
+      getRadius: 10,
+      radiusMinPixels: 9,
+      radiusMaxPixels: 12,
+      stroked: true,
+      lineWidthUnits: "pixels",
+      getLineWidth: 1,
+      filled: true,
+      updateTriggers: { getFillColor: view.resources.length },
+    }),
+    // DECADENCE RESERVOIR anchors (the far-edge tide origin): low-chroma cold-violet dots — the corruption
+    // source the conquest race runs against. (The full creeping field is the S10 CA; this is the S4 seed.)
+    new ScatterplotLayer({
+      id: "decadence-anchors",
+      data: view.decadenceAnchors,
+      getPosition: (d: DecadenceAnchor) => [d.lng, d.lat],
+      getFillColor: [92, 70, 120, 200], // cold violet, translucent
+      radiusUnits: "pixels",
+      getRadius: 7,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 11,
+      stroked: false,
+      filled: true,
+      updateTriggers: { getFillColor: view.decadenceAnchors.length },
+    }),
+    // FANTASY TOWNS (over resources, under the network): supply sinks + conquest targets. Capital/starter
+    // warm (your dominion), neutrals sickly cold-bright darkening with their decadence floor. Pixel-radius
+    // (value-scaled, clamped) + a dark ring so they read as settlements over the resource dots.
+    new ScatterplotLayer({
+      id: "towns",
+      data: view.towns,
+      getPosition: (d: TownMarker) => [d.lng, d.lat],
+      getFillColor: (d: TownMarker) => townColor(d.kind, d.decadence),
+      getLineColor: (d: TownMarker) => townRingColor(d.chain), // ring = supply chain (bread/arms)
+      getRadius: (d: TownMarker) => townRadius(d.kind, d.value),
+      radiusUnits: "pixels",
+      radiusMinPixels: 9,
+      radiusMaxPixels: 16,
+      stroked: true,
+      lineWidthUnits: "pixels",
+      getLineWidth: 2.5,
+      filled: true,
+      updateTriggers: {
+        getFillColor: view.towns.map((t) => `${t.kind}:${t.decadence}`).join(","),
+        getLineColor: view.towns.map((t) => t.chain).join(","),
+        getRadius: view.towns.map((t) => `${t.kind}:${t.value}`).join(","),
+      },
+    }),
     // ROAD corridors (very back, under the network): the cells where a bus runs cheap + fast.
     // Muted slate so it reads as ground truth, not network identity. Metre-radius so it scales
     // with the map. updateTriggers unneeded — `roads` is a stable memoized array per city.
@@ -425,6 +605,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getRadius: view.stations.map((s) => `${s.selected}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
       },
     }),
+    // Bounty markers (fantasy): a gold ring around each town the player has posted a bounty on — the
+    // steering lever's visual feedback (you SEE where you've baited the legions). Font-independent (a
+    // ring, not a glyph). Few in number; rebuilt on refresh (bounties change via a Command), not per frame.
+    new ScatterplotLayer({
+      id: "bounty-markers",
+      data: view.stations.filter((s) => (s.bounty ?? 0) > 0),
+      getPosition: (d: StationDot) => [d.lng, d.lat],
+      getRadius: 11,
+      radiusUnits: "pixels",
+      radiusMinPixels: 9,
+      stroked: true,
+      filled: false,
+      getLineColor: [214, 158, 0, 255], // gold bounty halo
+      lineWidthMinPixels: 2,
+      updateTriggers: { getLineColor: view.stations.map((s) => ((s.bounty ?? 0) > 0 ? 1 : 0)).join(",") },
+    }),
     // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is always
     // visible). Stroked-only so it doesn't occlude the station dot. Three bands so "filling up"
     // reads BEFORE "starved": a faint thin ring under BUSY (a few people, fine), solid amber once
@@ -642,6 +838,25 @@ export function vehicleLayers(dots: VehicleDot[]): Layer[] {
       sizeMinPixels: 7,
     }),
   ];
+}
+
+/** Marching-legion dots (fantasy/arcadia, S8): AI armies riding the rails toward enemy towns. Crimson
+ *  with a gold ring so they read distinctly from the line-tinted commodity carts. `positionsLngLat` is
+ *  interleaved lng/lat (the caller converts from the sim's metres). Few in number (capped), so a plain
+ *  per-compose ScatterplotLayer is cheap — no binary-attribute path needed. */
+export function armyLayer(positionsLngLat: Float32Array, count: number): Layer {
+  return new ScatterplotLayer({
+    id: "armies",
+    data: { length: count, attributes: { getPosition: { value: positionsLngLat, size: 2 } } },
+    getFillColor: [150, 24, 24],
+    getLineColor: [255, 214, 110],
+    stroked: true,
+    lineWidthMinPixels: 1.5,
+    getRadius: 5,
+    radiusUnits: "pixels",
+    radiusMinPixels: 4,
+    radiusMaxPixels: 9,
+  });
 }
 
 /** Individual rider "peeps" via deck BINARY attributes (data.attributes) — NO per-object accessors,

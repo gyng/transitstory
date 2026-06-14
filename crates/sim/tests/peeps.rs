@@ -6,7 +6,7 @@ use sim::*;
 
 fn city() -> CityData {
     // Demand strung along the corridor so the stations capture trips.
-    let cells = (0..20).map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 4.0, dest_w: 4.0 }).collect();
+    let cells = (0..20).map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 4.0, dest_w: 4.0, commodity: 0 }).collect();
     CityData {
         id: "t".into(),
         seed: 7,

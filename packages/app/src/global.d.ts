@@ -18,7 +18,10 @@ declare global {
       game: Game;
     };
     __ot_test?: {
+      tickMs(ms: number): void;
       placeStationLngLat(lng: number, lat: number): number;
+      placeBarracksLngLat(lng: number, lat: number): number;
+      postBounty(station: number, amount: number): void;
       drawLine(stationIds: number[]): number;
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;

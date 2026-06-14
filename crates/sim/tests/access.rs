@@ -64,9 +64,9 @@ fn two_jobs_world() -> World {
     // Demand cells sit exactly on the stations (500 m catchment, stations 10 km apart → no overlap):
     //   O: homes (origin)   P,Q: equal jobs (destinations)
     let cells = vec![
-        DemandCell { x_mm: 0, y_mm: 0, origin_w: 50.0, dest_w: 0.0 }, // O = residential
-        DemandCell { x_mm: 10_000_000, y_mm: 0, origin_w: 0.0, dest_w: 20.0 }, // P = jobs
-        DemandCell { x_mm: 0, y_mm: 10_000_000, origin_w: 0.0, dest_w: 20.0 }, // Q = equal jobs
+        DemandCell { x_mm: 0, y_mm: 0, origin_w: 50.0, dest_w: 0.0, commodity: 0 }, // O = residential
+        DemandCell { x_mm: 10_000_000, y_mm: 0, origin_w: 0.0, dest_w: 20.0, commodity: 0 }, // P = jobs
+        DemandCell { x_mm: 0, y_mm: 10_000_000, origin_w: 0.0, dest_w: 20.0, commodity: 0 }, // Q = equal jobs
     ];
     let mut w = World::new(7, CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells }, ..Default::default() });
     place(&mut w, 0, 0); // 0 = O

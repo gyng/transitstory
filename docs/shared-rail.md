@@ -1,18 +1,19 @@
 # Shared physical rail — GRID cross-line layer (design)
 
-> **⚠️ NOT the canonical P5 plan — that is [p5-shared-track-roadmap.md](p5-shared-track-roadmap.md)
-> (S1v1 + S2 landed).** This doc is the **grid fantasy-fork's cross-line ("Track objects") layer** —
-> the A2 fork of [fantasy-fork.md](fantasy-fork.md) §10 — produced by an understand → dual-liveness
-> design → adversarial review → synthesis workflow. It is pending reconciliation INTO the canonical
-> roadmap (it overlaps that doc's "Track objects — the cliff" section).
+> **✅ BUILT 2026-06-14 (Phase 1 grid geometry + Phase 2 cross-line mutex).** This is the design
+> rationale companion to the canonical status doc
+> [p5-shared-track-roadmap.md](p5-shared-track-roadmap.md) (the source of truth for what shipped) and
+> the A2 fork of [fantasy-fork.md](fantasy-fork.md) §10. Produced by an understand → dual-liveness
+> design → adversarial review → synthesis workflow; reconciled into the canonical roadmap.
 >
-> **KEY CORRECTION it contributes to the canonical roadmap:** that roadmap's cross-line liveness is
-> *"resource-ordering (acquire shared segments in global segment-id order)."* The adversarial review
-> **broke** that for *incremental* acquisition — opposing trains acquire the same segments in opposite
-> physical-traversal order, so the total order constrains nothing (see §4). The corrected guarantee is
+> **The KEY CORRECTION this contributed — now landed in code + roadmap:** the original plan's
+> cross-line liveness was *"resource-ordering (acquire shared segments in global segment-id order)."*
+> The adversarial review **broke** it — opposing trains acquire the same segments in opposite
+> physical-traversal order, so the total order constrains nothing (see §4). The shipped guarantee is
 > **atomic whole-block reservation to a passing place + a cross-LINE capacity cap + a global mutex on
-> cyclic shared components + a fair (non-lowest-index) tiebreak.** Obeys every
-> [AGENTS.md](../AGENTS.md) non-negotiable.
+> cyclic shared components + a fair tiebreak** (the cap currently ships **conservative** — 1 train per
+> line globally; a per-block capacity + aging tiebreak is the logged follow-up, a fantasy-fork
+> prerequisite). Obeys every [AGENTS.md](../AGENTS.md) non-negotiable.
 >
 > **Owner decision:** ship **L1 (system-guaranteed deadlock-freedom) + LITE (fixed paths)** as the
 > foundation; design **L2 (player signals) + FULL (YAPF pathfinding)** as opt-in advanced-mode seams

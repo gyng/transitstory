@@ -26,7 +26,11 @@ export type Command =
   // waypoints: per-span control points that bend the track; each span is a list of [x_mm, y_mm].
   | { SetLineWaypoints: { line: number; waypoints: [number, number][][] } }
   // demand model: true = seed-derived citizen agents (home/work commuters), false = gravity flow.
-  | { SetDemandMode: { agents: boolean } };
+  | { SetDemandMode: { agents: boolean } }
+  // fantasy/arcadia (S8): place a barracks (a node that fields AI legions). Rejected in transit.
+  | { PlaceBarracks: { x_mm: number; y_mm: number; name: string | null } }
+  // fantasy/arcadia (S8): post a bounty on a town (Majesty steering — baits AI legions). Rejected in transit.
+  | { PostBounty: { station: number; amount: number } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -46,6 +50,8 @@ export type Event =
   | { LineRemoved: { line: number } }
   | { WaypointsSet: { line: number } }
   | { DemandModeSet: { agents: boolean } }
+  | { BarracksPlaced: { id: number; name: string } }
+  | { BountyPosted: { station: number; amount: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -117,6 +123,21 @@ export interface Stats {
   opexSpent: number;
   perStation: PerStation[];
   perLine: PerLine[];
+  // --- fantasy (arcadia) read-out; 0/false/"transit" for the transit game ---
+  /** Canonical ruleset ("transit" | "arcadia") — the HUD picks its readout from this. */
+  ruleset: string;
+  /** Accumulated tribute — the supply score (towns consume delivered supply into this). */
+  tribute: number;
+  /** Spreading-corruption pressure (the lose meter); `realmLost` once it reaches the capital. */
+  decadence: number;
+  /** Decadence as a 0–100 fraction of the capital threshold — the lose-meter gauge fill. */
+  decadencePct: number;
+  /** Towns conquered (the conquest score). */
+  townsCaptured: number;
+  /** Legions currently fielded. */
+  armyCount: number;
+  /** True once decadence has overrun the capital — the realm has fallen. */
+  realmLost: boolean;
 }
 
 export interface StationView {
@@ -125,6 +146,8 @@ export interface StationView {
   yMm: number;
   name: string;
   removed: boolean;
+  /** Posted bounty (fantasy) — >0 draws a ⚑ marker on the town. 0 for transit + un-bountied towns. */
+  bounty: number;
 }
 
 /** One OD "desire line" from a selected origin station to a destination it draws riders toward

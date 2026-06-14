@@ -83,6 +83,13 @@ impl Sim {
         sim::render_buf::vehicle_line_ids(&self.world)
     }
 
+    /// Interleaved marching-legion positions `[x0,y0,...]` in metres (fantasy, S8). Empty for transit
+    /// (no armies). Read each frame like vehicle positions; the count is tiny (legions, capped).
+    #[wasm_bindgen(js_name = armyPositions)]
+    pub fn army_positions(&self) -> Vec<f32> {
+        sim::render_buf::army_positions_m(&self.world)
+    }
+
     /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {

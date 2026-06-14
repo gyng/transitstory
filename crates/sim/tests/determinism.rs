@@ -39,6 +39,53 @@ fn replay_equality() {
     assert_eq!(a, b, "same seed + command log + ticks must yield identical state_hash");
 }
 
+/// The GOLDEN PIN (fantasy-build-plan.md S0). `replay_equality` proves `run()==run()` but is
+/// structurally BLIND to a uniform hash shift — any change that perturbs every hash identically
+/// (a Canonical field reorder, an rng-draw-order change during the fantasy carve, a postcard
+/// bump) sails through it. This literal is the one anchor that catches that class: it is the
+/// exact `state_hash` of the canonical transit slice today, pinned. If a refactor that claims to
+/// be behaviour-preserving changes this value, it is NOT behaviour-preserving — STOP. The pin is
+/// re-blessed as a reviewed single commit at every deliberate Canonical shape change (S7/S8/S10).
+// Re-pinned at S7 (binding condition #1) as fantasy state joined `Canonical` (all 0/empty for transit,
+// so transit stays byte-identical — only the appended bytes shift the hash):
+//   0xdeeb_747a_eb78_c6a1 — S0–S6 (no fantasy fields)
+//   0x42dd_8dde_1e39_8393 — S7a (the empty `forge_stock` slice appended)
+//   0xd7fb_a36d_5bba_92c9 — S7d (the `tribute` i64 appended)
+//   0x45f8_da5f_19af_73f3 — S8a (the 7 empty army-SoA field slices appended)
+//   0xd747_5260_98d0_0aeb — S8b (the empty `town_value` slice + `towns_captured` i64 appended)
+//   0x9e3b_e523_a982_8d51 — S8 PlaceBarracks (the empty `is_barracks` slice appended)
+//   0x6253_ac99_08d6_20a3 — S8 PostBounty (the empty `bounty` slice appended)
+//   0xea4e_eb0a_03d9_74f9 — S9 decadence (the `decadence` i64 appended)
+const GOLDEN_TRANSIT_HASH: u64 = 0xea4e_eb0a_03d9_74f9;
+
+#[test]
+fn golden_transit_hash_pinned() {
+    let h = run(42, &sample_log(), 600, 50);
+    assert_eq!(
+        h, GOLDEN_TRANSIT_HASH,
+        "transit golden state_hash drifted: 0x{h:016x} != 0x{GOLDEN_TRANSIT_HASH:016x}. \
+         If this was an intentional Canonical change, re-pin in a reviewed commit; otherwise a \
+         supposedly behaviour-preserving refactor broke determinism."
+    );
+}
+
+/// The save→postcard→replay→tick pipeline must ALSO reach the golden hash, not just the in-memory
+/// `run()`. Guards that serializing the command log and reconstructing from it is byte-faithful.
+#[test]
+fn golden_transit_hash_via_save_replay() {
+    let mut w = World::new(42, CityData::default());
+    for c in &sample_log() {
+        w.apply(c);
+    }
+    let bytes = postcard::to_allocvec(&w.save()).expect("postcard encode");
+    let save: SaveGame = postcard::from_bytes(&bytes).expect("postcard decode");
+    let mut r = replay(&save, CityData::default());
+    for _ in 0..600 {
+        r.tick(50);
+    }
+    assert_eq!(r.state_hash(), GOLDEN_TRANSIT_HASH, "save→replay→tick must reach the golden pin");
+}
+
 #[test]
 fn distinct_inputs_differ() {
     // Sanity: a different command log should (almost surely) hash differently, so the
@@ -47,6 +94,37 @@ fn distinct_inputs_differ() {
     let mut shorter = log.clone();
     shorter.truncate(2);
     assert_ne!(run(1, &log, 10, 50), run(1, &shorter, 10, 50));
+}
+
+/// The disjoint-save guard (S3): `""` (the `CityData::default()` tag) and `"transit"` are the SAME
+/// mode (canonicalised), so a save written with the explicit `"transit"` tag must replay cleanly
+/// onto a default (`""`) city — the guard compares modes, not spellings, and must NOT false-trip.
+#[test]
+fn disjoint_save_guard_treats_empty_and_transit_as_one_mode() {
+    let mut w = World::new(7, CityData { ruleset: "transit".into(), ..Default::default() });
+    for c in &sample_log() {
+        w.apply(c);
+    }
+    let save = w.save();
+    assert_eq!(save.ruleset, "transit", "save carries the city's ruleset tag");
+    // city default tag is "" — canon("")==canon("transit") ⇒ no panic, replay reconstructs state.
+    let replayed = replay(&save, CityData::default());
+    assert_eq!(w.state_hash(), replayed.state_hash(), "same-mode replay reconstructs identical state");
+}
+
+/// The guard's teeth: a save from a DIFFERENT mode replayed onto a transit city must abort, not
+/// silently run a foreign command vocab through the wrong `apply` (the divergence class the golden
+/// pin can't see). RED-first via `should_panic`.
+#[test]
+#[should_panic(expected = "disjoint-save guard")]
+fn disjoint_save_guard_rejects_cross_mode_replay() {
+    let mut w = World::new(7, CityData::default());
+    for c in &sample_log() {
+        w.apply(c);
+    }
+    let mut save = w.save();
+    save.ruleset = "arcadia".into(); // a save from the (future) fantasy mode
+    let _ = replay(&save, CityData::default()); // onto a transit city ⇒ panic
 }
 
 #[test]

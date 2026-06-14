@@ -10,8 +10,8 @@ use sim::*;
 /// Demand sits ONLY at the far ends (0 and 3), so the sole trips are 0↔3 — unroutable without a walk.
 fn footpath_world() -> World {
     let cells = vec![
-        DemandCell { x_mm: -2_000_000, y_mm: 0, origin_w: 8.0, dest_w: 8.0 },
-        DemandCell { x_mm: 2_000_000, y_mm: 0, origin_w: 8.0, dest_w: 8.0 },
+        DemandCell { x_mm: -2_000_000, y_mm: 0, origin_w: 8.0, dest_w: 8.0, commodity: 0 },
+        DemandCell { x_mm: 2_000_000, y_mm: 0, origin_w: 8.0, dest_w: 8.0, commodity: 0 },
     ];
     let mut w = World::new(
         7,

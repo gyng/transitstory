@@ -65,7 +65,7 @@ fn remove_station_drops_it_from_lines_and_keeps_id_slots() {
 #[test]
 fn remove_station_frees_its_catchment() {
     // One demand cell near station 1; with 1 present it captures origin weight, gone it doesn't.
-    let cells = vec![DemandCell { x_mm: 3_000_000, y_mm: 0, origin_w: 5.0, dest_w: 5.0 }];
+    let cells = vec![DemandCell { x_mm: 3_000_000, y_mm: 0, origin_w: 5.0, dest_w: 5.0, commodity: 0 }];
     let city = CityData { id: "t".into(), seed: 1, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() };
     let mut w = World::new(1, city);
     w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None }); // on the cell

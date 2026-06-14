@@ -464,40 +464,26 @@ fn cap_from_radius(r_mm: f64) -> i64 {
 /// lines reference (the FULL track-objects model), and is out of LITE scope — Phase 2's cross-line
 /// mutex contract is "shared consecutive stop-cells", and `grid_express_local_*` (#[ignore]d) pins it.
 fn grid_walk(pts: &[PointMm], cell_mm: i64) -> (Vec<PointMm>, Vec<usize>) {
-    let cell = |p: PointMm| (p.x_mm.div_euclid(cell_mm), p.y_mm.div_euclid(cell_mm));
-    let centre = |c: (i64, i64)| PointMm::new(c.0 * cell_mm + cell_mm / 2, c.1 * cell_mm + cell_mm / 2);
-    // The canonical cell path from `a` to `b` INCLUSIVE: walk diagonal-first from the lexicographically
-    // SMALLER endpoint, then orient `a -> b`. So `a -> b` and `b -> a` are EXACT reverses (the same edge
-    // set) — load-bearing for the cross-line mutex: an out-and-back train and an opposing train on
-    // another line traverse the shared section in opposite directions and must reserve the SAME edges.
-    let walk = |a: (i64, i64), b: (i64, i64)| -> Vec<(i64, i64)> {
-        let (lo, hi, rev) = if a <= b { (a, b, false) } else { (b, a, true) };
-        let mut v = vec![lo];
-        let (mut x, mut y) = lo;
-        while (x, y) != hi {
-            x += (hi.0 - x).signum();
-            y += (hi.1 - y).signum();
-            v.push((x, y));
-        }
-        if rev {
-            v.reverse();
-        }
-        v
-    };
+    use crate::hexgrid;
+    // Each stop snaps to its HEX cell (`axial_of`); consecutive stops connect by the CANONICAL hex
+    // line (`hexgrid::line` — drawn from the lexicographically smaller endpoint then reversed, so
+    // `a -> b` is the EXACT reverse of `b -> a`, the same edge set). Vertices are hex cell CENTRES, so
+    // two lines whose stops land in the same cells emit byte-identical edges — the foundation the
+    // cross-line mutex rests on (`dispatch::node_of` recovers the same cell from a shared centre).
     let mut poly: Vec<PointMm> = Vec::new();
     let mut stop_idx: Vec<usize> = Vec::with_capacity(pts.len());
-    let mut prev: Option<(i64, i64)> = None;
+    let mut prev: Option<hexgrid::Axial> = None;
     for &p in pts {
-        let c = cell(p);
+        let c = hexgrid::axial_of(p, cell_mm);
         match prev {
             None => {
-                poly.push(centre(c));
+                poly.push(hexgrid::center_of(c, cell_mm));
                 stop_idx.push(0);
             }
             Some(pc) => {
-                // `walk(pc, c)` is pc..=c inclusive; pc is already in `poly`, so push the rest.
-                for &cc in &walk(pc, c)[1..] {
-                    poly.push(centre(cc));
+                // `line(pc, c)` is pc..=c inclusive; pc is already in `poly`, so push the rest.
+                for &cc in &hexgrid::line(pc, c)[1..] {
+                    poly.push(hexgrid::center_of(cc, cell_mm));
                 }
                 // `c` is the last vertex pushed (or, if c == pc, the previous vertex ⇒ zero-length span).
                 stop_idx.push(poly.len().saturating_sub(1));

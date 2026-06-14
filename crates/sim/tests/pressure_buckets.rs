@@ -8,7 +8,7 @@ use sim::*;
 /// (full trains pass queues) and sheds riders to renege (patience exceeded).
 fn starved_city() -> CityData {
     let cells = (0..12)
-        .map(|k| DemandCell { x_mm: 250_000 * k, y_mm: 0, origin_w: 12.0, dest_w: 12.0 })
+        .map(|k| DemandCell { x_mm: 250_000 * k, y_mm: 0, origin_w: 12.0, dest_w: 12.0, commodity: 0 })
         .collect();
     CityData {
         id: "starve".into(),

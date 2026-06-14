@@ -1,6 +1,8 @@
 // Top-centre HUD: the headline Ridership counter + a 0–100 Coverage/Satisfaction gauge.
 // Fed by the ~3 Hz stats throttle (useStats — never per frame). One number + one gauge,
 // details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
+import type { CSSProperties } from "react";
+import type { Stats } from "../../types";
 import { useStats } from "./GameContext";
 import { SIM_MS_PER_CLOCK_MIN, fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
@@ -24,6 +26,74 @@ function todGlyph(hour: number): string {
   return "☀️";
 }
 
+/** The HUD shell — shared chrome (position/style) so transit + fantasy read the same. */
+const BAR_STYLE: CSSProperties = {
+  position: "fixed",
+  top: "10px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  display: "flex",
+  alignItems: "center",
+  gap: "16px",
+  padding: "8px 14px",
+  background: "rgba(255,255,255,.95)",
+  borderRadius: "10px",
+  boxShadow: "var(--ot-shadow)",
+  zIndex: 9,
+  font: "13px system-ui,sans-serif",
+  color: "#1c2024",
+};
+
+/** Fantasy (arcadia) HUD: the supply→conquest→decadence readout — tribute, the lose-meter gauge,
+ *  towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
+function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
+  const tribute = Math.round(s.tribute);
+  const towns = Math.round(s.townsCaptured);
+  const armies = Math.round(s.armyCount);
+  const d = Math.round(s.decadencePct);
+  // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
+  const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "#e69f00" : "#7a93ad";
+  return (
+    <div id="stats-bar" data-testid="stats-bar" style={BAR_STYLE}>
+      <div>
+        <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>{clock}</b>{" "}
+        <span data-testid="period" style={{ color: "#7a818a" }}>Arcadia</span>
+      </div>
+      <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }} />
+      <div data-testid="tribute" title="Tribute — towns you supply pay this; it funds your legions.">
+        ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> tribute
+      </div>
+      <div
+        data-testid="decadence-gauge"
+        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}
+        title="The Decadence — spreading corruption. If it reaches your capital, the realm falls. Conquest holds it back."
+      >
+        ☠ Decadence
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "#e7eaee", borderRadius: "6px", overflow: "hidden" }}>
+          <div
+            data-testid="decadence-bar"
+            style={{ position: "absolute", inset: "0 auto 0 0", width: `${d}%`, background: dColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
+          />
+        </div>
+        <b style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d}</b>
+      </div>
+      <div data-testid="towns-captured" style={{ color: "#7a818a", cursor: "help" }} title="Towns conquered. Each captured town pushes the decadence back.">
+        🏰 <b style={{ color: "#1c2024" }}>{towns}</b> taken
+      </div>
+      {armies > 0 && (
+        <div data-testid="armies" style={{ color: "#7a818a" }} title="Legions afield — AI-led, riding your rails, baited by bounties.">
+          ⚔ {armies} legion{armies === 1 ? "" : "s"}
+        </div>
+      )}
+      {s.realmLost && (
+        <div data-testid="realm-lost" style={{ color: "var(--ot-gauge-bad)", fontWeight: 700 }}>
+          ☠ THE REALM HAS FALLEN
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StatsBar() {
   const s = useStats();
   // Rolling headline counters — the value eases toward each new ~3 Hz snapshot instead of snapping
@@ -34,6 +104,9 @@ export function StatsBar() {
   const hh = Math.floor(s.simHour);
   const mm = Math.floor((s.simHour - hh) * 60);
   const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+
+  // Mode-aware: the fantasy campaign shows its own supply/conquest/decadence readout.
+  if (s.ruleset === "arcadia") return <FantasyStatsBar s={s} clock={clock} />;
 
   const c = Math.round(s.coverageScore);
   const w = Math.round(s.waitingTotal);

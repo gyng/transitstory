@@ -6,7 +6,7 @@ use sim::*;
 ///   Line 0 (E–W): stations 0,1,2,3,4   Line 1 (N–S): stations 5,6,2,7,8
 fn two_line_world() -> World {
     let cells = (0..30)
-        .map(|k| DemandCell { x_mm: 200_000 * (k - 15), y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
+        .map(|k| DemandCell { x_mm: 200_000 * (k - 15), y_mm: 0, origin_w: 3.0, dest_w: 3.0, commodity: 0 })
         .collect();
     let mut w = World::new(7, CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 200.0, cells }, ..Default::default() });
     // E–W line stations 0..4 along y=0

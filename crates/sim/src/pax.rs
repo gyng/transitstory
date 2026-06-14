@@ -25,6 +25,10 @@ pub struct Pax {
     /// Citizen index this trip belongs to (agent demand), or `u32::MAX` for an anonymous gravity
     /// trip. Lets the journey inspector name the rider + show their home/work. Not hashed.
     pub citizen_id: u32,
+    /// Fantasy (arcadia) S7e: the Forge-Line commodity this cart carries (= its source's output
+    /// commodity), deposited into the destination node's buffer on alight. 0 (ORE) for transit riders
+    /// (who never touch `forge_stock`). NOT hashed (Pax queues are excluded from Canonical).
+    pub commodity: u8,
 }
 
 impl Pax {
@@ -91,6 +95,7 @@ pub(crate) fn board_alight(world: &mut World) {
         ref mut denied_boardings,
         ref mut denied_at,
         ref mut recent_alight,
+        ref mut forge_stock,
         ..
     } = *world;
 
@@ -145,6 +150,18 @@ pub(crate) fn board_alight(world: &mut World) {
                         citizen: pax.citizen_id,
                         t_ms: clock_ms,
                     });
+                    // Fantasy DELIVERY (S7c/S7e): a commodity completing its journey is deposited into the
+                    // destination node's buffer — closing the supply loop (produced → shipped/drained →
+                    // delivered/accumulated, conserved). The deposited commodity is the cart's own (S7e:
+                    // its source's output commodity), so a grain cart fills the sink's GRAIN slot. Gated on
+                    // `forge_stock` non-empty ⇒ a no-op for transit (empty ⇒ byte-identical).
+                    if !forge_stock.is_empty() {
+                        let comm = (pax.commodity as usize).min(crate::forge::N_COMMODITIES - 1);
+                        let idx = s * crate::forge::N_COMMODITIES + comm;
+                        if idx < forge_stock.len() {
+                            forge_stock[idx] = (forge_stock[idx] + 1).min(crate::forge::BUFFER_CAP);
+                        }
+                    }
                 } else {
                     let mut p = pax;
                     p.leg += 1; // transfer: advance to the next leg

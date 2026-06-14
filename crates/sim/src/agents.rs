@@ -191,7 +191,7 @@ fn push_trip(
         .or_insert_with(|| router.plan(lines, serving, footpaths, StationId(oi), StationId(di), max_legs));
     if let Some(legs) = entry {
         if !legs.is_empty() {
-            waiting[oi as usize].push_back(Pax { legs: legs.clone(), leg: 0, t_spawn_ms: now, t_wait_ms: now, citizen_id: cid });
+            waiting[oi as usize].push_back(Pax { legs: legs.clone(), leg: 0, t_spawn_ms: now, t_wait_ms: now, citizen_id: cid, commodity: 0 });
         }
     }
 }

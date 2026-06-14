@@ -1102,6 +1102,1037 @@ false-negative head-on shipping green). Grid geometry makes identity exact: trac
     untouched; no new Command. Tiers: cargo 33 suites + `shared_rail.rs` 7 (incl. ring/over-provisioned
     never-freeze), vitest 21, tsc clean, playwright 16.
 
+## Fantasy fork — S0: the golden-hash pin + ruleset seam (2026-06-14)
+
+Design turns to code. The fantasy 4X-logistics fork (docs/fantasy-fork.md = architecture,
+fantasy-game-design.md = the game, fantasy-build-plan.md = the S0→S11 roadmap, fantasy-map.md =
+worldgen) builds on the SAME deterministic core via **ruleset-at-construction** — transit stays
+byte-identical until fantasy is complete. **S0 is the safety net everything else stands on.**
+
+- **The gate-blindness S0 closes:** `determinism.rs::replay_equality` proves `run()==run()` but is
+  STRUCTURALLY BLIND to a *uniform* hash shift — a Canonical field reorder, an rng-draw-order change
+  during the S2 carve, or a postcard bump perturbs every hash identically and sails straight through.
+  The fantasy carve (S2) is exactly the kind of "behaviour-preserving" refactor that can do this.
+- **The pin (RED-first):** `GOLDEN_TRANSIT_HASH = 0xdeeb_747a_eb78_c6a1` — the exact `state_hash` of
+  the canonical transit slice (`sample_log() + 600 ticks @ dt=50`), pinned as a literal. Written
+  failing first (placeholder literal → observed RED → pasted the real value). Two assertions:
+  `golden_transit_hash_pinned` (the in-memory `run()`) and `golden_transit_hash_via_save_replay`
+  (the postcard `save → decode → replay → tick` pipeline must reach the SAME literal — guards the
+  serialized save path, not just in-memory). Re-blessed in a reviewed commit at every deliberate
+  Canonical change (S7/S8/S10).
+- **The `ruleset` seam (additive, no behaviour change):** `CityData.ruleset: String`
+  (`#[serde(default = "transit")]`) + `SaveGame.ruleset` (same default, populated in `save()` from
+  `city.ruleset`) + the frontend mirror `CityEntry.kind?: "transit" | "arcadia"`. **Not hashed** —
+  `Canonical` includes neither `city` nor `SaveGame`, which is *why* adding it can't shift the golden
+  pin (verified: pin is green after the field lands). `CityData::default()` keeps `""`, which
+  `World::new` will canonicalise to transit (S3), so every native test + shipped city is untouched.
+- **Containment / tiers:** zero re-pins; `sample_log` golden stable across the field addition. Full
+  cargo sim suite green (CARGO_EXIT=0; determinism.rs 6→8 tests), `sim-wasm` builds, `tsc --noEmit`
+  clean. No new Command, no `Canonical` change, no wasm-boundary change.
+
+**S1 — trait scaffolding (no carve), 2026-06-14.** The `Ruleset`/`Demand` seam now exists beside the
+proven `Router` seam, default-constructed but **not yet called** — pure scaffolding that de-risks the
+S2 carve.
+
+- **`ruleset/{mod,transit}.rs`** (new, sibling to `routing/`): `trait Demand` (`prepare`/`grow`/`spawn`,
+  `&mut self` so a model can own per-tick state) + `trait Ruleset` (`coverage_score` + a defaulted
+  `validate(cmd)` for the S3 disjoint-save guard). The determinism contract doc is copied verbatim from
+  `routing/mod.rs` (index-ordered iteration only; RNG draws from `world.rng` in a FIXED order).
+- **The transit impls DELEGATE** (`TransitRuleset`→`World::coverage_score`; `GravityDemand`/`AgentDemand`
+  →`demand::{prepare,grow,spawn}` + the population take-out dance). So the impls are real and correct,
+  ready for S2 to (a) flip `tick.rs`/`apply` to call them, then (b) inline the free-function bodies and
+  delete the free functions. `coverage_score` widened `fn`→`pub(crate) fn` (the only visibility change).
+- **`World` gains `ruleset: Box<dyn Ruleset>` + `demand: Box<dyn Demand>`** beside `router`,
+  default-constructed (`TransitRuleset`/`GravityDemand`). **Not hashed** (`Canonical` excludes them) and
+  **not called** (`tick.rs` still calls the free functions), so the golden pin is byte-identical —
+  **verified: `0xdeeb_747a_eb78_c6a1` unchanged**, full suite CARGO_EXIT=0, **zero warnings**, `sim-wasm`
+  builds. **S2 (THE CARVE — the one dangerous step) is next.**
+
+**S2 — THE CARVE (the one dangerous step), 2026-06-14.** The per-tick demand + scoring now reach the
+core ONLY through the seam; the `agent_demand` if/else folded into `spawn` polymorphism. **The gate
+the plan demanded held: the S0 golden hex diffed to ZERO** (`0xdeeb_747a_eb78_c6a1`, unchanged).
+
+- **What flipped through the box:** `tick.rs`'s `grow → prepare → spawn` block (the determinism
+  heart) now does a **take-out swap** — `std::mem::replace(&mut world.demand, Box::new(NoopDemand))`,
+  run the three methods, restore — so the boxed model can borrow `&mut World` without aliasing the
+  field it lives in. `NoopDemand` is a transient ZST placeholder (boxing it doesn't allocate → free).
+  `coverage_score` → `self.ruleset.coverage_score(self)`; the eager post-edit catchment recompute →
+  `self.demand_prepare()` (same swap). `SetDemandMode` swaps the box (`GravityDemand`↔`AgentDemand`).
+- **Why delegation, not a physical body move:** the impls delegate to the `demand::*` module (now the
+  gravity/agent implementation that `GravityDemand`/`AgentDemand` wrap). Delegation keeps the
+  `world.rng` draw order **byte-identical by construction** — the plan's load-bearing constraint
+  (`demand::spawn` destructures `ref mut rng` and draws in station-index→per-pax order). A 200-line
+  textual relocation would add transcription risk for ZERO architectural gain: a fantasy
+  `SupplyChainDemand` is already a true sibling `impl Demand`, and nothing in `tick.rs`/`apply`
+  hardcodes a model. `agent_demand` (the bool) stays the source of truth for the population top-up
+  inside `demand::grow`; the box is what `spawn` keys on — they're set together, neither is hashed.
+- **Verification (the gate-blind battery, not just `run()==run()`):** the **gravity golden pin**
+  caught nothing because nothing shifted; the **agent path** — which the gravity-only `sample_log`
+  golden does NOT cover — is held by `agent_demand_mode_via_command_develops_ridership_and_replays`
+  (`SetDemandMode → 3000 ticks → run().state_hash()==run().state_hash()` PLUS ridership>0) +
+  `agent_demand_is_deterministic` + the named-commuter journey test. Mechanically the carve is a
+  dispatch-indirection with verbatim delegation, not an algorithm change → the deterministic gates
+  ARE the adversarial check (determinism is machine-verified, not judged). **146/146 cargo, 0
+  warnings, ban-grep clean on `ruleset/`, `sim-wasm` builds, `tsc` clean.** Foundation is at a clean,
+  fork-ready checkpoint. **S3 (mode toggle + disjoint-save guard) is next.**
+
+**S3 — mode toggle + disjoint-save guard, 2026-06-14.** `World::new` now SELECTS the game from the
+frozen `ruleset` tag, and a save can no longer be replayed onto the wrong mode.
+
+- **One dispatch point:** `ruleset::select(tag) -> (Box<dyn Ruleset>, Box<dyn Demand>)` — the only place
+  the mode is decided. Transit today; `"arcadia"` lights up at S6 as a single new match arm (the rest of
+  the engine is already mode-agnostic via the S1/S2 seam). `World::new` calls it; both boxes are unhashed
+  ⇒ golden-neutral. `ruleset::canon("")=="transit"` so native tests (`""`) and JSON cities (`"transit"`)
+  name the same mode and the guard compares MODES, not spellings.
+- **The mode gate:** `self.ruleset.validate(cmd)` runs at the TOP of `apply` — before any mutation or the
+  `cmd_log.push` — so a cross-mode command neither mutates nor pollutes the save. Transit's default
+  accepts every existing Command (no early return today ⇒ byte-identical). The real cross-mode rejections
+  arrive with the fantasy command vocab at S6.
+- **The disjoint-save guard:** `replay()` asserts (canonicalised) `save.ruleset == city.ruleset` — a
+  fantasy save replayed onto a transit city would run a foreign command vocab through the wrong `apply`
+  and **silently diverge** (a divergence the golden pin structurally can't see — different commands, not a
+  hash shift). `replay` has no production callers yet (saves are post-S6; sim-wasm uses `World::new` +
+  JSON commands), so an assert at this load-precondition boundary is correct and breaks nothing.
+- **Tests (RED-first, structural — not `run()==run()`):** `disjoint_save_guard_rejects_cross_mode_replay`
+  (`should_panic`) + `disjoint_save_guard_treats_empty_and_transit_as_one_mode` (canon must not
+  false-trip). Golden unchanged; **148/148 cargo, 0 warnings, `sim-wasm` builds.** **The foundation
+  (S0–S3) is complete and fork-ready.** S4 (mode-blind read surface + frontend factor — the last
+  foundation step, a clean truncation point) is next.
+
+**S4 — DEFERRED to post-S6 (a deliberate, documented sequencing call), 2026-06-14.** S4 (collapse the
+~16 transit-named wasm accessors into generic `renderEntities()`/`query(kind,args)` + factor the
+**1638-line** `game.ts` into `GameCore`+`TransitGame`) is a large, speculative refactor of the
+*shipping* transit frontend that delivers **zero fantasy functionality and no screenshot**. The
+mode-blind surface + the core/transit split want to be designed against **two concrete modes**
+(transit + fantasy), which exist only after S6's first slice — doing it on one case means guessing the
+seam and likely re-doing it (and AGENTS forbids half-built seams). Crucially S6's first slice **reuses
+transit's render path** (commodity=`Pax`, cart=vehicle, node=station), so it renders through the
+existing accessors ⇒ **S4 does not block it.** Deferred-not-skipped; revisited with S7+ when fantasy's
+distinct entities (legions, towns, decadence) actually need a mode-blind boundary. Transit stays
+byte-identical meanwhile.
+
+**S5 — Hex geometry port, part 1: the lattice primitives (RED-first, proven in isolation),
+2026-06-14.** The hex port replaces the geometry under the *entire* cross-line mutex (the most complex
+recently-built subsystem) and carries two float-round hazards, so the dangerous math is built + pinned
+**before** it touches the mutex.
+
+- **`hexgrid.rs`** (new, additive, unwired): pointy-top axial `(q,r)` over `i64`-mm space —
+  `axial_of` (pixel→cell, the `node_of` primitive), `center_of` (cell→mm vertex), `distance`, and the
+  **canonical `line(a,b)`** (drawn from the lexicographically-smaller endpoint then reversed, so
+  `line(a,b)` is the EXACT reverse of `line(b,a)` — replicating `grid_walk`'s `line.rs:474` guarantee
+  the mutex rests on). A fixed epsilon nudge keeps every interpolated point off a hex boundary ⇒
+  consecutive cells are always adjacent (no skips/dupes).
+- **Float discipline:** uses `f64` (`√3`) EXACTLY as `line.rs`'s shipped Catmull-Rom does — confined to
+  geometry-build, every result quantised to `i64`, fixed op-sequence ⇒ bit-identical. No `f64` *state
+  field* (the real ban); floats only produce quantised integers. Pinned by the structural tests below.
+- **`tests/hexgrid.rs` (6, RED-first, structural — not `run()==run()`):** centre↔axial round-trip
+  **exact over an 81×81 cell range** (THE float hazard — a cell's centre must classify back to that
+  cell, or the mutex silently disengages); `line` canonical-reverse symmetry; line steps adjacent +
+  exactly-once + correct endpoints/length; distance is a hex metric (6 unit neighbours); deterministic
+  + distinct centres; near-centre snap. **All 6 green first run.**
+- Additive/unwired ⇒ **golden pin unchanged**, **154/154 cargo, 0 warnings, `sim-wasm` builds.**
+  S5 part 2 (the wiring) follows.
+
+**S5 — Hex geometry port, part 2: wired in, mutex re-verified on hex (S5 COMPLETE), 2026-06-14.** The
+hex primitives now drive the track lattice, and the entire cross-line mutex subsystem works on hex —
+the most complex recently-built code, ported with the golden pin and the gate-blind battery green.
+
+- **`grid_walk` (line.rs)** octilinear→hex: each stop snaps via `hexgrid::axial_of`, consecutive stops
+  connect by the canonical `hexgrid::line`, vertices are hex centres. **`node_of` (dispatch.rs)**
+  `div_euclid`→`hexgrid::axial_of` — the SAME conversion `grid_walk` snapped with, so a vertex at a
+  cell's centre recovers that exact cell (round-trip invariant) ⇒ two lines sharing a cell yield the
+  same `edge_key` ⇒ the mutex engages. Callers unchanged; both are ~5-line swaps onto the proven module.
+- **`grid.rs` ported to hex** (`cell_of`→`axial_of`; the lattice test asserts hex-centre round-trip +
+  unit-hex-distance steps; the shared-corridor test computes cells from stop positions). **All 5 pass.**
+- **The gate-blind battery holds on hex, UNMODIFIED:** all 7 `shared_rail.rs` cross-line tests
+  (head-on meet, ring deadlock, over-provision, passing-place coalesce, command-order-independence) +
+  all P4 junction + single-track tests pass — because the mutex keys on `node_of`/`edge_key`
+  abstractly and the hex primitives preserve canonical-reverse + shared-cell identity. The mutex's
+  liveness arguments never depended on the lattice being square.
+- **Adversarial hardening:** an EXHAUSTIVE sweep (`line_canonical_reverse_holds_exhaustively`,
+  **28,561 ordered axial pairs**) asserts canonical-reverse + adjacency + exact endpoints on every
+  pair — a counterexample would silently disengage the mutex, so enumeration (a proof over the domain)
+  beats hand-picked cases. Green.
+- **`roadnav` (8→6 neighbour) DEFERRED to S9** (a deliberate scope split): `roadnav` powers TRANSIT
+  buses over the square OSM buildability raster — switching it to 6-neighbour would break shipping
+  transit, and hex-`roadnav` isn't needed until S9's decadence raiders walk it. The first fantasy slice
+  (S6) uses the RAIL path (`grid_walk`/`node_of`/`RaptorRouter`), which is now hex. S9 adds a
+  mode-dependent neighbour set that doesn't disturb buses.
+- **Golden pin unchanged** (continuous cities never call `grid_walk` ⇒ the hex port is golden-neutral by
+  construction), **155/155 cargo, 0 warnings, ban-grep clean, `sim-wasm` builds.** **The track lattice
+  is hex. S6 (the first fantasy slice — the first VISIBLE checkpoint, screenshot-able) is next.**
+
+**S6a — first fantasy slice in the core: the arcadia fork lights up end-to-end, 2026-06-14.** A SECOND
+ruleset now constructs and runs a deterministic source→sink→cart commodity flow on the hex lattice,
+reusing the transit movement core UNCHANGED. The ruleset-at-construction fork is real.
+
+- **`ruleset/arcadia.rs`** (new sibling of `transit.rs`): `ArcadiaRuleset` + `SupplyChainDemand`. S6a's
+  cut REUSES the proven substrate — a commodity cart is a vehicle, a node a station, a commodity token
+  a `Pax` — so `SupplyChainDemand` rides the same catchment+spawn+RaptorRouter+advance+board_alight
+  path source→sink, and `ArcadiaRuleset::coverage_score` reuses the transit gauge as a stand-in. The
+  supply-chain-SPECIFIC behaviour layers on behind this seam (NOT half-built): S7 = commodity ids in
+  the unhashed `Pax.citizen_id` + ≤8-commodity recipes + per-input i64 buffers (new hashed Canonical) +
+  the Liebig consume→fire→push phase; S11 = the split supply/war gauge. None touches `tick.rs`'s phase
+  order or the movement core.
+- **`ruleset::select` "arcadia" arm wired** (the single edit the S3 dispatch was built for) + lib.rs
+  re-exports. `validate` accepts all for now — the cross-mode teeth (transit rejects PlaceNode, arcadia
+  rejects transit build) engage in S7 once a fantasy command vocab exists to reject.
+- **Two isolated golden pins.** `tests/arcadia.rs`: the arcadia tag survives construction; a commodity
+  **flows source→sink (ridership>0) AND replays bit-for-bit**; and a SEPARATE fantasy golden
+  `GOLDEN_ARCADIA_HASH = 0x88cd_59e3_9d09_93a5` (RED-first; the same uniform-shift guard for the arcadia
+  path that the transit pin gives transit). **The transit golden `0xdeeb_747a_eb78_c6a1` is UNCHANGED**
+  — the two modes are fully isolated; arcadia is purely additive.
+- **158/158 cargo, 0 warnings, `sim-wasm` builds.** **S6b (bake `arcadia_world.json` + frontend load +
+  the first SCREENSHOT — the first visible checkpoint) is next**, then S7 (the real Forge-Line chains,
+  fantasy commands, tick-stamped save).
+
+**S6b — the first-screenshot is DEFERRED (investigated), and `SupplyChainDemand` becomes genuinely
+distinct, 2026-06-14.**
+
+- **Why no screenshot yet (a sequencing call backed by code investigation):** the frontend is
+  hardwired to a real-world OSM basemap — `map/basemap.ts` mounts CARTO Positron and `App.boot` builds
+  every world around `city.center`/`zoom`/`originLngLat` on it. Loading arcadia on that pipeline would
+  render carts-on-a-line over *Earth* — **visually transit-identical, nothing distinctly fantasy**. A
+  real fantasy render (no basemap, a hex terrain field) is a substrate-level piece that belongs with the
+  art pass + the deferred S4 factor, designed ONCE — not hacked onto the transit pipeline. Per
+  "screenshots *as appropriately*", a screenshot now would misrepresent transit as fantasy, so it's
+  deferred to when distinct fantasy VISUAL content exists. End-to-end integration is already covered: the
+  wasm membrane is mode-agnostic (`Sim::new` with an arcadia `city_json` is the identical code path).
+- **`SupplyChainDemand` now genuinely differs from gravity** (the first real fantasy-demand
+  distinction): `demand::spawn` was refactored into a shared `spawn_modulated(world, dt, mult, bias)`
+  body — gravity passes time-of-day `(mult, bias)`; the supply chain passes **steady `(1.0, 1.0)`** ⇒ a
+  constant source→sink commodity flow with NO commuter rush (logistics, not commuting). The rng draw
+  order is identical for both callers (the params only scale/steer, never reorder), so:
+  **transit golden `0xdeeb_747a_eb78_c6a1` UNCHANGED** (gravity is byte-identical), and the **arcadia
+  golden re-pinned to `0xe6a5_f0d8_ad1c_85b9`** (a deliberate, reviewed arcadia-only change — the
+  isolated-pin discipline working exactly as designed: one mode's mechanic change moved only that mode's
+  pin). **158/158 cargo, 0 warnings, `sim-wasm` builds.**
+- **S7 (the real Forge-Line: ≤8-commodity recipes, per-input i64 BUFFERS as new hashed Canonical, the
+  Liebig consume→fire→push tick phase — the mechanic that makes it a logistics game, and the first
+  transit-golden RE-PIN per binding condition #1) is next.** The fantasy frontend render + first
+  screenshot follow once distinct fantasy state exists to show.
+
+**S7a — Forge-Line buffers: the FIRST hashed fantasy state + the production phase (+ the first golden
+re-pin), 2026-06-14.** Arcadia nodes now hold commodity buffers that fill from production — the
+foundation of the logistics game, landed determinism-first.
+
+- **`forge.rs`** (new): the 8-commodity set (two disjoint chains, fixed indices for a stable buffer
+  byte-layout) + `produce` — each net-SOURCE node (captured origin > dest) accrues raw ORE into its
+  buffer, **integer fixed-point** (`forge_accum` µ-unit remainder, like `spawn_accum`), capped at
+  `BUFFER_CAP` (the ONE non-derivable knob, externalised for the balance sweep). No float in the hashed
+  result.
+- **First HASHED fantasy state:** `World.forge_stock: Vec<i64>` (flat `station*N + commodity`) folded
+  into `Canonical` (appended LAST so every prior field keeps its offset). EMPTY for transit. The
+  µ-unit `forge_accum` is excluded (derived/transient, regenerated on replay like `spawn_accum`).
+- **The production phase via a no-op seam:** `Demand::produce(&mut self, world, dt)` (default no-op),
+  called in the `tick.rs` demand swap BEFORE `spawn`. `SupplyChainDemand::produce` → `forge::produce`;
+  gravity/agent inherit the no-op ⇒ transit never fills a buffer (the produce CALL is golden-neutral;
+  only the new FIELD shifts the transit hash).
+- **The documented first RE-PIN (binding condition #1):** transit golden
+  `0xdeeb_747a_eb78_c6a1 → 0x42dd_8dde_1e39_8393` (purely the appended empty `forge_stock` slice —
+  transit is otherwise byte-identical), arcadia `0xe6a5… → 0x10d1_db35_1bc6_be61` (buffers now fill).
+  Both re-pinned with a comment recording the prior values + the reason.
+- **Tests:** `arcadia_sources_produce_into_buffers` (sources accrue ORE, sinks produce nothing,
+  deterministic) + `transit_has_no_forge_buffers` (transit `forge_stock` stays empty — the fantasy
+  state is genuinely isolated). **160/160 cargo, 0 warnings, `sim-wasm` builds, ban-grep clean** (no
+  f32/f64 state field; the one `f32→i64` cast is a local feeding the integer accumulator).
+- **S7b (the buffer→spawn GATE — ship only what you've produced; the deposit-at-sink; the 2-input
+  recipes with Liebig output=min-input-rate) is next**, layering on this seam, NOT half-built in.
+
+**S7b — the buffer→spawn GATE: production now throttles shipping, 2026-06-14.** A node ships only what
+it has produced — the Liebig throttle that makes production *bite* (the design's "throb").
+
+- **One shared spawn, parameterized:** `spawn_modulated` gained a `gate: Option<&mut [i64]>` per-station
+  ship budget. `None` (transit gravity) ⇒ unbounded, the branch is skipped ⇒ **transit golden
+  `0x42dd…` UNCHANGED** (verified). `Some(budget)` (arcadia) ⇒ each shipped commodity consumes one unit;
+  when the buffer is empty the node stops and **drops the whole-unit backlog** (keeps the sub-unit
+  remainder via `.fract()`) — a steady flow, not an order queue that would burst on refill.
+- **`SupplyChainDemand::spawn`** extracts the per-station ORE budget from `forge_stock` (after `produce`
+  filled it this tick), ships gated, and writes the drained buffers back. So the per-tick loop is now
+  `produce → ship-from-buffer`: production fills, shipping drains, the buffer is the coupling.
+- **Arcadia golden re-pinned `0x10d1… → 0xb026_edcc_eeb8_4c90`** (shipping now production-limited).
+- **Tests:** `arcadia_shipping_gated_by_production` (commodities ship, but the source buffer stays
+  drained because demand outpaces production — the gate binds) + `arcadia_sources_produce_into_buffers`
+  rebuilt to ISOLATE production (no line ⇒ nothing ships ⇒ accrual is visible: source>0, sink=0) +
+  `transit_has_no_forge_buffers`. **161/161 cargo, 0 warnings, `sim-wasm` builds.**
+- **S7c (deposit-at-sink: a delivered commodity increments the town's buffer — closing the loop + the
+  "town fed" signal — then the 2-input forge recipes with Liebig) is next.** Needs a clean board_alight
+  delivery hook; a careful determinism-critical turn.
+
+**S7c — deposit-at-sink: the supply loop CLOSES, 2026-06-14.** A commodity now physically moves
+source→sink end-to-end: produced → shipped (drains the source buffer) → ridden → DELIVERED (fills the
+sink buffer). The fantasy core has a complete, conserved, deterministic single-commodity logistics loop.
+
+- **The delivery hook:** at `board_alight`'s completed-trip point (a Pax alighting its last leg), a
+  commodity is deposited into the destination node's buffer (capped at `BUFFER_CAP`). Gated on
+  `forge_stock` being **non-empty** — a mode-agnostic condition (NOT a ruleset-string check): empty for
+  transit ⇒ **no-op ⇒ transit golden `0x42dd…` UNCHANGED** (verified); sized for arcadia ⇒ deposit.
+- **Conservation:** the S7b gate drains the source ORE buffer on shipping; the S7c deposit fills the
+  sink ORE buffer on delivery — ORE physically moves, never duplicated. ORE-only for now (the sole
+  commodity shipped); multi-commodity routing (tagging `Pax.citizen_id` with the commodity id) is next.
+- **Arcadia golden re-pinned `0xb026… → 0xbdca_2524_6ba8_fd34`** (deliveries now mutate sink state).
+- **Test `arcadia_commodity_loop_closes`:** the sink accumulates ORE it never produced (it's a net
+  sink) — proof the loop closed — plus ridership>0 and bit-for-bit replay. **162/162 cargo, 0 warnings,
+  `sim-wasm` builds.**
+- **S7d (the 2-input forge RECIPES — a forge consumes 2 inputs → produces 1 output, Liebig
+  output-rate = min input-rate; + commodity-id tagging for multi-commodity routing) is next**, the last
+  Forge-Line piece before the chain is a real ≥3-stage network.
+
+**S7d — town consumption → TRIBUTE: the supply loop is SCORED (S7 core complete), 2026-06-14.** The
+fantasy economic loop now closes end-to-end with a monotonic score — a complete, deterministic
+logistics game in the core.
+
+- **The Liebig consume (single-input):** `forge::produce` gained a consumption pass — a net-SINK node
+  (a town: captured dest > origin) consumes the supply DELIVERED into its buffer → a global hashed
+  `World.tribute` (the supply score, the game's core payoff "feed towns → tribute"). A node is either a
+  net source or net sink, never both, so production is never double-counted. Integer, index-ordered.
+- **`tribute: i64`** folded into `Canonical` (0 for transit ⇒ one more re-pin, then byte-identical).
+- **The complete loop:** produce (sources fill ORE) → ship (S7b gate, drains source) → ride → deliver
+  (S7c, fills town) → CONSUME (S7d, town → tribute). A commodity is conserved at every hop and ends as
+  score. Reuses the transit movement core (RaptorRouter+advance+board_alight) UNCHANGED throughout.
+- **Both goldens re-pinned** (the documented S7 re-pin): transit
+  `0x42dd… → 0xd7fb_a36d_5bba_92c9` (the appended `tribute` i64 — transit still byte-identical),
+  arcadia `0xbdca… → 0x0a72_ad39_a32a_29ae` (consumption + tribute). The transit pin's comment now lists
+  all three S0→S7 values + the exact reason for each shift.
+- **Tests:** `arcadia_commodity_loop_closes` (tribute>0 — the whole chain connected) +
+  **`arcadia_tribute_is_monotonic`** (tribute never drops over 3000 ticks — the supply-gauge
+  monotonicity invariant the design mandates) + the production/gate/delivery tests. **163/163 cargo, 0
+  warnings, `sim-wasm` builds.**
+- **S7 CORE COMPLETE** — a working scored logistics loop. **Deferred to a follow-up (tracked):** the
+  multi-stage forge recipes (ORE→INGOT→ARMS via mid-chain forges), which need commodity-aware routing
+  (route each commodity to the nodes that consume it) — a larger demand-model generalisation, best done
+  when the chain needs ≥3 stages. **S8 (the war machine — the conquest half of the game) is the next
+  major system.**
+
+**S8a — the war machine's foundation: a SEPARATE army SoA + the war_step seam, 2026-06-14.** Legions
+now exist, are funded by tribute, and march deterministically — and the two halves of the game connect
+(supply → tribute → armies). The binding-condition #2 gate-blind test passes.
+
+- **`army.rs` — `ArmySoA`, a SEPARATE SoA** (NOT a `kind` byte in `VehicleSoA`): the binding condition
+  (#2). `dispatch` rebuilds the shared `VehicleSoA` from scratch on every `SetHeadway` (`v.clear()`),
+  which would TELEPORT a marching legion; an army OWNS its arc-length `s_mm` here, untouched by dispatch.
+  Movement is a plain constant-speed march (no dwell/boarding/follow-clamp — passenger concerns);
+  single-track admission via `occ_claim` + siege/flip are S8b.
+- **The `war_step` seam:** `Ruleset::war_step(&mut world, dt)` (default no-op) — the fantasy per-tick
+  trailer, called in `tick.rs` (Phase 7) via a ruleset take-out swap (`NoopRuleset` placeholder, like
+  `NoopDemand`). Transit inherits the no-op ⇒ the army SoA stays empty ⇒ transit byte-identical (only
+  the hashed army FIELDS re-pin it). `ArcadiaRuleset::war_step` = `maybe_launch` + `advance_armies`.
+- **Supply funds war:** `maybe_launch` fields a legion from the first built route when
+  `tribute ≥ LAUNCH_COST` (consuming it) — the supply economy pays for armies, tying the two halves
+  together. `LAUNCH_COST` (and `ARMY_SPEED_MM_S`) are the non-derivable knobs, flagged for the balance
+  sweep.
+- **Hashed:** the 7 authoritative army fields (line/path/s_mm/dir/strength/target/state) folded into
+  `Canonical`; cartesian x/y are render-only (excluded), like vehicles'. Both goldens re-pinned (transit
+  `0xd7fb… → 0x45f8_da5f_19af_73f3` = empty army slices appended; arcadia
+  `0x0a72… → 0x7bd2_5ce3_93ac_63da`).
+- **Tests (`tests/army.rs`):** `tribute_funds_a_marching_legion` (a legion launches + marches,
+  deterministic) · **`legion_position_survives_a_set_headway`** (THE binding-condition gate-blind test —
+  `s_mm` unchanged across a `SetHeadway`'s `v.clear()`) · `transit_fields_no_armies` (war is
+  fantasy-only). **166/166 cargo, 0 warnings, ban-grep clean, `sim-wasm` builds.**
+- **S8b (the full `war_step`: retarget → supply-gated siege grind → flip; `PlaceBarracks`/`PostBounty`
+  commands; i64 `town_value`; army↔train single-track via the existing `occ_claim`; keyed RNG
+  `seed ^ WAR_CONST`) is next** — the rest of the conquest loop, with its gate-blind battery.
+
+**S8b — the conquest loop closes: march → besiege → grind → FLIP, 2026-06-14. BOTH core game loops now
+work in the deterministic core.** A legion that reaches its target town besieges it, grinds its
+resistance to 0, and captures it.
+
+- **Town state (hashed):** `World.town_value: Vec<i64>` (per-town siege resistance, lazily sized to the
+  node count at `RESISTANCE`) + `World.towns_captured: i64` (the conquest score). Empty/0 for transit.
+- **The siege sub-phase** (`army::siege`, the locked-order tail of `war_step` after launch→march): a
+  `BESIEGING` legion grinds `town_value[target] -= strength`/tick; at 0 the town FLIPS. Arrival is
+  detected in the march (s_mm reaches the route end = the target stop → `BESIEGING`). A fallen legion
+  → `DONE` (kept index-stable, never removed — determinism; bounded by `MAX_ARMIES`).
+- **Capture EXACTLY ONCE (the gate-blind hazard):** the count fires only on the grind→flip TRANSITION
+  (`town_value` was >0, now 0). A later legion arriving at an already-captured town just garrisons
+  (`DONE`) — never a second count. The "bounty-exactly-once across grind→flip" battery item, proven.
+- **Both goldens re-pinned:** transit `0x45f8… → 0xd747_5260_98d0_0aeb` (empty town fields appended),
+  arcadia `0x7bd2… → 0xa590_bedd_5999_caf0` (`town_value` now populated + sieges).
+- **Test `war_machine_captures_town_exactly_once`:** over a long run MANY legions launch (tribute keeps
+  funding them) and all target the one town — yet `towns_captured == 1` (exactly once), `town_value`
+  hit 0, deterministic. Plus the S8a march/separate-SoA/transit-empty tests. **167/167 cargo, 0
+  warnings, ban-grep clean, `sim-wasm` builds.**
+- **The fantasy CORE is now a functional, deterministic two-loop game:** SUPPLY (produce→ship→deliver→
+  consume→**tribute**, monotonic) feeds CONQUEST (tribute→launch→march→besiege→**flip**). What remains
+  is player AGENCY + depth + visibility: `PlaceBarracks`/`PostBounty` (Majesty steering — the player's
+  only war lever) + retarget, army↔train single-track via `occ_claim`, S9 decadence (the lose
+  condition), S10 area-control CA, S11 economy/tech, and the deferred fantasy frontend render (the first
+  screenshot). **Next: the player levers (`PlaceBarracks`/`PostBounty`) — turning the auto-war
+  player-steered.**
+
+**S8 player levers, pt 1 — `PlaceBarracks`: war becomes player-gated + the disjoint-save guard grows
+teeth, 2026-06-14.** The first fantasy COMMAND, and the first real cross-mode rejection.
+
+- **`PlaceBarracks { x_mm, y_mm }`** (command.rs + `Event::BarracksPlaced` + apply arm): creates a
+  station and flags it a barracks (`World.is_barracks: Vec<bool>`, hashed). Legions now launch ONLY from
+  a barracks on a built route (`maybe_launch` rewritten) — building one is the player's prerequisite for
+  war (the design's agency: you don't command armies, you enable + bait them). The legion starts at the
+  barracks's arc-length and marches to the far-end town.
+- **The disjoint-save guard's first real teeth:** `TransitRuleset::validate` now REJECTS `PlaceBarracks`
+  (a fantasy-only command) — refused at the top of `apply` before any mutation or save-log push, so a
+  transit save can never carry a command that would replay against the wrong `apply`. (Arcadia accepts
+  it.) The S3 guard mechanism, finally exercised.
+- **Contract synced:** `types.ts` (Command + Event unions) + `codec.ts` (`cmd.placeBarracks`) mirror the
+  serde shape in lock-step (`tsc` clean) — even though the arcadia frontend isn't wired yet, the wire
+  contract stays drift-free.
+- **Both goldens re-pinned** (the empty `is_barracks` slice joins `Canonical`): transit
+  `0xd747… → 0x9e3b_e523_a982_8d51`, arcadia `0xa590… → 0xeebf_421f_4053_d5d0`.
+- **Tests:** `no_barracks_no_legion` (tribute accrues but NO army without a barracks — the agency gate) ·
+  `transit_rejects_place_barracks` (Rejected, no station, no flag — the cross-mode teeth) · the
+  march/siege/capture tests updated (`war_world` now places a barracks). **169/169 cargo, 0 warnings,
+  `sim-wasm` + `tsc` clean.**
+- **Next: `PostBounty` + bounty-steered retargeting** (the Majesty lever — the player baits legions
+  toward chosen towns; needs target-selection among multiple towns), then the army↔train single-track
+  via `occ_claim`.
+
+**S8 player levers, pt 2 — `PostBounty`: the Majesty steering lever. The war is now fully
+player-steered, 2026-06-14.** Both player levers are in; the conquest loop is complete and playable in
+the core.
+
+- **`PostBounty { station, amount }`** (command + `Event::BountyPosted` + apply arm; `World.bounty:
+  Vec<i64>` hashed): the player BAITS legions rather than commanding them. `maybe_launch` now targets the
+  highest-bounty UNCAPTURED town on a barracks's route (tiebreak: lowest StationId — the "tied-score →
+  same TownId" determinism item), excluding the barracks; no bounty anywhere ⇒ the route's far-end town
+  (default). The march besieges at the TARGET's arc-length (an intermediate bounty target halts the
+  legion mid-route, not only at the end).
+- **Cross-mode teeth extended:** `TransitRuleset::validate` rejects `PostBounty` too. Contract mirrored
+  in `types.ts`/`codec.ts` (`cmd.postBounty`), `tsc` clean.
+- **Both goldens re-pinned** (empty `bounty` slice joins `Canonical`): transit
+  `0x9e3b… → 0x6253_ac99_08d6_20a3`, arcadia `0xeebf… → 0x02d3_2b1a_4e74_5070`.
+- **Test `a_bounty_steers_a_legion_to_a_mid_route_town`:** a bounty on a MID-route town gets it
+  besieged + captured — something that NEVER happens by default (legions march to the far end) — so
+  `town_value[mid]==0` proves the bounty redirected the AI. Plus `transit_rejects_post_bounty`. **171/171
+  cargo, 0 warnings, `sim-wasm` + `tsc` clean.**
+- **S8 CORE + BOTH PLAYER LEVERS COMPLETE.** The fantasy fork is now a **functional, deterministic,
+  player-steered two-loop 4X-logistics game in the core**: build a supply network → towns→tribute → a
+  barracks fields legions → bounties steer them → they march, besiege, flip towns. Every Command has an
+  immediate sim effect; both modes are golden-pinned; transit stays byte-identical. **Remaining war
+  refinements (a follow-up):** army↔train single-track via the existing `occ_claim` (the last gate-blind
+  battery item), supply-gated siege, keyed RNG `seed ^ WAR_CONST`, AI tiers. **Bigger remaining systems:
+  S9 decadence (the lose condition), S10 area-control CA, S11 economy/tech, and the deferred fantasy
+  frontend render (the first screenshot).**
+
+**S9 — Decadence: the lose condition. The fantasy core now has the COMPLETE win/lose tension,
+2026-06-14.** Corruption spreads while you play; conquest holds it back; if it reaches the capital, the
+realm falls.
+
+- **`decadence.rs`:** a global corruption pressure `World.decadence: i64` (hashed) — grows at
+  `BASE_GROWTH`, pushed back by captured towns (`net = base − towns_captured·clear`, clamped ≥ 0).
+  `is_lost()` once it reaches `CAPITAL_THRESHOLD` (the capital falls). The decadence sub-phase runs in
+  `war_step` (fantasy-only ⇒ transit `decadence` stays 0). Integer, dt-scaled, deterministic.
+- **The flywheel now has URGENCY:** supply→tribute→conquest must outrun the rot. Constants tuned so an
+  idle realm is overrun in a few game-minutes while modest conquest holds indefinitely — a *winnable*
+  race (the balance knobs are flagged for the harness sweep).
+- **Both goldens re-pinned** (the `decadence` i64 joins `Canonical`): transit
+  `0x6253… → 0xea4e_eb0a_03d9_74f9`, arcadia `0x02d3… → 0x5375_1cb0_558d_3b0f` (arcadia's decadence GROWS
+  — it runs but `arcadia_world` never conquers).
+- **Tests:** `decadence_overruns_an_idle_realm` (a realm that runs supply but never fights is overrun —
+  `is_lost`) · `conquest_pushes_decadence_back` (a robust contrast: the SAME realm WITH a barracks ends
+  with strictly less decadence than without — conquest is the brake; timing-independent) ·
+  `transit_has_no_decadence`. A surfaced balance lesson: a source↔sink route SHORTER than the ~500 m
+  catchment merges their catchments and stalls production — the comparison test keeps them separated.
+  **174/174 cargo, 0 warnings, `sim-wasm` builds, ban-grep clean.**
+- **The fantasy fork is now a COMPLETE, deterministic, player-steered 4X-logistics game in the core:**
+  build supply → towns→**tribute** → barracks+bounties field & steer legions → **conquer** towns → hold
+  back **decadence** or lose. Every Command has an immediate sim effect; both modes golden-pinned;
+  transit byte-identical throughout. **The biggest remaining gap is VISIBILITY — the deferred fantasy
+  frontend render (the first screenshot + end-to-end validation).** Then the depth systems: S10
+  area-control CA (the spatial decadence/territory — the largest subsystem), S11 economy/tech, S7e
+  multi-stage recipes, S8 refinements (occ_claim, AI tiers).
+
+**FRONTEND — FIRST LIGHT: the fantasy fork runs in the browser (the deferred visibility milestone),
+2026-06-14.** After ~16 turns of headless core, the whole stack is validated end-to-end and there is a
+first screenshot ([docs/progress/fantasy-arcadia-first-light.png](docs/progress/fantasy-arcadia-first-light.png)).
+
+- **The missing wire:** `buildCoreCity` (sim/city.ts) never passed `ruleset`/`grid_cell_mm` to the core
+  — so an arcadia manifest would have built as transit/continuous. Added `RawCity.ruleset` +
+  `RawCity.gridCellMm` and threaded both into the core JSON. `tsc` clean.
+- **Baked the world + registered it:** `arcadia_world.json` (manifest: `ruleset:"arcadia"`,
+  `gridCellMm:1_000_000`, origin [0,0]), `arcadia_demand.json` (a source + two towns, separated well
+  beyond the catchment so supply flows), `networks/arcadia.json` (Iron Road + Grain Way). `cities.ts`
+  gains the `arcadia` entry (`kind:"arcadia"`). Loads via `?city=arcadia&network=1`.
+- **Rebuilt the wasm from current source** (`wasm-pack build … --target bundler`, 425 KB) so the
+  browser runs the S0–S9 fantasy engine, started Vite, drove Playwright.
+- **Verified RUNNING in-browser** (`__ot_test.stats()` after `setRunning`): title "Transit Story ·
+  Arcadia", **2 lines, 5 carts, ridership climbing (commodities flowing source→sink via
+  `SupplyChainDemand`), coverage 99, 0 errors.** The screenshot shows the **HEX LATTICE rendering** —
+  both lines draw the crisp stepped hex-walk geometry from S5 — over a neutral basemap, no glitches.
+- **Honest scope:** this validates the stack + the supply loop + hex render end-to-end. It still wears
+  the **transit chrome** (riders/coverage/Rail-Bus modes — the S4 mode-blind read surface is still
+  deferred) and shows only the supply loop (the network has no barracks ⇒ no conquest; the
+  fantasy-specific HUD — tribute/decadence/towns/armies — and the hex-terrain/army render are the next
+  frontend layers). But the fork is now **demonstrably playable in a browser.** No sim re-pins (frontend
+  + data only; the core is unchanged this turn).
+
+**FRONTEND — the mode-aware HUD: the browser now reads as FANTASY, 2026-06-14.** The headline HUD
+shows the supply→conquest→decadence readout instead of riders/coverage
+([docs/progress/fantasy-arcadia-hud.png](docs/progress/fantasy-arcadia-hud.png)).
+
+- **Fantasy state crosses the boundary (the S4 read-surface, lite):** `StatsSnapshot` gains `ruleset`,
+  `tribute`, `decadence`, `decadence_pct` (the gauge fill, computed by `decadence::pct` so the
+  threshold const never leaks to TS), `towns_captured`, `army_count`, `realm_lost` — all 0/false for
+  transit, so the field is mode-agnostic. **Golden-NEUTRAL** (the snapshot is a read-out, not in
+  `Canonical`; all goldens unchanged, 174/174). Mirrored in `types.ts`; `tsc` clean.
+- **`StatsBar` is mode-aware:** `s.ruleset === "arcadia"` routes to a new `FantasyStatsBar` (the
+  transit path is byte-identical — every transit `data-testid` preserved, no e2e regression). The
+  fantasy bar reads **⚜ tribute · ☠ Decadence lose-meter gauge (neutral→amber→red as it nears the
+  capital) · 🏰 towns taken · ⚔ legions · "THE REALM HAS FALLEN"** on loss.
+- **Verified in-browser** (wasm rebuilt, Playwright @8×): `ruleset:"arcadia"`, tribute climbing,
+  **decadence gauge filling (41%→65%, amber)** — the core supply-vs-corruption tension is now visually
+  legible. 0 console errors. The screenshot confirms the fantasy top-bar replacing the transit chrome.
+- **Honest scope:** the TOP BAR is fantasy; the left Lines panel + bottom Network panel are still
+  transit chrome (the next mode-aware layer), and conquest readouts (towns/legions) sit at 0 because the
+  baked network has no barracks (no barracks/bounty BUILD TOOL yet — also next). The army-dot render +
+  hex terrain remain too. But the game now **reads as fantasy at a glance.** No sim re-pins.
+
+**FRONTEND — the war machine becomes VISIBLE: the full conquest loop runs in a browser, 2026-06-14.**
+Legions now render as marching dots, launched from a baked barracks — and a town actually falls
+in-session ([docs/progress/fantasy-arcadia-conquest.png](docs/progress/fantasy-arcadia-conquest.png)).
+
+- **Army render (render-only, golden-NEUTRAL):** `render_buf::army_positions_m` interpolates each
+  legion's arc-length `s_mm` along its route (`Path::point_at`) to cartesian metres; an `armyPositions()`
+  wasm accessor + `SimBridge.armyPositions()` cross the boundary like vehicle positions; `render.ts`
+  `armyLayer` (crimson dot + gold ring, distinct from the line-tinted carts) splices into
+  `composeAndSet` ABOVE vehicles, below peeps/labels (z-order). Cheap per-compose (legions are few,
+  capped). All goldens unchanged (174/174) — it reads `s_mm`, never mutates.
+- **Barracks bake (the conquest enabler):** `NetStation.barracks?` → `applyNetwork` sends
+  `cmd.placeBarracks` for flagged nodes (else `placeStation`); the `arcadia_world` demo is re-tuned
+  COMPACT (≈2 km routes, still > the 500 m catchment so supply flows; `gridCellMm` 250 m; a
+  barracks-flagged "The Forge") so the whole loop completes fast enough to watch.
+- **Verified in-browser** (wasm rebuilt with the accessor, Playwright @8×): the legion launched,
+  marched, besieged, and **flipped a town** — `townsCaptured:1`, `armyCount` up to 12 legions afield,
+  **`decadencePct:0`** (the captured town's pushback drove the corruption back to zero — the realm
+  winning the race). The screenshot shows crimson legion dots on the rails + the HUD
+  "⚜ 16 tribute · ☠ Decadence 0 · 🏰 1 taken · ⚔ 12 legions". 0 console errors.
+- **The fantasy fork is now end-to-end PLAYABLE + VISIBLE in a browser:** supply carts flow, tribute
+  funds legions, legions march + conquer, decadence is held back — all on the hex lattice, all rendered.
+  **3 screenshots** (first-light · HUD · conquest). Remaining frontend: a player-facing barracks/bounty
+  BUILD TOOL (today the barracks is baked), mode-aware side/bottom panels, and the hex-terrain backdrop.
+  No sim re-pins this turn (render + data only).
+
+**FRONTEND — the fantasy path is now an automated REGRESSION GATE (e2e), 2026-06-14.** All the
+frontend fantasy work (load → HUD → army render → conquest) was corroborated only by screenshots; now
+it's pinned by a real e2e test, and all three tiers are confirmed green.
+
+- **`e2e/arcadia.spec.ts`** (AGENTS e2e discipline — gameplay facts, wait-on-flags, never a load-only
+  green): loads `?city=arcadia&network=1`, asserts `stats().ruleset === "arcadia"`, runs at 100×, then
+  waits for + asserts **tribute > 0** (supply flows), **`bridge.armyPositions().length > 0`** (a legion
+  fielded AND rendered — the army render path end-to-end), **townsCaptured ≥ 1** (a town conquered),
+  `realmLost === false`, and the fantasy HUD testids (`tribute`, `towns-captured`) visible. **Passes in
+  5.8 s** (4th screenshot: `docs/progress/fantasy-arcadia-e2e.png`).
+- **No transit regression:** the `StatsBar` mode-split is additive (an early `return <FantasyStatsBar>`
+  for arcadia; the transit JSX + every transit testid byte-identical). Confirmed by re-running the
+  canonical transit e2e (`slice` + `modes`, 3 tests) — all green.
+- **All three tiers green:** cargo `sim` **174/174** (this turn's render/stats additions are read-outs,
+  golden-neutral), **vitest 21/21**, **e2e** arcadia + slice + modes. The fantasy fork's entire stack —
+  deterministic core + browser frontend — is now regression-protected. **Next: the player-facing
+  barracks/bounty BUILD TOOL** (so the player, not a bake, fields + steers legions).
+
+**FRONTEND — the player-facing BARRACKS build tool: arcadia is now player-interactive, 2026-06-14.**
+The player can place a barracks by hand and field legions — not just watch a baked demo.
+
+- **The tool:** `Tool` gains `"barracks"`; `Game.placeBarracks(lng,lat)` (mirrors `placeStation`, emits
+  `cmd.placeBarracks`); `tools/pointer.ts` routes a build-mode barracks-tool click to it (sticky, like
+  the station tool); the chorded `Toolbar` shows a **🏰 Barracks** tool — but ONLY in fantasy.
+- **Mode-aware chrome plumbing (reusable):** `Game.ruleset` (set in `boot` from the manifest) now flows
+  through the `GameUI` slice (`useGameUI`), so the Toolbar appends `FANTASY_TOOLS` when
+  `ui.ruleset === "arcadia"` — set once at boot, not a per-frame stats read. This is the seam the
+  mode-aware side/bottom panels will reuse.
+- **Test hooks + e2e:** `placeBarracksLngLat` added to the camera-independent test hook (+ `global.d.ts`).
+  A second arcadia e2e — **"a player-built barracks fields legions that conquer"** — builds a barracks +
+  route via the hooks (Game.placeBarracks's path), runs, and asserts a legion launches + a town falls.
+- **All tiers green, no regression:** both arcadia e2e + transit `build-tools`/`modes`/`slice` e2e
+  (the Toolbar/ui-slice change is additive — transit chrome byte-identical) + vitest 21/21 + `tsc`. No
+  sim change (frontend-only) ⇒ cargo goldens untouched. **Next fantasy UI:** the bounty tool (click a
+  town to post a bounty — the steering lever), mode-aware side/bottom panels, hex-terrain backdrop.
+
+**FRONTEND — the BOUNTY tool: the full Majesty control is now player-accessible, 2026-06-14.** Both
+war levers are in — the player builds barracks AND baits legions with bounties.
+
+- **The tool:** `Tool` gains `"bounty"`; `Game.postBounty(stationId, amount=1000)` (→ `cmd.postBounty`);
+  `pointer.ts` resolves a build-mode bounty-tool click to the nearest town (`game.nearestStation`) and
+  posts the standard bounty (sticky); the Toolbar's `FANTASY_TOOLS` now lists **🏰 Barracks + ⚑ Bounty**
+  (fantasy only). `postBounty(station, amount)` added to the test hook + `global.d.ts`.
+- **e2e:** the player-built arcadia spec now also posts a bounty (exercising `Game.postBounty`'s path)
+  and still launches legions + conquers — both arcadia e2e green. `tsc` clean; frontend-only ⇒ cargo
+  goldens untouched.
+- **arcadia is now fully player-steerable:** build a supply network, place a barracks, post bounties to
+  direct the AI legions — the Majesty model (you never command armies directly). **Next:** mode-aware
+  left Lines + bottom Network panels (still transit chrome), a hex-terrain backdrop, then core depth
+  (S10 area-control CA, S11 economy, S7e multi-stage recipes).
+
+**MILESTONE — the complete fantasy vertical, FULL-SUITE VERIFIED, 2026-06-14.** After the whole build
+(S0–S9 core + the frontend: load → HUD → army render → barracks + bounty tools), a holistic run of
+every tier confirms the cross-cutting work holds together with zero regressions:
+
+- **cargo `sim` 174/174, 0 warnings** — every suite (determinism with BOTH goldens, arcadia, army,
+  decadence, hexgrid, grid, shared_rail, junction, + all transit suites). The deterministic core is
+  intact and both mode pins hold.
+- **vitest 21/21** — the codec/types round-trips + the wasm-in-node smoke.
+- **e2e 18/18** — the two arcadia specs (baked conquest + player-built barracks/bounty) AND every
+  transit spec (Singapore real MRT, Tokyo ~440 stations, modes/ferry, buildability, edit-line,
+  waypoints, slice, …). The mode-split chrome (StatsBar/Toolbar/ui-slice/render) is additive — transit
+  is byte-identical.
+- **The fantasy fork is a complete, deterministic, browser-playable, player-interactive 4X-logistics
+  game with a fully regression-protected stack** (5 progress screenshots). Transit remains byte-
+  identical throughout (ruleset-at-construction delivered). Remaining is DEPTH + POLISH, each optional
+  to "a playable fantasy 4X": S7e multi-stage Forge-Line recipes, S10 area-control CA (the spatial
+  decadence/territory identity), S11 economy/tech, mode-aware side/bottom panels, hex-terrain backdrop,
+  S8 refinements (occ_claim, AI tiers). All work remains uncommitted (per the standing "commit only when
+  asked" rule) — a natural point to commit the whole vertical.
+
+**BALANCE HARNESS — the determinism dividend: the fantasy loop self-plays + is gated winnable, 2026-06-14.**
+The build plan's "Fast iteration, telemetry & balancing" capability, landed: `tests/balance.rs` runs the
+canonical fantasy loop HEADLESS across seeds, collects pacing telemetry, and gates the two things paper
+can't answer.
+
+- **`fantasy_loop_is_winnable_and_bites`** (across 5 seeds): asserts the realm SUPPLIES (tribute) →
+  FIELDS a legion → CONQUERS a town → HOLDS (not overrun), in milestone order, within a 12k-tick
+  horizon. The loop is winnable + turns, for every seed. **`balance_telemetry_is_reproducible`** pins
+  the harness itself (same seed ⇒ identical telemetry — sweep counterexamples replay bit-for-bit).
+- **Concrete telemetry (printed):** `tribute@215 ticks (~11 s)`, `legion@2411 (~2 min)`,
+  `conquest@4513 (~3.75 min)`, `decadence_peak 9024 < 20000` (holds). **Two findings:** (1) the loop is
+  winnable but the first conquest (~3.75 min) is SLOWER than the design's ~60–120 s "bites" target — a
+  concrete tuning signal (production-gated tribute → slow legion funding; lower `LAUNCH_COST` / faster
+  production would tighten it); (2) the telemetry is seed-invariant here because the trivial 2-node
+  topology forces the route (no `pick_dest` choice) — the harness is structured for richer multi-town
+  scenarios that WOULD vary by seed.
+- **Additive + read-only ⇒ golden-neutral:** 176/176 cargo (174 + 2), 0 warnings, both pins unchanged.
+  The harness is now the lever to TUNE the hardcoded knobs (LAUNCH_COST, decadence rates, BUFFER_CAP,
+  catchment) toward the pacing targets — without a human, reproducibly. **Next:** either tune-to-target
+  using it, or core depth (S7e Forge-Line / S10 area-control), or the mode-aware panels polish.
+
+**BALANCE TUNING — the loop now BITES in the target window (harness-driven), 2026-06-14.** Acted on the
+harness's signal: the war knobs were the bottleneck (`LAUNCH_COST 20`, `ARMY_SPEED 15000`).
+
+- **Tuned `LAUNCH_COST 20 → 8` + `ARMY_SPEED 15_000 → 50_000`** — chosen specifically because they're
+  WAR-only knobs the barracks-free arcadia golden never exercises, so the tuning is **golden-neutral**
+  (verified: both pins unchanged). The harness re-ran: **legion @990 ticks (~50 s), first conquest
+  @1675 ticks (~84 s)** — down from ~3.75 min, squarely in the design's 60–120 s bite window; decadence
+  peaks lower (3348) and the realm still holds.
+- **Locked it in:** the harness gained a SOFT pacing gate — `first_conquest <= 2400` ticks (~120 s) — so
+  a future knob change that lets the flywheel drag trips a test (a balance regression, distinct from a
+  correctness one). Wasm rebuilt so the browser demo bites at the tuned pace too.
+- **All green, zero re-pins:** 176/176 cargo, 0 warnings; army + decadence tests robust to the faster
+  pacing (threshold-based); both goldens untouched. The "does it bite fast?" unknown — the build plan's
+  #1 — is now answered (yes, ~84 s) AND gated. The harness + gate make the remaining knobs
+  (`RATE_MICRO_PER_WEIGHT_MS`, decadence rates, `BUFFER_CAP`) tunable the same way.
+
+**FRONTEND — mode-aware panels: the UI now reads coherently as FANTASY, 2026-06-14.** The last
+transit chrome under the fantasy HUD is gone.
+
+- **`ServiceReport` is mode-split:** in arcadia it returns a `FantasyServiceReport` — the **"⚜ The
+  Realm"** ledger (Tribute · Supply delivered · 🏰 Towns taken · ⚔ Legions afield · ☠ Decadence % with
+  the neutral→amber→red tone + a one-line play hint) — instead of the transit service telemetry
+  (homes→jobs demand, City coverage, Riders-by-mode). Same `CARD`/`Row` chrome so the two modes read
+  alike; the transit path is byte-identical (every `svc-*` testid preserved). Reads only the ~3 Hz stats
+  slice (no new sim field).
+- **Verified:** `tsc` clean; transit `slice` e2e (which asserts the transit `svc-coverage` testid) +
+  both arcadia e2e green — no regression. Screenshot `docs/progress/fantasy-arcadia-realm-panel.png`
+  shows the coherent fantasy UI (fantasy HUD + realm ledger + army dots) AND the tuned pacing (a town
+  taken + 14 legions by ~08:03). Frontend-only ⇒ cargo goldens untouched.
+- **The fantasy UI layer (task #14) is substantially done:** mode-aware HUD + army-dot render + barracks
+  & bounty build tools + the realm panel. The UI reads as fantasy at a glance. Minor remaining polish:
+  the left Lines-panel "riders" label (cosmetic), a hex-terrain backdrop (replaces the OSM basemap — a
+  larger art-pass piece). **5 progress screenshots** document the fork end-to-end.
+
+**FRONTEND — bounty markers: the steering lever gets its visual feedback, 2026-06-14.** Posting a
+bounty now shows a **gold ring** on the bountied town, so the player SEES where they've baited the
+legions (closing the post-bounty → legions-march feedback loop;
+[docs/progress/fantasy-arcadia-bounty.png](docs/progress/fantasy-arcadia-bounty.png)).
+
+- **`StationView.bounty`** (a render read-out — NOT hashed; both goldens verified unchanged) carries the
+  per-town bounty across the boundary; `buildView` threads it onto `StationDot.bounty`; `topoLayers`
+  draws a font-independent gold RING (ScatterplotLayer, stroked) around bountied towns — rebuilt on
+  refresh (bounties change via a Command), not per frame. Mirrored in `types.ts`.
+- **Font lesson:** a `⚑` TextLayer warned "deck: Missing character" (the default atlas lacks the glyph)
+  → swapped to a stroked ring (no font dependency, reliable).
+- **Verified:** the screenshot shows gold rings on the two bountied towns + the army dots + the fantasy
+  HUD + realm ledger — the whole fantasy UI coherent. Both arcadia + transit `slice` e2e green; `tsc`
+  clean; wasm rebuilt; cargo goldens untouched (read-out only). **6 progress screenshots.** The fantasy
+  interaction loop now has end-to-end visual feedback (supply carts · army dots · bounty rings · HUD ·
+  realm ledger).
+
+**MAP-GEN — S1: the procedural continent (offline bake), 2026-06-14.** The fantasy game gets a real,
+procedurally-generated playfield to replace the hand-authored 2-town demo. New `scripts/build_world.py`
+implements **S1 of the map-gen pipeline** (docs/fantasy-map.md): a deterministic OFFLINE bake (one u64
+seed → frozen JSON) producing terrain + a contiguous continent + carved passes. **Architecturally
+isolated by design** — it emits STATIC un-hashed terrain in the existing `*_buildability.json` pack
+shape, ingested by the same `Sim::new`; terrain never enters `state_hash`, so this **cannot touch the
+determinism gate** (the locked golden hashes are untouched — no Rust changed this commit).
+
+- **Pipeline (S1):** four decorrelated value-noise fields → a warped radial **continent mask** → keep the
+  **largest land component** (delete islands — the contiguous-continent guarantee) → **elevation =
+  distance-from-coast** (the research refinement: monotonic inland ⇒ capital coastal/low, interior high,
+  downhill-to-sea free) + power-curve redistribution + heterogeneous roughness → **Whittaker biome
+  classify** (WATER=4, MOUNTAIN=6, HILL=7, FOREST=8, LEY=9, PLAIN=10) → coastal SW **capital** pick →
+  **THE pass carve** (Dijkstra a min-cost corridor over land, demoting the cheapest mountain ridge to a
+  hill pass — passable terrain connected *by construction*, the single most load-bearing step).
+- **Hex-quantize (S5 folded in):** cells emit `lon/lat` computed via `hexgrid::center_of`'s pointy-top
+  formula + `coords/geo.ts`'s equirectangular frame, so they reproject onto the exact lattice the sim
+  quantizes back (`axial_of`). Nothing new crosses `geo.ts`. New biome codes 6–10 are render-tint only
+  (they hit `world.rs`'s `_ => 0` cost gate — no cost/block until the additive fantasy field lands,
+  RED-first); WATER=4 reuses the existing free rail gate.
+- **Determinism:** numpy PCG64 keyed by `(seed ^ MAP_CONST)`; all float math offline, quantized to
+  i64-mm / rounded lon-lat before freezing. `--selftest` bakes twice in one process and asserts
+  byte-identical output. Re-runnable: `python3 scripts/build_world.py [seed] [--selftest]`.
+- **Tests (`--selftest`, all green):** determinism (raster + serialized bytes identical) · single
+  contiguous continent (0 orphan islands) · **all passable land reachable from the capital** · a
+  **synthetic adversarial test** that a full MOUNTAIN wall is pierced by a carved pass (real island seeds
+  rarely wall a region off, so the load-bearing carve is proven on a constructed grid) · biome codes ⊆
+  {4,6,7,8,9,10} · capital buildable · sane land fraction. **Seed sweep 1–12: all valid, 0 stranded**
+  (fixed a capital-on-wrong-component bug that made a degenerate seed nuke the continent).
+- **Committed bake:** seed 7 → `fantasy_world.json` (manifest, `ruleset:"arcadia"`, `gridCellMm:250000`)
+  + `fantasy_buildability.json` (10,014 cells: a believable island — coastal capital, central mountain
+  massif ringed by hills, forest belt, rare ley ridges, plains opening to the SE frontier) +
+  `fantasy_demand.json` (S1 stub; S2/S3 populate it from resources/towns). The ASCII terrain preview in
+  the bake output is the S1 "look at it" corroboration.
+- **Deferred to later map-gen stages (hooks marked in the script):** S2 resources (ORE/GRAIN/FUEL/AETHER
+  terrain-gated + Poisson-rarefied + biased to two attractor centres) · S3 towns (suitability-sited into
+  the expansion arc) · S4 decadence seed (far-edge reservoir + creep-to-capital BFS potential) · S6
+  solvability validator + relaxation ladder (upgrade generate-and-reroll → constructive path constraints;
+  certifies aether-reachable, chains-completable). `grid_cell_mm` + continent scale stay provisional until
+  S10's per-tick decadence-CA bench (docs/fantasy-map.md "Open decisions"). Next: wire the pack into the
+  frontend city menu + terrain render for the first **screenshot** of the baked world.
+
+**MAP-GEN — the baked continent renders in-browser (first screenshot), 2026-06-14.** The seed-7 world
+now loads as a selectable city and **the terrain IS the map** — a believable procedurally-forged
+continent ([docs/progress/fantasy-baked-world.png](docs/progress/fantasy-baked-world.png)): a near-black
+mountain massif ringed by grey hills, a green-grey forest belt, pale-ash plains, and the dark blue-grey
+coastline, all under the fantasy HUD (tribute · Decadence gauge · The Realm panel · Barracks/Bounty).
+
+- **City entry + manifest:** added a `fantasy` `CityEntry` (`kind:"arcadia"`, "Arcadia ⚔ (baked)") and
+  the bake now emits `buildabilityPath` so `loadCity` fetches the terrain raster. **Two bugs found &
+  fixed via the browser:** (1) the demand stub was emitted in the *core* mm shape — the frontend
+  `RawDemand` wants `{lon,lat,originWeight,destWeight}`; the malformed grid made `loadCity` choke and
+  silently fall back to transit (caught by checking `stats().ruleset` in-page — now `"arcadia"`).
+- **Terrain render layer:** a new `ColumnLayer` (`id:"terrain"`) at the very BACK of the z-order, fed
+  `view.terrain` (raw `{lng,lat,c}` cells — the EXACT hex centres, NOT the square-binned `Buildability`
+  lookup, which would misplace them). `terrainColor(c)` is **value-not-color** (ash-grey ramp:
+  plains pale → mountains near-black; forest cooler; water desaturated blue-grey; **ley a faint violet**
+  — the only ground chroma). Wired App.tsx → `game.terrain`/`terrainCellM` (fantasy only; transit cities
+  draw nothing). **Tiling fix:** `angle:30` rotates deck's default flat-top hexagon to POINTY-TOP to
+  match the axial lattice (centres √3·size apart) + radius ×1.04 → edge-to-edge honeycomb, no seams.
+- **Verified:** `tsc` clean; **full e2e suite green (19/19)** — transit slice, both arcadia behavioural
+  tests, Tokyo 440-station, and a new `fantasy-shot` spec that asserts the baked world constructs the
+  arcadia ruleset + captures the terrain. No Rust touched ⇒ cargo determinism goldens untouched. The
+  fantasy game now has a real procedural playfield rendering in-browser (terrain only; S2 stamps the
+  resources onto it, S3 the towns).
+
+**MAP-GEN — S2: terrain-gated resources (the disjoint-chain driver), 2026-06-14.** The baked continent now
+carries the resource nodes that fork the two supply chains (docs/fantasy-map.md S2). Bake-side this turn
+(Python, with self-tests + ASCII corroboration; the in-browser resource render + screenshot is the next
+visible milestone). Still architecturally isolated — additive frozen data, no Rust, determinism gate
+untouched.
+
+- **Placement:** each kind gated to a PASSABLE biome so it's rail-reachable (never on impassable MOUNTAIN)
+  — ORE→hill, GRAIN→plain, FUEL→forest, AETHER→ley — then **Poisson-disk rarefied** (greedy farthest-first
+  with a per-kind hex min-spacing) to a baked budget; AETHER **hard-capped ≤6** (scarce by construction).
+- **Two attractor centres (the disjoint-chain driver):** ORE highland = the mountain-mass centroid snapped
+  to a passable cell; BREADBASKET = the plain FARTHEST from it (max separation, deterministic argmax).
+  Candidates are score-biased toward their chain's attractor (BREAD = grain+fuel → breadbasket; ARMS =
+  ore+aether → highland) + AETHER pushed far from the capital. Seed 7: attractors **84 hexes apart** — you
+  can't feed people and arm soldiers from one spur; the bottleneck moves with the map.
+- **Emitted:** an additive `supplyGraph.resources[]` in the manifest ({kind, q, r, xMm, yMm, yield} —
+  i64 positions via `center_of`, **i64 yields**, the gate-blind-defect discipline). `buildCoreCity` never
+  copies it into the core JSON ⇒ it never reaches `Sim::new`'s `CityData` (frontend-render + future-sim
+  data; serde-safe). Resources also bump the demand grid's `destWeight` (reuse catchment capture).
+- **Tests (`--selftest`, all green):** every resource on its gated biome · none on MOUNTAIN (all reachable
+  from the capital over passable land, verified by flood) · AETHER 1..6 · both chains supplied
+  (grain&fuel & ore&aether) · yields are ints · attractors separated ≥12 · resource placement
+  deterministic across two bakes. Seed 7 → ore×8, grain×10, fuel×8, aether×2 (only 4 ley cells — scarce;
+  S6's validator enforces the ≥3 winnability floor / re-rolls). Baked world still loads as arcadia (e2e).
+- **Next:** render the resource nodes on the terrain (icons/dots by kind) for the screenshot, then S3
+  (towns: suitability-sited into the expansion arc) + S4 (decadence seed).
+
+**MAP-GEN — S2b: the resource nodes render on the continent, 2026-06-14.** The baked supply graph is now
+visible in-browser ([docs/progress/fantasy-baked-resources.png](docs/progress/fantasy-baked-resources.png)):
+coloured POI dots scatter across the grey continent and the disjoint-chain geography reads at a glance —
+**blue ore + violet aether** clustered in the central/eastern highland (ARMS), **gold grain + green fuel**
+across the SW lowland + forest (BREAD), in different directions from the coastal SW capital.
+
+- **Wiring:** `RawCity.supplyGraph` (additive, serde-safe) → App.tsx maps each node's i64 mm (=
+  `center_of`) → lng/lat via the one `coords/geo.ts` boundary → `game.resources` (fantasy only) → a new
+  `ScatterplotLayer` (`id:"resources"`) over terrain, under the network. **Pixel-radius** (clamped 4–8px)
+  so the nodes stay tappable at any zoom (Fitts); white stroke so the colours pop on the grey. Per-kind
+  Okabe-Ito CB-safe palette (`resourceColor`): ore=iron-blue, grain=wheat-gold, fuel=forest-green,
+  aether=arcane-violet. Stable data identity (baked, never per-frame).
+- **Framing:** dropped the manifest `zoom` 11→10 so the initial view frames the WHOLE domain (the
+  continent is ~80 km — at z11 only the central massif was in view; at z10 all four resource types show).
+- **Verified:** `tsc` clean; **full e2e suite green (19/19)** (transit + arcadia + the resource render are
+  no-ops for transit since `view.resources` is empty there). No Rust touched ⇒ determinism goldens
+  untouched. The baked continent now shows terrain + the two-chain resource geography. Next: S3 towns
+  (the sinks/expansion arc) + S4 decadence seed, then wiring the supply graph into the sim (sources).
+
+**MAP-GEN — S3: towns (the supply sinks + conquest targets), 2026-06-14.** The baked continent now has the
+towns that consume delivered goods → tribute and are the conquest prizes (docs/fantasy-map.md S3). Bake-side
+this turn (Python + self-tests + ASCII corroboration; the town/decadence render + screenshot come with S4).
+Still additive frozen data, no Rust, determinism gate untouched.
+
+- **Siting:** candidates = passable land ≥5 hexes from the capital; **suitability score** = proximity to
+  resource clusters (Σ inverse hex-distance) + a mild far-from-capital spread + roughness; **Poisson-disk
+  thinned** (≥9-hex spacing) to a budget of 8 neutral towns. The CAPITAL is town #0 (the SW coastal seat);
+  the STARTER is the chosen town nearest the capital (first-cart reach). Each town's **value is i64**, graded
+  by hex-distance from the capital into the **expansion arc** (base 1000 + 50·dist → near = easy early
+  prizes, far/aether-adjacent = rich late prizes; seed 7's farthest neutral = 5500). Each carries a 2–3-good
+  **demand set** (its nearest distinct resource kinds) — the disjoint-chain consumption hook.
+- **Emitted:** `supplyGraph.towns[]` ({kind, q, r, xMm, yMm, value, demands}) beside `resources[]` (additive,
+  serde-safe — never reaches the core). Towns also bump the demand grid's `destWeight` (sinks); resources
+  now bump `originWeight` (sources). Demand grid: 38 cells (capital + 28 resources + 9 towns).
+- **Tests (`--selftest`, all green — 7 new):** capital + starter + ≥3 neutrals present · every town on
+  passable land reachable from the capital · Poisson spacing ≥ budget · i64 values · expansion-arc grading
+  (farthest outvalues nearest) · 2–3-good demand sets · town placement deterministic across two bakes.
+  Baked world still loads as arcadia (e2e). Next: S4 decadence seed (per-town floor + far-edge reservoir +
+  creep-to-capital BFS potential), then render towns + decadence + screenshot.
+
+**MAP-GEN — S4: the decadence seed (conquest made urgent), 2026-06-14.** The corruption that is the LOSE
+condition is now seeded onto the baked continent (docs/fantasy-map.md S4) — what makes the supply→conquest
+flywheel a *race*. Bake-side, additive frozen data, no Rust, determinism gate untouched.
+
+- **Per-town decadence floor:** the capital + starter + a `CAPITAL_GRACE_HEXES=6` ring start CLEAN (0); past
+  it, a neutral town's floor rises with **frontier depth** (200 + 30·(dist−grace)) — deep frontier towns are
+  the most corrupt (seed 7: floors 2360…4910). This is the per-town corruption conquest pushes back.
+- **Far-edge reservoir:** the 5 coastal land cells FARTHEST from the capital (the far edge opposite it — the
+  tide origin + raider-spawn anchors). Seed 7: anchored at the NE coast, 162 hexes out.
+- **Loseability guaranteed (asserted):** every reservoir anchor reaches the capital over passable land (the
+  carve-passes connectivity already guarantees this) — a walled-off capital would be UNLOSEABLE, so the test
+  fails loudly if the tide can't path to the capital. (The full per-tick creep CA is S10; S4 seeds the values
+  + anchors + the cheap gradient hook.)
+- **Emitted:** `supplyGraph.decadenceSeed` ({capitalGraceHexes, reservoir[]}) + a per-town `decadence` field
+  (all i64). Serde-safe (never reaches the core).
+- **Tests (`--selftest`, all green — 8 new):** capital+starter clean · neutral frontier corrupt · floor rises
+  with depth · i64 values · 5 reservoir anchors on passable land · **LOSEABLE** (anchors reach the capital) ·
+  reservoir is the far edge (>2·grace out) · decadence seed deterministic. Baked world still loads (e2e).
+  **The map generator's data pipeline is now complete (S1 terrain · S2 resources · S3 towns · S4 decadence).**
+  Remaining: render towns + decadence (S3b/S4b), S6 validator/relaxation ladder, then wire the supply graph
+  into the sim (resources→sources, towns→sinks, decadence→the tide).
+
+**MAP-GEN — S3b/S4b: towns + decadence render (the populated continent), 2026-06-14.** The full baked world
+is now visible in-browser ([docs/progress/fantasy-baked-populated.png](docs/progress/fantasy-baked-populated.png)):
+the whole economic + conquest geography reads at a glance — the **gold capital** anchoring the SW coast,
+cold-blue **neutral towns** (dark-ringed, value-scaled) across the lowland + the corrupt NE frontier, the
+small resource dots, and the **violet decadence reservoir anchor** at the far NE edge (the tide origin).
+
+- **Wiring:** extended `RawCity.supplyGraph` (towns + decadenceSeed, serde-safe) → App.tsx maps mm→lng/lat
+  via `coords/geo.ts` → `game.towns` / `game.decadenceAnchors` → two new `ScatterplotLayer`s (towns over
+  resources, reservoir anchors) under the network. **Art direction (docs/fantasy-map.md "The look"):** the
+  capital + dominion are the only WARMTH (gold/amber); neutral towns read sickly **cold-bright, darkening +
+  cooling as their decadence floor rises** (`townColor` lerps cold→dark-cold by decadence); reservoir anchors
+  are low-chroma cold-violet. Pixel-radius (value-scaled, clamped) + dark ring so towns read as settlements
+  over the resource POIs. The full creeping decadence FIELD is the S10 CA — this renders the S4 seed.
+- **Verified:** `tsc` clean; **e2e 18/19** on the first parallel run — the 1 miss was the player-barracks
+  conquest test (sim-timing-sensitive under 15-worker load), **green on isolated re-run** (pre-existing
+  flakiness, NOT a regression — the arcadia demo has no `supplyGraph`, so towns/anchors stay empty there and
+  the new layers are no-ops). No Rust touched ⇒ determinism goldens untouched.
+- The baked continent now shows **terrain + resources + towns + decadence** — a complete procedural 4X
+  playfield, rendered. Next: S6 validator (certify winnability / pick a certified seed), then wire the supply
+  graph into the sim so the baked world is actually *playable* (resources→sources, towns→sinks, decadence→tide).
+
+**MAP-GEN — S6: the solvability validator + certified seed (the generator is COMPLETE), 2026-06-14.** The
+bake is now a pure function of the requested seed that ALWAYS emits a **certified-winnable** world — it
+re-rolls (deterministic seed sequence) until the solvability constraints pass (docs/fantasy-map.md S6).
+Bake-side, no Rust, determinism gate untouched.
+
+- **`validate(world)`** lists the constraints a world VIOLATES (empty = certified): aether scarce-but-present
+  (∈[3,6]) · grain/fuel/ore each ≥4 (a forest-poor seed silently starves BREAD — caught) · ore-highland ↔
+  breadbasket separated ≥20 hexes · every resource reachable from the capital over passable land · aether ≥15
+  hexes out (a late prize) · NO cornucopia hex (no cell near all 4 kinds) · the capital reachable from the
+  decadence reservoir (LOSEABLE, not walled) · the start not a 1-hex funnel (≥12 passable cells within R=3).
+- **`generate_valid(seed)`** re-rolls from the requested seed (bounded 48; the relaxation ladder is the TODO
+  fallback) and returns the first certified world. The validator has real TEETH — the seed sweep shows it
+  rejecting scarce/absent-aether seeds (7,8,10,11) and capital funnels (9,14). **The committed bake's requested
+  seed 7 is NOT winnable (2 aether) → certified seed 12** (6 aether, chains supplied, no funnel); the manifest
+  records the certified seed so loading reproduces it.
+- **Tests (`--selftest`, all green — 4 new):** `generate_valid(7)` yields a certified world (seed 12) · the
+  certified seed is reproducible · the validator rejects a starved world (teeth) · the certified world meets
+  the aether + chain thresholds. **Full e2e suite green (19/19).** No Rust touched ⇒ goldens untouched.
+- **THE MAP GENERATOR IS COMPLETE** — S1 terrain · S2 resources · S3 towns · S4 decadence · S6 certification,
+  ~40 self-tests, all rendered in-browser (`docs/progress/fantasy-baked-{world,resources,populated}.png` now
+  show the certified seed-12 continent). The bake emits a guaranteed-playable procedural 4X continent the
+  existing `Sim::new` ingests, with the locked deterministic core never touched. **The remaining piece is the
+  SIM-WIRING** — making the baked supply graph actually drive gameplay (resources→sources, towns→sinks,
+  decadence→the tide). That step DOES touch `crates/sim` (a deliberate golden re-pin, RED-first) — the careful
+  next major increment.
+
+**MAP-GEN — sim-wiring: the baked continent is PLAYABLE, 2026-06-14.** The procedural world is no longer
+just a render — you can build rail on it and the supply chain runs
+([docs/progress/fantasy-baked-playable.png](docs/progress/fantasy-baked-playable.png)). And it turned out the
+first pass needs **NO core change / no golden re-pin** — it's pure command-sourcing.
+
+- **`networkFromSupplyGraph(sg)`** (network.ts) synthesizes a starting `Network` from the baked supply graph
+  — every resource → a SOURCE station, every town → a SINK station, the capital → a BARRACKS — with NO
+  lines (the player draws the rail). App.tsx applies it via the existing `Game.applyNetwork` command path
+  (the same one a loaded metro uses), so it's fully command-sourced. The **source/sink roles fall out of the
+  baked demand grid for free**: resources carry high `originWeight`, towns high `destWeight`, and the arcadia
+  ruleset's existing classification reads exactly that — no new sim code.
+- **Verified playable in-browser:** the baked world places **42 stations** with **23 sources / 18 sinks**
+  (roles correct: a resource reads origin 13 / dest 1, a town origin 9 / dest 40); drawing a line between a
+  grain source and a town, assigning carts, and running **dispatches a cart and delivers grain → tribute=1**
+  (manually confirmed) with the coverage gauge moving and decadence climbing — the whole loop runs on the
+  *procedural* continent.
+- **Bug caught by the playability test (fixed):** S3 let a town land ON a resource cell (the suitability
+  score peaks on resource cells) → a zero-length source==sink line (nothing to transport). Fixed: towns now
+  sit ≥3 hexes from any resource (near, but you must rail the goods in) + a new validator constraint rejects
+  any town-on-resource. Re-certified (still seed 12).
+- **New e2e `fantasy-play`** asserts the gameplay facts: ruleset arcadia · >20 stations placed · sources &
+  sinks present · a cart dispatches on a player-drawn line over the baked map. (It gates on *dispatch*, not
+  the ~90-sim-sec full tribute delivery — that's rAF-wall-clock-bound and flaked under 15-worker parallel
+  load, destabilising the suite; the full delivery is verified manually + by the arcadia ruleset unit tests.)
+  **Full e2e suite green (20/20).** No Rust touched ⇒ goldens untouched.
+- **The baked procedural continent is now a real, playable 4X campaign.** Next (deeper, core-touching, a
+  deliberate golden re-pin): seed `world.decadence` from the baked per-town floors + the reservoir so the
+  baked decadence *matters* (currently only base growth drives the tide), and multi-commodity town demands
+  (the S7e Forge-Line). Plus the original deferred S7e/S8-refinements/S10-CA/S11-economy.
+
+**MAP-GEN — deeper integration: the baked decadence drives the tide + deterministic sim e2e, 2026-06-14.**
+The certified continent's corruption geography now gives it real starting urgency, and a recurring e2e
+flakiness is fixed for good.
+
+- **`CityData.initial_decadence`** (serde default 0): `World::new` seeds `world.decadence` from it (clamped
+  ≥ 0). **Golden-NEUTRAL by construction** — the field defaults to 0, so every transit city, the arcadia
+  golden fixture, and every native test are byte-identical (`golden_transit_hash_pinned` +
+  `golden_arcadia_hash_pinned` both verified unchanged — *no re-pin*); only a baked world that sets it starts
+  corrupt. `build_world.py` S4 bakes `initialDecadence` (the mean neutral-town floor) into `decadenceSeed`;
+  `buildCoreCity` passes it to the core. The certified seed-12 world starts at **decadence 5345** (~27% up
+  the lose meter — a more-corrupt continent = more urgency), verified in-browser by `fantasy-play`.
+- New cargo test `initial_decadence_seeds_the_starting_corruption` (seeds the value, clamps negatives, a
+  more-corrupt realm falls sooner). **Full sim suite green.**
+- **Recurring-flakiness fix (the real win):** a new synchronous **`tickMs` test hook** advances the sim
+  deterministically *without rAF* — it puts the sim in its running state without entering run MODE (the
+  GameLoop only auto-ticks in run mode, so manual steps never double). Converted the 3 sim-conquest e2e
+  (arcadia ×2 + fantasy-play) from `setSpeed(100)`+`waitForFunction` (rAF-wall-clock-bound → starved + flaked
+  under 15-worker parallel load) to deterministic stepped ticks. They now assert the SAME facts (tribute,
+  a legion fielded **AND rendered** via `armyPositions`, a town taken, realm holds) instantly + reliably.
+  **Two consecutive full e2e runs green (20/20)** — the flakiness that intermittently failed the conquest
+  tests is gone. No Rust beyond the additive `initial_decadence` field ⇒ goldens untouched.
+
+**MAP-GEN — readability polish: the disjoint chains read at a glance on the playable map, 2026-06-14.** The
+sim-wiring placed a station dot at every resource/town, and those near-black dots were COVERING the S2b/S3b
+kind-colours — so the playable map was a field of identical white dots (you couldn't tell an ore source from
+a grain source from a town). Fixed: the kind-markers are now sized LARGER than the station dot (≤8px) so the
+kind-colour reads as a **halo** around each node (resources 9–12px, towns 11–16px). The map now shows
+distinct gold (grain) + green (fuel) + blue (ore) + violet (aether) sources, cold-blue towns, and the gold
+capital — the disjoint-chain geography is legible while planning supply lines
+([docs/progress/fantasy-baked-playable.png](docs/progress/fantasy-baked-playable.png)). Render-only +
+fantasy-gated (transit markers are empty ⇒ no-op); `tsc` clean, fantasy-play green, no Rust touched.
+
+**═══ STATE OF THE FORK — full-suite certification + a decision point, 2026-06-14 ═══**
+
+A full verification pass certifies the entire (large, ~40-turn) fantasy changeset green across EVERY tier:
+**cargo 177/0 (37 suites)** · **vitest 21/21** · **e2e 20/20** · **build_world `--selftest` PASS** · both
+golden hashes pinned (transit + arcadia). The fantasy fork is comprehensively COMPLETE + PLAYABLE:
+- **Sim core** S0–S9 (ruleset-at-construction fork, hex lattice, Forge-Line buffers, war machine + AI,
+  decadence lose-condition) — pure, deterministic, golden-pinned.
+- **Frontend** — mode-aware React HUD, army/terrain/resource/town/decadence render, fantasy build tools.
+- **Balance harness** — tuned to bite (~84 s on the demo).
+- **Procedural map generator** (`scripts/build_world.py`, S1–S6) — terrain · resources · towns · decadence ·
+  a solvability validator that certifies a winnable seed. Emits a frozen world the existing `Sim::new`
+  ingests; the deterministic core was NEVER touched by the generator.
+- **The baked continent is PLAYABLE** — its supply graph builds a network via the command path, supply
+  flows source→sink→tribute, legions field + conquer, decadence (seeded from the baked floors) presses;
+  the disjoint-chain geography is legible on the map.
+- Test suite **stabilised** (deterministic `tickMs` hook killed the rAF-starvation flakiness).
+
+**Open decision (genuinely the user's — surfaced, not auto-chosen):** the remaining deferred items are large
+core subsystems — **S7e** (multi-commodity Forge-Line: make the baked ore/grain/fuel/aether drive *distinct*
+BREAD-vs-ARMS chains; a multi-turn rework that re-pins the arcadia golden + re-tunes balance), **S10** (the
+per-cell decadence CA — the spatial tide; the heaviest subsystem, gates the `grid_cell_mm` freeze), **S11**
+(economy/tech). Each is a multi-turn commitment. **Nothing has been committed** (standing "commit only when
+asked" constraint) — ~40 turns of work sits uncommitted, ready for review. The loop continues toward S7e
+unless redirected.
+
+**S7e-1 — multi-commodity Forge-Line (the core mechanic), 2026-06-14.** The sim no longer treats supply as
+one generic commodity — a source now produces ITS commodity (ore/grain/fuel/aether), the cart carries it,
+and the sink receives + consumes that specific commodity. This is the plumbing the disjoint BREAD-vs-ARMS
+chains ride on. **GOLDEN-NEUTRAL** (both transit + arcadia goldens verified unchanged): a commodity-0 world
+behaves byte-identically (production/delivery/consumption all land on the ORE slot exactly as before) — only
+`commodity != 0` cells diverge.
+
+- **`DemandCell.commodity`** (serde default 0 = ORE → transit + the golden fixtures untouched) tags each
+  cell's Forge-Line commodity. `prepare` derives a per-station **`station_commodity`** (the argmax origin-
+  commodity of its captured cells — a derived read-cache, NOT hashed → golden-neutral). `forge::produce`
+  accrues a source's `station_commodity` (not always ORE); the arcadia spawn gate reads that node's own
+  commodity buffer; **`Pax.commodity`** (also unhashed — Pax queues are excluded from Canonical) carries it;
+  `pax.rs` alight deposits into the sink's matching slot; `forge::produce` consume now sums EVERY delivered
+  commodity into tribute.
+- **Tests:** new `tests/forge_commodity.rs` — a GRAIN (non-ORE) source produces→ships→delivers→consumes into
+  tribute end-to-end (`station_commodity[src]==GRAIN`, tribute>0) + the multi-commodity flow replays
+  bit-for-bit. **Full sim suite green (179/0, 38 suites)**; both goldens pinned; wasm rebuilt; the 3 fantasy
+  e2e green (the baked world's cells are still commodity-0 ⇒ unchanged). (Mechanically added `commodity: 0`
+  to 40 `DemandCell` test literals.)
+- **S7e-1b (done, same day):** the BAKE now emits per-commodity demand cells — each resource's cell carries
+  its `commodity` (ore=0/grain=1/aether=2/fuel=3, matching forge.rs); `RawDemand.cells.commodity` +
+  `buildCoreCity` pass it through (omitted ⇒ 0, so every transit city + the arcadia demo are unchanged). The
+  baked continent's grain/ore/fuel/aether sources now genuinely produce their own commodity (verified: the
+  demand grid carries grain×10/aether×6/fuel×8/ore-or-town×18; fantasy-play still flows supply→tribute on the
+  multi-commodity baked world). tsc clean.
+- **S7e-2 (done, the Liebig recipes — the core mechanic):** a sink now consumes by **Liebig** — `prepare`
+  derives `station_recipe` (the distinct commodities a sink captures DEST weight of); a sink with a real
+  ≥2-commodity recipe yields output = **min over its required inputs** (the scarcer input throttles; consume
+  `min` of each), so a BREAD town needs grain+fuel and an ARMS barracks ore+aether. **Additive + golden-
+  neutral:** a single/empty recipe ⇒ consume-all (the S7e-1 path), so commodity-0 worlds (both goldens, the
+  arcadia demo, the current baked world) are byte-identical. Tests (`forge_commodity.rs`): a bread town
+  supplied BOTH grain+fuel → tribute; supplied ONLY grain → **tribute 0** (the missing fuel throttles to
+  min=0 — you must build both chains). **Full sim suite green (180/0)**; both goldens pinned.
+- **S7e-2b (done — the disjoint chains land on the baked world):** the BAKE assigns each sink town a chain
+  recipe — the ~⅓ NEAREST the ore highland demand **ARMS** (ore+aether), the rest **BREAD** (grain+fuel) — a
+  fixed fraction rather than nearer-attractor (towns can only site in the passable lowland, so all are
+  "nearer" the breadbasket; the fraction guarantees BOTH chains have consumers). Each town emits one dest
+  cell PER required commodity → its `station_recipe` is the 2 inputs → the sim consumes them by Liebig. Seed
+  12: **6 BREAD + 3 ARMS** towns. `fantasy-play` now feeds a town BOTH inputs (a line src₁→town→src₂) → the
+  Liebig bread/arms flows → tribute (one input alone would yield 0). Self-test: every sink has a full BREAD
+  or ARMS recipe + both chains present. **Full suite green** (cargo 180/0 both goldens pinned · e2e 20/20 ·
+  build_world selftest); `buildCoreCity` already passed per-cell commodity through, so no further frontend
+  wiring. **S7e — the disjoint BREAD-vs-ARMS chains — is delivered:** the baked world forces you to build
+  both (grain+fuel for towns, ore+aether for arms-towns), with the locked core golden-neutral throughout.
+- **Deferred (optional further depth):** MULTI-STAGE processing (raw→mid→final, e.g. ore→INGOT→ARMS through
+  intermediate forge nodes) — the 2-input Liebig delivers the core disjoint-chain gameplay; multi-stage adds
+  refinement depth. "Commodity-aware routing" is the player's job (they connect the right sources to each
+  town via lines), the natural fit for the build-a-network loop — no auto-routing needed.
+
+**S7e — chain legibility (the player can SEE which chain a town demands), 2026-06-14.** A town's RING is now
+coloured by its supply chain so the disjoint-chain logistics are readable on the map: **BREAD** towns
+(grain+fuel) ring **wheat-gold**, **ARMS** towns (ore+aether) ring **arcane-violet**, the capital a neutral
+dark frame. The player reads the ring → knows which two sources to connect (without it, every town looked
+the same and the two-chain demand was invisible). `TownMarker.chain` (derived from the baked `recipe` in
+App.tsx), `townRingColor` + a 2.5px ring in the towns layer. Render-only + fantasy-gated (transit towns are
+empty ⇒ no-op); `tsc` clean, fantasy-play green. This completes S7e's playability — the procedural world's
+two-chain economy is now fully legible.
+
+**BALANCE PROBE — the baked world is NOT yet winnable (a real finding), 2026-06-14.** A deterministic
+winnability probe (`e2e/fantasy-conquest.spec.ts`: connect two towns' chains for tribute + a capital→town
+line for conquest, run via `tickMs`, log the trajectory) showed the demo-tuned war/decadence constants don't
+fit the LARGE baked continent:
+- **Decadence integer-truncation:** `decadence::step`'s `net·dt/1000` truncates any growth < 20/s to **0 per
+  50 ms tick** — so the gentle baked rate (6/s) freezes the lose meter entirely. The proper fix is a sub-unit
+  remainder accumulator (like `forge_accum`) — but that changes the demo's growth-50 trajectory (it currently
+  *under*counts at 40/s) ⇒ a deliberate arcadia-golden re-pin, RED-first. (Externalised the rate this turn:
+  `CityData.decadence_growth_per_s`, default 0 ⇒ the const default ⇒ golden-neutral; the bake sets it.)
+- **Conquest doesn't complete at scale:** tribute flows + legions LAUNCH from the capital-barracks (probe
+  confirms armyCount 1→5), but they don't capture in the window — the long baked routes (army-speed
+  50 km/s vs continent-sized lines) + the trajectory suggest the march/siege/town-resistance constants need
+  scaling for the baked world (the tiny demo captures in seconds; the continent needs minutes).
+- **What WORKS + is gated:** the two-chain Liebig supply flows and legions field from the barracks (the war
+  engine engages). The probe asserts those (green); conquest-completes + realm-holds are logged, not yet
+  gated (WIP). cargo 180/0 (both goldens pinned), e2e green.
+- **Deferred — a baked-world balance pass (tracked):** fix the decadence remainder-accumulator (golden
+  re-pin), scale army-speed / town-resistance / decadence rate+threshold to the continent, ideally via a
+  headless auto-play harness on the baked world (the demo's `balance.rs` proves the *demo*, not the bake).
+  This is genuinely the kind of multi-knob tuning the design defers to "the headless balance harness."
+
+**RECOVERY CHECKPOINT — session crashed mid-fork; tree verified green + committed, 2026-06-14.** The
+previous (autonomous) session crashed with the entire ~40-turn fantasy-fork changeset uncommitted on a
+clean working tree. On resume, the tree was re-certified green at the last checkpoint (the BALANCE PROBE
+above) — **cargo 180/0 (38 suites, both goldens pinned) · vitest 21/21 · build_world `--selftest` PASS**
+(e2e was 20/20 at this exact, unchanged tree). No corruption: `decadence.rs`/`city.rs`/`world.rs` are
+complete + coherent (the late timestamps were the `decadence_growth_per_s` externalization the BALANCE
+PROBE entry records). Committed the green tree to branch `fantasy-fork` (no push) to protect the work
+against another crash. The stray root debug PNG (`fantasy-terrain-z11.png`, a superseded z11 framing
+experiment) was deliberately left uncommitted. **Next:** the deferred baked-world balance pass (decadence
+remainder-accumulator → arcadia-golden re-pin, RED-first; war/decadence knob scaling to continent scale;
+a headless balance harness on the baked world; then gate `fantasy-conquest.spec.ts` on conquest-completes
++ realm-holds).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

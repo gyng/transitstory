@@ -47,6 +47,22 @@ pub struct StatsSnapshot {
     pub opex_spent: f64,
     pub per_station: Vec<StationStat>,
     pub per_line: Vec<LineStat>,
+    // --- fantasy (arcadia) read-out; all 0/false for transit, so the field is mode-agnostic ---
+    /// The canonicalised ruleset tag ("transit" | "arcadia") — lets the HUD pick the mode-appropriate
+    /// readout (tribute/decadence vs riders/coverage) from the snapshot alone.
+    pub ruleset: String,
+    /// Accumulated tribute — the supply score (towns consume delivered supply into this).
+    pub tribute: f64,
+    /// Spreading-corruption pressure (the lose meter); `realm_lost` once it reaches the capital.
+    pub decadence: f64,
+    /// Decadence as a 0–100 fraction of the capital threshold — the lose-meter gauge fill.
+    pub decadence_pct: f64,
+    /// Towns conquered this game (the conquest score).
+    pub towns_captured: f64,
+    /// Legions currently fielded (the war machine's mobile force).
+    pub army_count: u32,
+    /// True once decadence has overrun the capital — the realm has fallen.
+    pub realm_lost: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -139,6 +155,9 @@ pub struct StationView {
     pub name: String,
     /// Tombstoned (bulldozed): kept for index-stable ids, but the frontend skips rendering it.
     pub removed: bool,
+    /// Posted bounty on this town (fantasy, S8 steering) — >0 draws a marker so the player SEES where
+    /// they've baited the legions. 0 for transit + un-bountied towns. Render read-out, not hashed.
+    pub bounty: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

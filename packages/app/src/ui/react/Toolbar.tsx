@@ -16,6 +16,8 @@ const TOOL_HINT: Record<Tool, string> = {
   line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
   select: "Click a station or line to inspect it",
   bulldozer: "Click a station or line to demolish it · Esc or right-click to stop",
+  barracks: "Click to place a barracks — it fields legions once supplied · Esc / right-click when done",
+  bounty: "Click a town to post a bounty — baits AI legions to attack it · Esc / right-click when done",
 };
 
 const TOOLS: [Tool, string][] = [
@@ -23,6 +25,12 @@ const TOOLS: [Tool, string][] = [
   ["line", "╱ Draw line"],
   ["select", "▣ Select"],
   ["bulldozer", "💥 Bulldoze"],
+];
+
+// Fantasy (arcadia) build tools: a barracks (fields legions) + bounties (steer them, Majesty-style).
+const FANTASY_TOOLS: [Tool, string][] = [
+  ["barracks", "🏰 Barracks"],
+  ["bounty", "⚑ Bounty"],
 ];
 
 // A doubling gear ladder (1×→8×) for fine control, plus a max fast-forward. The sim is a GameLoop
@@ -202,7 +210,7 @@ export function Toolbar() {
             {activeMode.hint}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            {TOOLS.map(([t, label]) => {
+            {[...TOOLS, ...(ui.ruleset === "arcadia" ? FANTASY_TOOLS : [])].map(([t, label]) => {
               const on = ui.tool === t;
               const activeBg = t === "bulldozer" ? "#d62828" : "#1c2024"; // bulldozer reads destructive
               return (

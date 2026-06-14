@@ -20,7 +20,7 @@ fn city_with_barrier(cell_east_mm: i64, bar_x_mm: Option<i64>, barrier: u8) -> C
         seed: 1,
         demand: DemandGrid {
             cell_m: 100.0,
-            cells: vec![DemandCell { x_mm: cell_east_mm, y_mm: 0, origin_w: 10.0, dest_w: 6.0 }],
+            cells: vec![DemandCell { x_mm: cell_east_mm, y_mm: 0, origin_w: 10.0, dest_w: 6.0, commodity: 0 }],
         },
         buildability: if bar_x_mm.is_some() { buildability } else { BuildabilityGrid::default() },
         ..Default::default()

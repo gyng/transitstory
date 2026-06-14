@@ -103,7 +103,7 @@ fn opex_drains_the_balance_only_when_economy_is_on() {
 #[test]
 fn fares_grow_the_balance_over_time() {
     let cells = (0..20)
-        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0 })
+        .map(|k| DemandCell { x_mm: 300_000 * k, y_mm: 0, origin_w: 3.0, dest_w: 3.0, commodity: 0 })
         .collect();
     let city = CityData { id: "t".into(), seed: 7, demand: DemandGrid { cell_m: 300.0, cells }, ..Default::default() };
     let mut w = World::new(7, city);

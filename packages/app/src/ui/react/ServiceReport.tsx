@@ -5,6 +5,7 @@
 // ~3 Hz `stats` slice, issues no Commands. Collapsible, but default-open so the info is visible
 // (a discoverable channel, not a buried hover-tooltip).
 import { useState, type CSSProperties } from "react";
+import type { Stats } from "../../types";
 import { useStats, useGameUI } from "./GameContext";
 import { SIM_MS_PER_CLOCK_MIN, MODES } from "./shared";
 
@@ -67,10 +68,35 @@ function Divider() {
   return <div style={{ height: 1, background: "#e7eaee", margin: "6px 0" }} />;
 }
 
+/** The fantasy (arcadia) realm panel — the supply→conquest→decadence ledger, replacing the transit
+ *  service telemetry. Reuses the same CARD/Row chrome so the two modes read alike. */
+function FantasyServiceReport({ s }: { s: Stats }) {
+  const decay = Math.round(s.decadencePct);
+  const decayColor = decay >= 66 ? "var(--ot-gauge-bad,#d62828)" : decay >= 33 ? "#e69f00" : "#7a818a";
+  return (
+    <div data-testid="service-report" style={CARD}>
+      <div style={{ padding: "10px 12px 6px", fontWeight: 700 }}>⚜ The Realm</div>
+      <div style={{ padding: "0 12px 12px" }}>
+        <Row label="Tribute" value={`${Math.round(s.tribute)}`} testid="svc-tribute" />
+        <Row label="Supply delivered" value={`${Math.round(s.ridershipTotal)}`} />
+        <Divider />
+        <Row label="🏰 Towns taken" value={`${Math.round(s.townsCaptured)}`} testid="svc-towns" />
+        <Row label="⚔ Legions afield" value={`${Math.round(s.armyCount)}`} />
+        <Row label="☠ Decadence" value={`${decay}%`} tone={decayColor} testid="svc-decadence" />
+        <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 8, lineHeight: 1.35 }}>
+          Supply towns for tribute · field legions from a barracks · post bounties to steer them · hold back the decadence.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ServiceReport() {
   const s = useStats();
   const ui = useGameUI();
   const [open, setOpen] = useState(true);
+  // Mode-aware: the fantasy campaign shows the realm ledger, not transit service telemetry.
+  if (ui.ruleset === "arcadia") return <FantasyServiceReport s={s} />;
 
   // Aggregate ridership by transport mode from the per-line snapshot (no new sim field needed).
   const byMode = new Map<number, number>();

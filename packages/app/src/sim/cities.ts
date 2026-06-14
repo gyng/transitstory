@@ -5,6 +5,11 @@ export interface CityEntry {
   name: string;
   blurb: string;
   manifest: string;
+  /** Which ruleset/world the engine constructs — the frontend mirror of `CityData.ruleset`
+   *  (fantasy-fork.md). Absent ⇒ `"transit"` (every shipped city). `"arcadia"` selects the hex
+   *  4X-logistics fantasy campaign once its world is baked (S6). The menu groups by this so the
+   *  fantasy campaign reads as a distinct mode, not just another city in the grid. */
+  kind?: "transit" | "arcadia";
   /** The coverage score (0–100) the city's REAL network earns at load — the score-chase anchor
    *  ("beat the Tube"). Measured in-browser against the committed network + demand data (load
    *  `?city=<id>&network=1`, read `stats().coverageScore`); re-measure if the coverage formula or
@@ -28,6 +33,12 @@ export const CITIES: CityEntry[] = [
   { id: "pyongyang", name: "Pyongyang", blurb: "Deep metro on the Taedong", manifest: "/data/pyongyang_city.json", realScore: 38 },
   { id: "glasgow", name: "Glasgow", blurb: "Clockwork-Orange loop on the Clyde", manifest: "/data/glasgow_city.json", realScore: 41 },
   { id: "globe", name: "World ✈", blurb: "Global airline — connect cities by air", manifest: "/data/globe_city.json", realScore: 64 },
+  // The fantasy 4X-logistics campaign (the fork). Hex lattice + supply chain + conquest + decadence.
+  { id: "arcadia", name: "Arcadia ⚔", blurb: "Against the Dark — supply, conquer, hold the rot", manifest: "/data/arcadia_world.json", realScore: 0, kind: "arcadia" },
+  // The procedurally-baked fantasy continent (scripts/build_world.py, seed 7). Terrain only for now —
+  // S2/S3 add resources + towns; S6 the solvability validator. The hand-authored Arcadia above stays
+  // the playable demo until the baked world grows its supply graph.
+  { id: "fantasy", name: "Arcadia ⚔ (baked)", blurb: "A procedurally-forged, certified-winnable continent", manifest: "/data/fantasy_world.json", realScore: 0, kind: "arcadia" },
 ];
 
 export function cityById(id: string | null): CityEntry {

@@ -66,8 +66,53 @@ pub struct World {
     /// Per-station captured origin (resident) and destination (job) weight from the grid.
     pub captured_origin: Vec<f32>,
     pub captured_dest: Vec<f32>,
+    /// Fantasy (arcadia) S7e: per-station OUTPUT commodity — the dominant origin-commodity of a station's
+    /// captured cells (ORE=0 default). A net-source node produces THIS commodity (not always ORE). DERIVED
+    /// from the demand grid in `prepare`, like `captured_origin`; NOT hashed (a read-cache, golden-neutral).
+    pub station_commodity: Vec<u8>,
+    /// Fantasy (arcadia) S7e-2: per-station RECIPE — the distinct commodities a sink REQUIRES (the commodities
+    /// it captures DEST weight of). A sink with ≥2 required commodities consumes them by LIEBIG (output =
+    /// min input; the scarcer throttles), so a BREAD town needs grain+fuel and an ARMS barracks ore+aether.
+    /// A single/empty recipe ⇒ consume-all (the S7e-1 behaviour) ⇒ commodity-0 worlds are byte-identical.
+    /// DERIVED in `prepare`; NOT hashed (golden-neutral).
+    pub station_recipe: Vec<Vec<u8>>,
     /// Fractional passenger-spawn accumulator per station (deterministic count).
     pub spawn_accum: Vec<f32>,
+    /// Forge-Line per-node commodity BUFFERS (fantasy, S7): flat `station * N_COMMODITIES + commodity`
+    /// = units held. **Hashed** (folded into `Canonical`) — the first fantasy state. EMPTY for transit
+    /// (`GravityDemand`/`AgentDemand` never call `forge::produce`), so transit serialises a length-0
+    /// vec (one re-pin, then byte-identical). Sized lazily by `produce` on the arcadia path.
+    pub forge_stock: Vec<i64>,
+    /// Sub-unit (µ-unit) production remainder per node — the integer fixed-point accumulator that keeps
+    /// `forge_stock` accrual exact. Derived/transient like `spawn_accum` (regenerated bit-identically on
+    /// replay from the same tick sequence), so NOT folded into `Canonical`.
+    pub forge_accum: Vec<i64>,
+    /// The war machine's legions (fantasy, S8) — a SEPARATE SoA from `vehicles` so `dispatch`'s
+    /// `v.clear()` (every `SetHeadway`) can't teleport a marching army (binding condition #2). Its
+    /// authoritative fields are hashed; empty for transit. See [`crate::army`].
+    pub armies: crate::army::ArmySoA,
+    /// Per-town resistance (siege HP, fantasy S8b): a defended town grinds down under siege; 0 = fallen.
+    /// **Hashed.** Lazily sized to the node count (empty for transit). Index = StationId.
+    pub town_value: Vec<i64>,
+    /// Count of towns captured this game (fantasy S8b) — the conquest score. **Hashed.** 0 for transit.
+    pub towns_captured: i64,
+    /// Per-station BARRACKS flag (fantasy S8): legions launch only from a barracks on a built route.
+    /// **Hashed** (set by `PlaceBarracks`, a pure function of the command log). Empty for transit.
+    pub is_barracks: Vec<bool>,
+    /// Per-town BOUNTY (fantasy S8 — the Majesty steering lever): a posted bounty pulls AI legions
+    /// toward that town (the highest-bounty uncaptured town on a route becomes the target). **Hashed**
+    /// (set by `PostBounty`). Empty for transit. Steering only for now; the payout economics are S11.
+    pub bounty: Vec<i64>,
+    /// Global DECADENCE (fantasy, S9): the spreading-corruption pressure — the lose condition. Grows
+    /// while running, pushed back by conquest; reaching the capital threshold = the realm falls.
+    /// **Hashed.** 0 for transit (never runs `war_step`). See [`crate::decadence`].
+    pub decadence: i64,
+    /// Global TRIBUTE (fantasy, S7d): the supply score — accumulated as towns (sink nodes) consume the
+    /// commodity delivered to them (the game's core payoff: feed towns → tribute). **Hashed** (in
+    /// `Canonical`). Always 0 for transit (gravity never consumes commodities), so it adds one i64 to
+    /// the transit hash (a re-pin) then stays byte-identical. The S11 economy splits this into
+    /// gold/mana/manpower channels behind this same accumulator.
+    pub tribute: i64,
     /// Per-station FIFO queue of waiting passengers (each carrying a multi-leg route).
     pub waiting: Vec<VecDeque<crate::pax::Pax>>,
     /// Per-station lines serving it (operational only); rebuilt by the dispatcher for routing.
@@ -138,6 +183,15 @@ pub struct World {
     pub opex_rem: i64,
     /// The trip-planning strategy (the routing seam). `BfsRouter` ships; RAPTOR swaps in here.
     pub router: Box<dyn crate::routing::Router>,
+    /// The game-mode seam (fantasy-fork.md): selected from `CityData.ruleset` at construction and
+    /// FROZEN — never a Command. Owns scoring + command validity (+ fantasy's per-tick trailer).
+    /// **Not hashed** (a construction-time selector, not evolving state) and, until S2, **not yet
+    /// called** (the transit logic still lives in `world.rs`/`demand.rs`), so the golden pin is
+    /// byte-identical. Mirrors `router`.
+    pub ruleset: Box<dyn crate::ruleset::Ruleset>,
+    /// The demand model (gravity vs agents vs supply-chain) behind the same seam. Default-constructed
+    /// to `GravityDemand`; `SetDemandMode` swaps `AgentDemand` in at S2. Inert until S2, like `ruleset`.
+    pub demand: Box<dyn crate::ruleset::Demand>,
     /// Max legs (transfers + 1) a routed trip may use (from CityData, or the routing default).
     pub max_legs: usize,
     /// Demand model: when `true`, trips come from `population` (agents) instead of gravity flow.
@@ -233,6 +287,29 @@ struct Canonical<'a> {
     abandoned_at: &'a [u64],
     opex_accrued: i64,
     opex_rem: i64,
+    /// Forge-Line buffers (fantasy, S7). Appended LAST so transit (empty slice) re-pins exactly once
+    /// and every prior field keeps its byte offset. The µ-unit `forge_accum` remainder is excluded
+    /// (derived/transient, like `spawn_accum`); only the integer stock is authoritative state.
+    forge_stock: &'a [i64],
+    /// Global tribute (fantasy, S7d) — the supply score, 0 for transit.
+    tribute: i64,
+    /// Legion authoritative state (fantasy, S8) — position/route/strength/target/state. Cartesian
+    /// x/y are render-only (derived from `s_mm`), excluded. Empty for transit.
+    army_line: &'a [LineId],
+    army_path: &'a [u8],
+    army_s_mm: &'a [i64],
+    army_dir: &'a [i8],
+    army_strength: &'a [i64],
+    army_target: &'a [u32],
+    army_state: &'a [u8],
+    /// Town resistance + conquest count (fantasy, S8b). Empty/0 for transit.
+    town_value: &'a [i64],
+    towns_captured: i64,
+    /// Barracks flags + per-town bounties (fantasy, S8). Empty for transit.
+    is_barracks: &'a [bool],
+    bounty: &'a [i64],
+    /// Decadence pressure (fantasy, S9). 0 for transit.
+    decadence: i64,
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -240,6 +317,12 @@ struct Canonical<'a> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SaveGame {
     pub seed: u64,
+    /// The ruleset the save was played under (the fantasy-fork seam). Carried so `replay()` can
+    /// refuse to reconstruct a fantasy save on a transit city (S3 guard) — a mismatched ruleset
+    /// replays the command log against the wrong `World::apply` and silently diverges. Omitted
+    /// older saves deserialize as `"transit"` (the serde default).
+    #[serde(default = "crate::city::default_ruleset")]
+    pub ruleset: String,
     pub commands: Vec<Command>,
 }
 
@@ -275,6 +358,13 @@ impl World {
             .iter()
             .fold(0.0f32, |m, c| m.max(c.origin_w).max(c.dest_w))
             * 2.0;
+        // Mode toggle (S3): the frozen `ruleset` tag selects the game built here — transit today,
+        // `"arcadia"` at S6. One dispatch point; both boxes are unhashed, so this is golden-neutral.
+        let (ruleset, demand) = crate::ruleset::select(&city.ruleset);
+        // Baked starting corruption (fantasy S4): a more-corrupt continent begins further up the lose
+        // meter. 0 for every transit city / the golden fixture / native tests ⇒ byte-identical (zero
+        // re-pins). Clamped ≥ 0 (a negative bake can't bank surplus).
+        let initial_decadence = city.initial_decadence.max(0);
         World {
             seed,
             clock_ms: 0,
@@ -288,7 +378,18 @@ impl World {
             dispatch_dirty: false,
             captured_origin: Vec::new(),
             captured_dest: Vec::new(),
+            station_commodity: Vec::new(),
+            station_recipe: Vec::new(),
             spawn_accum: Vec::new(),
+            forge_stock: Vec::new(),
+            forge_accum: Vec::new(),
+            armies: crate::army::ArmySoA::default(),
+            town_value: Vec::new(),
+            towns_captured: 0,
+            is_barracks: Vec::new(),
+            bounty: Vec::new(),
+            decadence: initial_decadence,
+            tribute: 0,
             waiting: Vec::new(),
             ridership_total: 0,
             boardings: Vec::new(),
@@ -316,6 +417,8 @@ impl World {
             opex_accrued: 0,
             opex_rem: 0,
             router: Box::new(crate::routing::RaptorRouter),
+            ruleset,
+            demand,
             max_legs,
             agent_demand: false,
             population: None,
@@ -507,7 +610,19 @@ impl World {
     /// term, shortening a headway only raises a station's quality, and sqrt is monotone — none of
     /// them can ever lower the score (PLAN §7). Scale anchors: serving ~30% of the city's demand
     /// at full quality reads ~55; ~64% reads 80; 100 means everything served at min headway.
-    fn coverage_score(&self) -> u8 {
+    /// Run the demand model's `prepare` through the seam (the eager post-edit / on-demand catchment
+    /// recompute). Take-out swap so the boxed model can borrow `&mut self` without aliasing the
+    /// field; `NoopDemand` is a transient placeholder, never observed. `prepare` is idempotent
+    /// (gated on `demand_dirty`) and writes only NON-hashed derived caches, so this is
+    /// determinism-neutral — but routing it through the box keeps the seam the single demand path
+    /// (a fantasy ruleset recomputes ITS eligibility here).
+    pub(crate) fn demand_prepare(&mut self) {
+        let mut d = std::mem::replace(&mut self.demand, Box::new(crate::ruleset::NoopDemand));
+        d.prepare(self);
+        self.demand = d;
+    }
+
+    pub(crate) fn coverage_score(&self) -> u8 {
         let total: f32 = self.city.demand.cells.iter().map(|c| c.origin_w).sum();
         if total <= 0.0 {
             return 0;
@@ -680,7 +795,7 @@ impl World {
                 0.0
             },
             avg_load_factor,
-            coverage_score: self.coverage_score(),
+            coverage_score: self.ruleset.coverage_score(self),
             sim_hour: crate::tod::hour_of_day(self.clock_ms),
             period: crate::tod::period_label(crate::tod::hour_of_day(self.clock_ms)).to_string(),
             demand_multiplier: crate::tod::demand_multiplier(crate::tod::hour_of_day(self.clock_ms)) as f64,
@@ -694,6 +809,13 @@ impl World {
             opex_spent: self.opex_accrued as f64,
             per_station,
             per_line,
+            ruleset: crate::ruleset::canon(&self.city.ruleset).to_string(),
+            tribute: self.tribute as f64,
+            decadence: self.decadence as f64,
+            decadence_pct: crate::decadence::pct(self),
+            towns_captured: self.towns_captured as f64,
+            army_count: self.armies.len() as u32,
+            realm_lost: crate::decadence::is_lost(self),
         }
     }
 
@@ -764,6 +886,12 @@ impl World {
     /// Apply one command. Total + infallible: invalid commands return a `Rejected` event
     /// rather than panicking. Always records the command in the log.
     pub fn apply(&mut self, cmd: &Command) -> Vec<Event> {
+        // Mode gate (S3 disjoint-save guard): reject a command not meaningful in this ruleset BEFORE
+        // it mutates state or joins the save log, so a cross-mode command never pollutes a save. The
+        // transit default accepts every existing Command (golden-neutral — no early return today).
+        if let Err(reason) = self.ruleset.validate(cmd) {
+            return vec![Event::Rejected { reason }];
+        }
         let events = match cmd {
             Command::PlaceStation { x_mm, y_mm, name } => {
                 let id = StationId(self.stations.len() as u32);
@@ -774,6 +902,31 @@ impl World {
                     .push(Station::new(PointMm::new(*x_mm, *y_mm), name.clone()));
                 self.demand_dirty = true; // catchment capture must recompute
                 vec![Event::StationPlaced { id, name }]
+            }
+            Command::PlaceBarracks { x_mm, y_mm, name } => {
+                // A barracks IS a station (reuses the node/route substrate) + a flag. Armies launch
+                // only from a barracks on a built route, so this is the player's prerequisite for war.
+                let id = StationId(self.stations.len() as u32);
+                let name = name.clone().unwrap_or_else(|| format!("Barracks {}", id.0 + 1));
+                self.stations.push(Station::new(PointMm::new(*x_mm, *y_mm), name.clone()));
+                while self.is_barracks.len() < self.stations.len() {
+                    self.is_barracks.push(false);
+                }
+                self.is_barracks[id.index()] = true;
+                self.demand_dirty = true;
+                vec![Event::BarracksPlaced { id, name }]
+            }
+            Command::PostBounty { station, amount } => {
+                let s = station.index();
+                if s >= self.stations.len() || self.stations[s].removed {
+                    vec![Event::Rejected { reason: "PostBounty: unknown station".into() }]
+                } else {
+                    while self.bounty.len() < self.stations.len() {
+                        self.bounty.push(0);
+                    }
+                    self.bounty[s] = (*amount).max(0); // clamp ≥ 0; 0 clears the bounty
+                    vec![Event::BountyPosted { station: *station, amount: self.bounty[s] }]
+                }
             }
             Command::CreateLine { color, name, loop_line, mode, literal } => {
                 let id = LineId(self.lines.len() as u32);
@@ -1115,13 +1268,19 @@ impl World {
             }
             Command::SetDemandMode { agents } => {
                 self.agent_demand = *agents;
+                // Swap the demand box behind the seam so `tick`'s `demand.spawn` dispatches the
+                // right model. `agent_demand` (the bool) stays the source of truth for the
+                // population top-up inside `demand::grow`; the box is what `spawn` polymorphism
+                // keys on. Neither is hashed, so this is determinism-neutral.
                 if *agents {
+                    self.demand = Box::new(crate::ruleset::AgentDemand);
                     // Generate (or keep) the seed-derived population — sized to the city's homes.
                     if self.population.is_none() {
                         let n = self.agent_population_target();
                         self.population = Some(crate::agents::Population::generate(self, n, self.seed));
                     }
                 } else {
+                    self.demand = Box::new(crate::ruleset::GravityDemand);
                     self.population = None; // back to gravity; free the table
                 }
                 vec![Event::DemandModeSet { agents: *agents }]
@@ -1137,7 +1296,7 @@ impl World {
         // deciding where to build. `prepare` is internally gated on `demand_dirty` (a no-op
         // otherwise) and writes only derived caches (captured_origin/dest, footpaths) that are
         // NOT part of `Canonical`, so the state hash — and replay determinism — are unaffected.
-        crate::demand::prepare(self);
+        self.demand_prepare();
         events
     }
 
@@ -1170,6 +1329,20 @@ impl World {
             abandoned_at: &self.abandoned_at,
             opex_accrued: self.opex_accrued,
             opex_rem: self.opex_rem,
+            forge_stock: &self.forge_stock,
+            tribute: self.tribute,
+            army_line: &self.armies.line,
+            army_path: &self.armies.path,
+            army_s_mm: &self.armies.s_mm,
+            army_dir: &self.armies.dir,
+            army_strength: &self.armies.strength,
+            army_target: &self.armies.target,
+            army_state: &self.armies.state,
+            town_value: &self.town_value,
+            towns_captured: self.towns_captured,
+            is_barracks: &self.is_barracks,
+            bounty: &self.bounty,
+            decadence: self.decadence,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)
@@ -1186,6 +1359,7 @@ impl World {
                 y_mm: s.pos.y_mm as f64,
                 name: s.name.clone(),
                 removed: s.removed,
+                bounty: self.bounty.get(i).copied().unwrap_or(0) as f64,
             })
             .collect()
     }
@@ -1331,6 +1505,7 @@ impl World {
     pub fn save(&self) -> SaveGame {
         SaveGame {
             seed: self.seed,
+            ruleset: self.city.ruleset.clone(),
             commands: self.cmd_log.clone(),
         }
     }
@@ -1339,6 +1514,19 @@ impl World {
 /// Reconstruct a world by replaying a save (seed + command log) onto a fresh `CityData`.
 /// `tick_to` advances the clock by replaying ticks; pass the original tick schedule.
 pub fn replay(save: &SaveGame, city: CityData) -> World {
+    // Disjoint-save guard (S3): a save and the city it replays onto MUST be the same mode. A
+    // fantasy save replayed onto a transit city (or vice-versa) runs the command log against the
+    // wrong `World::apply` arms and silently diverges — exactly the class the golden pin can't see
+    // (different command vocab, not a hash shift). Compared canonicalised so `""` and `"transit"`
+    // are the same mode. A precondition, not user input: a mismatch is a save-loading bug.
+    assert_eq!(
+        crate::ruleset::canon(&save.ruleset),
+        crate::ruleset::canon(&city.ruleset),
+        "disjoint-save guard: save ruleset {:?} != city ruleset {:?} — replaying a save onto the \
+         wrong game mode would diverge",
+        save.ruleset,
+        city.ruleset,
+    );
     let mut w = World::new(save.seed, city);
     for cmd in &save.commands {
         w.apply(cmd);

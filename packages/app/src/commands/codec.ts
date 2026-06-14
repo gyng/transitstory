@@ -51,6 +51,12 @@ export const cmd = {
   setLineWaypoints: (line: number, waypoints: [number, number][][]): Command => ({ SetLineWaypoints: { line, waypoints } }),
   /** Switch the demand model: agents=true → seed-derived citizen commuters; false → gravity flow. */
   setDemandMode: (agents: boolean): Command => ({ SetDemandMode: { agents } }),
+  /** Fantasy/arcadia (S8): place a barracks (fields AI legions). Rejected by the transit ruleset. */
+  placeBarracks: (x_mm: number, y_mm: number, name: string | null = null): Command => ({
+    PlaceBarracks: { x_mm, y_mm, name },
+  }),
+  /** Fantasy/arcadia (S8): post a bounty on a town (Majesty steering). amount=0 clears it. */
+  postBounty: (station: number, amount: number): Command => ({ PostBounty: { station, amount } }),
 };
 
 export const WHOLE_LINE = 0xffffffff;
