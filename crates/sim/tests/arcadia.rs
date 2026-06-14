@@ -161,6 +161,53 @@ fn arcadia_tribute_is_monotonic() {
     assert!(w.tribute > 0, "the town accrued tribute over the run");
 }
 
+/// S11 split gauge — the fantasy PROGRESS coverage is MONOTONIC: extending the network to supply another
+/// town never lowers it (the supply channel). The conquest channel is monotonic by construction —
+/// `towns_captured` only ever rises (siege never decrements it). A superset network ⇒ score not lower.
+#[test]
+fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
+    let city = CityData {
+        id: "arcadia".into(),
+        ruleset: "arcadia".into(),
+        seed: 7,
+        grid_cell_mm: 100_000,
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: 0 }, // source
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // town A
+                DemandCell { x_mm: 0, y_mm: 1_500_000, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // town B
+            ],
+        },
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // source = 0
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None }); // town A = 1
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 1_500_000, name: None }); // town B = 2
+    // Serve town A only.
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..200 {
+        w.tick(50);
+    }
+    let before = w.stats_snapshot().coverage_score;
+    assert!(before > 0, "supplying a town registers on the progress gauge");
+    // Extend with a SECOND line that also supplies town B — a strict superset of served towns.
+    w.apply(&Command::CreateLine { color: 2, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(1), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(1), station: StationId(2), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(1), spec: 0, count: 2 });
+    for _ in 0..200 {
+        w.tick(50);
+    }
+    let after = w.stats_snapshot().coverage_score;
+    assert!(after >= before, "serving another town never lowers the gauge ({before} -> {after})");
+}
+
 /// The FANTASY golden pin (separate from the transit pin): the exact `state_hash` of the arcadia
 /// slice today. Guards the arcadia path against a uniform hash shift the `run()==run()` self-equality
 /// can't see — the same role `GOLDEN_TRANSIT_HASH` plays for transit. Re-pinned at every arcadia

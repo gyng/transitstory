@@ -670,6 +670,41 @@ impl World {
         ((frac.sqrt() * 100.0).round() as i64).clamp(0, 100) as u8
     }
 
+    /// Fantasy (arcadia) progress gauge (S11): the realm's standing = SUPPLY REACH (town demand on an
+    /// operational line) blended with CONQUEST (towns held), 0–100. The fantasy analog of the transit
+    /// coverage gauge — it answers "how much of the realm am I supplying + holding?" rather than the
+    /// decadence gauge's "how close is the rot?". MONOTONIC by construction (the build plan's split-gauge
+    /// invariant, one channel each): a superset network serves ≥ the same town sinks (supply term
+    /// non-decreasing), and `towns_captured` only ever rises (conquest term non-decreasing) — so the
+    /// score never falls. A derived READ (f32, never hashed), like `coverage_score`.
+    pub(crate) fn arcadia_coverage_score(&self) -> u8 {
+        let total_dest: f32 = self.city.demand.cells.iter().map(|c| c.dest_w).sum();
+        let mut served = 0.0f32; // town DEST demand on an operational line
+        let mut town_sinks = 0i64; // sink (town) stations — the conquest denominator
+        for s in 0..self.stations.len() {
+            if self.stations[s].removed {
+                continue;
+            }
+            let cd = self.captured_dest.get(s).copied().unwrap_or(0.0);
+            let co = self.captured_origin.get(s).copied().unwrap_or(0.0);
+            if cd > co && cd > 0.0 {
+                town_sinks += 1;
+                if self.best_headway_at(s).is_some() {
+                    served += cd;
+                }
+            }
+        }
+        let supply = if total_dest > 0.0 { (served / total_dest).clamp(0.0, 1.0) } else { 0.0 };
+        let conquest = if town_sinks > 0 {
+            (self.towns_captured as f32 / town_sinks as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // Supply is the bulk (the loop you run constantly); conquest is the territorial bonus.
+        let blend = 0.65 * supply + 0.35 * conquest;
+        ((blend.sqrt() * 100.0).round() as i64).clamp(0, 100) as u8
+    }
+
     /// Citizen population for agent demand — scales with the city's residential weight so a bigger
     /// city has more commuters, capped so memory + the one-time route warmup stay bounded. Also
     /// scales with the in-game day length (each citizen commutes twice per day, so trips per

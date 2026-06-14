@@ -27,9 +27,10 @@ pub struct ArcadiaRuleset;
 
 impl Ruleset for ArcadiaRuleset {
     fn coverage_score(&self, world: &World) -> u8 {
-        // Placeholder: the served-demand fraction, same shape as transit. S11 replaces this with the
-        // split gauge (supply-served % blended with the decadence-front distance, each monotonic).
-        world.coverage_score()
+        // S11 split gauge: the fantasy PROGRESS gauge — supply reach blended with conquest, monotonic
+        // (the realm you're building + holding). The decadence gauge (`decadence_pct`) is the other half
+        // — the rot you're racing — surfaced separately in the HUD/realm ledger. Two gauges, two jobs.
+        world.arcadia_coverage_score()
     }
 
     fn validate(&self, _cmd: &Command) -> Result<(), String> {

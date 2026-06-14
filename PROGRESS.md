@@ -2356,6 +2356,18 @@ network (Decadence 46%, mid-creep).
   visible, winnable race over the procedural continent. **Next: S11** (economy / tech / endless+prestige /
   rival), then the S7e multi-stage refinement.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 6: S11a, the fantasy progress gauge, 2026-06-14.** First (small)
+S11 chunk. `ArcadiaRuleset::coverage_score` was a transit placeholder; now it's the fantasy PROGRESS gauge
+(`World::arcadia_coverage_score`) — **supply reach** (town demand on an operational line) blended 0.65/0.35
+with **conquest** (towns held), 0–100. The "two gauges, two jobs" of the design (fantasy-game-design §4):
+this is what you're BUILDING (monotonic), the decadence gauge is the rot you're RACING (can rise). MONOTONIC
+by construction — a superset network serves ≥ the same sinks, `towns_captured` only rises — so it never
+falls. **Golden-neutral** (a derived stats read, f32, never hashed; both goldens unchanged). Test
+(`arcadia.rs`): extending the network to supply a second town never lowers the gauge. The HUD reads
+`coverage_score` already, so no frontend change. cargo **198/0**. **Next S11 chunks (shorter loops):**
+tribute→treasury economy (spend/opex), the `UnlockTech` bitset, the rival-kingdom seam; plus the deferred
+S7e multi-stage processing.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
