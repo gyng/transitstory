@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-// Winnability probe for the BAKED world (S7e disjoint chains + seeded decadence): connect a town's full
-// chain so tribute flows, let the capital-barracks field legions, run a long deterministic stretch, and
-// check that conquest engages and the realm holds (decadence not yet at the capital). Deterministic via
-// tickMs (no rAF). Logs the trajectory so balance is observable.
+// Winnability gate for the BAKED world (S7e disjoint chains + seeded decadence, baked-world balance pass):
+// connect two towns' full chains so tribute flows, let the capital-barracks field legions, run a long
+// deterministic stretch, and assert the full loop CLOSES — conquest completes AND the realm holds (the
+// rot doesn't reach the capital). Deterministic via tickMs (no rAF). Logs the trajectory so balance stays
+// observable. The native `tests/balance.rs::fantasy_baked_continent_is_winnable` is the authoritative
+// pacing gate (synthetic, exhaustive); this corroborates it end-to-end on the real bundle + geometry.
 test("fantasy baked world is winnable: supply → legions → conquest, realm holds", async ({ page }) => {
-  test.setTimeout(60_000); // heavier probe (3 lines + 8 tick-steps); generous under 15-worker parallel load
+  test.setTimeout(60_000); // heavier probe (3 lines + tick-steps); generous under 15-worker parallel load
   await page.goto("/?city=fantasy");
   await page.waitForFunction(() => (window as any).__APP_READY && (window as any).__MAP_READY, undefined, { timeout: 30_000 });
 
@@ -45,28 +47,32 @@ test("fantasy baked world is winnable: supply → legions → conquest, realm ho
   });
   expect(start.ruleset).toBe("arcadia");
 
-  // run a long deterministic stretch + sample the trajectory
+  // Run a long deterministic stretch (each tickMs step is instant — no rAF), sampling the trajectory,
+  // until conquest lands or the realm falls. Generous step budget: at the baked army speed (200 m/s) the
+  // 60 km nearest town is a ~5-min march, plus the supply ramp over the long real lines — comfortably
+  // inside the ~40-min decadence runway, but the real geometry is slower than the synthetic harness.
   const traj: any[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 24; i++) {
     const s = await page.evaluate(() => {
       (window as any).__ot_test.tickMs(150000); // 150 sim-sec per step
       const st = (window as any).__ot_test.stats();
       return { tribute: st.tribute, armyCount: st.armyCount, townsCaptured: st.townsCaptured, decadencePct: Math.round(st.decadencePct), realmLost: st.realmLost };
     });
     traj.push(s);
-    if (s.townsCaptured >= 1) break;
+    if (s.townsCaptured >= 1 || s.realmLost) break;
   }
   // eslint-disable-next-line no-console
   console.log("BAKED-WORLD BALANCE trajectory:", JSON.stringify(traj));
   const last = traj[traj.length - 1];
 
-  // What HOLDS today (the war engine engages on the baked world): the two-chain Liebig supply flows, and
-  // tribute funds legions that launch from the capital-barracks. NOT yet asserted — conquest COMPLETING +
-  // the realm holding — because baked-scale balance is WIP: the demo-tuned army-speed / town-resistance /
-  // decadence-rate don't fit the large continent (legions march but the long routes + the decadence
-  // integer-truncation leave conquest unreached). Tracked as a deferred balance pass; this probe logs the
-  // trajectory so that tuning has a baseline. (Gates only the engine-engages facts so the suite stays green.)
+  // The full loop CLOSES on the real baked world (the balance pass): the two-chain Liebig supply flows,
+  // tribute funds legions from the capital-barracks, a legion marches the continent, and conquest lands
+  // BEFORE the rot overruns the realm. (Pre-pass, conquest never reached: the demo army speed needed
+  // ~21 sim-min for the 60 km town — past this window — and the decadence integer-truncation froze the
+  // lose meter so "holds" was vacuous. Now army speed + the decadence accumulator are baked-scaled.)
   const everArmy = traj.some((s) => s.armyCount > 0);
   expect(last.tribute).toBeGreaterThan(0); // the two-chain Liebig supply flows
   expect(everArmy).toBe(true); // tribute funded legions that launched from the barracks
+  expect(last.townsCaptured).toBeGreaterThanOrEqual(1); // conquest COMPLETES — a town falls
+  expect(last.realmLost).toBe(false); // and the realm HOLDS (conquest outpaced the corruption)
 });

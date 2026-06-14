@@ -34,7 +34,7 @@ export interface RawCity {
     towns?: { kind: string; q: number; r: number; xMm: number; yMm: number; value: number; demands: string[]; decadence: number; recipe?: number[] }[];
     /** S4 decadence seed: the far-edge reservoir (tide origin + raider anchors), the clean grace radius,
      *  and the realm's baked STARTING decadence (seeded into world.decadence). */
-    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number };
+    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number };
   };
   /** Optional per-city rider patience (sim-ms) — overrides the core's default. The globe sets an
    *  air-scale value (90_000 = 45 clock-min): air travellers arrive for a departure rather than
@@ -86,6 +86,7 @@ export function buildCoreCity(
   const dec = raw.supplyGraph?.decadenceSeed;
   if (dec?.initialDecadence) core.initial_decadence = dec.initialDecadence; // baked starting corruption (S4)
   if (dec?.growthPerS) core.decadence_growth_per_s = dec.growthPerS; // baked lose-meter fill rate (balance)
+  if (dec?.armySpeedMmS) core.army_speed_mm_s = dec.armySpeedMmS; // baked legion march speed (continent scale)
   if (buildability) {
     core.buildability = {
       cell_m: buildability.cellM,

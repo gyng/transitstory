@@ -47,6 +47,14 @@ pub struct CityData {
     /// fixtures + native tests keep the shipped (demo) balance — byte-identical.
     #[serde(default)]
     pub decadence_growth_per_s: i64,
+    /// Fantasy (arcadia) balance: legion MARCH speed in mm per sim-second (a legion's pace riding the
+    /// rails). A per-city knob — the large baked continent (towns 60+ km from the capital) needs a far
+    /// faster legion than the 1.5 km demo, or conquest can't reach a town before the rot overruns the
+    /// realm. **0 (serde + `Default`) ⇒ the `army::ARMY_SPEED_MM_S` default**, so the demo, the arcadia
+    /// golden fixture, and every native test keep the shipped (demo) balance — byte-identical (with the
+    /// default the marching `s_mm` trajectory is unchanged; only a baked world that sets it diverges).
+    #[serde(default)]
+    pub army_speed_mm_s: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

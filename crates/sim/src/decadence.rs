@@ -36,9 +36,18 @@ pub(crate) fn step(world: &mut World, dt_ms: i64) {
         BASE_GROWTH_PER_S
     };
     let pushback = world.towns_captured.saturating_mul(CLEAR_PER_TOWN_PER_S);
-    let net = growth - pushback; // negative when conquest outpaces the rot
-    let delta = net.saturating_mul(dt) / 1000;
-    world.decadence = (world.decadence + delta).max(0);
+    let net = growth - pushback; // /sec; negative when conquest outpaces the rot
+    // Integer fixed-point (mirrors `forge::produce`): accumulate `net·dt` milli-units and extract whole
+    // units, keeping the sub-unit remainder so a gentle rate (< 20/s ⇒ < 1 unit per 50 ms tick) accrues
+    // EXACTLY instead of truncating to 0 — the bug that froze the baked continent's 6/s lose meter. The
+    // demo's 50/s now accrues at a true 50/s (was 40/s under the old `/1000` truncation), so the arcadia
+    // golden re-pins; transit never runs `war_step`, so `net`/`decadence` stay 0 and the accumulator is
+    // excluded from `Canonical` ⇒ the transit golden is untouched. `div_euclid` floors toward −∞ so a
+    // negative `net` (conquest outpacing the rot) drains exactly and the remainder stays in [0, 1000).
+    world.decadence_accum = world.decadence_accum.saturating_add(net.saturating_mul(dt));
+    let units = world.decadence_accum.div_euclid(1000);
+    world.decadence_accum -= units * 1000; // = rem_euclid(1000) ∈ [0, 1000) — bounded, exact
+    world.decadence = (world.decadence + units).max(0); // clamp ≥ 0: you can't bank surplus pushback
 }
 
 /// True once the corruption has reached the capital — the realm has fallen. A pure read; the GameLoop

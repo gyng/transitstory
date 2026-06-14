@@ -114,7 +114,10 @@ pub(crate) fn maybe_launch(world: &mut World) {
 /// index-ordered ⇒ deterministic. The siege trigger (reaching the target) + grind/flip are S8b.
 pub(crate) fn advance_armies(world: &mut World, dt_ms: i64) {
     let dt = dt_ms.max(0);
-    let step = ARMY_SPEED_MM_S.saturating_mul(dt) / 1000;
+    // March pace is a per-city knob (externalised so the large baked continent's legions move at
+    // continent scale). 0 ⇒ the `ARMY_SPEED_MM_S` default, so the demo + golden fixture are unchanged.
+    let speed = if world.city.army_speed_mm_s > 0 { world.city.army_speed_mm_s } else { ARMY_SPEED_MM_S };
+    let step = speed.saturating_mul(dt) / 1000;
     for i in 0..world.armies.len() {
         if world.armies.state[i] != MARCHING {
             continue;

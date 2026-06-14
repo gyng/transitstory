@@ -104,6 +104,12 @@ RESERVOIR_ANCHORS = 5      # far-edge coastal cells = the tide origin + raider s
 # (threshold 20000) must fill over ~thousands of sim-sec to leave room to ramp up. Balance knob; the headless
 # probe (e2e fantasy-conquest) certifies winnable. One captured town (pushback 300/s) then crushes the rot.
 DECADENCE_GROWTH_PER_S = 6
+# Legion MARCH speed (mm per sim-second) on the baked continent — FAR faster than the demo's 50 000 (army.rs
+# ARMY_SPEED_MM_S). The continent's towns sit 60+ km from the capital; at the demo pace a legion takes ~21
+# sim-min to reach the nearest town (just past a playable window), so conquest never lands. 200 000 (200 m/s)
+# crosses 60 km in ~5 min — a few-minute legion for an epic continent, well inside the ~40-min decadence
+# runway. Balance knob; tests/balance.rs `fantasy_baked_continent_is_winnable` certifies it conquers + holds.
+ARMY_SPEED_MM_S = 200_000
 
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a
@@ -417,7 +423,8 @@ def seed_decadence(biome, capital, towns):
     floors = [t["decadence"] for t in towns if t["kind"] == "neutral"]
     initial = int(round(sum(floors) / len(floors))) if floors else 0
     return {"capitalGraceHexes": CAPITAL_GRACE_HEXES, "reservoir": reservoir,
-            "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S}
+            "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
+            "armySpeedMmS": ARMY_SPEED_MM_S}
 
 
 def validate(biome, capital, fields):

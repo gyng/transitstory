@@ -2133,6 +2133,57 @@ remainder-accumulator → arcadia-golden re-pin, RED-first; war/decadence knob s
 a headless balance harness on the baked world; then gate `fantasy-conquest.spec.ts` on conquest-completes
 + realm-holds).
 
+**BAKED-WORLD BALANCE PASS — the procedural continent is now WINNABLE, 2026-06-14.** Resolves the BALANCE
+PROBE's two tracked findings (decadence freeze + conquest-doesn't-complete-at-scale). The continent's
+supply→legion→conquest loop now closes end-to-end, with the decadence rot a genuine race the player wins
+by conquering — measured both natively (synthetic harness) and in-browser (real bundle + geometry).
+
+- **Decadence remainder-accumulator (the freeze fix, RED-first → deliberate arcadia-golden re-pin):**
+  `decadence::step` truncated `net·dt/1000` to **0 per 50 ms tick** for any rate < 20/s, so the baked
+  continent's gentle 6/s froze the lose meter (unloseable). Replaced with an integer fixed-point
+  milli-unit accumulator (`world.decadence_accum`, mirroring `forge_accum`): accumulate `net·dt`, extract
+  whole units via `div_euclid(1000)` (floors toward −∞ so negative `net` — conquest outpacing the rot —
+  drains exactly), keep the remainder ∈ [0,1000). The demo's 50/s now accrues at a true 50/s (was 40/s
+  under truncation). **`decadence_accum` is EXCLUDED from `Canonical`** (transient, regenerated
+  bit-identically like `forge_accum`/`spawn_accum`), so the hash sees only the whole-unit `decadence`.
+  ⇒ **transit golden UNCHANGED** (transit never runs `war_step`; decadence stays 0); **only the arcadia
+  golden re-pinned** `0x5375_1cb0_558d_3b0f → 0x52d2_05b0_5502_b2aa` (the fixture's idle growth evolves
+  further over 1200 ticks). Tests (`decadence.rs`, RED-first — both read 0 under the old code): a gentle
+  6/s accrues EXACTLY 600 over 100 s and replays bit-for-bit; an idle baked realm (6/s from 5345) IS
+  overrun (the lose condition has teeth — the win must be earned).
+- **Army march speed externalised (`CityData.army_speed_mm_s`, the measured bottleneck):** the baked towns
+  sit **60–73 km** from the SW-coastal capital (~40× the 1.5 km demo); at the demo pace (50 000 mm/s =
+  50 m/s) the nearest town is a **~21 sim-min march** — just past the e2e probe's 1200 s window, which is
+  exactly why the probe saw no conquest. New per-city knob (default 0 ⇒ the `ARMY_SPEED_MM_S` const, so
+  the demo + arcadia golden are byte-identical). The bake (`build_world.py`) sets **200 000 mm/s**
+  (200 m/s — a 60 km march in ~5 min), threaded through `decadenceSeed.armySpeedMmS` → `buildCoreCity` →
+  `CityData`. Re-baked: certified seed still **12**, demand/buildability packs byte-identical, only the
+  manifest's new field changed.
+- **Continent balance harness (`tests/balance.rs::fantasy_baked_continent_is_winnable`, the authoritative
+  pacing gate):** mirrors the baked scale — towns 60 km out, **supply at continent length** (sources ~30 km
+  from the ARMS town, so the tribute ramp is realistic not optimistic), decadence 6/s from 5345, 2-input
+  ARMS Liebig — and self-plays headless across an army-speed sweep. Telemetry (printed): tribute @2448
+  ticks (~2 min), legion @3486 (~3 min); conquest @ 27 623 / 15 585 / **9 566** / 6 557 ticks for
+  50k / 100k / **200k** / 400k (timing scales with army speed — the march dominates). At the baked 200k:
+  conquest @ ~8 sim-min, decadence peak 8214 (**41%** of the 20 000 threshold) — genuine pressure. The
+  **earned-win CONTRAST** makes "the realm holds" non-vacuous: the horizon (60 000 ticks = 3000 sim-s)
+  runs PAST the idle-loss point (~48 840 ticks), and a control run with NO barracks (same supply, no
+  conquest) IS overrun (decadence peak 23 345 > 20 000, `lost`) — so the conquering realm holds *because
+  conquest pushed the rot back*, not because time ran out. Gate asserts supply → legion → conquest →
+  realm-holds + the idle-overrun contrast + ordering. (The harness is synthetic; that the *demo* speed
+  misses the window on the *real* seed-12 geometry is what the e2e proves — the harness certifies the
+  knobs are sound and the win is conquest-attributable.)
+- **e2e `fantasy-conquest.spec.ts` upgraded to GATE the closed loop** (was "engine-engages only"): now
+  asserts `townsCaptured ≥ 1` AND `!realmLost` on the real bundle. Trajectory on the real seed-12
+  continent: tribute flows → legion launches by ~300 s → **a town falls at ~600 s**, decadence climbing
+  31%→36%→**40%** then **dropping to 27%** as the captured-town pushback engages — the rot reversed by
+  conquest, realm holds. Deterministic via `tickMs`.
+- **Tiers:** cargo **183/0** (38 suites; +3: gentle-rate, idle-overrun, continent-winnable; transit
+  golden pinned, arcadia golden re-pinned) · vitest **21/21** (wasm-in-node determinism smoke green on the
+  rebuilt wasm) · build_world `--selftest` PASS · e2e — the conquest gate green on the production bundle
+  (full-suite run in progress). The decadence accumulator is integer-exact (no float in the hashed path);
+  determinism preserved.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

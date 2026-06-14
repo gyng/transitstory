@@ -107,6 +107,12 @@ pub struct World {
     /// while running, pushed back by conquest; reaching the capital threshold = the realm falls.
     /// **Hashed.** 0 for transit (never runs `war_step`). See [`crate::decadence`].
     pub decadence: i64,
+    /// Sub-unit (milli-unit) decadence remainder — the integer fixed-point accumulator that keeps the
+    /// per-tick `net·dt/1000` growth EXACT instead of truncating any rate below ~20/s to zero (the bug
+    /// that froze the gentle baked continent's lose meter). Derived/transient like `forge_accum` /
+    /// `spawn_accum` (regenerated bit-identically on replay from the same tick sequence), so NOT folded
+    /// into `Canonical`; only the whole-unit `decadence` is authoritative state.
+    pub decadence_accum: i64,
     /// Global TRIBUTE (fantasy, S7d): the supply score — accumulated as towns (sink nodes) consume the
     /// commodity delivered to them (the game's core payoff: feed towns → tribute). **Hashed** (in
     /// `Canonical`). Always 0 for transit (gravity never consumes commodities), so it adds one i64 to
@@ -389,6 +395,7 @@ impl World {
             is_barracks: Vec::new(),
             bounty: Vec::new(),
             decadence: initial_decadence,
+            decadence_accum: 0,
             tribute: 0,
             waiting: Vec::new(),
             ridership_total: 0,

@@ -120,6 +120,46 @@ fn initial_decadence_seeds_the_starting_corruption() {
     assert!(ticks_to_fall(10_000) < ticks_to_fall(0), "a more-corrupt continent falls sooner (more urgency)");
 }
 
+/// Balance regression (the baked-continent freeze bug): a GENTLE growth rate (< 20/s) must still move
+/// the lose meter. The old `net·dt/1000` truncated any rate under 20/s to 0 per 50 ms tick, so the
+/// baked continent's 6/s froze decadence ENTIRELY (the realm was unloseable). The milli-unit remainder
+/// accumulator accrues it EXACTLY: 6/s over 100 s = 600 — and replays bit-for-bit. (Under the old code
+/// this assertion reads 0, so it is the RED-first pin on the fix.)
+#[test]
+fn gentle_decadence_rate_accrues_exactly_not_frozen() {
+    let run = || {
+        let mut c = arcadia(vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 1.0, dest_w: 1.0, commodity: 0 }]);
+        c.decadence_growth_per_s = 6; // the baked continent's gentle rate (< 20/s ⇒ the old code froze it)
+        let mut w = World::new(11, c);
+        w.apply(&Command::SetRunning { running: true });
+        for _ in 0..2000 {
+            w.tick(50); // 100 sim-seconds @ 50 ms/tick
+        }
+        w
+    };
+    let w = run();
+    assert_eq!(w.decadence, 600, "a gentle 6/s rate accrues EXACTLY 6·100=600 (the truncation freeze is fixed)");
+    assert_eq!(w.state_hash(), run().state_hash(), "the accumulated decadence replays bit-for-bit");
+}
+
+/// The baked continent's lose condition has TEETH: an idle realm at the gentle baked rate (6/s from the
+/// certified seed-12 start 5345) IS overrun — so a continent win must be EARNED, not free. Under the old
+/// `/1000` truncation this rate froze at 5345 forever (the realm was unloseable); the accumulator makes
+/// it climb past the 20 000 threshold. (20000−5345)/6 ≈ 2442 s ≈ 48840 ticks; 60 000 ticks clears it.
+#[test]
+fn baked_continent_idle_realm_is_overrun() {
+    let mut c = arcadia(vec![DemandCell { x_mm: 0, y_mm: 0, origin_w: 1.0, dest_w: 1.0, commodity: 0 }]);
+    c.initial_decadence = 5345;
+    c.decadence_growth_per_s = 6;
+    let mut w = World::new(12, c);
+    w.apply(&Command::SetRunning { running: true });
+    assert!(!sim::decadence::is_lost(&w), "the baked realm starts below the threshold");
+    for _ in 0..60_000 {
+        w.tick(50);
+    }
+    assert!(sim::decadence::is_lost(&w), "an idle baked realm is overrun (the gentle 6/s rate has teeth now)");
+}
+
 /// Transit never runs `war_step` ⇒ no decadence, never lost — the lose condition is fantasy-only.
 #[test]
 fn transit_has_no_decadence() {

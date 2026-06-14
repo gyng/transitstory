@@ -170,7 +170,12 @@ fn arcadia_tribute_is_monotonic() {
 // fill), 0xb026…4c90 (S7b production-gated shipping), 0xbdca…fd34 (S7c deposit-at-sink).
 // S8: war_step + the is_barracks/bounty fields. S9: war_step now also advances `decadence` (which
 // GROWS for arcadia_world — it runs but never conquers), so the arcadia state evolves further.
-const GOLDEN_ARCADIA_HASH: u64 = 0x5375_1cb0_558d_3b0f;
+// Balance pass (baked-world): decadence::step now uses an exact milli-unit remainder accumulator
+// (decadence_accum) instead of truncating net·dt/1000, so the fixture's idle growth is a true 50/s
+// (was 40/s under truncation) ⇒ `decadence` evolves further over the 1200-tick run. Intended re-pin;
+// the accumulator is excluded from Canonical and transit stays 0, so the TRANSIT golden is unchanged.
+// Prior (pre-accumulator): 0x5375_1cb0_558d_3b0f.
+const GOLDEN_ARCADIA_HASH: u64 = 0x52d2_05b0_5502_b2aa;
 
 #[test]
 fn golden_arcadia_hash_pinned() {
