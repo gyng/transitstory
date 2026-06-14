@@ -23,6 +23,8 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
     placeBarracksLngLat: (lng, lat) => game.placeBarracks(lng, lat),
     postBounty: (station, amount) => game.postBounty(station, amount),
     unlockTech: (tech) => game.unlockTech(tech),
+    castSpell: (kind) => game.castSpell(kind),
+    setAutocast: (enabled) => game.setAutocast(enabled),
     drawLine: (ids) => game.drawLineByIds(ids),
     assignTrainset: (line, count) => game.assignTrainset(line, count),
     setHeadwayMs: (line, ms) => game.setHeadwayMs(line, ms),

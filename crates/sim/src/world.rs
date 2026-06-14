@@ -161,6 +161,13 @@ pub struct World {
     /// Recent spell FLASHES (render-only — a brief burst at each cast site, aged + retired in `spell::step`).
     /// NOT hashed (like the army/raider cartesian render fields).
     pub spell_flashes: Vec<crate::spell::SpellFlash>,
+    /// AUTOCAST toggle (fantasy, S11): off (default) ⇒ spells fire only on `Command::CastSpell` (the player
+    /// picks WHEN, the invest-vs-cast tradeoff); on ⇒ `spell::step` auto-fires the battery each tick. Set by
+    /// `Command::SetAutocast`. **Deliberately NOT in `Canonical`**: a pure input toggle whose EVERY effect
+    /// (mana / spells_cast / decadence_cells / raider.state / army.strength) is already hashed, and it is
+    /// only ever set by a deterministic command — so two replays of one log set it identically ⇒ excluding
+    /// it can't mask divergence, and the goldens (autocast never set) stay byte-identical with NO re-pin.
+    pub autocast: bool,
     /// Unlocked-tech bitset (fantasy, S11): bit `TECHS[id].bit` set ⇒ that upgrade is active. Bought with
     /// tribute via `Command::UnlockTech`; each bit gates a buff to an existing lever (forge rate / legion
     /// cost / decadence creep). **Hashed** (in `Canonical`). Always 0 for transit (the ruleset rejects
@@ -503,6 +510,7 @@ impl World {
             manpower: 0,
             spells_cast: 0,
             spell_flashes: Vec::new(),
+            autocast: false,
             tech_unlocked: 0,
             waiting: Vec::new(),
             ridership_total: 0,
@@ -972,6 +980,7 @@ impl World {
             realm_lost: crate::decadence::is_lost(self),
             tech_unlocked: self.tech_unlocked,
             spells_cast: self.spells_cast,
+            autocast: self.autocast,
         }
     }
 
@@ -1127,6 +1136,22 @@ impl World {
                         vec![Event::TechUnlocked { tech: *tech, balance_left: ch.balance(self) }]
                     }
                 }
+            }
+            Command::CastSpell { kind } => {
+                // Player-triggered, engine-targeted spell (S11). Gate on SPELLCRAFT (the spell arm tech);
+                // `spell::cast` auto-targets + spends mana, or returns false (no mutation) when mana is short
+                // or no valid target exists. The mana spend is the live tradeoff against teching (one pool).
+                if !crate::tech::is_unlocked(self.tech_unlocked, crate::tech::SPELLCRAFT) {
+                    vec![Event::Rejected { reason: "CastSpell: the spell arm needs the Arcane Awakening tech".into() }]
+                } else if crate::spell::cast(self, *kind) {
+                    vec![Event::SpellCast { kind: *kind, balance_left: self.mana }]
+                } else {
+                    vec![Event::Rejected { reason: "CastSpell: not enough mana, or no valid target".into() }]
+                }
+            }
+            Command::SetAutocast { enabled } => {
+                self.autocast = *enabled;
+                vec![Event::AutocastSet { enabled: *enabled }]
             }
             Command::CreateLine { color, name, loop_line, mode, literal } => {
                 let id = LineId(self.lines.len() as u32);

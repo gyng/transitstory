@@ -57,8 +57,12 @@ export const cmd = {
   }),
   /** Fantasy/arcadia (S8): post a bounty on a town (Majesty steering). amount=0 clears it. */
   postBounty: (station: number, amount: number): Command => ({ PostBounty: { station, amount } }),
-  /** Fantasy/arcadia (S11): buy a tech upgrade (index into the tech table) with tribute. Rejected in transit. */
+  /** Fantasy/arcadia (S11): buy a tech upgrade (index into the tech table) with mana. Rejected in transit. */
   unlockTech: (tech: number): Command => ({ UnlockTech: { tech } }),
+  /** Fantasy/arcadia (S11): cast a spell (auto-targeted, spends mana). kind = a `SPELLS` id. Rejected in transit. */
+  castSpell: (kind: number): Command => ({ CastSpell: { kind } }),
+  /** Fantasy/arcadia (S11): toggle autocast (on = the AI auto-fires spells each tick). Rejected in transit. */
+  setAutocast: (enabled: boolean): Command => ({ SetAutocast: { enabled } }),
 };
 
 /** An economy channel (S11 split) — MUST mirror crates/sim/tech.rs `Channel`. */
@@ -74,21 +78,31 @@ export const CHANNELS: Record<Channel, { glyph: string; statKey: "tribute" | "ma
  *  The HUD reads `Stats.techUnlocked` (bit per id) + `Stats.mana` to render locked/affordable/owned. */
 export interface TechDef { id: number; name: string; cost: number; tier: number; prereq: number; blurb: string }
 export const TECHS: TechDef[] = [
-  { id: 0, name: "Forge Mastery", cost: 30, tier: 1, prereq: -1, blurb: "Sources produce twice as fast" },
-  { id: 1, name: "Conscription", cost: 35, tier: 1, prereq: -1, blurb: "Legions cost half the manpower" },
-  { id: 2, name: "Sappers", cost: 30, tier: 1, prereq: -1, blurb: "The decadence tide creeps half as fast" },
-  { id: 3, name: "Production Surge", cost: 60, tier: 2, prereq: 0, blurb: "Sources produce three times as fast" },
-  { id: 4, name: "Bounty Mastery", cost: 45, tier: 2, prereq: 1, blurb: "Legions besieging a bountied town grind +50%" },
-  { id: 5, name: "Heavy Rail", cost: 70, tier: 2, prereq: 0, blurb: "Unlocks heavy rail — high-capacity arterial track" },
-  { id: 6, name: "Siege Doctrine", cost: 65, tier: 2, prereq: 1, blurb: "All besieging legions grind +50%" },
-  { id: 7, name: "Standing Garrison", cost: 55, tier: 2, prereq: 1, blurb: "Captured towns cut down raiders" },
-  { id: 8, name: "Forced March", cost: 55, tier: 2, prereq: 1, blurb: "Legions march +50% faster" },
-  { id: 9, name: "Ley Tap", cost: 45, tier: 2, prereq: 2, blurb: "Aether mints +50% mana" },
-  { id: 10, name: "Ward Lines", cost: 55, tier: 2, prereq: 2, blurb: "Your rails cut raiders down from +50% range" },
-  { id: 11, name: "Arcane Awakening", cost: 70, tier: 2, prereq: 2, blurb: "Awakens spells — the AI auto-casts Purge, Smite & Warpath" },
+  { id: 0, name: "Forge Mastery", cost: 18, tier: 1, prereq: -1, blurb: "Sources produce twice as fast" },
+  { id: 1, name: "Conscription", cost: 18, tier: 1, prereq: -1, blurb: "Legions cost half the manpower" },
+  { id: 2, name: "Sappers", cost: 16, tier: 1, prereq: -1, blurb: "The decadence tide creeps half as fast" },
+  { id: 3, name: "Production Surge", cost: 30, tier: 2, prereq: 0, blurb: "Sources produce three times as fast" },
+  { id: 4, name: "Bounty Mastery", cost: 28, tier: 2, prereq: 1, blurb: "Legions besieging a bountied town grind +50%" },
+  { id: 5, name: "Heavy Rail", cost: 36, tier: 2, prereq: 0, blurb: "Unlocks heavy rail — high-capacity arterial track" },
+  { id: 6, name: "Siege Doctrine", cost: 32, tier: 2, prereq: 1, blurb: "All besieging legions grind +50%" },
+  { id: 7, name: "Standing Garrison", cost: 30, tier: 2, prereq: 1, blurb: "Captured towns cut down raiders" },
+  { id: 8, name: "Forced March", cost: 30, tier: 2, prereq: 1, blurb: "Legions march +50% faster" },
+  { id: 9, name: "Ley Tap", cost: 24, tier: 2, prereq: 2, blurb: "Aether mints +50% mana" },
+  { id: 10, name: "Ward Lines", cost: 28, tier: 2, prereq: 2, blurb: "Your rails cut raiders down from +50% range" },
+  { id: 11, name: "Arcane Awakening", cost: 40, tier: 2, prereq: 2, blurb: "Awakens the spell arm — cast Purge, Smite & Warpath (or toggle autocast)" },
 ];
 /** True iff tech `id` is unlocked in the bitset (mirrors tech::is_unlocked; bit == id for the shipped set). */
 export const techUnlocked = (bits: number, id: number): boolean => (bits & (1 << id)) !== 0;
+
+/** The spell table — MUST mirror crates/sim/spell.rs (kind id, mana cost). Auto-targeted; the player picks
+ *  WHEN to cast (every cast spends mana from the same pool that buys tech). Gated by Arcane Awakening (id 11).
+ *  The HUD reads `Stats.mana` to enable/disable each button. `glyph` is the cast-flash hue's sibling. */
+export interface SpellDef { kind: number; name: string; cost: number; glyph: string; blurb: string }
+export const SPELLS: SpellDef[] = [
+  { kind: 0, name: "Purge", cost: 14, glyph: "✷", blurb: "Retreat the decadence tide — clear the corruption nearest the capital" },
+  { kind: 1, name: "Smite", cost: 10, glyph: "⚡", blurb: "Strike down a raider that has breached the rail cordon" },
+  { kind: 2, name: "Warpath", cost: 18, glyph: "⚔", blurb: "Empower the most-stalled siege to crack a deep garrison" },
+];
 
 export const WHOLE_LINE = 0xffffffff;
 export const BUILD_MODE = { SURFACE: 0, ELEVATED: 1, TUNNEL: 2 } as const;

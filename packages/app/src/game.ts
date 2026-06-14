@@ -58,6 +58,7 @@ const EMPTY_STATS: Stats = {
   realmLost: false,
   techUnlocked: 0,
   spellsCast: 0,
+  autocast: false,
 };
 
 export type Mode = "build" | "run";
@@ -458,6 +459,23 @@ export class Game {
    *  from the next snapshot. The tech panel calls this; `tech` is an index into the tech table. */
   unlockTech(tech: number): void {
     this.bridge.apply(cmd.unlockTech(tech));
+    this.refresh();
+  }
+
+  /** Cast a spell (fantasy, S11) — auto-targeted, spends mana. The core gates on the SPELLCRAFT tech +
+   *  afford + a valid target (rejects with no mutation otherwise), so the UI fires optimistically and
+   *  resyncs from the next snapshot. The spell bar calls this; `kind` is an index into the spell table. */
+  castSpell(kind: number): void {
+    // Surface a no-op cast (not enough mana / no valid target) as the transient toast + alert chime, so a
+    // press that does nothing still has a visible echo (AGENTS: every Command needs feedback).
+    this.noteRejections(this.bridge.apply(cmd.castSpell(kind)));
+    this.refresh();
+  }
+
+  /** Toggle autocast (fantasy, S11) — on = the AI auto-fires spells at the biggest threat each tick;
+   *  off (default) = spells fire only on `castSpell`. Command-sourced (lives in the save/replay). */
+  setAutocast(enabled: boolean): void {
+    this.bridge.apply(cmd.setAutocast(enabled));
     this.refresh();
   }
 

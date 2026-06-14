@@ -23,6 +23,8 @@ declare global {
       placeBarracksLngLat(lng: number, lat: number): number;
       postBounty(station: number, amount: number): void;
       unlockTech(tech: number): void;
+      castSpell(kind: number): void;
+      setAutocast(enabled: boolean): void;
       drawLine(stationIds: number[]): number;
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;

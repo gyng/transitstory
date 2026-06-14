@@ -121,6 +121,12 @@ ARMY_SPEED_MM_S = 200_000
 # rail-network defenses. (Below 20/s the gain still floors to 1 — never freezes; a finer/slower runway
 # would need a per-cell remainder accumulator, deferred.) Balance knob; the conquest e2e certifies winnable.
 DECADENCE_CREEP_PER_S = 20
+# Raw PRODUCTION rate (µ-units per source-weight per ms) for the baked continent — the pace of the whole
+# economy (gold/manpower/mana). The native default is 2 (a slow trickle that left tech/spells unreachable
+# on the large baked map); 10 (5×) makes the 3-channel economy snappy so the tech tree + spell arm are
+# reachable in a sane window. A per-city knob (CityData.production_micro); the demo/golden/native worlds
+# keep the slow default (golden-neutral). Playtest-calibrated balance knob.
+PRODUCTION_MICRO = 10
 
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a
@@ -471,6 +477,7 @@ def seed_decadence(biome, capital, towns):
     return {"capitalGraceHexes": CAPITAL_GRACE_HEXES, "reservoir": reservoir,
             "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
             "armySpeedMmS": ARMY_SPEED_MM_S, "creepPerS": DECADENCE_CREEP_PER_S,
+            "productionMicro": PRODUCTION_MICRO,
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
 
 

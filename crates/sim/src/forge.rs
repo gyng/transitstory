@@ -65,7 +65,9 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
     } else {
         1
     };
-    let rate = RATE_MICRO_PER_WEIGHT_MS * prod_mult;
+    // Base rate is a per-city knob (0 ⇒ the slow default — golden-neutral; the baked world sets it snappy).
+    let base_micro = if world.city.production_micro > 0 { world.city.production_micro } else { RATE_MICRO_PER_WEIGHT_MS };
+    let rate = base_micro * prod_mult;
     // S11 AETHERIC_FONT: aether chains mint +50% MANA (×3/2). 0 ⇒ ×1, byte-identical.
     let mana_num = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::AETHERIC_FONT) { 3 } else { 2 };
     for s in 0..n {

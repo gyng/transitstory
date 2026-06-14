@@ -521,6 +521,7 @@
       "growthPerS": 6,
       "armySpeedMmS": 200000,
       "creepPerS": 20,
+      "productionMicro": 10,
       "capitalXMm": 14722432,
       "capitalYMm": 8250000
     }

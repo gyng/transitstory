@@ -61,8 +61,10 @@ impl Ruleset for ArcadiaRuleset {
         } else {
             crate::decadence_field::step(world, dt_ms);
         }
-        // The SPELL ARM (S11): mana auto-cast spells at the biggest threat, AFTER the tide is derived so a
-        // Purge retreats the front for next tick + reads the settled field. Inert without SPELLCRAFT.
+        // The SPELL ARM (S11): ages spell flashes and, if AUTOCAST is on, auto-fires the battery at the
+        // biggest threat — AFTER the tide is derived so a Purge retreats the front for next tick + reads the
+        // settled field. By default spells are PLAYER-cast (`Command::CastSpell`); this only auto-fires when
+        // the player has toggled autocast on. Inert without SPELLCRAFT.
         crate::spell::step(world, dt_ms);
     }
 }

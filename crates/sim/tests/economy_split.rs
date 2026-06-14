@@ -27,7 +27,7 @@ fn channel_of_maps_commodities_to_their_yield() {
     assert_eq!(channel_of(0), Channel::Gold, "ORE → gold");
     assert_eq!(channel_of(1), Channel::Manpower, "GRAIN → manpower (V3: food → soldiers)");
     assert_eq!(channel_of(2), Channel::Mana, "AETHER → mana");
-    assert_eq!(channel_of(3), Channel::Gold, "FUEL → gold");
+    assert_eq!(channel_of(3), Channel::Mana, "FUEL → mana (arcane fuel; makes mana reachable via BREAD)");
     assert_eq!(channel_of(4), Channel::Manpower, "INGOT (a war good) → manpower");
     assert_eq!(channel_of(7), Channel::Manpower, "a final war good → manpower");
 }

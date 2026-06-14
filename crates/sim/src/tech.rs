@@ -53,13 +53,15 @@ impl Channel {
     }
 }
 
-/// Which channel a DELIVERED commodity mints. The owner-locked roles (V3): AETHER → MANA (the tech+magic
-/// arm); GRAIN (food → soldiers) + INGOT/ARMS (war materiel, ≥ `forge::FIRST_MID`) → MANPOWER (the legion
-/// economy); ORE + FUEL → GOLD (the player's trade economy). Grain makes manpower ACCESSIBLE via the early
-/// BREAD chain (you don't need a forge to field legions); arms add more.
+/// Which channel a DELIVERED commodity mints (alongside the universal GOLD base). The roles, tuned so the
+/// EARLY 2-stage BREAD town (grain+fuel) feeds ALL THREE channels — every channel is reachable without the
+/// hard 3-stage forge chain:
+///   AETHER + FUEL → MANA (the tech+magic arm — fuel is arcane fuel; aether the pure source).
+///   GRAIN (food → soldiers) + INGOT/ARMS (war materiel, ≥ `forge::FIRST_MID`) → MANPOWER (legions).
+///   ORE → GOLD (trade) — and the additive base mints gold on every delivery regardless.
 #[inline]
 pub fn channel_of(commodity: usize) -> Channel {
-    if commodity == crate::forge::AETHER {
+    if commodity == crate::forge::AETHER || commodity == crate::forge::FUEL {
         Channel::Mana
     } else if commodity == crate::forge::GRAIN || commodity >= crate::forge::FIRST_MID {
         Channel::Manpower
@@ -109,19 +111,21 @@ pub const WARD_LINES: usize = 10;
 pub const SPELLCRAFT: usize = 11;
 
 /// The shipped tech table. Index = the id a `Command::UnlockTech { tech }` carries. APPEND only.
+// Costs are MANA, tuned against the baked world's economy (playtest-calibrated): a tier-1 spine ~early,
+// the spell arm a mid-game spike. Tunable via the harness/playtest.
 pub const TECHS: [Tech; 12] = [
-    Tech { bit: 0, cost: 30, prereq: -1 }, // FORGE_MASTERY
-    Tech { bit: 1, cost: 35, prereq: -1 }, // CONSCRIPTION
-    Tech { bit: 2, cost: 30, prereq: -1 }, // SAPPERS
-    Tech { bit: 3, cost: 60, prereq: FORGE_MASTERY as i32 }, // PRODUCTION_SURGE
-    Tech { bit: 4, cost: 45, prereq: CONSCRIPTION as i32 }, // BOUNTY_MASTERY
-    Tech { bit: 5, cost: 70, prereq: FORGE_MASTERY as i32 }, // HEAVY_RAIL
-    Tech { bit: 6, cost: 65, prereq: CONSCRIPTION as i32 }, // SIEGE_DOCTRINE
-    Tech { bit: 7, cost: 55, prereq: CONSCRIPTION as i32 }, // STANDING_GARRISON
-    Tech { bit: 8, cost: 55, prereq: CONSCRIPTION as i32 }, // WAR_MARCH
-    Tech { bit: 9, cost: 45, prereq: SAPPERS as i32 }, // AETHERIC_FONT
-    Tech { bit: 10, cost: 55, prereq: SAPPERS as i32 }, // WARD_LINES
-    Tech { bit: 11, cost: 70, prereq: SAPPERS as i32 }, // SPELLCRAFT (the spell arm)
+    Tech { bit: 0, cost: 18, prereq: -1 }, // FORGE_MASTERY
+    Tech { bit: 1, cost: 18, prereq: -1 }, // CONSCRIPTION
+    Tech { bit: 2, cost: 16, prereq: -1 }, // SAPPERS (cheapest spine — the survival pick)
+    Tech { bit: 3, cost: 30, prereq: FORGE_MASTERY as i32 }, // PRODUCTION_SURGE
+    Tech { bit: 4, cost: 28, prereq: CONSCRIPTION as i32 }, // BOUNTY_MASTERY
+    Tech { bit: 5, cost: 36, prereq: FORGE_MASTERY as i32 }, // HEAVY_RAIL
+    Tech { bit: 6, cost: 32, prereq: CONSCRIPTION as i32 }, // SIEGE_DOCTRINE
+    Tech { bit: 7, cost: 30, prereq: CONSCRIPTION as i32 }, // STANDING_GARRISON
+    Tech { bit: 8, cost: 30, prereq: CONSCRIPTION as i32 }, // WAR_MARCH
+    Tech { bit: 9, cost: 24, prereq: SAPPERS as i32 }, // AETHERIC_FONT (boots the mana economy → cheaper)
+    Tech { bit: 10, cost: 28, prereq: SAPPERS as i32 }, // WARD_LINES
+    Tech { bit: 11, cost: 40, prereq: SAPPERS as i32 }, // SPELLCRAFT (the spell arm — the mana apex)
 ];
 
 /// The channel every tech is paid in — MANA (the sole tech resource).

@@ -32,7 +32,11 @@ export type Command =
   // fantasy/arcadia (S8): post a bounty on a town (Majesty steering — baits AI legions). Rejected in transit.
   | { PostBounty: { station: number; amount: number } }
   // fantasy/arcadia (S11): buy a tech upgrade (index into the tech table) with tribute. Rejected in transit.
-  | { UnlockTech: { tech: number } };
+  | { UnlockTech: { tech: number } }
+  // fantasy/arcadia (S11): cast a spell (kind = spell id). Auto-targeted, player-cast; spends mana. Rejected in transit.
+  | { CastSpell: { kind: number } }
+  // fantasy/arcadia (S11): toggle autocast — on = the AI auto-fires spells each tick. Rejected in transit.
+  | { SetAutocast: { enabled: boolean } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -55,6 +59,8 @@ export type Event =
   | { BarracksPlaced: { id: number; name: string } }
   | { BountyPosted: { station: number; amount: number } }
   | { TechUnlocked: { tech: number; balance_left: number } }
+  | { SpellCast: { kind: number; balance_left: number } }
+  | { AutocastSet: { enabled: boolean } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -154,8 +160,10 @@ export interface Stats {
   /** Unlocked-tech bitset (S11) — bit `TECH[id].bit` set ⇒ that upgrade is active. The HUD reads it
    *  with `mana` to render each tech as locked / affordable / unlocked. */
   techUnlocked: number;
-  /** Cumulative spells the AI has cast (S11 spell arm) — shown in the HUD once SPELLCRAFT is unlocked. */
+  /** Cumulative spells cast (S11 spell arm) — shown in the HUD once SPELLCRAFT is unlocked. */
   spellsCast: number;
+  /** Autocast toggle state (S11) — the spell bar's checkbox reflects it. False (manual cast) by default. */
+  autocast: boolean;
 }
 
 export interface StationView {

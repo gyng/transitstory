@@ -72,6 +72,13 @@ pub struct CityData {
     /// are unaffected; only a baked world that sets it (slow) gets the calibrated runway.
     #[serde(default)]
     pub decadence_creep_per_s: i64,
+    /// Fantasy (arcadia) S11 tuning: the raw PRODUCTION rate (µ-units per source-weight per ms) — the pace
+    /// of the WHOLE economy (gold/manpower/mana). A per-city knob so the BAKED continent can run a snappy
+    /// economy (tech + spells reachable in a sane window) while the demo/golden/native worlds keep the slow
+    /// default. **0 (serde + `Default`) ⇒ `forge::RATE_MICRO_PER_WEIGHT_MS`**, so every existing world +
+    /// both golden fixtures are byte-identical (golden-neutral); only a baked world that sets it speeds up.
+    #[serde(default)]
+    pub production_micro: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

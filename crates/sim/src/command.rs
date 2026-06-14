@@ -153,6 +153,22 @@ pub enum Command {
     UnlockTech {
         tech: u8,
     },
+    /// Cast a spell (fantasy/arcadia, S11 — the mana spell arm). `kind` is a `spell::*` id (PURGE_FRONT/
+    /// SMITE/WARPATH). AUTO-TARGETED: the engine picks the target (the front nearest the capital, the
+    /// breaching raider, the most-stalled siege) — the player chooses WHEN, not WHERE. The "when" IS the
+    /// lever: every cast spends MANA from the SAME pool that buys tech, so casting now is teching later.
+    /// A no-op (no mana spent — surfaced as `Rejected`, not a panic) if mana is short or no valid target
+    /// exists. FANTASY-ONLY + needs the SPELLCRAFT tech (else rejected).
+    CastSpell {
+        kind: u8,
+    },
+    /// Toggle AUTOCAST (fantasy/arcadia, S11): on ⇒ the spell arm auto-fires the whole battery each tick at
+    /// the biggest threat (the Majesty-style hands-off mode); off (the DEFAULT) ⇒ spells fire only on
+    /// `CastSpell`. Command-sourced — NOT a client knob like speed — because it changes whether casts mutate
+    /// sim state on a tick, so it must replay deterministically. FANTASY-ONLY.
+    SetAutocast {
+        enabled: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -177,5 +193,7 @@ pub enum Event {
     BarracksPlaced { id: StationId, name: String },
     BountyPosted { station: StationId, amount: i64 },
     TechUnlocked { tech: u8, balance_left: i64 },
+    SpellCast { kind: u8, balance_left: i64 },
+    AutocastSet { enabled: bool },
     Rejected { reason: String },
 }

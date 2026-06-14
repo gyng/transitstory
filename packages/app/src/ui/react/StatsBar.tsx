@@ -123,7 +123,7 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         </div>
       )}
       {Math.round(s.spellsCast) > 0 && (
-        <div data-testid="spells" style={{ color: "#7a4ed2", fontWeight: 600 }} title="Spells your magi have auto-cast (Purge / Smite / Warpath), drawn from your mana — unlocked by Arcane Awakening.">
+        <div data-testid="spells" style={{ color: "#7a4ed2", fontWeight: 600 }} title="Spells cast (Purge / Smite / Warpath), drawn from your mana — cast them from the spell bar, or toggle autocast.">
           ✦ {Math.round(s.spellsCast)} cast
         </div>
       )}

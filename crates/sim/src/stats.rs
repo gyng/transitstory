@@ -77,6 +77,9 @@ pub struct StatsSnapshot {
     /// Cumulative spells cast (S11 spell arm) — the HUD shows the realm's magic is active once SPELLCRAFT
     /// is unlocked. 0 for transit / a realm without the spell arm.
     pub spells_cast: u32,
+    /// AUTOCAST toggle state (S11) — the HUD's spell-bar checkbox reflects it. False (manual cast) by
+    /// default; always false for transit.
+    pub autocast: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

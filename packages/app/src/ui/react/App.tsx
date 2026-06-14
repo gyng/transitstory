@@ -24,6 +24,7 @@ import { Toolbar } from "./Toolbar";
 import { OnboardingCoach } from "./Onboarding";
 import { ObjectivePanel } from "./Objectives";
 import { TechPanel } from "./TechPanel";
+import { SpellBar } from "./SpellBar";
 import { ServiceReport } from "./ServiceReport";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
@@ -228,6 +229,7 @@ export function App() {
       <StatsBar />
       {scenario && <ObjectivePanel scenario={scenario} />}
       <TechPanel />
+      <SpellBar />
       <Panels />
       <ServiceReport />
       <DraftControls />

@@ -42,5 +42,8 @@ test("fantasy baked world: rail-only gate + the tech panel", async ({ page }) =>
   });
   expect(techRejected.after).toBe(techRejected.before); // mana-gated: no mana, no tech
 
+  // The SPELL BAR is gated behind Arcane Awakening (tech 11) — absent on a fresh realm (no SPELLCRAFT yet).
+  await expect(page.getByTestId("spell-bar")).toHaveCount(0);
+
   await page.screenshot({ path: "../../docs/progress/fantasy-tech.png" });
 });
