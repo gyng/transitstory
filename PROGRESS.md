@@ -2440,6 +2440,36 @@ the baked world (lineCount 0, stationCount 42), dismisses after the first line
 ([docs/progress/fantasy-onboarding.png](docs/progress/fantasy-onboarding.png)); tsc clean; no e2e depends
 on the onboarding. The fantasy game now states its goal on entry.
 
+**AUTONOMOUS ROADMAP LOOP — iteration 11: S7e MULTI-STAGE processing (raw→mid→final), 2026-06-14.** The
+deferred Forge-Line depth: a PROCESSOR node converts raws into a processed good shipped onward, so the
+supply chain can be ore → INGOT → ARMS (not just direct 2-input). The engine + a commodity-aware router
+land; making the baked world actually USE it (forge nodes + 3-stage chains) is the follow-up. **Additive +
+golden-neutral by construction** (gated on `has_multistage`), adversarially verified (3-lens workflow,
+0 bugs).
+
+- **Processor (`forge::produce`):** a node whose output is a PROCESSED good (`station_commodity ≥
+  FIRST_MID=4`) CONVERTS its recipe inputs (Liebig min, capped by output headroom) into its output and
+  ships it onward; it is SKIPPED in the consume→tribute loop (only true final sinks pay tribute). Excludes
+  its OWN output from its inputs (a robustness fix from the review — a stray self-dest can't deadlock the
+  Liebig). A raw output (< FIRST_MID) is the unchanged accrual path.
+- **Commodity-aware routing (`pick_dest`, the SHARED router):** a cart carrying commodity C is weighted by
+  the destination's dest-OF-C (`dest_by_comm[d][C]`), so a raw reaches its processor and a mid its final
+  sink — not the highest-total-dest node. Gated on `world.has_multistage` (true only when the world uses a
+  mid/final good). When false, `pick_dest` takes the EXACT pre-existing `captured_dest` path → identical
+  RNG draws → byte-identical: **transit, the current baked world, and both golden fixtures are unchanged
+  (NO re-pin)**. New non-hashed `World.dest_by_comm` + `has_multistage` (read-caches, absent from Canonical).
+- **Tests (`forge_commodity.rs` +3):** the 3-stage chain ore→forge→INGOT→arms-town→tribute closes through
+  the COMMAND path (no INGOT source ⇒ tribute ⟺ the forge converted ore + routing carried ore→forge and
+  ingot→town); it replays bit-for-bit; a processor with a self-recipe still forges (the footgun guard).
+- **Adversarial verification (workflow, 3 lenses — all PASS, 0 bugs):** golden-neutrality/determinism on
+  the shared router (transit byte-identical, both goldens unchanged), multi-stage correctness (no deadlock/
+  starvation/double-count), and code correctness (bounds/overflow/borrow/panic-safety). The one concern (the
+  self-recipe footgun) was fixed + pinned.
+- Tiers: cargo **202/0** (both goldens unchanged — golden-neutral) · the conquest e2e green with an
+  IDENTICAL trajectory (the baked world is raw-only ⇒ `has_multistage` false ⇒ routing unperturbed). **Next
+  (S7e step 2, optional):** the bake places forge nodes + 3-stage chains on the continent (a re-bake +
+  conquest-e2e re-verify, since it changes the baked supply topology) — the engine is ready for it.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

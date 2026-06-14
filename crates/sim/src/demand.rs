@@ -178,8 +178,27 @@ pub(crate) fn prepare(world: &mut World) {
     }
     world.footpaths = footpaths;
 
+    // S7e multi-stage: flatten the per-commodity DEST weights for commodity-aware routing, and flag
+    // whether this world uses any PROCESSED good (a processor output, or a sink that wants a mid/final).
+    // A raw-only world (transit, the current baked world) ⇒ `has_multistage` false ⇒ routing unchanged.
+    let mut flat_dest = vec![0f32; n * crate::forge::N_COMMODITIES];
+    let mut has_multistage = false;
+    for (s, by) in dest_by_comm.iter().enumerate() {
+        for (c, &w) in by.iter().enumerate() {
+            flat_dest[s * crate::forge::N_COMMODITIES + c] = w;
+            if c >= crate::forge::FIRST_MID && w > 0.0 {
+                has_multistage = true;
+            }
+        }
+    }
+    if station_commodity.iter().any(|&c| (c as usize) >= crate::forge::FIRST_MID) {
+        has_multistage = true;
+    }
+
     world.captured_origin = origin;
     world.captured_dest = dest;
+    world.dest_by_comm = flat_dest;
+    world.has_multistage = has_multistage;
     world.station_commodity = station_commodity;
     world.station_recipe = station_recipe;
     world.spawn_accum.resize(n, 0.0);
@@ -221,6 +240,8 @@ pub(crate) fn spawn_modulated(world: &mut World, dt_ms: i64, mult: f32, bias: f3
         ref footpaths,
         ref captured_origin,
         ref captured_dest,
+        ref dest_by_comm,
+        has_multistage,
         ref station_commodity,
         ref mut spawn_accum,
         ref mut waiting,
@@ -264,9 +285,13 @@ pub(crate) fn spawn_modulated(world: &mut World, dt_ms: i64, mult: f32, bias: f3
                 }
             }
             spawn_accum[s] -= 1.0;
-            if let Some(dest) =
-                pick_dest(stations, serving, captured_origin, captured_dest, access, bias, s, rng)
-            {
+            // S7e: a cart carries its origin's output commodity; commodity-aware routing (multi-stage
+            // worlds only) sends it to a node that WANTS that commodity, not the highest-total-dest node.
+            let trip_commodity = station_commodity.get(s).copied().unwrap_or(0) as usize;
+            if let Some(dest) = pick_dest(
+                stations, serving, captured_origin, captured_dest, dest_by_comm, has_multistage,
+                trip_commodity, access, bias, s, rng,
+            ) {
                 // Route across the network (transfers at interchanges), cached per O/D pair.
                 let entry = route_cache
                     .entry((s as u32, dest.0))
@@ -351,6 +376,9 @@ fn pick_dest(
     serving: &[Vec<crate::ids::LineId>],
     captured_origin: &[f32],
     captured_dest: &[f32],
+    dest_by_comm: &[f32],
+    has_multistage: bool,
+    commodity: usize,
     access: &[i64],
     bias: f32,
     origin: usize,
@@ -364,8 +392,16 @@ fn pick_dest(
         if d_idx == origin || serving.get(d_idx).map(|v| v.is_empty()).unwrap_or(true) {
             continue;
         }
-        // AM: pulled toward jobs (captured_dest); PM: toward homes (captured_origin).
-        let cd = captured_dest.get(d_idx).copied().unwrap_or(0.0);
+        // AM: pulled toward jobs (captured_dest); PM: toward homes (captured_origin). S7e multi-stage:
+        // when this world uses processed goods, weight by the destination's dest OF THE CART'S COMMODITY
+        // (so a raw goes to its processor, a mid to its final sink) — not the total dest that would lure
+        // it to the highest-demand node regardless of what it wants. Raw-only worlds keep total dest
+        // (byte-identical: transit + the current baked world never set `has_multistage`).
+        let cd = if has_multistage {
+            dest_by_comm.get(d_idx * crate::forge::N_COMMODITIES + commodity).copied().unwrap_or(0.0)
+        } else {
+            captured_dest.get(d_idx).copied().unwrap_or(0.0)
+        };
         let cor = captured_origin.get(d_idx).copied().unwrap_or(0.0);
         let attract = (bias * cd + (1.0 - bias) * cor) as f64;
         let decay = if use_access {

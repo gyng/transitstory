@@ -66,6 +66,16 @@ pub struct World {
     /// Per-station captured origin (resident) and destination (job) weight from the grid.
     pub captured_origin: Vec<f32>,
     pub captured_dest: Vec<f32>,
+    /// Fantasy (arcadia) S7e multi-stage: per-station captured DEST weight broken down BY commodity, flat
+    /// `station * N_COMMODITIES + commodity`. Lets the router send a cart to a node that WANTS its
+    /// commodity (a raw → its processor, a mid → its final sink) instead of the highest-TOTAL-dest node.
+    /// DERIVED in `prepare` (not hashed, a read-cache). Only consulted when `has_multistage`, so raw-only
+    /// worlds (transit, the current baked world, the golden fixtures) route exactly as before.
+    pub dest_by_comm: Vec<f32>,
+    /// Fantasy (arcadia) S7e multi-stage: true iff this world uses any PROCESSED good (a station whose
+    /// output commodity is ≥ `forge::FIRST_MID`, i.e. a processor). Gates commodity-aware routing so a
+    /// raw-only world is byte-identical (no re-pin, no balance change); set in `prepare`. NOT hashed.
+    pub has_multistage: bool,
     /// Fantasy (arcadia) S7e: per-station OUTPUT commodity — the dominant origin-commodity of a station's
     /// captured cells (ORE=0 default). A net-source node produces THIS commodity (not always ORE). DERIVED
     /// from the demand grid in `prepare`, like `captured_origin`; NOT hashed (a read-cache, golden-neutral).
@@ -411,6 +421,8 @@ impl World {
             dispatch_dirty: false,
             captured_origin: Vec::new(),
             captured_dest: Vec::new(),
+            dest_by_comm: Vec::new(),
+            has_multistage: false,
             station_commodity: Vec::new(),
             station_recipe: Vec::new(),
             spawn_accum: Vec::new(),

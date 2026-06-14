@@ -23,6 +23,10 @@ pub const GRAIN: usize = 1; // raw → FLOUR → BREAD (the town chain)
 pub const AETHER: usize = 2;
 #[allow(dead_code)]
 pub const FUEL: usize = 3;
+/// First non-raw commodity index: `0..FIRST_MID` are raws (mined/grown at sources); `FIRST_MID..` are
+/// PROCESSED goods (mids 4..6, finals 6..8) a PROCESSOR node makes from raws (S7e multi-stage). A station
+/// whose output commodity (`station_commodity`) is ≥ this is a processor, not a raw source.
+pub const FIRST_MID: usize = 4;
 
 /// Per-node buffer capacity (units). The ONE non-derivable knob the build plan flags for playtest —
 /// too small starves shipping, too large hides the throb. Externalised here so a balance sweep can
@@ -53,6 +57,35 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
     }
     let dt = dt_ms.max(0);
     for s in 0..n {
+        let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
+        let base = s * N_COMMODITIES;
+        // S7e MULTI-STAGE: a node whose output is a PROCESSED good (mid/final, comm ≥ FIRST_MID) is a
+        // PROCESSOR — it CONVERTS its recipe inputs (the raws shipped in + deposited in its buffers) into
+        // its output good by Liebig (min over inputs), capped by the output buffer's headroom. The output
+        // then ships onward (it IS this node's `station_commodity`) to the next stage / the final sink.
+        // Throughput is gated by the raw INFLOW (the upstream source's rate-limited production), so the
+        // conversion needs no extra rate limit. A raw output (comm < FIRST_MID) is a plain mined source,
+        // accrued below — so commodity-0 / raw-only worlds never enter this branch (byte-identical).
+        if comm >= FIRST_MID {
+            if let Some(recipe) = world.station_recipe.get(s).cloned() {
+                // A processor never consumes its OWN output — exclude `comm` from the inputs, so a node
+                // that happens to capture a little dest weight of the good it makes can't self-include it
+                // in the Liebig min and deadlock (avail would be min(.., output=0) = 0). Robust to map
+                // authoring; without this a forge cell tagged with its own output's dest would freeze.
+                let inputs: Vec<usize> = recipe.iter().map(|&c| c as usize).filter(|&c| c != comm).collect();
+                if !inputs.is_empty() {
+                    let avail = inputs.iter().map(|&c| world.forge_stock[base + c]).min().unwrap_or(0);
+                    let make = avail.min(BUFFER_CAP - world.forge_stock[base + comm]).max(0);
+                    if make > 0 {
+                        for &c in &inputs {
+                            world.forge_stock[base + c] -= make;
+                        }
+                        world.forge_stock[base + comm] += make;
+                    }
+                }
+            }
+            continue;
+        }
         let co = world.captured_origin.get(s).copied().unwrap_or(0.0);
         let cd = world.captured_dest.get(s).copied().unwrap_or(0.0);
         // A net SOURCE makes more than it draws. The f32→i64 cast happens ONCE per node per tick and
@@ -71,8 +104,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
         // S7e: a source accrues ITS commodity (the dominant origin-commodity of its captured cells),
         // not always ORE — so a grain source makes GRAIN, an ore source ORE, etc. ORE for any station
         // without a per-commodity tag (commodity 0), so single-commodity worlds are unchanged.
-        let comm = world.station_commodity.get(s).copied().unwrap_or(0) as usize;
-        let slot = s * N_COMMODITIES + comm.min(N_COMMODITIES - 1);
+        let slot = base + comm;
         world.forge_stock[slot] = (world.forge_stock[slot] + units).min(BUFFER_CAP);
     }
 
@@ -81,6 +113,13 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
     // score, the game's core payoff). A node is either a net source or a net sink, never both, so this
     // never double-counts production. Multi-input recipes (e.g. ORE+? → ARMS) generalise this consume.
     for s in 0..n {
+        // A PROCESSOR (output ≥ FIRST_MID, S7e multi-stage) is a net-sink for its RAW inputs, but it
+        // SHIPS its processed output onward — it must NOT consume into tribute here (the produce phase
+        // above already converted its inputs → output). Only true final sinks consume into tribute.
+        let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
+        if comm >= FIRST_MID {
+            continue;
+        }
         let co = world.captured_origin.get(s).copied().unwrap_or(0.0);
         let cd = world.captured_dest.get(s).copied().unwrap_or(0.0);
         if cd <= co {

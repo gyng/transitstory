@@ -17,6 +17,9 @@ fn arcadia(cells: Vec<DemandCell>) -> CityData {
 
 const GRAIN: u8 = 1;
 const FUEL: u8 = 3;
+const ORE: u8 = 0;
+const AETHER: u8 = 2;
+const INGOT: u8 = 4; // a MID good (>= forge::FIRST_MID): a PROCESSOR forges it from ore
 
 /// Build a BREAD town (recipe = grain+fuel: two dest cells tagged grain & fuel at 1.5 Mm) fed by a grain
 /// source (at 0) and — if `with_fuel` — a fuel source (at 3 Mm), all on one line. The town consumes by
@@ -103,4 +106,71 @@ fn a_grain_source_produces_ships_and_delivers_grain() {
 fn multi_commodity_flow_replays_bit_for_bit() {
     // The multi-commodity race is deterministic (same seed + log ⇒ identical state_hash, twice).
     assert_eq!(run_grain(5000).state_hash(), run_grain(5000).state_hash(), "GRAIN flow replays bit-for-bit");
+}
+
+/// S7e MULTI-STAGE (raw → mid → final): a 3-stage war chain. ORE is mined at a source, FORGED into INGOT
+/// at a PROCESSOR node (consumes ore → makes ingot → ships it on), and an ARMS town consumes INGOT +
+/// AETHER by Liebig → tribute. There is NO ingot source, so tribute proves the processor actually
+/// converted ore → ingot AND commodity-aware routing carried the ore to the forge (not past it to the
+/// town). Stations: 0=ore source, 1=forge, 2=arms town, 3=aether source.
+fn run_multistage(ticks: usize) -> World {
+    run_multistage_cfg(ticks, 0.0)
+}
+/// `forge_ingot_dest` tags the forge's own OUTPUT (INGOT) with this much DEST weight — 0 is clean
+/// authoring; a positive value is the self-recipe footgun (the forge "wants" the good it makes). The
+/// engine must forge regardless (it excludes the self-commodity from a processor's inputs).
+fn run_multistage_cfg(ticks: usize, forge_ingot_dest: f32) -> World {
+    let cells = vec![
+        DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: ORE }, // ore source (A)
+        DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 90.0, dest_w: forge_ingot_dest, commodity: INGOT }, // forge (B) makes INGOT…
+        DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: ORE }, // …from ORE shipped in
+        DemandCell { x_mm: 3_000_000, y_mm: 0, origin_w: 0.0, dest_w: 70.0, commodity: INGOT }, // arms town (C) needs INGOT…
+        DemandCell { x_mm: 3_000_000, y_mm: 0, origin_w: 0.0, dest_w: 70.0, commodity: AETHER }, // …+ AETHER (Liebig)
+        DemandCell { x_mm: 3_000_000, y_mm: 1_500_000, origin_w: 90.0, dest_w: 2.0, commodity: AETHER }, // aether source (D)
+    ];
+    let mut w = World::new(11, arcadia(cells));
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // 0 ore source
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None }); // 1 forge
+    w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 0, name: None }); // 2 arms town
+    w.apply(&Command::PlaceStation { x_mm: 3_000_000, y_mm: 1_500_000, name: None }); // 3 aether source
+    // The player wires the chain: ore A→B, ingot B→C, aether D→C.
+    for (li, a, b) in [(0u32, 0u32, 1u32), (1, 1, 2), (2, 3, 2)] {
+        w.apply(&Command::CreateLine { color: li + 1, name: None, loop_line: false, mode: 0, literal: false });
+        w.apply(&Command::AddStop { line: LineId(li), station: StationId(a), after: None });
+        w.apply(&Command::AddStop { line: LineId(li), station: StationId(b), after: None });
+        w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 4 });
+        w.apply(&Command::SetHeadway { line: LineId(li), headway_ms: 120_000 });
+    }
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..ticks {
+        w.tick(50);
+    }
+    w
+}
+
+#[test]
+fn multistage_ore_is_forged_to_ingot_then_consumed() {
+    let w = run_multistage(15000);
+    assert!(w.has_multistage, "the world uses a processed good (INGOT) ⇒ commodity-aware routing is active");
+    assert_eq!(w.station_commodity[1], INGOT, "the forge's output commodity is INGOT (a processor, not a raw source)");
+    assert_eq!(w.station_recipe[2], vec![AETHER, INGOT], "the arms town requires AETHER + INGOT (Liebig)");
+    // INGOT has no source — tribute can only flow if the forge converted ore → ingot and shipped it on,
+    // AND the ore reached the forge (commodity-aware routing) rather than over-shooting to the town.
+    assert!(w.tribute > 0, "the 3-stage chain ore→INGOT→arms-town closed → tribute: {}", w.tribute);
+}
+
+#[test]
+fn multistage_flow_replays_bit_for_bit() {
+    assert_eq!(run_multistage(9000).state_hash(), run_multistage(9000).state_hash(), "the multi-stage flow replays bit-for-bit");
+}
+
+#[test]
+fn a_processor_never_consumes_its_own_output() {
+    // Robustness (footgun guard): tag the forge with DEST weight of its OWN output (INGOT) — so INGOT is
+    // in its derived recipe. A naive Liebig over the recipe would min in the (initially 0) output buffer
+    // and DEADLOCK (make=0 forever). The engine excludes the self-commodity from a processor's inputs, so
+    // the forge still converts ore → ingot and the chain closes.
+    let w = run_multistage_cfg(15000, 60.0);
+    assert!(w.station_recipe[1].contains(&INGOT), "the forge's recipe DOES include its own output (the footgun)");
+    assert!(w.tribute > 0, "the processor still forges despite a self-recipe (no deadlock): {}", w.tribute);
 }
