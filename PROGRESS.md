@@ -2404,6 +2404,30 @@ campaign). The blocker to slowing the runway was the S10c gain FLOOR (`max(1)`),
   (creep=20, accumulator inert there) pending that call. The rival kingdom is a `war_step(owner != PLAYER)`
   seam the design explicitly DEFERS.
 
+**═══ FORK CERTIFICATION — the full S10+S11 changeset is green end-to-end (iteration 9), 2026-06-14 ═══**
+
+A holistic full-tier verification after the ~12-commit autonomous run (recovery → balance pass → S10a/b-1/
+b-2/c → S11a/b → continuous creep accumulator): **cargo workspace 199/0** (both determinism goldens
+intact — transit `0xfd8e…c31b`, arcadia `0xbd92…96de`) · **vitest 21/21** (wasm-in-node determinism smoke)
+· **e2e 21/21** on the production bundle (transit slice, Tokyo 440-station, both arcadia, fantasy
+conquest/play/shot, modes, edit-line, …) · **build_world `--selftest` PASS**. The fantasy fork is a
+COMPLETE, polished, winnable game on a procedurally-generated continent:
+- **S0–S9** — ruleset-at-construction fork, hex lattice, Forge-Line disjoint chains, war machine + AI,
+  decadence lose-condition. **Map-gen S1–S6** — certified-winnable procedural continent.
+- **S10 (area control, the build plan's largest subsystem) — COMPLETE**: the spatial decadence tide
+  (board → CA engine → spatial lose condition → render), a genuine winnable race held back by the rail
+  network's PURGE; a continuous (tunable) creep rate.
+- **S11 (partial)** — the two-gauge HUD (🛡 Standing progress vs ☠ Decadence), a monotonic progress gauge.
+
+**Achievable-roadmap completion + the open decision.** The remaining S11 depth is **gated on a game-feel
+call that is genuinely the user's**: the baked game is a felt **~20-min decadence race**, shorter than one
+in-game day, so the design's day-based economy (opex expander-brake, tech-over-days, endless/prestige) only
+becomes meaningful with a **multi-day runway** — which the continuous-creep accumulator now ENABLES (set a
+slow baked `creep_per_s`), but committing to a longer campaign changes the feel + needs a balance re-tune.
+The **rival kingdom** is a `war_step(owner != PLAYER)` seam the design explicitly defers; **S7e
+multi-stage processing** (raw→mid→final) is a tracked supply-depth refinement. Default held: the felt race.
+**~12 commits sit on `fantasy-fork`, unpushed** (standing "commit only / push only when asked").
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
