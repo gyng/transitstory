@@ -9,7 +9,7 @@
 // lets the idle bob resume (a sticky class would leave the pigeon static). The random subtitle
 // is chosen ONCE (frontend chrome RNG, not the sim).
 import { useRef, useState } from "react";
-import { CITIES, personalBest, type CityEntry } from "../../sim/cities";
+import { CITIES, personalBest, realmsSaved, type CityEntry } from "../../sim/cities";
 import { withBase } from "../../config";
 import { readSave, type SaveBlob } from "../../sim/save";
 import { SCENARIOS } from "../../objectives";
@@ -262,17 +262,28 @@ export function Menu({
               {/* The score-chase line: the city's real network is the bar; the personal best is
                   the player's standing against it (from-scratch runs only). */}
               <div data-testid={`city-score-${c.id}`} style={{ fontSize: "11px", marginTop: "4px", color: "#8a93a3" }}>
-                real network ~{c.realScore}
-                {(() => {
-                  const best = personalBest(c.id);
-                  if (best === null) return null;
-                  const beat = best > c.realScore;
-                  return (
-                    <span style={{ color: beat ? "#1ab560" : "#8a93a3" }}>
-                      {" "}· your best {best}{beat ? " 🏆" : ""}
-                    </span>
-                  );
-                })()}
+                {c.kind === "arcadia" ? (
+                  // S11 PRESTIGE: the arcadia campaign's score-chase is "realms saved" (campaigns won), not
+                  // a coverage anchor (its realScore is 0 — there's no real-world network to beat).
+                  (() => {
+                    const saved = realmsSaved();
+                    return saved > 0 ? <span style={{ color: "#caa64a" }}>⚜ {saved} realm{saved === 1 ? "" : "s"} saved</span> : <span>a continent to save</span>;
+                  })()
+                ) : (
+                  <>
+                    real network ~{c.realScore}
+                    {(() => {
+                      const best = personalBest(c.id);
+                      if (best === null) return null;
+                      const beat = best > c.realScore;
+                      return (
+                        <span style={{ color: beat ? "#1ab560" : "#8a93a3" }}>
+                          {" "}· your best {best}{beat ? " 🏆" : ""}
+                        </span>
+                      );
+                    })()}
+                  </>
+                )}
               </div>
             </button>
           ))}

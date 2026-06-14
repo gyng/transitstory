@@ -29,6 +29,9 @@ export interface Scenario {
   failBankrupt?: boolean;
   /** Lose if the realm falls — decadence overruns the capital (arcadia campaign, S11). */
   failIfRealmLost?: boolean;
+  /** Winning this scenario records a PRESTIGE ("realm saved", S11) — a localStorage meta-count shown in
+   *  the menu. Sim-free outer-ring meta; set on the arcadia campaign victory. */
+  prestige?: boolean;
 }
 
 export type Status = "active" | "won" | "lost";
@@ -103,6 +106,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       { kind: "standing", target: 20, label: "Reach 20 realm standing" },
     ],
     failIfRealmLost: true,
+    prestige: true,
   },
 };
 

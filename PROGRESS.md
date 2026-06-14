@@ -2658,9 +2658,27 @@ FIELDS marauders.
 - Tiers: cargo **225/0** (goldens re-pinned green; balance gates unchanged) · `build_world --selftest` **PASS**
   · full e2e **25/25** · vitest **24/24** · `tsc` clean.
 
+**S11 — ENDLESS / PRESTIGE (the light, disciplined form), 2026-06-15.** The final S11 line item (user-chosen
+"light" 2026-06-15, after passing it over twice — built as the sim-free outer-ring meta-layer, NOT a
+mechanical reset, to respect the thin-loop discipline).
+
+- **Prestige (`cities.ts`):** `realmsSaved()`/`recordRealmSaved()` — a localStorage count of arcadia
+  campaigns WON, mirroring the existing `personalBest` pattern exactly. Zero sim coupling, no Command, no
+  core/golden impact (the fantasy counterpart to the transit score-chase).
+- **Earned on victory:** the `ObjectivePanel` records one realm saved on the STICKY win of a `prestige`
+  scenario (the arcadia-conquest "Against the Dark"); the `statusRef` guard makes it exactly-once despite
+  the 3 Hz re-fire. The transit scenarios are not prestige.
+- **Endless:** already inherent — the victory is non-blocking (the win banner's "Keep building" dismisses it
+  and the sim keeps running), so a won campaign plays on.
+- **Menu:** the arcadia cities' score line now reads "⚜ N realms saved" (or "a continent to save" at 0)
+  instead of the transit "real network ~0" — a mode-aware score-chase.
+- **Tests:** `test/prestige.test.ts` (+3) — increments per save, degrades gracefully without storage, the
+  arcadia campaign is the prestige scenario. tsc clean.
+- Tiers: vitest **27/27** · `tsc` clean · menu + victory e2e green (frontend-only — cargo/goldens untouched).
+
 > **The fantasy fork's S11 is now COMPLETE** — gauges, capacity stack, baked 3-stage Forge-Line, tech tree,
-> frontier garrisons, the scored victory, the economy split, and the rival kingdom. The build plan's S0→S11
-> roadmap is delivered.
+> frontier garrisons, the scored victory, the economy split (gold/mana/manpower), the rival kingdom, AND
+> endless/prestige. **The build plan's entire S0→S11 roadmap is delivered.**
 
 ## Known gaps / deferred
 

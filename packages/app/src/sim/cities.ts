@@ -71,3 +71,29 @@ export function recordBest(cityId: string, score: number): boolean {
   }
   return false;
 }
+
+/** S11 PRESTIGE — the count of arcadia campaigns WON ("realms saved"), localStorage-backed across runs
+ *  (the fantasy fork's score-chase counterpart to `personalBest`). A pure outer-ring meta-stat: it touches
+ *  no sim state, so it respects the thin-loop discipline (no NIMBY core depth). Global (not per-city) — the
+ *  arcadia campaign is one ongoing war against the Dark. */
+const REALMS_KEY = "ot-realms-saved";
+
+export function realmsSaved(): number {
+  try {
+    const v = localStorage.getItem(REALMS_KEY);
+    return v === null ? 0 : Number(v) || 0;
+  } catch {
+    return 0; // storage unavailable (private mode etc.)
+  }
+}
+
+/** Record one more realm saved (an arcadia victory); returns the new total. */
+export function recordRealmSaved(): number {
+  try {
+    const n = realmsSaved() + 1;
+    localStorage.setItem(REALMS_KEY, String(n));
+    return n;
+  } catch {
+    return realmsSaved();
+  }
+}

@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStats } from "./GameContext";
 import { evalScenario, nextStatus, type Scenario, type Status } from "../../objectives";
+import { recordRealmSaved } from "../../sim/cities";
 
 export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
   const stats = useStats();
@@ -18,6 +19,9 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
   useEffect(() => {
     const ns = nextStatus(statusRef.current, e);
     if (ns !== statusRef.current) {
+      // S11 PRESTIGE: the first WIN of a prestige scenario (the arcadia campaign) records a "realm saved"
+      // — once, on the sticky transition (statusRef guards against the 3 Hz re-fire). Sim-free meta.
+      if (ns === "won" && scenario.prestige) recordRealmSaved();
       statusRef.current = ns;
       setStatus(ns);
     }
