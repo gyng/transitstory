@@ -52,4 +52,29 @@ describe("objectives evaluator", () => {
     const lost = nextStatus("lost", evalScenario(SCENARIOS.starter, stats({ ridershipTotal: 9999 })));
     expect(lost).toBe("lost");
   });
+
+  // S11 — the arcadia campaign's scored victory (arcadia goal kinds + the realm-lost fail).
+  describe("arcadia victory (Against the Dark)", () => {
+    const sc = SCENARIOS["arcadia-conquest"];
+
+    it("tracks the arcadia goal kinds (towns + standing)", () => {
+      // Both goals: conquer 3 towns AND reach 20 standing (= the coverageScore gauge in arcadia).
+      const e = evalScenario(sc, stats({ townsCaptured: 2, coverageScore: 25 }));
+      expect(e.goals.find((g) => g.goal.kind === "towns")!.current).toBe(2);
+      expect(e.goals.find((g) => g.goal.kind === "standing")!.current).toBe(25);
+      expect(e.allMet).toBe(false); // only 2/3 towns
+      expect(evalScenario(sc, stats({ townsCaptured: 3, coverageScore: 20 })).allMet).toBe(true);
+    });
+
+    it("loses the instant the realm falls — even mid-conquest", () => {
+      const e = evalScenario(sc, stats({ townsCaptured: 2, coverageScore: 25, realmLost: true }));
+      expect(e.failed).toBe(true);
+      expect(e.failReason).toMatch(/realm has fallen/i);
+    });
+
+    it("is offered for the baked fantasy campaign", () => {
+      expect(sc.cityId).toBe("fantasy");
+      expect(sc.failIfRealmLost).toBe(true);
+    });
+  });
 });

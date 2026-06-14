@@ -89,11 +89,11 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
         )}
         <div style={{ color: "#7a818a", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
         {e.goals.map((g, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+          <div key={i} data-testid={`objective-goal-${g.goal.kind}`} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
             <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "#1c2024" }}>
               {g.met ? "✓" : "○"} {g.goal.label}
             </span>
-            <span style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums" }}>
+            <span data-testid={`objective-goal-${g.goal.kind}-current`} style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums" }}>
               {Math.round(g.current)}/{g.goal.target}
             </span>
           </div>

@@ -2562,6 +2562,25 @@ antagonist gains conquest teeth without any AI.
 > it needs a human product decision. Frontier garrisons deliver the design's gate-safe enemy increment in
 > its place. The `war_step` is already the seam a future owner-faction attaches to.
 
+**S11 — the arcadia VICTORY ("Against the Dark"), 2026-06-14.** The fork had a lose state (the realm falls)
+but an OPEN-ENDED win — this closes the campaign loop with a scored victory on the existing **objectives
+layer** (pure outer-ring chrome — reads the Stats snapshot, zero sim coupling, no Command). Frontend-only;
+no core change.
+
+- **`objectives.ts`:** the goal vocabulary gains the arcadia kinds — `towns` (conquered), `tribute`
+  (accumulated supply), `standing` (= the arcadia coverage/standing gauge) — and a `failIfRealmLost` hard
+  fail. The `arcadia-conquest` scenario ("Against the Dark", `cityId: "fantasy"`): conquer 3 towns + reach
+  20 standing, lose the instant the rot overruns the capital (no deadline — the decadence IS the clock).
+- **Wiring (zero new plumbing):** the menu already filters scenarios by `cityId`, so it surfaces only for
+  the baked campaign; the deep-link `?scenario=arcadia-conquest` boots straight into it; the existing
+  `ObjectivePanel` renders the goals + the sticky win/lose banner. Goal rows gained `objective-goal-<kind>`
+  testids (a contract for the e2e).
+- **Tests:** `test/objectives.test.ts` (+3) — the arcadia goals track `townsCaptured`/`coverageScore`, the
+  realm-lost fail trips mid-conquest, the scenario targets the fantasy campaign. `e2e/fantasy-victory.spec.ts`
+  — boots the scored campaign, runs the conquest loop, and asserts the objective panel TRACKS a town falling
+  (`1/3`) on the real bundle. Screenshot: `docs/progress/fantasy-victory.png`.
+- Tiers: full e2e **24/24** · vitest **24/24** · `tsc` clean (cargo untouched — frontend-only, **212/0**).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

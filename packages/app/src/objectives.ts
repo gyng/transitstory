@@ -5,8 +5,10 @@
 import type { Stats } from "./types";
 
 export interface Goal {
-  kind: "ridership" | "coverage";
-  /** Reach >= this value. ridership = cumulative boardings; coverage = the 0–100 gauge. */
+  // transit goals: ridership (cumulative boardings) + coverage (the 0–100 gauge). arcadia goals (S11):
+  // towns (conquered) + tribute (accumulated supply) + standing (= the arcadia coverage/standing gauge).
+  kind: "ridership" | "coverage" | "towns" | "tribute" | "standing";
+  /** Reach >= this value. */
   target: number;
   label: string;
 }
@@ -25,6 +27,8 @@ export interface Scenario {
   failIfAbandonedOver?: number;
   /** Lose if the (enabled) economy balance goes negative. */
   failBankrupt?: boolean;
+  /** Lose if the realm falls — decadence overruns the capital (arcadia campaign, S11). */
+  failIfRealmLost?: boolean;
 }
 
 export type Status = "active" | "won" | "lost";
@@ -86,6 +90,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
     deadlineMs: 60 * 60_000,
   },
+  // The arcadia campaign's scored VICTORY (S11): the fork has a lose state (the realm falls) but the win
+  // was open-ended — this closes the loop. Supply your towns, field legions, conquer the continent, and
+  // hold standing — all before the decadence overruns the capital. No deadline: the rot IS the clock.
+  "arcadia-conquest": {
+    id: "arcadia-conquest",
+    title: "Against the Dark",
+    blurb: "Conquer the continent and hold your standing — before the decadence reaches the capital.",
+    cityId: "fantasy",
+    goals: [
+      { kind: "towns", target: 3, label: "Conquer 3 towns" },
+      { kind: "standing", target: 20, label: "Reach 20 realm standing" },
+    ],
+    failIfRealmLost: true,
+  },
 };
 
 export function getScenario(id: string | null | undefined): Scenario | null {
@@ -94,15 +112,28 @@ export function getScenario(id: string | null | undefined): Scenario | null {
 
 /** Evaluate goal progress + hard-fail conditions against a stats snapshot (pure). */
 export function evalScenario(scenario: Scenario, stats: Stats): ScenarioEval {
+  const goalValue = (kind: Goal["kind"]): number => {
+    switch (kind) {
+      case "ridership": return stats.ridershipTotal;
+      case "towns": return stats.townsCaptured;
+      case "tribute": return stats.tribute;
+      // "standing" is the arcadia name for the same 0–100 coverage gauge (supply reach + conquest).
+      case "coverage":
+      case "standing": return stats.coverageScore;
+    }
+  };
   const goals: GoalState[] = scenario.goals.map((goal) => {
-    const current = goal.kind === "ridership" ? stats.ridershipTotal : stats.coverageScore;
+    const current = goalValue(goal.kind);
     return { goal, current, met: current >= goal.target };
   });
   const allMet = goals.every((g) => g.met);
 
   let failed = false;
   let failReason: string | null = null;
-  if (scenario.failIfAbandonedOver !== undefined && stats.abandoned > scenario.failIfAbandonedOver) {
+  if (scenario.failIfRealmLost && stats.realmLost) {
+    failed = true;
+    failReason = "The realm has fallen — decadence overran the capital";
+  } else if (scenario.failIfAbandonedOver !== undefined && stats.abandoned > scenario.failIfAbandonedOver) {
     failed = true;
     failReason = `Too many riders left behind (${Math.round(stats.abandoned)})`;
   } else if (scenario.failBankrupt && stats.economyEnabled && stats.balance < 0) {
