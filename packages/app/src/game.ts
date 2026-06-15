@@ -102,8 +102,8 @@ export interface ContextMenuState {
   x: number;
   y: number;
   lngLat: { lng: number; lat: number };
-  kind: "station" | "line" | "empty";
-  /** Station/line id; -1 for an empty-map menu. */
+  kind: "station" | "line" | "vehicle" | "peep" | "town" | "resource" | "empty";
+  /** Station/line id · vehicle index · peep citizen id · town/resource array index; -1 for empty map. */
   id: number;
 }
 
@@ -1287,13 +1287,66 @@ export class Game {
 
   // --- right-click context menu (run/select only — build keeps its two-stage stop) ---
 
-  /** Open the context menu at (px,py), resolving the target precedence station → line → empty. */
+  /** Nearest player vehicle (cart) to a screen pixel, within `maxPx` — returns its index or null. Reads
+   *  the same interpolated dots the layer draws, so the pick can't drift from what's on screen. */
+  nearestVehicle(px: number, py: number, maxPx = SNAP_PX): number | null {
+    let best: number | null = null;
+    let bestD = maxPx;
+    const dots = this.vehicleDotsAt(1);
+    for (let i = 0; i < dots.length; i++) {
+      const p = this.map.project([dots[i].lng, dots[i].lat]);
+      const d = Math.hypot(p.x - px, p.y - py);
+      if (d <= bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  /** Nearest baked TOWN to a screen pixel (fantasy conquest target / supply sink), within `maxPx`. */
+  nearestTown(px: number, py: number, maxPx = SNAP_PX + 4): number | null {
+    let best: number | null = null;
+    let bestD = maxPx;
+    for (let i = 0; i < this.towns.length; i++) {
+      const p = this.map.project([this.towns[i].lng, this.towns[i].lat]);
+      const d = Math.hypot(p.x - px, p.y - py);
+      if (d <= bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  /** Nearest baked RESOURCE node to a screen pixel (fantasy supply source), within `maxPx`. */
+  nearestResource(px: number, py: number, maxPx = SNAP_PX + 4): number | null {
+    let best: number | null = null;
+    let bestD = maxPx;
+    for (let i = 0; i < this.resources.length; i++) {
+      const p = this.map.project([this.resources[i].lng, this.resources[i].lat]);
+      const d = Math.hypot(p.x - px, p.y - py);
+      if (d <= bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  /** Open the inspect context menu at (px,py). Right-click inspects WHATEVER is under the cursor: a moving
+   *  cart or rider first (small + on top), then a station/line you built, then the baked town/resource POIs,
+   *  else the empty-map power tools. Read-only — every entry routes to an existing inspect path, no Command. */
   openContextMenu(px: number, py: number, lngLat: { lng: number; lat: number }): void {
-    const st = this.nearestStation(px, py);
-    if (st !== null) this.contextMenu = { x: px, y: py, lngLat, kind: "station", id: st };
+    const mk = (kind: ContextMenuState["kind"], id: number): ContextMenuState => ({ x: px, y: py, lngLat, kind, id });
+    const veh = this.nearestVehicle(px, py);
+    const peep = veh === null ? this.nearestPeep(px, py) : null;
+    const st = veh === null && peep === null ? this.nearestStation(px, py) : null;
+    if (veh !== null) this.contextMenu = mk("vehicle", veh);
+    else if (peep !== null) this.contextMenu = mk("peep", peep);
+    else if (st !== null) this.contextMenu = mk("station", st);
     else {
       const ln = this.nearestLine(px, py);
-      this.contextMenu = ln !== null ? { x: px, y: py, lngLat, kind: "line", id: ln } : { x: px, y: py, lngLat, kind: "empty", id: -1 };
+      if (ln !== null) this.contextMenu = mk("line", ln);
+      else {
+        const tn = this.nearestTown(px, py);
+        if (tn !== null) this.contextMenu = mk("town", tn);
+        else {
+          const rs = this.nearestResource(px, py);
+          this.contextMenu = rs !== null ? mk("resource", rs) : mk("empty", -1);
+        }
+      }
     }
     for (const cb of this.onChange) cb();
   }
@@ -1302,6 +1355,39 @@ export class Game {
     if (this.contextMenu === null) return;
     this.contextMenu = null;
     for (const cb of this.onChange) cb();
+  }
+
+  /** The baked POI (town/resource) co-located with a station, if any — every fantasy station sits ON a
+   *  town or resource node, so its inspect surfaces that node's supply-chain role (a town's tribute,
+   *  needs + decadence; a resource's yield). Matched by position (within ~one terrain cell). */
+  stationPoi(stationId: number): { town?: TownMarker; resource?: ResourceMarker } | null {
+    const s = this.bridge.stationsView()[stationId];
+    if (!s || s.removed) return null;
+    const tol2 = (this.terrainCellM * 1000 || 250_000) ** 2;
+    let town: TownMarker | undefined, resource: ResourceMarker | undefined;
+    let bt = tol2, br = tol2;
+    for (const t of this.towns) {
+      const [x, y] = lngLatToMm([t.lng, t.lat]);
+      const d = (x - s.xMm) ** 2 + (y - s.yMm) ** 2;
+      if (d <= bt) { bt = d; town = t; }
+    }
+    for (const r of this.resources) {
+      const [x, y] = lngLatToMm([r.lng, r.lat]);
+      const d = (x - s.xMm) ** 2 + (y - s.yMm) ** 2;
+      if (d <= br) { br = d; resource = r; }
+    }
+    return town || resource ? { town, resource } : null;
+  }
+
+  /** Read-only inspect summary for a cart (right-click → Inspect): its line identity + how much it hauls
+   *  (onboard / capacity — the cargo or riders aboard). Null if the index is stale. */
+  vehicleInspect(i: number): { lineId: number; name: string; color: number; onboard: number; capacity: number } | null {
+    const lineIds = this.bridge.vehicleLineIds();
+    if (i < 0 || i >= lineIds.length) return null;
+    const loads = this.bridge.vehicleLoads();
+    const lineId = lineIds[i];
+    const pl = this.perLineById.get(lineId);
+    return { lineId, name: pl?.name || `Line ${lineId + 1}`, color: pl?.color ?? 0x888888, onboard: loads[i * 2] ?? 0, capacity: loads[i * 2 + 1] ?? 0 };
   }
 
   /** Bulldoze a station by id (bulldozer tool + right-click → Bulldoze): one undoable

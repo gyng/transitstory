@@ -51,6 +51,30 @@ function MenuItem({
 
 const HEADER: CSSProperties = { padding: "7px 12px 5px", font: "600 12px system-ui", color: "#5a626b", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid #eceef1", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
 const SEP: CSSProperties = { height: 1, background: "#eceef1", margin: "3px 0" };
+const INFO: CSSProperties = { padding: "5px 12px", color: "#5a626b", fontSize: 12, lineHeight: 1.45 };
+
+// Inspect labels for the baked fantasy POIs — mirror the on-map node glyphs (render.ts) so the menu
+// names match what you clicked.
+function townInfo(kind: string): { glyph: string; label: string } {
+  if (kind === "capital") return { glyph: "★", label: "Capital seat" };
+  if (kind === "starter") return { glyph: "✪", label: "Your hold" };
+  return { glyph: "⌂", label: "Town" };
+}
+function resourceInfo(kind: string): { glyph: string; label: string } {
+  switch (kind) {
+    case "ore": return { glyph: "⛏", label: "Ore vein" };
+    case "grain": return { glyph: "✿", label: "Grainfield" };
+    case "fuel": return { glyph: "♣", label: "Fuel grove" };
+    case "aether": return { glyph: "✦", label: "Aether well" };
+    case "forge": return { glyph: "⚒", label: "Forge" };
+    default: return { glyph: "◆", label: kind || "Source" };
+  }
+}
+function chainNeeds(chain: string): string {
+  if (chain === "bread") return "grain + fuel";
+  if (chain === "arms") return "ore + aether";
+  return chain;
+}
 
 export function ContextMenu() {
   const game = useGame();
@@ -73,12 +97,16 @@ export function ContextMenu() {
   const close = () => game.closeContextMenu();
   // Clamp to the viewport (flip near the right / bottom edge).
   const W = 210;
-  const estH = cm.kind === "empty" ? 168 : 96;
+  const estH = cm.kind === "empty" ? 168 : cm.kind === "town" ? 150 : cm.kind === "resource" || cm.kind === "vehicle" ? 118 : 96;
   const x = Math.min(cm.x, window.innerWidth - W - 8);
   const y = Math.min(cm.y, window.innerHeight - estH - 8);
 
   const station = cm.kind === "station" ? game.bridge.stationsView()[cm.id] : undefined;
+  const poi = cm.kind === "station" ? game.stationPoi(cm.id) : undefined; // the town/resource this station sits on
   const line = cm.kind === "line" ? game.perLineById.get(cm.id) : undefined;
+  const veh = cm.kind === "vehicle" ? game.vehicleInspect(cm.id) : undefined;
+  const town = cm.kind === "town" ? game.towns[cm.id] : undefined;
+  const res = cm.kind === "resource" ? game.resources[cm.id] : undefined;
 
   return (
     <div
@@ -103,6 +131,20 @@ export function ContextMenu() {
       {cm.kind === "station" && (
         <>
           <div style={HEADER}>◉ {station?.name || `Station ${cm.id + 1}`}</div>
+          {/* The supply-chain role of the town/resource this station sits on (every fantasy station does). */}
+          {poi?.town && (
+            <div style={INFO}>
+              {townInfo(poi.town.kind).glyph} {townInfo(poi.town.kind).label} · tribute {poi.town.value.toLocaleString()}
+              {poi.town.chain ? <><br />Needs: {chainNeeds(poi.town.chain)}</> : null}
+              {poi.town.decadence > 0 ? <><br />Decadence floor: {Math.round(poi.town.decadence)}%</> : null}
+            </div>
+          )}
+          {poi?.resource && !poi.town && (
+            <div style={INFO}>
+              {resourceInfo(poi.resource.kind).glyph} {resourceInfo(poi.resource.kind).label} · yield {poi.resource.yield}
+              <br />Feeds: {poi.resource.kind === "grain" || poi.resource.kind === "fuel" ? "bread chain" : poi.resource.kind === "ore" || poi.resource.kind === "aether" ? "arms chain" : "supply"}
+            </div>
+          )}
           <MenuItem icon="🔍" label="Inspect" testid="ctx-inspect" onClick={() => { game.selectStation(cm.id); close(); }} />
           {/* Mid-line insertion: with a line selected, an off-line station can join it at the
               span it sits closest to (one AddStop — one undo step). */}
@@ -145,6 +187,53 @@ export function ContextMenu() {
             danger
             onClick={() => (armed ? (game.removeLineById(cm.id), close()) : setArmed(true))}
           />
+        </>
+      )}
+
+      {cm.kind === "vehicle" && veh && (
+        <>
+          <div style={HEADER}>
+            <span style={{ width: 11, height: 11, borderRadius: 3, flex: "0 0 auto", background: hex(veh.color) }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>🚆 {veh.name}</span>
+          </div>
+          <div style={INFO}>
+            Hauling {veh.onboard} / {veh.capacity}
+            {veh.capacity > 0 ? ` (${Math.round((veh.onboard / veh.capacity) * 100)}%)` : ""}
+          </div>
+          <MenuItem icon="🔍" label="Inspect line" testid="ctx-inspect" onClick={() => { game.selectLine(veh.lineId); close(); }} />
+        </>
+      )}
+
+      {cm.kind === "peep" && (
+        <>
+          <div style={HEADER}>🧍 Rider</div>
+          <MenuItem icon="👁" label="Follow this rider" testid="ctx-follow" onClick={() => { game.setFollowed(cm.id); close(); }} />
+          <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
+        </>
+      )}
+
+      {cm.kind === "town" && town && (
+        <>
+          <div style={HEADER}>{townInfo(town.kind).glyph} {townInfo(town.kind).label}</div>
+          <div style={INFO}>
+            Tribute reward: {town.value.toLocaleString()}
+            {town.chain ? <><br />Needs: {chainNeeds(town.chain)}</> : null}
+            <br />Decadence: {Math.round(town.decadence)}%
+          </div>
+          <div style={SEP} />
+          <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
+        </>
+      )}
+
+      {cm.kind === "resource" && res && (
+        <>
+          <div style={HEADER}>{resourceInfo(res.kind).glyph} {resourceInfo(res.kind).label}</div>
+          <div style={INFO}>
+            Yield: {res.yield}/cycle
+            <br />Feeds: {res.kind === "grain" || res.kind === "fuel" ? "bread chain" : res.kind === "ore" || res.kind === "aether" ? "arms chain" : "supply"}
+          </div>
+          <div style={SEP} />
+          <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
         </>
       )}
 

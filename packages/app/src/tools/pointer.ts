@@ -133,7 +133,10 @@ export function attachPointer(game: Game): void {
   // pan is left-drag here, so right-click never fights the camera.
   map.on("contextmenu", (e) => {
     e.preventDefault?.();
-    if (game.mode === "build") {
+    // Right-click ABORTS an in-progress line draft (the genuinely useful cancel). With nothing to abort,
+    // it INSPECTS whatever's under the cursor — in any mode — so a cart, rider, station, town or resource
+    // is one right-click away (build mode included; left-click still places/draws).
+    if (game.mode === "build" && game.draft.length > 0) {
       game.stopBuilding();
       return;
     }

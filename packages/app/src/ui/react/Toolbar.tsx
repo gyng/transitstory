@@ -13,12 +13,12 @@ import { BuildHud } from "./BuildHud";
 
 // Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
 const TOOL_HINT: Record<Tool, string> = {
-  station: "[T] Click to place — stays armed for the next one · Esc or right-click when done",
-  line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
-  select: "[V] Click a station or line to inspect it",
-  bulldozer: "[X] Click a station or line to demolish it · Esc or right-click to stop",
-  barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc / right-click when done",
-  bounty: "[Y] Click a town to post a bounty — baits AI legions to attack it · Esc / right-click when done",
+  station: "[T] Click to place — stays armed for the next one · Esc when done · right-click to inspect",
+  line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel the draft",
+  select: "[V] Click — or right-click anything — to inspect it",
+  bulldozer: "[X] Click a station or line to demolish it · Esc to stop · right-click to inspect",
+  barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc when done",
+  bounty: "[Y] Click a town to post a bounty — baits AI legions to attack it · Esc when done",
 };
 
 const TOOLS: [Tool, string][] = [
