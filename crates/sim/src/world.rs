@@ -56,6 +56,19 @@ const OPEX_PER_KM_DAY: i64 = 50_000;
 const GOLD_UPKEEP_TRAIN_KM: i64 = 4;
 const GOLD_UPKEEP_DIVISOR: i64 = 100;
 
+/// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
+/// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
+/// gate for the block ahead — amber). `mid_mm` is the arc-length on `(line, path)` to draw it at — so
+/// `render_buf` self-positions via `point_at` with no extra lookup. Carries `span` for tests/dedup.
+#[derive(Clone, Copy, Debug)]
+pub struct SignalOccupancy {
+    pub line: u32,
+    pub path: u8,
+    pub span: u32,
+    pub mid_mm: i64,
+    pub status: u8,
+}
+
 pub struct World {
     pub seed: u64,
     pub clock_ms: i64,
@@ -170,6 +183,12 @@ pub struct World {
     /// Recent spell FLASHES (render-only — a brief burst at each cast site, aged + retired in `spell::step`).
     /// NOT hashed (like the army/raider cartesian render fields).
     pub spell_flashes: Vec<crate::spell::SpellFlash>,
+    /// TTD-style SIGNAL occupancy (render-only): the per-tick block state of single-track spans, so the
+    /// player SEES why a cart waits at a meet. Re-derived every tick in `vehicle::advance` from the same
+    /// occupancy the meet protocol builds — write-only scratch consumed only by the render copy-out, so
+    /// it can't perturb the next tick. Deliberately NOT in `Canonical`/`state_hash` (like `spell_flashes`/
+    /// `forge_accum`) ⇒ golden-neutral, regenerated bit-identically on replay.
+    pub signal_occupancy: Vec<SignalOccupancy>,
     /// AUTOCAST toggle (fantasy, S11): off (default) ⇒ spells fire only on `Command::CastSpell` (the player
     /// picks WHEN, the invest-vs-cast tradeoff); on ⇒ `spell::step` auto-fires the battery each tick. Set by
     /// `Command::SetAutocast`. **Deliberately NOT in `Canonical`**: a pure input toggle whose EVERY effect
@@ -527,6 +546,7 @@ impl World {
             manpower: 0,
             spells_cast: 0,
             spell_flashes: Vec::new(),
+            signal_occupancy: Vec::new(),
             autocast: false,
             tech_unlocked: 0,
             waiting: Vec::new(),

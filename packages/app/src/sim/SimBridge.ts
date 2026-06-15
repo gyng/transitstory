@@ -131,6 +131,12 @@ export class SimBridge {
     return this.sim.spellFlashes();
   }
 
+  /** Interleaved TTD signal markers `[x,y,status,...]` in metres; status 0=clear/green 1=occupied/red
+   *  2=waiting/amber. Fresh array each call (no stale view). Empty off single-track. */
+  signalMarkers(): Float32Array {
+    return this.sim.signalMarkers();
+  }
+
   /** Interleaved decadence-tide cells `[x0,y0,v0,...]` (metres + 0..1 strength) — the cold-tide overlay. */
   decadenceTide(): Float32Array {
     return this.sim.decadenceTide();

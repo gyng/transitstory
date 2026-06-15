@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -176,6 +176,9 @@ export class Game {
    *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
    *  render-only read-out from the core — no sim state, no Command. */
   showPeeps = true;
+  /** TTD signals overlay (single-track block state) — OFF by default (opt-in "signal view", so the clean
+   *  map isn't cluttered with a dot per block). On ⇒ the render reads `signalMarkers` each frame. */
+  showSignals = false;
   selectedStation: number | null = null;
   selectedLine: number | null = null;
   hoveredStation: number | null = null;
@@ -870,6 +873,26 @@ export class Game {
   setShowPeeps(on: boolean): void {
     this.showPeeps = on;
     this.refresh();
+  }
+
+  /** Toggle the TTD signals overlay (single-track block state: green/red/amber). */
+  setShowSignals(on: boolean): void {
+    this.showSignals = on;
+    this.refresh();
+  }
+
+  /** TTD signal markers (single-track block state) as lng/lat + aspect, or [] when the lens is off. The
+   *  core fills `[x_m, y_m, status, ...]`; we convert metres→lng/lat through coords/geo.ts (the one
+   *  coordinate crossing). Read-only — no sim state, no Command. */
+  private signalMarkers(): import("./render").SignalMarker[] {
+    if (!this.showSignals) return [];
+    const raw = this.bridge.signalMarkers();
+    const out: import("./render").SignalMarker[] = [];
+    for (let i = 0; i + 2 < raw.length; i += 3) {
+      const [lng, lat] = metersToLngLat([raw[i], raw[i + 1]]);
+      out.push({ lng, lat, aspect: raw[i + 2] });
+    }
+    return out;
   }
 
   /** Build the binary-attribute peep layer at interpolation `alpha`, or null when off / not running
@@ -2405,7 +2428,10 @@ export class Game {
             return [ambientTraderLayer(carts), ambientCargoLayer(carts)];
           })()
         : [];
-    let layers = [...below, ...ambient, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
+    // TTD signals (opt-in lens): single-track block state UNDER the vehicles, so a cart rides on top of
+    // the signal that gates it. Per-frame (occupancy shifts with the trains), like the other motion layers.
+    const signals = this.showSignals ? [signalLayer(this.signalMarkers())] : [];
+    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

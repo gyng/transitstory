@@ -384,6 +384,20 @@ export function Toolbar() {
           }}
         />
 
+        {/* TTD signals (fantasy single-track): show each block's state so meets read at a glance. */}
+        {ui.ruleset === "arcadia" && (
+          <Button
+            label="🚦 Signals"
+            testid="layer-signals"
+            title="Signal view: single-track block state — 🟢 clear · 🔴 occupied · 🟠 a cart held, waiting for the block ahead. Purely visual — shows WHY carts meet and wait on single track."
+            onClick={() => game.setShowSignals(!ui.showSignals)}
+            style={{
+              background: ui.showSignals ? "#0072b2" : "#fff",
+              color: ui.showSignals ? "#fff" : "#1c2024",
+            }}
+          />
+        )}
+
         {/* Map LENSES (#5): a compact arcadia-only view-mode selector — emphasise one reading of the busy
             map by dimming the others (filtering in Game.composeAndSet). Lives with the other view controls. */}
         {ui.ruleset === "arcadia" && (

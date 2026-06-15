@@ -211,6 +211,10 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let build_lookup = &world.build_lookup;
     let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
+    // TTD signals (render-only scratch): rebuilt fresh each tick from the meet occupancy below. Disjoint
+    // field borrow alongside &lines / &mut vehicles; never read back into state, so it can't perturb the hash.
+    let sig = &mut world.signal_occupancy;
+    sig.clear();
 
     // Self-induced congestion: count BUSES per road cell at the START of the tick (the player's own
     // service is a road user). Transient (not hashed); built by iterating the ordered vehicle Vec
@@ -319,6 +323,35 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                     occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
                 }
             }
+        }
+    }
+
+    // TTD signals: a marker on EVERY single span — GREEN (clear, status 0) or RED (occupied, status 1) —
+    // so the whole block network reads at a glance, like TTD's signal aspects. Path 0 (the trunk) per line
+    // (branch spurs deferred); block-covered spans (junction/cross) are owned by their own mutex, skipped.
+    // Render-only scratch (golden-neutral); WAITING amber is layered on at the Phase B meet gate below.
+    for (li, line) in lines.iter().enumerate() {
+        let path = match line.paths.first() {
+            Some(p) if !p.loop_line => p,
+            _ => continue, // a loop runs one-way (no meets) ⇒ no single-track signals
+        };
+        for sp in 0..path.track_type.len() {
+            if path.track_type[sp] != crate::line::track::SINGLE {
+                continue;
+            }
+            let lo = path.stop_arclen_mm.get(sp).copied().unwrap_or(0);
+            let hi = path.stop_arclen_mm.get(sp + 1).copied().unwrap_or(lo);
+            if span_block_covered(junctions, li, 0, lo, hi) || cross_span_covered(cross_blocks, li, 0, lo, hi) {
+                continue;
+            }
+            let occupied = occ_owner(&occ, seg_key(li as u32, 0, sp as u32)).is_some();
+            sig.push(crate::world::SignalOccupancy {
+                line: li as u32,
+                path: 0,
+                span: sp as u32,
+                mid_mm: (lo + hi) / 2,
+                status: if occupied { 1 } else { 0 },
+            });
         }
     }
 
@@ -521,6 +554,8 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             } else {
                 path.stop_arclen_mm[trav_span + 1]
             };
+            // TTD signals: an AMBER marker at the gate this cart is held at — the block ahead is occupied.
+            sig.push(crate::world::SignalOccupancy { line: v.line[i].index() as u32, path: v.path[i], span: trav_span as u32, mid_mm: entry_arc, status: 2 });
             let room2 = (dir * (entry_arc - s)).max(0);
             if desired_ds[i] > room2 {
                 desired_ds[i] = room2;

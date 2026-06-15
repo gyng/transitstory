@@ -83,6 +83,13 @@ export interface WaitingDot {
   lat: number;
   count: number;
 }
+/** A TTD-style SIGNAL marker on a single-track block: `aspect` 0 = clear (green), 1 = occupied (red),
+ *  2 = a cart held here waiting for the block ahead (amber). Render-only; surfaces the invisible meet. */
+export interface SignalMarker {
+  lng: number;
+  lat: number;
+  aspect: number;
+}
 /** A node BUFFER-FILL pip (fantasy #8): `fill` 0..1 of the node's Forge-Line buffer — a backed-up source
  *  (ship it) reads high, a starved sink reads low. Rendered as a small gauge dot on the node. */
 export interface BufferPip {
@@ -332,6 +339,8 @@ export interface RenderView {
   /** Un-confirmed station the player is about to build (fantasy "confirm build") — a translucent ghost
    *  at the snapped hex cell, drawn until the confirm bar commits or cancels it. */
   ghostStation?: { lng: number; lat: number } | null;
+  /** TTD signal markers (single-track block state) — only populated when the Signals lens is on. */
+  signals?: SignalMarker[];
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -1310,5 +1319,31 @@ export function peepLayer(positionsLngLat: Float32Array, colors: Uint8Array, cou
     radiusMinPixels: 1.4,
     radiusMaxPixels: 4.5,
     stroked: false,
+  });
+}
+
+/** TTD-style SIGNAL markers on single-track blocks: green (clear) / red (occupied) / amber (a cart held
+ *  here, waiting for the block ahead). Surfaces the otherwise-invisible meet so the player sees WHY a cart
+ *  waits. Small stroked dots UNDER the vehicles (a train rides on top of the signal that gates it). Not
+ *  pickable; rebuilt per frame like the other motion layers (occupancy shifts with the trains). */
+export function signalLayer(signals: SignalMarker[]): Layer {
+  const color = (a: number): [number, number, number, number] =>
+    a === 1 ? [214, 40, 40, 235] : a === 2 ? [230, 159, 0, 240] : [0, 158, 115, 205];
+  return new ScatterplotLayer<SignalMarker>({
+    id: "signals",
+    data: signals,
+    getPosition: (d: SignalMarker) => [d.lng, d.lat],
+    getFillColor: (d: SignalMarker) => color(d.aspect),
+    getRadius: 5,
+    radiusUnits: "pixels",
+    radiusMinPixels: 3.5,
+    radiusMaxPixels: 8,
+    stroked: true,
+    getLineColor: [245, 245, 245, 230],
+    getLineWidth: 1,
+    lineWidthUnits: "pixels",
+    lineWidthMinPixels: 1,
+    pickable: false,
+    updateTriggers: { getFillColor: signals.map((s) => s.aspect).join("") },
   });
 }

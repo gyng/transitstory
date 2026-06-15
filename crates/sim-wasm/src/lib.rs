@@ -112,6 +112,13 @@ impl Sim {
         sim::render_buf::spell_flashes_m(&self.world)
     }
 
+    /// Interleaved TTD signal markers `[x0_m, y0_m, status0, ...]` — single-track block state for the
+    /// render layer. status 0 = clear (green), 1 = occupied (red), 2 = waiting (amber). Fresh Float32Array.
+    #[wasm_bindgen(js_name = signalMarkers)]
+    pub fn signal_markers(&self) -> Vec<f32> {
+        sim::render_buf::signal_markers_m(&self.world)
+    }
+
     /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {

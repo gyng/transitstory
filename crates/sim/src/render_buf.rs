@@ -287,6 +287,27 @@ pub fn spell_flashes_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved TTD signal markers `[x0_m, y0_m, status0, ...]` (3 f32 each): each single-track block's
+/// render state — `status` 1 = OCCUPIED (a cart is in the block → red), 2 = WAITING (a cart is held at
+/// this gate for the block ahead → amber). Self-positioned via `point_at(mid_mm)` on its `(line, path)`
+/// (float allowed in this copy-out). Render-only scratch (NOT hashed); empty for transit / double-track
+/// networks (no single-span meets) and when nothing is running.
+pub fn signal_markers_m(w: &World) -> Vec<f32> {
+    let mut out = Vec::with_capacity(w.signal_occupancy.len() * 3);
+    for s in &w.signal_occupancy {
+        let (x, y) = w
+            .lines
+            .get(s.line as usize)
+            .and_then(|l| l.paths.get(s.path as usize))
+            .map(|p| p.point_at(s.mid_mm))
+            .unwrap_or((0, 0));
+        out.push(mm_to_m(x));
+        out.push(mm_to_m(y));
+        out.push(s.status as f32);
+    }
+    out
+}
+
 /// Interleaved decadence-tide cells `[x0_m, y0_m, v0, ...]` (fantasy S10c): each CORRUPTED CA cell
 /// (decadence > 0) as local metres + a 0..1 strength (`decadence / DECAD_MAX`) for the cold-tide overlay.
 /// Empty for transit / before the tide starts. Render-only — the field is hashed; this is a copy-out
