@@ -75,6 +75,8 @@ export interface AmbientTrader {
   lng: number;
   lat: number;
   dim: boolean; // route now served by rail → faded (the railway took the freight)
+  glyph: string; // the cargo it hauls — a CARGO_CHARSET symbol (⛏ ore, ✿ grain, ✦ aether, …)
+  tint: [number, number, number]; // cargo colour (so the good reads even without the glyph)
 }
 export interface WaitingDot {
   lng: number;
@@ -1034,18 +1036,47 @@ export function ambientTraderLayer(carts: AmbientTrader[]): Layer {
     id: "ambient-traders",
     data: carts,
     getPosition: (d: AmbientTrader) => [d.lng, d.lat],
-    getFillColor: (d: AmbientTrader) => (d.dim ? [168, 138, 102, 90] : [221, 188, 138, 230]), // warm tan ox-cart; pops on ash, fades once railed
+    // The cart is COLOURED BY ITS CARGO (so the good reads at a glance); a railed route fades.
+    getFillColor: (d: AmbientTrader) => (d.dim ? [d.tint[0], d.tint[1], d.tint[2], 70] : [d.tint[0], d.tint[1], d.tint[2], 235]),
     getRadius: 3.4,
     radiusUnits: "pixels",
     radiusMinPixels: 2.2,
     radiusMaxPixels: 5,
     stroked: true,
-    getLineColor: (d: AmbientTrader) => (d.dim ? [70, 56, 40, 70] : [66, 50, 34, 200]),
+    getLineColor: (d: AmbientTrader) => (d.dim ? [40, 34, 28, 70] : [38, 30, 22, 210]),
     getLineWidth: 0.7,
     lineWidthUnits: "pixels",
     lineWidthMinPixels: 0.6,
     pickable: false,
-    updateTriggers: { getFillColor: carts.map((c) => (c.dim ? 1 : 0)).join("") },
+    updateTriggers: { getFillColor: carts.map((c) => `${c.dim ? "d" : ""}${c.tint.join("")}`).join("") },
+  });
+}
+
+/** Every cargo glyph an ambient cart can carry — seeds deck's TextLayer atlas so the symbols render. */
+const CARGO_CHARSET = "⛏✿♣✦⚒◆⚔❖";
+
+/** Living-world (#living): the cargo a cart hauls as a tiny symbol riding just above it (so you can SEE
+ *  what's being transported). Reuses the node-glyph language; small + muted so it doesn't fight the
+ *  player's network for figure-ground. Rebuilt per frame with the carts; empty unless there are carts. */
+export function ambientCargoLayer(carts: AmbientTrader[]): Layer {
+  return new TextLayer<AmbientTrader>({
+    id: "ambient-cargo",
+    data: carts,
+    getPosition: (d: AmbientTrader) => [d.lng, d.lat],
+    getText: (d: AmbientTrader) => d.glyph,
+    getSize: 11,
+    sizeUnits: "pixels",
+    getColor: (d: AmbientTrader) => (d.dim ? [232, 224, 210, 110] : [245, 240, 230, 255]),
+    getPixelOffset: [0, -8],
+    outlineWidth: 2,
+    outlineColor: [24, 20, 16, 220],
+    fontSettings: { sdf: true },
+    fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+    characterSet: CARGO_CHARSET,
+    getTextAnchor: "middle",
+    getAlignmentBaseline: "center",
+    pickable: false,
+    updateTriggers: { getText: carts.map((c) => c.glyph).join(""), getColor: carts.map((c) => (c.dim ? 1 : 0)).join("") },
   });
 }
 

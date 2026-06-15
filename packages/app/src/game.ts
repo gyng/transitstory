@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -162,8 +162,14 @@ export class Game {
    *  town↔town, resource→town) + the carts trundling them — purely DECORATIVE (wall-clock animated,
    *  never sim state), the texture that makes the continent feel inhabited. Built once at load (arcadia
    *  only). A route your rail now serves dims (the freight "industrialised" onto the railway). */
-  private ambientRoutes: { ax: number; ay: number; bx: number; by: number; served: boolean }[] = [];
-  private ambientCarts: { route: number; off: number; speed: number }[] = [];
+  /** Each route is a terrain-FOLLOWING polyline (A* around water + inside the map), so carts trundle the
+   *  land like real ox-trains instead of cutting straight across sea/off-map. `cum`/`len` are arc-lengths
+   *  (lng/lat units) so motion is constant ground-speed regardless of route length; `glyph`/`tint` are the
+   *  cargo it hauls (so you can see what's being transported). */
+  private ambientRoutes: { pts: [number, number][]; cum: number[]; len: number; served: boolean; glyph: string; tint: [number, number, number] }[] = [];
+  private ambientCarts: { route: number; off: number }[] = [];
+  /** Cached terrain bounds (mm) so ambient pathfinding rejects off-map cells. Built lazily from `terrain`. */
+  private terrainBboxMm: [number, number, number, number] | null = null;
   showAmbient = true;
   /** Toggle the individual-rider "peep" dots (Cities:Skylines-style). On by default; only drawn
    *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
@@ -1798,6 +1804,124 @@ export class Game {
     }
   }
 
+  /** Cargo a trade good reads as — a glyph + a tint so you can SEE what each cart hauls. Keyed by resource
+   *  kind (ore/grain/fuel/aether) or a town's demand chain (bread/arms); a plain crate is the fallback. */
+  private cargoOf(kind: string): { glyph: string; tint: [number, number, number] } {
+    // Glyphs are drawn from the symbol-font CARGO_CHARSET (render.ts) — NOT emoji — so they render in
+    // deck's TextLayer atlas. A cart's icon matches its source node's glyph (ore=⛏, grain=✿, …).
+    switch (kind) {
+      case "ore": return { glyph: "⛏", tint: [170, 138, 104] };
+      case "grain": return { glyph: "✿", tint: [214, 184, 86] };
+      case "fuel": return { glyph: "♣", tint: [120, 116, 86] };
+      case "aether": return { glyph: "✦", tint: [176, 124, 224] };
+      case "bread": return { glyph: "❖", tint: [206, 172, 112] };
+      case "arms": return { glyph: "⚔", tint: [182, 188, 198] };
+      default: return { glyph: "◆", tint: [206, 178, 132] };
+    }
+  }
+
+  /** Terrain bounds (mm) for ambient pathfinding — a cart may never wander off the baked continent. Built
+   *  once from the terrain hexes (with a one-cell margin). */
+  private ensureTerrainBbox(): [number, number, number, number] | null {
+    if (this.terrainBboxMm) return this.terrainBboxMm;
+    if (this.terrain.length === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of this.terrain) {
+      const [x, y] = lngLatToMm([c.lng, c.lat]);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    const m = this.terrainCellM * 1000 || 250_000;
+    this.terrainBboxMm = [minX - m, minY - m, maxX + m, maxY + m];
+    return this.terrainBboxMm;
+  }
+
+  /** A* a land route between two lng/lat nodes over the buildability grid: 8-neighbour, blocked on WATER
+   *  cells and anything off the terrain bounds. Returns a decimated lng/lat polyline (start → … → end) that
+   *  hugs the coast and skirts the sea, or null if no land path exists (then the route is dropped — no cart
+   *  swims). Render-only; never touches the deterministic core. */
+  private landPath(ax: number, ay: number, bx: number, by: number): [number, number][] | null {
+    const bbox = this.ensureTerrainBbox();
+    if (!this.build.loaded || !bbox) return [[ax, ay], [bx, by]]; // no terrain oracle ⇒ keep straight (still slow)
+    const cm = this.build.cellMm;
+    const [minX, minY, maxX, maxY] = bbox;
+    // The fantasy buildability grid stores BIOME codes (4=WATER, 6=MOUNTAIN, …) — passable land is exactly
+    // the bake's own rule: not water, not mountain (build_world.py `passable = biome != WATER & != MOUNTAIN`).
+    const MOUNTAIN = 6;
+    const passable = (cx: number, cy: number): boolean => {
+      const x = (cx + 0.5) * cm, y = (cy + 0.5) * cm;
+      if (x < minX || y < minY || x > maxX || y > maxY) return false;
+      const cls = this.build.classifyMm(x, y);
+      return cls !== BUILD.WATER && cls !== MOUNTAIN;
+    };
+    const [sxMm, syMm] = lngLatToMm([ax, ay]);
+    const [exMm, eyMm] = lngLatToMm([bx, by]);
+    const cellOf = (xMm: number, yMm: number): [number, number] => [Math.floor(xMm / cm), Math.floor(yMm / cm)];
+    // Snap each endpoint to the nearest passable cell (towns/resources sit on land, but be defensive).
+    const snap = ([cx, cy]: [number, number]): [number, number] | null => {
+      if (passable(cx, cy)) return [cx, cy];
+      for (let r = 1; r <= 3; r++)
+        for (let dx = -r; dx <= r; dx++)
+          for (let dy = -r; dy <= r; dy++)
+            if (passable(cx + dx, cy + dy)) return [cx + dx, cy + dy];
+      return null;
+    };
+    const start = snap(cellOf(sxMm, syMm));
+    const goal = snap(cellOf(exMm, eyMm));
+    if (!start || !goal) return null;
+    const key = (cx: number, cy: number) => cx * 100_000 + cy;
+    const gkey = key(goal[0], goal[1]);
+    const h = (cx: number, cy: number) => Math.hypot(cx - goal[0], cy - goal[1]);
+    const g = new Map<number, number>();
+    const came = new Map<number, number>();
+    // Binary min-heap of [f, cx, cy].
+    const heap: [number, number, number][] = [];
+    const push = (f: number, cx: number, cy: number) => {
+      heap.push([f, cx, cy]);
+      let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+    };
+    const pop = (): [number, number, number] => {
+      const top = heap[0], last = heap.pop()!;
+      if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let s = i; if (l < heap.length && heap[l][0] < heap[s][0]) s = l; if (r < heap.length && heap[r][0] < heap[s][0]) s = r; if (s === i) break; [heap[s], heap[i]] = [heap[i], heap[s]]; i = s; } }
+      return top;
+    };
+    g.set(key(start[0], start[1]), 0);
+    push(h(start[0], start[1]), start[0], start[1]);
+    const NB: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    let expanded = 0;
+    let found = false;
+    while (heap.length && expanded < 22_000) {
+      const [, cx, cy] = pop();
+      const ck = key(cx, cy);
+      if (ck === gkey) { found = true; break; }
+      expanded++;
+      const gc = g.get(ck)!;
+      for (const [dx, dy] of NB) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!passable(nx, ny)) continue;
+        const nk = key(nx, ny);
+        const ng = gc + (dx && dy ? 1.4142 : 1);
+        if (ng < (g.get(nk) ?? Infinity)) { g.set(nk, ng); came.set(nk, ck); push(ng + h(nx, ny), nx, ny); }
+      }
+    }
+    if (!found) return null;
+    // Reconstruct cell path → lng/lat, decimated (every 2nd cell) since motion lerps along arc-length.
+    const cells: number[] = [];
+    let cur = gkey;
+    for (;;) { cells.push(cur); const prev = came.get(cur); if (prev === undefined) break; cur = prev; }
+    cells.reverse();
+    const pts: [number, number][] = [[ax, ay]];
+    for (let i = 1; i < cells.length - 1; i += 2) {
+      const cx = Math.floor(cells[i] / 100_000), cy = cells[i] - cx * 100_000;
+      pts.push(mmToLngLat([(cx + 0.5) * cm, (cy + 0.5) * cm]));
+    }
+    pts.push([bx, by]);
+    return pts;
+  }
+
   buildAmbientTrade(): void {
     this.ambientRoutes = [];
     this.ambientCarts = [];
@@ -1805,11 +1929,18 @@ export class Game {
     const cap = this.towns.find((t) => t.kind === "capital");
     const towns = this.towns.filter((t) => t.kind !== "capital");
     const seen = new Set<string>();
-    const addRoute = (a: { lng: number; lat: number }, b: { lng: number; lat: number }) => {
-      const key = [a.lng, a.lat, b.lng, b.lat].map((n) => n.toFixed(4)).sort().join(",");
-      if (seen.has(key) || (a.lng === b.lng && a.lat === b.lat)) return;
-      seen.add(key);
-      this.ambientRoutes.push({ ax: a.lng, ay: a.lat, bx: b.lng, by: b.lat, served: false });
+    const addRoute = (a: { lng: number; lat: number }, b: { lng: number; lat: number }, kind: string) => {
+      const k = [a.lng, a.lat, b.lng, b.lat].map((n) => n.toFixed(4)).sort().join(",");
+      if (seen.has(k) || (a.lng === b.lng && a.lat === b.lat)) return;
+      seen.add(k);
+      const pts = this.landPath(a.lng, a.lat, b.lng, b.lat);
+      if (!pts || pts.length < 2) return; // no land route ⇒ no cart sails the sea
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      const len = cum[cum.length - 1];
+      if (len <= 0) return;
+      const { glyph, tint } = this.cargoOf(kind);
+      this.ambientRoutes.push({ pts, cum, len, served: false, glyph, tint });
     };
     const nearest = <T extends { lng: number; lat: number }>(from: { lng: number; lat: number }, pool: T[]): T | null => {
       let best: T | null = null;
@@ -1822,18 +1953,16 @@ export class Game {
       return best;
     };
     for (const t of towns) {
-      if (cap) addRoute(cap, t); // the realm's trade with its seat (the hub)
+      if (cap) addRoute(cap, t, t.chain || "bread"); // the realm trades its staple with its seat
       const nt = nearest(t, towns); // inter-town trade
-      if (nt) addRoute(t, nt);
-      const nr = nearest(t, this.resources); // gathering from the nearest source
-      if (nr) addRoute(t, nr);
+      if (nt) addRoute(t, nt, t.chain || "");
+      const nr = nearest(t, this.resources); // gathering raw goods from the nearest source
+      if (nr) addRoute(t, nr, nr.kind);
     }
-    // Seed carts: a few traders per route, phase-spread so each route reads as a steady two-way trickle.
+    // Seed carts: a couple of traders per route, phase-spread so each route reads as a steady two-way trickle.
     for (let r = 0; r < this.ambientRoutes.length; r++) {
-      const k = 5 + Math.floor(Math.random() * 3); // 5–7 carts per route — a continent that bustles
-      for (let c = 0; c < k; c++) {
-        this.ambientCarts.push({ route: r, off: Math.random(), speed: 0.000006 + Math.random() * 0.000006 });
-      }
+      const k = 2 + Math.floor(Math.random() * 2); // 2–3 carts per route — a quiet, believable trickle
+      for (let c = 0; c < k; c++) this.ambientCarts.push({ route: r, off: Math.random() });
     }
     this.refreshAmbientServed();
   }
@@ -1852,21 +1981,34 @@ export class Game {
       return false;
     };
     for (const route of this.ambientRoutes) {
-      route.served = near(route.ax, route.ay) && near(route.bx, route.by);
+      const a = route.pts[0], b = route.pts[route.pts.length - 1];
+      route.served = near(a[0], a[1]) && near(b[0], b[1]);
     }
   }
 
-  /** Living-world (#living): the ambient trade carts at wall-clock `now` — each ping-pongs along its route
-   *  (smooth, no teleport; a brief pause at each end reads as loading). Purely decorative; rebuilt per frame
-   *  like the vehicle layer. Empty unless arcadia + the toggle is on. */
+  /** Ground-speed of an ox-cart in lng/lat units per ms — deliberately a CRAWL (~real ox pace), so the
+   *  continent breathes slowly rather than zipping. Constant regardless of route length (arc-length motion). */
+  private static readonly AMBIENT_SPEED = 0.0000016;
+
+  /** Living-world (#living): the ambient trade carts at wall-clock `now` — each trundles its terrain-following
+   *  polyline at a constant slow ground-speed, ping-ponging end to end (a brief pause at each end reads as
+   *  loading). Purely decorative; rebuilt per frame like the vehicle layer. Empty unless arcadia + toggle on. */
   ambientTradersAt(now: number): AmbientTrader[] {
     if (!this.showAmbient || this.ruleset !== "arcadia") return [];
     const out: AmbientTrader[] = [];
     for (const c of this.ambientCarts) {
       const route = this.ambientRoutes[c.route];
-      const ph = (now * c.speed + c.off) % 1;
-      const tri = 1 - Math.abs(2 * ph - 1); // 0 → 1 → 0 ping-pong
-      out.push({ lng: route.ax + (route.bx - route.ax) * tri, lat: route.ay + (route.by - route.ay) * tri, dim: route.served });
+      const len = route.len;
+      const period = (2 * len) / Game.AMBIENT_SPEED; // ms for a full there-and-back
+      let d = (now + c.off * period) % period * Game.AMBIENT_SPEED; // distance into the round trip
+      if (d > len) d = 2 * len - d; // ping-pong fold
+      // Locate arc-length d along the polyline.
+      const cum = route.cum, pts = route.pts;
+      let seg = 1;
+      while (seg < cum.length - 1 && cum[seg] < d) seg++;
+      const t = cum[seg] > cum[seg - 1] ? (d - cum[seg - 1]) / (cum[seg] - cum[seg - 1]) : 0;
+      const a = pts[seg - 1], b = pts[seg];
+      out.push({ lng: a[0] + (b[0] - a[0]) * t, lat: a[1] + (b[1] - a[1]) * t, dim: route.served, glyph: route.glyph, tint: route.tint });
     }
     return out;
   }
@@ -1995,7 +2137,10 @@ export class Game {
     // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only.
     const ambient =
       this.ruleset === "arcadia" && this.showAmbient && this.ambientCarts.length > 0
-        ? [ambientTraderLayer(this.ambientTradersAt(performance.now()))]
+        ? (() => {
+            const carts = this.ambientTradersAt(performance.now());
+            return [ambientTraderLayer(carts), ambientCargoLayer(carts)];
+          })()
         : [];
     let layers = [...below, ...ambient, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
