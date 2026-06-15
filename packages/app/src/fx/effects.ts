@@ -266,7 +266,9 @@ export class Effects {
       const y = p.y - 8 - f.rise * k; // float upward
       // Fade in fast, hold, fade out: 1 for the first 60%, then ramp to 0.
       const a = t < 0.15 ? t / 0.15 : t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
-      cx.font = `700 ${f.size}px ui-sans-serif, system-ui, sans-serif`;
+      // Symbol-font fallbacks so the cargo glyphs (⛏ ✿ ♣ ✦ ❖ ⚔ ◆) + the ⬢ gold mark render on the
+      // canvas, not as tofu boxes, on systems whose system-ui lacks them.
+      cx.font = `700 ${f.size}px ui-sans-serif, system-ui, "Segoe UI Symbol", "Noto Sans Symbols2", "Apple Symbols", sans-serif`;
       // dark halo for legibility over the bright map, then the coloured text.
       cx.lineWidth = 3;
       cx.strokeStyle = `rgba(12,14,18,${(0.7 * a).toFixed(3)})`;

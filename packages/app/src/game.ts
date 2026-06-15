@@ -2026,6 +2026,32 @@ export class Game {
       } else if (dGold > 0 && top) {
         this.effects.floatText(top.lng, top.lat, `+${dGold}⬢`, "235,205,110"); // fallback: lump at the busiest spot
       }
+      // Loaded/unloaded CARGO floats (diegetic supply story): goods LOADED at a source (↑) + UNLOADED at a
+      // sink (↓), tagged with the node's commodity glyph — so the player watches supply physically MOVE, not
+      // just the gold it earns. Loads = boarding deltas (pickup at sources); unloads = the alighting deltas.
+      const cm = this.cellMm;
+      const glyphByCell = new Map<string, string>();
+      if (cm > 0) {
+        const put = (lng: number, lat: number, g: string) => {
+          const [x, y] = lngLatToMm([lng, lat]);
+          glyphByCell.set(`${Math.floor(x / cm)},${Math.floor(y / cm)}`, g);
+        };
+        for (const r of this.resources) put(r.lng, r.lat, this.cargoOf(r.kind).glyph);
+        for (const t of this.towns) if (t.chain) put(t.lng, t.lat, this.cargoOf(t.chain).glyph);
+      }
+      const glyphAt = (id: number): string => {
+        const v = sv[id];
+        if (!v || cm <= 0) return "▪";
+        return glyphByCell.get(`${Math.floor(v.xMm / cm)},${Math.floor(v.yMm / cm)}`) ?? "▪";
+      };
+      for (const { id, d } of deltas.slice(0, 3)) {
+        const p = at(id);
+        if (p) this.effects.floatText(p.lng, p.lat, `↑${d}${glyphAt(id)}`, "150,205,160", { rise: 20, size: 13, ttl: 1400 });
+      }
+      for (const { id, d } of earned.slice(0, 3)) {
+        const p = at(id);
+        if (p) this.effects.floatText(p.lng, p.lat, `↓${d}${glyphAt(id)}`, "140,195,225", { rise: 12, size: 13, ttl: 1400 });
+      }
     } else if (s.economyEnabled) {
       const dFare = Math.round(s.fareRevenue - prev.fare);
       if (dFare > 0 && top) this.effects.floatText(top.lng, top.lat, `+$${fmtShort(dFare)}`, "120,210,140");
