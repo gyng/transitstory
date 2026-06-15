@@ -89,6 +89,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
         return { lng, lat };
       });
       game.influenceHops = sg.decadenceSeed?.influenceHops ?? 0; // #9 area-of-influence build gate
+      game.buildAmbientTrade(); // #living — ambient ox-cart trade routes between the baked nodes (render-only)
     }
     // Baked rivers (additive top-level manifest field): i64-mm cell-centre endpoints → lng/lat via the one
     // coordinate boundary. Render-only cold water; never reaches the core.

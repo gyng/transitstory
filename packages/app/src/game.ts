@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -76,8 +76,8 @@ export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "b
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
   supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "armies", "army-badges", "raiders", "raider-badges", "spells"]),
-  military: new Set(["rivers", "resources", "resource-icons", "demand"]),
-  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges"]),
+  military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges", "ambient-traders"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
@@ -154,6 +154,13 @@ export class Game {
    *  `CityData.influence_hops`. 0 ⇒ no gate (transit + un-gated cities). Drives the realm-border overlay
    *  AND the pre-commit reach check; the authoritative gate lives in the core (`World::buildable_at`). */
   influenceHops = 0;
+  /** Living-world (#living): ambient ox-cart trade routes between the baked nodes (capital↔towns,
+   *  town↔town, resource→town) + the carts trundling them — purely DECORATIVE (wall-clock animated,
+   *  never sim state), the texture that makes the continent feel inhabited. Built once at load (arcadia
+   *  only). A route your rail now serves dims (the freight "industrialised" onto the railway). */
+  private ambientRoutes: { ax: number; ay: number; bx: number; by: number; served: boolean }[] = [];
+  private ambientCarts: { route: number; off: number; speed: number }[] = [];
+  showAmbient = true;
   /** Toggle the individual-rider "peep" dots (Cities:Skylines-style). On by default; only drawn
    *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
    *  render-only read-out from the core — no sim state, no Command. */
@@ -1747,12 +1754,90 @@ export class Game {
     this.puffCursor = (this.puffCursor + PER_TICK) % n;
   }
 
+  /** Living-world (#living): build the ambient trade graph from the baked nodes — the capital trades with
+   *  every town, each town with its nearest neighbour town, and each town draws from its nearest resource.
+   *  Carts (ping-ponging traders) are seeded per route. Called once at load (arcadia only); render-only, so
+   *  the variety RNG here never touches the deterministic core. Idempotent (clears + rebuilds). */
+  buildAmbientTrade(): void {
+    this.ambientRoutes = [];
+    this.ambientCarts = [];
+    if (this.ruleset !== "arcadia") return;
+    const cap = this.towns.find((t) => t.kind === "capital");
+    const towns = this.towns.filter((t) => t.kind !== "capital");
+    const seen = new Set<string>();
+    const addRoute = (a: { lng: number; lat: number }, b: { lng: number; lat: number }) => {
+      const key = [a.lng, a.lat, b.lng, b.lat].map((n) => n.toFixed(4)).sort().join(",");
+      if (seen.has(key) || (a.lng === b.lng && a.lat === b.lat)) return;
+      seen.add(key);
+      this.ambientRoutes.push({ ax: a.lng, ay: a.lat, bx: b.lng, by: b.lat, served: false });
+    };
+    const nearest = <T extends { lng: number; lat: number }>(from: { lng: number; lat: number }, pool: T[]): T | null => {
+      let best: T | null = null;
+      let bd = Infinity;
+      for (const p of pool) {
+        if (p.lng === from.lng && p.lat === from.lat) continue;
+        const d = (p.lng - from.lng) ** 2 + (p.lat - from.lat) ** 2;
+        if (d < bd) { bd = d; best = p; }
+      }
+      return best;
+    };
+    for (const t of towns) {
+      if (cap) addRoute(cap, t); // the realm's trade with its seat (the hub)
+      const nt = nearest(t, towns); // inter-town trade
+      if (nt) addRoute(t, nt);
+      const nr = nearest(t, this.resources); // gathering from the nearest source
+      if (nr) addRoute(t, nr);
+    }
+    // Seed carts: a few traders per route, phase-spread so each route reads as a steady two-way trickle.
+    for (let r = 0; r < this.ambientRoutes.length; r++) {
+      const k = 5 + Math.floor(Math.random() * 3); // 5–7 carts per route — a continent that bustles
+      for (let c = 0; c < k; c++) {
+        this.ambientCarts.push({ route: r, off: Math.random(), speed: 0.000006 + Math.random() * 0.000006 });
+      }
+    }
+    this.refreshAmbientServed();
+  }
+
+  /** A route is "industrialised" once BOTH its endpoints sit within a player station's catchment — the
+   *  freight has moved onto the railway, so its carts fade. Recomputed on refresh (station set changes),
+   *  never per frame. Cheap O(routes × stations). */
+  private refreshAmbientServed(): void {
+    if (this.ambientRoutes.length === 0) return;
+    const sv = this.bridge.stationsView().filter((s) => !s.removed);
+    const stMm = sv.map((s) => [s.xMm, s.yMm] as [number, number]);
+    const r2 = (CATCHMENT_M * 1500) ** 2; // a touch beyond catchment — "the rail is near this node"
+    const near = (lng: number, lat: number): boolean => {
+      const [x, y] = lngLatToMm([lng, lat]);
+      for (const [sx, sy] of stMm) if ((sx - x) ** 2 + (sy - y) ** 2 <= r2) return true;
+      return false;
+    };
+    for (const route of this.ambientRoutes) {
+      route.served = near(route.ax, route.ay) && near(route.bx, route.by);
+    }
+  }
+
+  /** Living-world (#living): the ambient trade carts at wall-clock `now` — each ping-pongs along its route
+   *  (smooth, no teleport; a brief pause at each end reads as loading). Purely decorative; rebuilt per frame
+   *  like the vehicle layer. Empty unless arcadia + the toggle is on. */
+  ambientTradersAt(now: number): AmbientTrader[] {
+    if (!this.showAmbient || this.ruleset !== "arcadia") return [];
+    const out: AmbientTrader[] = [];
+    for (const c of this.ambientCarts) {
+      const route = this.ambientRoutes[c.route];
+      const ph = (now * c.speed + c.off) % 1;
+      const tri = 1 - Math.abs(2 * ph - 1); // 0 → 1 → 0 ping-pong
+      out.push({ lng: route.ax + (route.bx - route.ax) * tri, lat: route.ay + (route.by - route.ay) * tri, dim: route.served });
+    }
+    return out;
+  }
+
   /** Rebuild cached topology layers from authoritative sim views; recompose with current
    *  (non-interpolated) vehicle positions. The GameLoop recomposes per frame with alpha. */
   refresh(): void {
     const { below, above } = topoLayers(this.buildView());
     this.below = below;
     this.above = above;
+    this.refreshAmbientServed(); // re-evaluate which trade routes the rail now serves (station set changed)
     this.composeAndSet(this.currentVehicleDots(), this.peepLayerAt(1));
     for (const cb of this.onChange) cb();
   }
@@ -1866,7 +1951,13 @@ export class Game {
       this.ruleset === "arcadia" && !detail
         ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front")
         : this.below;
-    let layers = [...below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
+    // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
+    // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only.
+    const ambient =
+      this.ruleset === "arcadia" && this.showAmbient && this.ambientCarts.length > 0
+        ? [ambientTraderLayer(this.ambientTradersAt(performance.now()))]
+        : [];
+    let layers = [...below, ...ambient, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

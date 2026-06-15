@@ -53,6 +53,16 @@ export interface VehicleDot {
   /** Load factor (onboard / capacity), 0..~1 — drives the crowding ring colour + train size. */
   load: number;
 }
+
+/** Living-world (#living): one ambient ox-cart / trader trundling a baked trade route between towns,
+ *  resources, and the capital — purely DECORATIVE (client-side, wall-clock animated, never sim state),
+ *  the texture that makes the continent feel inhabited. `dim` carts ride a route your rail now serves
+ *  (the trade "industrialised" onto the railway), so they fade as your network takes over the haulage. */
+export interface AmbientTrader {
+  lng: number;
+  lat: number;
+  dim: boolean; // route now served by rail → faded (the railway took the freight)
+}
 export interface WaitingDot {
   lng: number;
   lat: number;
@@ -999,6 +1009,29 @@ function loadRing(load: number): { color: [number, number, number, number]; widt
  *  the same-coloured track via its contrasting stroke), with a small WHITE triangle on top
  *  rotated to the heading so you read which way each train is travelling. Both below stations so
  *  platforms stay clickable. Returned as an array spliced into the z-order between topo below/above. */
+/** Living-world (#living): the ambient trade carts as one small-dot ScatterplotLayer. Warm earthy ox-cart
+ *  brown; served (industrialised) routes fade out. Rebuilt per frame like the vehicle layer (small, cheap —
+ *  the "never rebuild" rule guards the heavy cached topo layers, not these per-frame motion dots). Not pickable. */
+export function ambientTraderLayer(carts: AmbientTrader[]): Layer {
+  return new ScatterplotLayer({
+    id: "ambient-traders",
+    data: carts,
+    getPosition: (d: AmbientTrader) => [d.lng, d.lat],
+    getFillColor: (d: AmbientTrader) => (d.dim ? [168, 138, 102, 90] : [221, 188, 138, 230]), // warm tan ox-cart; pops on ash, fades once railed
+    getRadius: 3.4,
+    radiusUnits: "pixels",
+    radiusMinPixels: 2.2,
+    radiusMaxPixels: 5,
+    stroked: true,
+    getLineColor: (d: AmbientTrader) => (d.dim ? [70, 56, 40, 70] : [66, 50, 34, 200]),
+    getLineWidth: 0.7,
+    lineWidthUnits: "pixels",
+    lineWidthMinPixels: 0.6,
+    pickable: false,
+    updateTriggers: { getFillColor: carts.map((c) => (c.dim ? 1 : 0)).join("") },
+  });
+}
+
 export function vehicleLayers(dots: VehicleDot[]): Layer[] {
   return [
     // Body: the crowding-aware dot. Line-colour fill = identity; radius + outline colour/width
