@@ -26,6 +26,7 @@ import { ObjectivePanel } from "./Objectives";
 import { TechPanel } from "./TechPanel";
 import { SpellBar } from "./SpellBar";
 import { ServiceReport } from "./ServiceReport";
+import { Fleet } from "./Fleet";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
@@ -321,6 +322,7 @@ export function App() {
       <TechPanel />
       <SpellBar />
       <Panels />
+      <Fleet />
       <ServiceReport />
       <DraftControls />
       <CommuterCard />
