@@ -13,7 +13,7 @@ import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
-import { axialOf, centerOf, type Axial } from "./sim/hexgrid";
+import { axialOf, centerOf, lineCosted, type Axial } from "./sim/hexgrid";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Event, PerLine, PerStation, Stats } from "./types";
 import { lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
@@ -1124,7 +1124,40 @@ export class Game {
       if (i + 1 < this.draft.length) for (const w of this.draftWaypoints[i] ?? []) pts.push(w);
     }
     if (includeCursor && this.cursor && pts.length >= 1) pts.push(lngLatToMm(this.cursor));
+    // Fantasy grid: expand each consecutive pair into the cost-aware one-bend lattice route, so the
+    // blueprint previews EXACTLY the track that commits (and the preview length/cost read true). The
+    // routing mirrors the core (hexgrid line_costed) cell-for-cell, so ghost == committed geometry.
+    if (this.cellMm > 0 && pts.length >= 2) return this.gridRoutePoints(pts);
     return pts;
+  }
+
+  /** Walk a point sequence into the dense one-bend lattice polyline (mm) — the frontend mirror of the
+   *  core's grid_walk: each consecutive pair becomes the cheaper one-bend hex run, scored by the SAME
+   *  terrain costs the core uses (so the ghost matches the commit and routes around water/mountains). */
+  private gridRoutePoints(pts: [number, number][]): [number, number][] {
+    const s = this.cellMm;
+    const cost = (c: Axial): number => {
+      const [x, y] = centerOf(c[0], c[1], s);
+      switch (this.build.classifyMm(x, y)) {
+        case 4: return 800; // WATER
+        case 6: return 320; // MOUNTAIN
+        case 7: return 190; // HILL
+        case 8: return 140; // FOREST
+        case 9: return 130; // LEY
+        default: return 100; // plain / open
+      }
+    };
+    const out: [number, number][] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = axialOf(pts[i][0], pts[i][1], s);
+      const b = axialOf(pts[i + 1][0], pts[i + 1][1], s);
+      const cells = lineCosted(a, b, cost);
+      for (let j = 0; j < cells.length; j++) {
+        if (i > 0 && j === 0) continue; // skip the shared joint (prev segment's tail == this head)
+        out.push(centerOf(cells[j][0], cells[j][1], s));
+      }
+    }
+    return out;
   }
 
   /** The draggable control-point handles for the current draft: a solid dot per existing waypoint,

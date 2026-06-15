@@ -1197,6 +1197,12 @@ impl World {
             self.lines[idx].paths.iter().map(|p| p.span_mode.clone()).collect();
         let old_track_types: Vec<Vec<u8>> =
             self.lines[idx].paths.iter().map(|p| p.track_type.clone()).collect();
+        // Terrain build-cost per hex cell, for the grid one-bend router (line.rs grid_walk): of the two
+        // same-length one-bend corners, it lays track along the cheaper one — swinging around water and
+        // mountains toward plains. Deterministic (the buildability grid is hashed CityData); flat (100)
+        // when there's no terrain raster, so the router falls back to the first corner.
+        let bcm = self.build_cell_mm;
+        let gcm = self.city.grid_cell_mm;
         let mut new_paths: Vec<crate::line::Path> = Vec::with_capacity(specs.len());
         for (pi, (stops, loop_line)) in specs.into_iter().enumerate() {
             let pts: Vec<PointMm> = stops.iter().map(|&s| self.station_pos(s)).collect();
@@ -1225,7 +1231,27 @@ impl World {
             if let Some(tt) = old_track_types.get(pi) {
                 p.track_type = tt.clone();
             }
-            p.rebuild(&pts, &span_points, self.city.grid_cell_mm);
+            let cost = |cell: crate::hexgrid::Axial| -> i64 {
+                use crate::city::biome;
+                if bcm <= 0 {
+                    return 100;
+                }
+                let pt = crate::hexgrid::center_of(cell, gcm);
+                let cls = self
+                    .build_lookup
+                    .get(&(pt.x_mm.div_euclid(bcm) as i32, pt.y_mm.div_euclid(bcm) as i32))
+                    .copied()
+                    .unwrap_or(0u8);
+                match cls {
+                    biome::WATER => 800,    // under-water tunnelling — very dear; route around it
+                    biome::MOUNTAIN => 320, // blast/tunnel a ridge
+                    biome::HILL => 190,
+                    biome::FOREST => 140,
+                    biome::LEY => 130,
+                    _ => 100, // plain / open
+                }
+            };
+            p.rebuild(&pts, &span_points, gcm, &cost);
             new_paths.push(p);
         }
         self.lines[idx].paths = new_paths;

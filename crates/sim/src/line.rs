@@ -184,7 +184,7 @@ impl Path {
     /// Rebuild the smoothed polyline + arc-length tables from this path's ordered stop positions.
     /// `span_points[i]` shapes the span after stop i (pass-through bends, not halts). Existing
     /// `span_mode` values are preserved where the span count is unchanged; new spans default Surface.
-    pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>], grid_cell_mm: i64) {
+    pub fn rebuild(&mut self, stop_pts: &[PointMm], span_points: &[Vec<PointMm>], grid_cell_mm: i64, cost: &dyn Fn(crate::hexgrid::Axial) -> i64) {
         let n = stop_pts.len();
         // A stop's geometric vertex. For LITERAL (imported) lines this is the stop's ON-TRACK
         // position — the adjacent real waypoint — NOT the supplied point: same-name interchanges are
@@ -232,7 +232,7 @@ impl Path {
         // continuous Catmull-Rom curve (literal = a light pass; player = full smooth). Parity: a city
         // with grid_cell_mm == 0 takes the EXACT existing path ⇒ byte-identical geometry, zero re-pins.
         let (poly, stop_idx) = if grid_cell_mm > 0 {
-            grid_walk(&pts, grid_cell_mm)
+            grid_walk(&pts, grid_cell_mm, cost)
         } else {
             let samples = if self.literal { LITERAL_SAMPLES } else { SAMPLES_PER_SPAN };
             smooth_centripetal(&pts, samples)
@@ -422,7 +422,7 @@ impl Line {
         let wps = self.waypoints.clone();
         let mut p = Path::new(self.stops.clone(), self.loop_line);
         p.literal = self.literal;
-        p.rebuild(stop_pts, &wps, grid_cell_mm);
+        p.rebuild(stop_pts, &wps, grid_cell_mm, &|_| 0); // helper: flat cost (no terrain context here)
         self.paths = vec![p];
     }
 }
@@ -463,7 +463,7 @@ fn cap_from_radius(r_mm: f64) -> i64 {
 /// (the express/local false-negative the grid review found). That case needs explicit laid track
 /// lines reference (the FULL track-objects model), and is out of LITE scope — Phase 2's cross-line
 /// mutex contract is "shared consecutive stop-cells", and `grid_express_local_*` (#[ignore]d) pins it.
-fn grid_walk(pts: &[PointMm], cell_mm: i64) -> (Vec<PointMm>, Vec<usize>) {
+fn grid_walk(pts: &[PointMm], cell_mm: i64, cost: &dyn Fn(crate::hexgrid::Axial) -> i64) -> (Vec<PointMm>, Vec<usize>) {
     use crate::hexgrid;
     // Each stop snaps to its HEX cell (`axial_of`); consecutive stops connect by the CANONICAL hex
     // line (`hexgrid::line` — drawn from the lexicographically smaller endpoint then reversed, so
@@ -482,7 +482,7 @@ fn grid_walk(pts: &[PointMm], cell_mm: i64) -> (Vec<PointMm>, Vec<usize>) {
             }
             Some(pc) => {
                 // `line(pc, c)` is pc..=c inclusive; pc is already in `poly`, so push the rest.
-                for &cc in &hexgrid::line(pc, c)[1..] {
+                for &cc in &hexgrid::line_costed(pc, c, cost)[1..] {
                     poly.push(hexgrid::center_of(cc, cell_mm));
                 }
                 // `c` is the last vertex pushed (or, if c == pc, the previous vertex ⇒ zero-length span).

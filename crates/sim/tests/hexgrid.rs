@@ -3,7 +3,7 @@
 //! proven in isolation, not inside the cross-line mutex where a bug is gate-blind. These are
 //! STRUCTURAL assertions (symmetry / round-trip / adjacency / exactly-once), not `run()==run()`.
 use sim::geo_local::PointMm;
-use sim::hexgrid::{axial_of, center_of, distance, line, Axial};
+use sim::hexgrid::{axial_of, center_of, distance, line, line_costed, Axial};
 
 const SIZE: i64 = 120_000; // a representative grid_cell_mm (matches the square-grid default order)
 
@@ -116,6 +116,52 @@ fn line_canonical_reverse_holds_exhaustively() {
         }
     }
     assert_eq!(checked, 13 * 13 * 13 * 13, "swept the full pair neighbourhood");
+}
+
+/// THE one-bend property (the readability win): a minimal lattice line turns at most ONCE — a single
+/// run along one direction, then a single run along another. Swept exhaustively (the OLD cube-lerp
+/// staircase would fail this with many turns). Fewer turns ⇒ the clean TTD-style track the design wants.
+#[test]
+fn line_has_at_most_one_bend() {
+    for aq in -6..=6 {
+        for ar in -6..=6 {
+            for bq in -6..=6 {
+                for br in -6..=6 {
+                    let l = line((aq, ar), (bq, br));
+                    let mut turns = 0;
+                    for w in l.windows(3) {
+                        let s1 = (w[1].0 - w[0].0, w[1].1 - w[0].1);
+                        let s2 = (w[2].0 - w[1].0, w[2].1 - w[1].1);
+                        if s1 != s2 {
+                            turns += 1;
+                        }
+                    }
+                    assert!(turns <= 1, "({aq},{ar})->({bq},{br}) bends {turns}× (want ≤1): {l:?}");
+                }
+            }
+        }
+    }
+}
+
+/// COST-AWARENESS: of the two same-length one-bend corners, the router takes the cheaper. With a cost
+/// that penalises the q==0 side, the (0,0)->(2,2) line swings the OTHER way (right-then-up); flip the
+/// penalty and it swings back (up-then-right). So track routes around dear terrain (water/mountains).
+#[test]
+fn line_costed_takes_the_cheaper_corner() {
+    let a: Axial = (0, 0);
+    let b: Axial = (2, 2);
+    let up_then_right = vec![(0, 0), (0, 1), (0, 2), (1, 2), (2, 2)];
+    let right_then_up = vec![(0, 0), (1, 0), (2, 0), (2, 1), (2, 2)];
+    // Penalise the q==0 cells ⇒ avoid the up-first corner ⇒ take right-then-up.
+    let avoid_left = line_costed(a, b, &|c: Axial| if c.0 == 0 { 1000 } else { 0 });
+    assert_eq!(avoid_left, right_then_up, "should swing away from the penalised q==0 side");
+    // Penalise the q==2 cells ⇒ avoid the right-first corner ⇒ take up-then-right.
+    let avoid_right = line_costed(a, b, &|c: Axial| if c.0 == 2 { 1000 } else { 0 });
+    assert_eq!(avoid_right, up_then_right, "should swing away from the penalised q==2 side");
+    // Symmetry holds with cost too (b->a is the exact reverse).
+    let mut rev = line_costed(b, a, &|c: Axial| if c.0 == 0 { 1000 } else { 0 });
+    rev.reverse();
+    assert_eq!(rev, avoid_left, "cost-aware line stays canonical/symmetric");
 }
 
 /// A point near a cell's centre (within the inner radius) classifies to that cell — the snap a build

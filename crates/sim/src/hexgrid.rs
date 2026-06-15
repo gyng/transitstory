@@ -70,34 +70,84 @@ pub fn distance(a: Axial, b: Axial) -> i64 {
     ((ax - bx).abs() + (ay - by).abs() + (az - bz).abs()) / 2
 }
 
-/// The CANONICAL hex line between two cells, INCLUSIVE — the hex analog of `line.rs::grid_walk`'s
-/// octilinear walk. Drawn from the lexicographically SMALLER endpoint, then reversed, so `line(a,b)`
-/// is the EXACT reverse of `line(b,a)` (the same unordered edge set). This is load-bearing for the
-/// cross-line mutex: an out-and-back train and an opposing train on another line cross the shared
-/// section in opposite directions and must reserve the SAME edges. A fixed epsilon nudge keeps every
-/// interpolated point off a hex boundary, so consecutive cells are always adjacent (no skips/dupes).
-pub fn line(a: Axial, b: Axial) -> Vec<Axial> {
+/// The six pointy-top axial neighbour directions in rotational order, so consecutive entries are
+/// ADJACENT — each adjacent pair brackets one 60° sector of displacement (the decomposition basis).
+const DIRS: [Axial; 6] = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)];
+
+/// The cheapest one-BEND minimal-length hex line between two cells, INCLUSIVE, scored by `cost` over its
+/// INTERIOR cells. A shortest hex path decomposes into a run along one of two bracketing directions then
+/// the other (≤ 1 bend); the two run-ORDERS are the two "corners" of the same-length rhombus. We pick the
+/// cheaper corner, so committed track swings to the side with kinder terrain (water/mountains are dear).
+/// SAME LENGTH as a cube-lerp line — only the in-between cells and the turn count differ (far fewer turns).
+///
+/// CANONICAL + SYMMETRIC (load-bearing for the cross-line mutex): computed from the lexicographically
+/// SMALLER endpoint and reversed for the larger, and the cost comparison is endpoint-order-independent,
+/// so `line_costed(a,b)` is the EXACT reverse of `line_costed(b,a)` — opposing trains reserve the SAME
+/// edges. Cost ties break to the first corner (deterministic). Adjacent axial dirs are unimodular, so the
+/// `(k,m)` decomposition is exact integers — NO float in the cell sequence (unlike the old lerp).
+pub fn line_costed(a: Axial, b: Axial, cost: &dyn Fn(Axial) -> i64) -> Vec<Axial> {
     let (lo, hi, rev) = if a <= b { (a, b, false) } else { (b, a, true) };
-    let n = distance(lo, hi);
-    if n == 0 {
+    let (dq, dr) = (hi.0 - lo.0, hi.1 - lo.1);
+    if dq == 0 && dr == 0 {
         return vec![lo];
     }
-    let (ax, az) = lo;
-    let (bx, bz) = hi;
-    let (acx, acy, acz) = (ax as f64, (-ax - az) as f64, az as f64);
-    let (bcx, bcy, bcz) = (bx as f64, (-bx - bz) as f64, bz as f64);
-    let mut v: Vec<Axial> = Vec::with_capacity((n + 1) as usize);
-    for i in 0..=n {
-        let t = i as f64 / n as f64;
-        // Lerp in cube space + a fixed nudge (sum stays ~0) so no sample lands on a boundary.
-        let lx = acx + (bcx - acx) * t + 1e-6;
-        let ly = acy + (bcy - acy) * t + 1e-6;
-        let lz = acz + (bcz - acz) * t - 2e-6;
-        let (rx, _ry, rz) = cube_round(lx, ly, lz);
-        v.push((rx, rz));
+    // Decompose hi-lo into k·d1 + m·d2 over the ONE bracketing adjacent direction pair (k,m ≥ 0).
+    let (mut k, mut m, mut d1, mut d2) = (0i64, 0i64, DIRS[0], DIRS[1]);
+    for i in 0..6 {
+        let (e1, e2) = (DIRS[i], DIRS[(i + 1) % 6]);
+        let det = e1.0 * e2.1 - e1.1 * e2.0; // ±1 for adjacent dirs (unimodular) ⇒ exact integer (k,m)
+        if det == 0 {
+            continue;
+        }
+        let (kk, mm) = ((dq * e2.1 - dr * e2.0) / det, (e1.0 * dr - e1.1 * dq) / det);
+        if kk >= 0 && mm >= 0 {
+            k = kk;
+            m = mm;
+            d1 = e1;
+            d2 = e2;
+            break;
+        }
     }
+    let build = |first: Axial, nf: i64, second: Axial, ns: i64| -> Vec<Axial> {
+        let mut v = Vec::with_capacity((nf + ns + 1) as usize);
+        let mut cur = lo;
+        v.push(cur);
+        for _ in 0..nf {
+            cur = (cur.0 + first.0, cur.1 + first.1);
+            v.push(cur);
+        }
+        for _ in 0..ns {
+            cur = (cur.0 + second.0, cur.1 + second.1);
+            v.push(cur);
+        }
+        v
+    };
+    let score = |v: &[Axial]| -> i64 {
+        if v.len() <= 2 {
+            0
+        } else {
+            v[1..v.len() - 1].iter().map(|&c| cost(c)).sum()
+        }
+    };
+    let c1 = build(d1, k, d2, m); // d1-run then d2-run
+    let mut v = if k > 0 && m > 0 {
+        let c2 = build(d2, m, d1, k); // the other corner: d2-run then d1-run
+        if score(&c2) < score(&c1) {
+            c2
+        } else {
+            c1
+        }
+    } else {
+        c1 // axis-aligned ⇒ a single straight run, no corner to choose
+    };
     if rev {
         v.reverse();
     }
     v
+}
+
+/// The canonical hex line with NO terrain preference (flat cost ⇒ the first corner) — the structural
+/// default used by the hexgrid tests and any caller without a terrain field.
+pub fn line(a: Axial, b: Axial) -> Vec<Axial> {
+    line_costed(a, b, &|_| 0)
 }
