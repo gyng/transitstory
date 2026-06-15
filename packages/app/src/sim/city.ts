@@ -36,6 +36,10 @@ export interface RawCity {
      *  and the realm's baked STARTING decadence (seeded into world.decadence). */
     decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number; creepPerS?: number; productionMicro?: number; capitalXMm?: number; capitalYMm?: number };
   };
+  /** Additive baked DRAINAGE topology (build_world.py flow-accumulation rivers) — render-only; never copied
+   *  into the core city JSON (the sim never sees it). Each edge is a cell-centre→cell-centre segment (i64 mm
+   *  endpoints) with a width class (1..4) + a ford flag (a cheap headwater crossing). */
+  rivers?: { q: number; r: number; toQ: number; toR: number; x0Mm: number; y0Mm: number; x1Mm: number; y1Mm: number; wclass: number; ford: boolean }[];
   /** Optional per-city rider patience (sim-ms) — overrides the core's default. The globe sets an
    *  air-scale value (90_000 = 45 clock-min): air travellers arrive for a departure rather than
    *  drifting off after one missed metro interval, so its pressure is CAPACITY (denied boardings,

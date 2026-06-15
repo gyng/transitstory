@@ -593,9 +593,14 @@ def generate(seed):
     forges = place_forges(biome, resources, towns)
     # S4: seed the decadence (per-town floor + far-edge reservoir + capital grace).
     decadence = seed_decadence(biome, capital, towns)
-    return biome, capital, {"elev": elev, "moisture": moisture, "passes": passes, "land": land,
-                            "resources": resources, "forges": forges, "towns": towns, "decadence": decadence,
-                            "ore_att": ore_att, "bread_att": bread_att}
+    # RIVERS: sink-fill the (non-monotone) elevation, then flow-accumulation drainage trees on the FINAL
+    # land mask. A discrete, deterministic edge topology — render-only (additive manifest field).
+    land_final = biome != WATER
+    elev_filled = fill_sinks(elev, land_final)
+    rivers = compute_rivers(elev_filled, land_final)[0]
+    return biome, capital, {"elev": elev, "elev_filled": elev_filled, "moisture": moisture, "passes": passes,
+                            "land": land, "resources": resources, "forges": forges, "towns": towns,
+                            "decadence": decadence, "rivers": rivers, "ore_att": ore_att, "bread_att": bread_att}
 
 
 def coast_distance(land):
@@ -630,6 +635,89 @@ def coast_distance(land):
     out[~land] = 0.0
     out[out > (1 << 29)] = 0.0
     return out
+
+
+# ---------------------------------------------------------------------------
+# S-rivers — flow-accumulation drainage (research: rivers = the believability cue AND the gameplay
+# chokepoint, the SAME feature). Offline float math, frozen as a discrete i64-mm edge topology. Render-only
+# for now (additive `rivers` manifest field); the rail-cost coupling is a separate, balance-gated follow-up.
+# ---------------------------------------------------------------------------
+RIVER_FILL_EPS = 1e-6
+
+
+def fill_sinks(elev, land):
+    """Priority-flood sink-fill (Barnes 2014): raise every interior PIT just above its lowest rim so each
+    land cell has a STRICTLY-DESCENDING path to the sea. REQUIRED before flow routing — the elevation
+    backbone (0.82·coast-dist + 0.18·roughness) is NOT monotone, so raw downhill parents would cycle / run
+    uphill. Deterministic: a min-heap keyed (elev, r, q); coast/edge land cells are the outlets. Returns the
+    filled float elevation (land only; water left as-is)."""
+    filled = elev.astype(np.float64).copy()
+    closed = np.zeros((H, W), dtype=bool)
+    pq = []
+    for r in range(H):
+        for q in range(W):
+            if not land[r, q]:
+                continue
+            outlet = False
+            for dq, dr in AXIAL_DIRS:
+                nq, nr = q + dq, r + dr
+                if not in_bounds(nq, nr) or not land[nr, nq]:
+                    outlet = True
+                    break
+            if outlet:
+                closed[r, q] = True
+                heapq.heappush(pq, (float(filled[r, q]), r, q))
+    while pq:
+        e, r, q = heapq.heappop(pq)
+        for dq, dr in AXIAL_DIRS:
+            nq, nr = q + dq, r + dr
+            if not in_bounds(nq, nr) or not land[nr, nq] or closed[nr, nq]:
+                continue
+            closed[nr, nq] = True
+            ne = max(float(filled[nr, nq]), e + RIVER_FILL_EPS)  # at least a hair above the outlet rim
+            filled[nr, nq] = ne
+            heapq.heappush(pq, (ne, nr, nq))
+    return filled
+
+
+def compute_rivers(elev_filled, land):
+    """Flow-accumulation drainage trees on the FILLED elevation. Each land cell drains to its LOWEST strictly-
+    lower land neighbour (its parent); flux (catchment size) accumulates downstream (processing high→low, so a
+    cell's flux is complete before it feeds its parent). An edge (cell→parent) becomes a RIVER above a flux
+    threshold (scaled to map size); width class 1..4 ∝ √flux; a FORD marks the thin headwater band (a cheap
+    crossing). The filled elevation guarantees the parent forest is ACYCLIC. Deterministic (index-ordered ties).
+    Returns (edges, parent, flux, threshold) where edges = [(q,r,toQ,toR,wclass,ford)]."""
+    order = [(float(elev_filled[r, q]), r, q) for r in range(H) for q in range(W) if land[r, q]]
+    order.sort(key=lambda t: (-t[0], t[1], t[2]))  # descending elevation, deterministic ties
+    parent = {}
+    for _, r, q in order:
+        here = float(elev_filled[r, q])
+        best, best_e = None, here
+        for dq, dr in AXIAL_DIRS:
+            nq, nr = q + dq, r + dr
+            if not in_bounds(nq, nr) or not land[nr, nq]:
+                continue
+            ne = float(elev_filled[nr, nq])
+            if ne < best_e or (ne == best_e and best is not None and (nr, nq) < (best[1], best[0])):
+                best, best_e = (nq, nr), ne
+        if best is not None and best_e < here:
+            parent[(q, r)] = best
+    flux = np.zeros((H, W), dtype=np.float64)
+    flux[land] = 1.0
+    for _, r, q in order:  # high→low: a cell's flux is final when reached, then folds into its parent
+        p = parent.get((q, r))
+        if p is not None:
+            flux[p[1], p[0]] += flux[r, q]
+    n_land = int(land.sum())
+    threshold = max(40.0, 0.012 * n_land)
+    edges = []
+    for (q, r), (pq_, pr_) in sorted(parent.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        f = float(flux[r, q])
+        if f >= threshold:
+            wclass = int(min(4, 1 + round(2.0 * (f / threshold) ** 0.5)))
+            ford = bool(threshold <= f < 2.0 * threshold)
+            edges.append((q, r, pq_, pr_, wclass, ford))
+    return edges, parent, flux, threshold
 
 
 def pick_capital(biome, elev):
@@ -668,9 +756,10 @@ def cell_lonlat(q, r):
     return round(lng, 6), round(lat, 6)
 
 
-def emit(cid, seed, biome, capital, resources, towns, decadence, forges=None):
+def emit(cid, seed, biome, capital, resources, towns, decadence, forges=None, rivers=None):
     """Serialize the world + buildability + demand packs. Returns the cells list (for the self-test)."""
     forges = forges or []
+    rivers = rivers or []
     land = biome != WATER
     # emit every land cell + a 1-ring water margin (the coastline); skip deep ocean to bound size
     near_land = land.copy()
@@ -741,6 +830,17 @@ def emit(cid, seed, biome, capital, resources, towns, decadence, forges=None):
                          "value": town["value"], "demands": town["demands"], "decadence": town["decadence"],
                          "recipe": town["recipe"]})
 
+    # Rivers — an ADDITIVE manifest field (like supplyGraph: never copied into the core city JSON, so it
+    # never reaches Sim::new — frontend-render data only). Each edge carries axial (q,r)->(toQ,toR) AND its
+    # i64-mm cell-centre endpoints; the frontend draws cell-centre polylines via coords/geo.ts.
+    sg_rivers = []
+    for (q, r, tq, tr, wclass, ford) in rivers:
+        x0, y0 = to_mm(q, r)
+        x1, y1 = to_mm(tq, tr)
+        sg_rivers.append({"q": int(q), "r": int(r), "toQ": int(tq), "toR": int(tr),
+                          "x0Mm": x0, "y0Mm": y0, "x1Mm": x1, "y1Mm": y1,
+                          "wclass": int(wclass), "ford": bool(ford)})
+
     manifest = {
         "id": cid, "name": "Arcadia (baked)", "originLngLat": [ORIGIN_LNG, ORIGIN_LAT],
         "bbox": bbox, "center": center, "zoom": 10, "seed": int(seed),   # the continent is large — frame the whole domain
@@ -750,6 +850,7 @@ def emit(cid, seed, biome, capital, resources, towns, decadence, forges=None):
         "buildabilityPath": f"/data/{cid}_buildability.json",   # the terrain raster (the frontend renders it as the map)
         # additive (serde-safe): S2 resources + S3 towns (w/ per-town S4 decadence floor) + the S4 seed
         "supplyGraph": {"resources": sg_resources, "towns": sg_towns, "decadenceSeed": decadence},
+        "rivers": sg_rivers,  # additive render-only drainage topology (flow-accumulation; never enters the core)
     }
     json.dump(manifest, open(os.path.join(OUT, f"{cid}_world.json"), "w"), indent=2)
     return cells
@@ -928,9 +1029,52 @@ def selftest(seed):
           and all(by_cert[k] >= V_MIN_PER_KIND for k in ("grain", "fuel", "ore")))
 
     check("determinism: forge placement identical across two bakes (S7e multi-stage)", f1["forges"] == f2["forges"])
+
+    # --- RIVERS: sink-fill leaves no pits, drainage forest is acyclic + downhill, flux conserved, deterministic ---
+    land1 = b1 != WATER
+    ef = f1["elev_filled"]
+
+    def _has_outlet(q, r):
+        for dq, dr in AXIAL_DIRS:
+            nq, nr = q + dq, r + dr
+            if not in_bounds(nq, nr) or not land1[nr, nq]:
+                return True  # drains off the continent (sea/edge)
+            if float(ef[nr, nq]) < float(ef[r, q]):
+                return True  # has a strictly-lower land neighbour
+        return False
+
+    pits = sum(1 for r in range(H) for q in range(W) if land1[r, q] and not _has_outlet(q, r))
+    check(f"rivers: priority-flood leaves 0 interior pits ({pits})", pits == 0)
+    redges, rparent, rflux, _rt = compute_rivers(ef, land1)
+    acyclic = True
+    for r in range(H):
+        for q in range(W):
+            if not land1[r, q] or (q, r) not in rparent:
+                continue
+            node, seen_n, steps = (q, r), set(), 0
+            while node in rparent and steps <= W * H:
+                if node in seen_n:
+                    acyclic = False
+                    break
+                seen_n.add(node)
+                node = rparent[node]
+                steps += 1
+            if not acyclic:
+                break
+        if not acyclic:
+            break
+    check("rivers: drainage forest is acyclic (every cell reaches an outlet)", acyclic)
+    root_flux = sum(float(rflux[r, q]) for r in range(H) for q in range(W)
+                    if land1[r, q] and (q, r) not in rparent)
+    check(f"rivers: flux conserved (root flux {root_flux:.0f} == land {int(land1.sum())})",
+          abs(root_flux - float(int(land1.sum()))) < 0.5)
+    downhill = all(float(ef[r, q]) >= float(ef[tr, tq]) for (q, r, tq, tr, _w, _f) in redges)
+    check(f"rivers: every edge flows downhill ({len(redges)} river edges, ≥1 trunk)", downhill and len(redges) >= 1)
+    check("rivers: identical across two bakes (deterministic)", f1["rivers"] == f2["rivers"])
+
     # determinism through serialization (the frozen artifact is byte-stable)
-    c1 = emit("__selftest_a", seed, b1, cap1, res, towns, dec, f1["forges"])
-    c2 = emit("__selftest_b", seed, b2, cap2, f1["resources"], f1["towns"], f2["decadence"], f2["forges"])
+    c1 = emit("__selftest_a", seed, b1, cap1, res, towns, dec, f1["forges"], f1["rivers"])
+    c2 = emit("__selftest_b", seed, b2, cap2, f1["resources"], f1["towns"], f2["decadence"], f2["forges"], f2["rivers"])
     check("determinism: serialized cells byte-identical",
           json.dumps(c1, sort_keys=True) == json.dumps(c2, sort_keys=True))
     for suf in ("a", "b"):
@@ -968,7 +1112,7 @@ def main():
     elif cert != seed:
         print(f"  [S6] requested seed {seed} not winnable; certified seed {cert}")
     seed = cert
-    cells = emit(cid, seed, biome, capital, fields["resources"], fields["towns"], fields["decadence"], fields["forges"])
+    cells = emit(cid, seed, biome, capital, fields["resources"], fields["towns"], fields["decadence"], fields["forges"], fields["rivers"])
     hist = biome_hist(biome)
     from collections import Counter
     rby = Counter(x["kind"] for x in fields["resources"])

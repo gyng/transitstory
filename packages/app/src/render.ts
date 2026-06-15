@@ -130,6 +130,16 @@ export interface DecadenceAnchor {
   lat: number;
 }
 
+/** One baked RIVER segment (build_world.py flow-accumulation drainage): a cell-centre→cell-centre polyline
+ *  with a width class (1..4 ∝ √flux) + a ford flag (a cheap headwater crossing). Render-only believability +
+ *  the cold-water-vs-warm-empire read; the rail-cost coupling is a separate balance-gated follow-up. */
+export interface RiverSeg {
+  from: [number, number];
+  to: [number, number];
+  wclass: number;
+  ford: boolean;
+}
+
 /** Town colour (docs/fantasy-map.md "The look"): the CAPITAL + dominion is the only WARMTH on a dead
  *  world (gold); neutral "good" towns read sickly COLD-bright, darkening + cooling as their decadence
  *  floor rises (the corruption showing through). */
@@ -243,6 +253,7 @@ export interface RenderView {
   resources: ResourceMarker[]; // baked fantasy supply-chain source nodes (POI dots) — empty for transit
   towns: TownMarker[]; // baked fantasy towns (sinks + conquest targets) — empty for transit
   decadenceAnchors: DecadenceAnchor[]; // baked far-edge reservoir anchors (the tide origin) — empty for transit
+  rivers: RiverSeg[]; // baked flow-accumulation drainage segments (cold water) — empty for transit
   desire: DesireArc[]; // OD "desire lines" from the selected station (on-selection flow overlay)
   reach: ReachDot[]; // accessibility isochrone from the selected station (opt-in "Reach" overlay)
   blueprintInvalid?: boolean; // in-progress route is illegal (e.g. land mode over water) → red ghost
@@ -386,6 +397,23 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getLineWidth: 1.5,
       lineWidthMinPixels: 1.5,
       updateTriggers: { getLineColor: view.tidePulse, data: view.tideCells.length },
+    }),
+    // RIVERS (fantasy: baked flow-accumulation drainage, over the tide, under the resources/network): cold
+    // water threading the ash continent — believability + the cold-vs-warm-empire read. Pixel width ∝ flow
+    // class; fords (cheap headwater crossings) drawn a lighter notch. Stable identity (baked once). Empty for transit.
+    new PathLayer({
+      id: "rivers",
+      data: view.rivers,
+      getPath: (d: RiverSeg) => [d.from, d.to],
+      // Clear cold steel-blue so the water reads against the dead ash (the cold-vs-warm-empire axis); fords a
+      // pale notch. Brighter than the basemap WATER so rivers are legible threads, not lost in dark terrain.
+      getColor: (d: RiverSeg) => (d.ford ? [165, 195, 215, 220] : [82, 130, 170, 220]),
+      getWidth: (d: RiverSeg) => d.wclass * 1.6 + 1.5,
+      widthUnits: "pixels",
+      widthMinPixels: 1.5,
+      capRounded: true,
+      jointRounded: true,
+      updateTriggers: { getColor: view.rivers.length, getWidth: view.rivers.length },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
     // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the

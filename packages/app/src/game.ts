@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyIntentLayer, armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyIntentLayer, armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -126,6 +126,9 @@ export class Game {
    *  at load from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity. */
   towns: TownMarker[] = [];
   decadenceAnchors: DecadenceAnchor[] = [];
+  /** Baked flow-accumulation rivers (lng/lat segments) — render-only cold water. Set once at load from the
+   *  manifest's additive `rivers` field (fantasy only; empty for transit). Stable identity across frames. */
+  rivers: RiverSeg[] = [];
   /** Toggle the individual-rider "peep" dots (Cities:Skylines-style). On by default; only drawn
    *  while running (peeps are the in-transit passenger set). The dots are a determinism-free
    *  render-only read-out from the core — no sim state, no Command. */
@@ -1444,6 +1447,7 @@ export class Game {
       resources: this.resources, // baked fantasy supply-chain source nodes; empty for transit cities
       towns: this.towns, // baked fantasy towns (sinks + conquest targets); empty for transit cities
       decadenceAnchors: this.decadenceAnchors, // baked far-edge reservoir anchors; empty for transit cities
+      rivers: this.rivers, // baked flow-accumulation drainage (cold water); empty for transit cities
       vehicles: [],
       waiting,
       hazards,

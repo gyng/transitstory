@@ -89,6 +89,13 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
         return { lng, lat };
       });
     }
+    // Baked rivers (additive top-level manifest field): i64-mm cell-centre endpoints → lng/lat via the one
+    // coordinate boundary. Render-only cold water; never reaches the core.
+    game.rivers = (city.raw.rivers ?? []).map((rv) => {
+      const [flng, flat] = mmToLngLat([rv.x0Mm, rv.y0Mm]);
+      const [tlng, tlat] = mmToLngLat([rv.x1Mm, rv.y1Mm]);
+      return { from: [flng, flat] as [number, number], to: [tlng, tlat] as [number, number], wclass: rv.wclass, ford: rv.ford };
+    });
   }
   const loop = new GameLoop(game);
   attachPointer(game);
