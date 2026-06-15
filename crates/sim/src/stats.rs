@@ -84,6 +84,10 @@ pub struct StatsSnapshot {
     /// build economy is ON (the HUD shows track costs in gold + an afford warning). 0 for transit / a realm
     /// with free building (the shipped default). The UI divides `preview_line_cost` by it to price a draft.
     pub build_gold_divisor: f64,
+    /// Fantasy (#economy) per-in-game-day gold UPKEEP the network currently owes (track-km + rolling stock).
+    /// >0 ⇒ the realm pays opex to keep running (the HUD shows the daily drain + a "−N⬢/day" float on the
+    /// day rollover). 0 for transit / a realm with free upkeep (the shipped default).
+    pub gold_upkeep_daily: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

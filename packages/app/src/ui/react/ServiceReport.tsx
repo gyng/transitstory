@@ -78,6 +78,9 @@ function FantasyServiceReport({ s }: { s: Stats }) {
       <div style={{ padding: "10px 12px 6px", fontWeight: 700 }}>⚜ The Realm</div>
       <div style={{ padding: "0 12px 12px" }}>
         <Row label="Tribute" value={`${Math.round(s.tribute)}`} testid="svc-tribute" />
+        {s.goldUpkeepDaily > 0 && (
+          <Row label="Upkeep" value={`−${Math.round(s.goldUpkeepDaily)}⬢/day`} tone="#d4604f" testid="svc-upkeep" />
+        )}
         <Row label="Supply delivered" value={`${Math.round(s.ridershipTotal)}`} />
         <Divider />
         <Row label="🏰 Towns taken" value={`${Math.round(s.townsCaptured)}`} testid="svc-towns" />

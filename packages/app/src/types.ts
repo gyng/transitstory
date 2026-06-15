@@ -173,6 +173,9 @@ export interface Stats {
   /** Fantasy (#economy) build-cost divisor: gold price of a build = capitalCost / this. >0 ⇒ the gold build
    *  economy is ON (the HUD prices track in gold + warns when unaffordable). 0 = free building (transit). */
   buildGoldDivisor: number;
+  /** Fantasy (#economy) per-in-game-day gold UPKEEP the network owes (track + rolling stock). >0 ⇒ the realm
+   *  pays opex to run (HUD shows the daily drain + a "−N⬢/day" float on the day rollover). 0 = free (transit). */
+  goldUpkeepDaily: number;
 }
 
 export interface StationView {

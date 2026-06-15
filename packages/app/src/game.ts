@@ -66,6 +66,7 @@ const EMPTY_STATS: Stats = {
   spellsCast: 0,
   autocast: false,
   buildGoldDivisor: 0,
+  goldUpkeepDaily: 0,
 };
 
 export type Mode = "build" | "run";
@@ -1719,6 +1720,16 @@ export class Game {
           const [lng, lat] = mmToLngLat([cx, cy]);
           this.effects.floatText(lng, lat, `−$${fmtShort(dOpex)}/day`, "224,96,84", { rise: 26, size: 15, ttl: 1900 });
         }
+      }
+    }
+    // Fantasy gold upkeep on the day rollover — the realm pays opex to keep the network running.
+    if (arcadia && s.goldUpkeepDaily > 0 && s.simDay > prev.day) {
+      const live = sv.filter((v) => !v.removed);
+      if (live.length) {
+        const cx = live.reduce((a, v) => a + v.xMm, 0) / live.length;
+        const cy = live.reduce((a, v) => a + v.yMm, 0) / live.length;
+        const [lng, lat] = mmToLngLat([cx, cy]);
+        this.effects.floatText(lng, lat, `−${Math.round(s.goldUpkeepDaily)}⬢/day`, "224,96,84", { rise: 26, size: 15, ttl: 1900 });
       }
     }
 

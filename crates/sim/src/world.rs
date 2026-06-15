@@ -50,6 +50,11 @@ const TRAIN_COST: i64 = 15_000_000;
 const DAY_MS: i64 = 86_400_000;
 const OPEX_PER_TRAIN_DAY: i64 = 200_000;
 const OPEX_PER_KM_DAY: i64 = 50_000;
+/// Fantasy gold UPKEEP (#economy): a train costs this many KM-equivalents of upkeep (rolling stock is
+/// pricier to keep than track). Daily gold drain = `(track_km + trains×this) × gold_upkeep_per_day /
+/// GOLD_UPKEEP_DIVISOR`. Tunable; 0 baked rate disables it (golden-neutral default).
+const GOLD_UPKEEP_TRAIN_KM: i64 = 4;
+const GOLD_UPKEEP_DIVISOR: i64 = 100;
 
 pub struct World {
     pub seed: u64,
@@ -249,6 +254,10 @@ pub struct World {
     /// The last in-game day `demand::grow` ran for (clock_ms / DAY). Pure function of the clock,
     /// so replays reconstruct it — not hashed (like the other derived markers).
     pub last_growth_day: i64,
+    /// The last in-game day gold UPKEEP was charged (fantasy #economy). Same clock-derived, replay-
+    /// reconstructed, NOT-hashed pattern as `last_growth_day` — the drain it triggers mutates the hashed
+    /// `tribute`, but the cursor itself stays out of `Canonical` (golden-neutral; 0 by default).
+    pub last_upkeep_day: i64,
     /// Per-cell weight ceiling for demand growth: 2× the city's strongest initial cell, computed
     /// once at boot — dataset-agnostic (a metro-population globe cell and a 0–8 city cell both
     /// get headroom without runaway).
@@ -538,6 +547,7 @@ impl World {
             decadence_field,
             demand_dirty: false,
             last_growth_day: 0,
+            last_upkeep_day: 0,
             growth_cap_w,
             economy_enabled: false,
             opex_accrued: 0,
@@ -949,9 +959,45 @@ impl World {
         self.opex_rem %= DAY_MS;
     }
 
+    /// Fantasy gold UPKEEP (#economy): once per in-game day, drain the realm treasury by the cost of
+    /// keeping the network running (track-km + rolling stock). The opex axis that makes a sprawling
+    /// network a tradeoff — you must keep DELIVERING to cover what you've built. Floored at 0 (no gold
+    /// debt; unpaid upkeep simply empties the treasury). Gated on arcadia + a baked rate (0 ⇒ free to
+    /// run ⇒ transit + goldens byte-identical). `last_upkeep_day` is clock-derived + un-hashed, so this
+    /// only ever mutates the already-hashed `tribute` — golden-neutral. The current daily figure is read
+    /// back for the HUD via `gold_upkeep_daily()`.
+    fn accrue_gold_upkeep(&mut self) {
+        let rate = self.city.gold_upkeep_per_day;
+        if rate <= 0 || crate::ruleset::canon(&self.city.ruleset) != "arcadia" {
+            return;
+        }
+        let day = self.clock_ms / (24 * crate::tod::HOUR_MS);
+        if day <= self.last_upkeep_day {
+            return;
+        }
+        // Charge every day boundary crossed since the last charge (catches a multi-day tick step).
+        let days = day - self.last_upkeep_day;
+        self.last_upkeep_day = day;
+        let owed = self.gold_upkeep_daily().saturating_mul(days);
+        self.tribute = (self.tribute - owed).max(0);
+    }
+
+    /// The per-in-game-day gold upkeep the current network owes (track-km + rolling stock × the baked
+    /// rate). 0 when upkeep is off or not arcadia. A pure read — the HUD shows it, the drain charges it.
+    pub fn gold_upkeep_daily(&self) -> i64 {
+        let rate = self.city.gold_upkeep_per_day;
+        if rate <= 0 {
+            return 0;
+        }
+        let trains: i64 = self.lines.iter().filter(|l| !l.removed).filter_map(|l| l.trainset).map(|t| t.count as i64).sum();
+        let km: i64 = self.lines.iter().filter(|l| !l.removed).map(|l| l.length_mm() / 1_000_000).sum();
+        (km + trains * GOLD_UPKEEP_TRAIN_KM) * rate / GOLD_UPKEEP_DIVISOR
+    }
+
     /// Charge opex for one running tick (called from the tick phase loop).
     pub(crate) fn tick_economy(&mut self, dt_ms: i64) {
         self.accrue_opex(dt_ms);
+        self.accrue_gold_upkeep();
     }
 
     /// Low-frequency structured readout for the UI (the wasm->ts query port).
@@ -1101,6 +1147,7 @@ impl World {
             spells_cast: self.spells_cast,
             autocast: self.autocast,
             build_gold_divisor: self.city.build_gold_divisor.max(0) as f64,
+            gold_upkeep_daily: self.gold_upkeep_daily() as f64,
         }
     }
 

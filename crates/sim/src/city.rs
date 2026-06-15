@@ -102,6 +102,15 @@ pub struct CityData {
     /// byte-identical (golden-neutral; the charge is a pure `apply`-time gate on the already-hashed `tribute`).
     #[serde(default)]
     pub build_gold_divisor: i64,
+    /// Fantasy (arcadia) economy: per-in-game-DAY gold UPKEEP rate — the opex that makes a sprawling
+    /// network a tradeoff, not free to keep running. Daily drain = `(track_km + trains×TRAIN_UPKEEP_KM) ×
+    /// this / UPKEEP_DIVISOR`, charged once per day on the rollover (floored at 0 — you can't go into gold
+    /// debt, but unpaid upkeep eats the treasury). A per-city knob baked by `scripts/build_world.py`. **0
+    /// (serde + `Default`) ⇒ NO upkeep (free to run, the shipped behaviour)** — so transit, the arcadia
+    /// golden, and native tests are byte-identical (golden-neutral; the drain only mutates the already-hashed
+    /// `tribute`, gated off by default, and the day cursor is an un-hashed deterministic accumulator).
+    #[serde(default)]
+    pub gold_upkeep_per_day: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

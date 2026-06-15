@@ -145,6 +145,11 @@ PRODUCTION_MICRO = 10
 # knobs — tightened once winnability is re-certified end-to-end.
 BUILD_GOLD_DIVISOR = 15_000_000
 INITIAL_GOLD = 150
+# Fantasy gold UPKEEP (#economy opex): per-in-game-day drain = (track_km + trains×4) × this / 100, charged
+# on the day rollover. Makes a sprawling network a tradeoff — you must keep DELIVERING to cover what you run
+# (don't over-build). Gentle (a mid network owes ~30-50 gold/day vs hundreds earned) so it bites without
+# bankrupting. 0 (native/golden default) ⇒ free to run, byte-identical. Balance knob; tuned for winnability.
+GOLD_UPKEEP_PER_DAY = 15
 
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a
@@ -595,7 +600,8 @@ def seed_decadence(biome, capital, towns):
             "armySpeedMmS": ARMY_SPEED_MM_S, "creepPerS": DECADENCE_CREEP_PER_S,
             "productionMicro": PRODUCTION_MICRO, "influenceHops": influence_hops,
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm),
-            "initialGold": INITIAL_GOLD, "buildGoldDivisor": BUILD_GOLD_DIVISOR}
+            "initialGold": INITIAL_GOLD, "buildGoldDivisor": BUILD_GOLD_DIVISOR,
+            "goldUpkeepPerDay": GOLD_UPKEEP_PER_DAY}
 
 
 def validate(biome, capital, fields, relax=None):
