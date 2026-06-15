@@ -80,8 +80,9 @@ export function attachPointer(game: Game): void {
     const py = e.point.y;
 
     if (game.mode === "build" && game.tool === "station") {
-      game.placeStation(e.lngLat.lng, e.lngLat.lat);
-      // Sticky: stay armed for the next placement (Esc / right-click / another tool disarms).
+      // Two-stage "confirm build": the click drops a GHOST at the snapped hex cell; the confirm bar
+      // (or Enter) commits it, Esc cancels. One-per-cell is checked up front (a taken hex is refused).
+      game.ghostStation(e.lngLat.lng, e.lngLat.lat);
       return;
     }
 
@@ -183,7 +184,11 @@ export function attachPointer(game: Game): void {
   window.addEventListener("keydown", (e) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (e.key === "Enter" && game.tool === "line" && game.draft.length >= 2) {
+    if (game.pendingStation && e.key === "Enter") {
+      game.confirmPendingStation(); // commit the ghost station
+    } else if (game.pendingStation && e.key === "Escape") {
+      game.cancelPendingStation(); // discard the ghost
+    } else if (e.key === "Enter" && game.tool === "line" && game.draft.length >= 2) {
       game.commitDraft();
     } else if (e.key === "Backspace" && game.tool === "line" && game.draft.length > 0) {
       e.preventDefault(); // don't let the browser navigate back

@@ -329,6 +329,9 @@ export interface RenderView {
   /** Pre-commit snap highlight: the station the next click would act on (chain in the line tool,
    *  demolish in the bulldozer) — drawn as a ring BEFORE the click commits (AGENTS UX). */
   snapRing?: { lng: number; lat: number; demolish: boolean } | null;
+  /** Un-confirmed station the player is about to build (fantasy "confirm build") — a translucent ghost
+   *  at the snapped hex cell, drawn until the confirm bar commits or cancels it. */
+  ghostStation?: { lng: number; lat: number } | null;
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -815,6 +818,25 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getRadius: view.stations.map((s) => `${s.selected}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
       },
     }),
+    // Ghost station (fantasy "confirm build"): a translucent selection-blue disc at the snapped hex
+    // cell, shown while a placement awaits the confirm bar. Pickable:false so it never blocks a click.
+    ...(view.ghostStation
+      ? [
+          new ScatterplotLayer({
+            id: "ghost-station",
+            data: [view.ghostStation],
+            getPosition: (d: { lng: number; lat: number }) => [d.lng, d.lat],
+            getRadius: 8,
+            radiusUnits: "pixels",
+            radiusMinPixels: 6,
+            getFillColor: [0, 114, 178, 90] as [number, number, number, number],
+            stroked: true,
+            getLineColor: [255, 255, 255, 235] as [number, number, number, number],
+            lineWidthMinPixels: 2,
+            pickable: false,
+          }),
+        ]
+      : []),
     // Bounty markers (fantasy): a gold ring around each town the player has posted a bounty on — the
     // steering lever's visual feedback (you SEE where you've baited the legions). Font-independent (a
     // ring, not a glyph). Few in number; rebuilt on refresh (bounties change via a Command), not per frame.

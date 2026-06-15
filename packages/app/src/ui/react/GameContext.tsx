@@ -28,6 +28,8 @@ export interface GameUI {
   selectedStation: number | null;
   notice: string | null;
   contextMenu: ContextMenuState | null;
+  /** A station placement is awaiting confirm (fantasy "confirm build") — drives the confirm bar. */
+  pendingStation: boolean;
   /** History depths, so the Undo/Redo chrome re-renders exactly when they move. */
   historyLen: number;
   redoLen: number;
@@ -49,6 +51,7 @@ function snapUI(g: Game): GameUI {
     selectedStation: g.selectedStation,
     notice: g.notice,
     contextMenu: g.contextMenu,
+    pendingStation: g.pendingStation !== null,
     historyLen: g.bridge.log.length,
     redoLen: g.bridge.canRedo() ? 1 : 0, // depth doesn't matter to the chrome, availability does
   };
@@ -69,6 +72,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.selectedStation === b.selectedStation &&
     a.notice === b.notice &&
     a.contextMenu === b.contextMenu &&
+    a.pendingStation === b.pendingStation &&
     a.historyLen === b.historyLen &&
     a.redoLen === b.redoLen &&
     a.enabledModes.length === b.enabledModes.length &&

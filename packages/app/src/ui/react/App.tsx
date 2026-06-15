@@ -33,6 +33,7 @@ import { FollowCard } from "./FollowCard";
 import { StatsDashboard } from "./StatsDashboard";
 import { StatsRecorder } from "./statsHistory";
 import { ContextMenu } from "./ContextMenu";
+import { StationConfirmBar } from "./StationConfirmBar";
 import { DayReport, Milestones } from "./Beats";
 import { getScenario } from "../../objectives";
 
@@ -331,6 +332,7 @@ export function App() {
       <DayReport />
       <Milestones />
       <ContextMenu />
+      <StationConfirmBar />
       <Toolbar />
     </GameProvider>
   );

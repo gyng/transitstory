@@ -13,6 +13,7 @@ import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
+import { axialOf, centerOf, type Axial } from "./sim/hexgrid";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Event, PerLine, PerStation, Stats } from "./types";
 import { lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
@@ -184,6 +185,9 @@ export class Game {
   /** Last rejection reason (e.g. afford-gate) for a transient toast; cleared on dismiss. */
   notice: string | null = null;
 
+  /** Pending (un-confirmed) station: a ghost at the snapped hex cell the player clicked, awaiting the
+   *  confirm bar's ✓/✗ (fantasy "confirm build"). Client-side only — no Command until confirmed. */
+  pendingStation: { lng: number; lat: number; xMm: number; yMm: number } | null = null;
   /** In-progress line draft (ordered station ids) + live cursor lng/lat (T11). */
   draft: number[] = [];
   cursor: [number, number] | null = null;
@@ -474,20 +478,92 @@ export class Game {
 
   // --- commands (the only write path) ---
 
+  /** Hex-cell size (mm) for fantasy snapping — 0 for transit (continuous geometry, no snap). */
+  private get cellMm(): number {
+    return this.terrainCellM > 0 ? this.terrainCellM * 1000 : 0;
+  }
+
+  /** Snap a mm position to its hex-cell CENTRE (fantasy) + the cell's axial id; identity for transit. */
+  private snapToCell(xMm: number, yMm: number): { xMm: number; yMm: number; cell: Axial | null } {
+    const s = this.cellMm;
+    if (s <= 0) return { xMm, yMm, cell: null };
+    const cell = axialOf(xMm, yMm, s);
+    const [sx, sy] = centerOf(cell[0], cell[1], s);
+    return { xMm: sx, yMm: sy, cell };
+  }
+
+  /** Is a non-removed station already on this hex cell? (the one-station-per-cell rule). */
+  private cellOccupied(cell: Axial): boolean {
+    const s = this.cellMm;
+    if (s <= 0) return false;
+    for (const st of this.bridge.stationsView()) {
+      if (st.removed) continue;
+      const a = axialOf(st.xMm, st.yMm, s);
+      if (a[0] === cell[0] && a[1] === cell[1]) return true;
+    }
+    return false;
+  }
+
   placeStation(lng: number, lat: number): number {
-    const [x_mm, y_mm] = lngLatToMm([lng, lat]);
-    const events = this.bridge.apply(cmd.placeStation(x_mm, y_mm));
+    const [rawX, rawY] = lngLatToMm([lng, lat]);
+    // Fantasy: snap to the hex cell + enforce one station per cell (also blocks duplicating a baked
+    // town/resource station). Transit: identity, no cell limit. The Command carries the SNAPPED mm, so
+    // replay is exact.
+    const { xMm, yMm, cell } = this.snapToCell(rawX, rawY);
+    if (cell && this.cellOccupied(cell)) {
+      this.notice = "One station per cell — this hex already has a station";
+      for (const cb of this.onChange) cb();
+      return -1;
+    }
+    const events = this.bridge.apply(cmd.placeStation(xMm, yMm));
     const placed = events.find((e) => "StationPlaced" in e) as
       | { StationPlaced: { id: number } }
       | undefined;
     const id = placed ? placed.StationPlaced.id : -1;
     this.selectedStation = id >= 0 ? id : this.selectedStation; // show its catchment
     if (id >= 0) {
-      this.effects.ripple(lng, lat); // selection-blue placement ring
+      const [slng, slat] = mmToLngLat([xMm, yMm]);
+      this.effects.ripple(slng, slat); // selection-blue placement ring (at the snapped cell)
       audio.place();
     }
     this.refresh();
     return id;
+  }
+
+  /** Station tool click: preview a GHOST at the snapped cell (one-per-cell checked up front) for the
+   *  player to CONFIRM in the UI — not an instant commit. Re-clicking another cell moves the ghost. */
+  ghostStation(lng: number, lat: number): void {
+    const [rawX, rawY] = lngLatToMm([lng, lat]);
+    const { xMm, yMm, cell } = this.snapToCell(rawX, rawY);
+    if (cell && this.cellOccupied(cell)) {
+      this.notice = "One station per cell — this hex already has a station";
+      this.pendingStation = null;
+      this.refresh();
+      for (const cb of this.onChange) cb();
+      return;
+    }
+    const [slng, slat] = mmToLngLat([xMm, yMm]);
+    this.pendingStation = { lng: slng, lat: slat, xMm, yMm };
+    this.refresh();
+    for (const cb of this.onChange) cb();
+  }
+
+  /** Commit the pending ghost station (the confirm bar's ✓ / Enter): one PlaceStation Command. */
+  confirmPendingStation(): number {
+    const p = this.pendingStation;
+    if (!p) return -1;
+    this.pendingStation = null;
+    const id = this.placeStation(p.lng, p.lat); // snap + dedup re-checked inside
+    for (const cb of this.onChange) cb();
+    return id;
+  }
+
+  /** Discard the pending ghost (the confirm bar's ✗ / Esc / tool change). */
+  cancelPendingStation(): void {
+    if (!this.pendingStation) return;
+    this.pendingStation = null;
+    this.refresh();
+    for (const cb of this.onChange) cb();
   }
 
   /** Place a BARRACKS (fantasy) — a node that fields AI legions. Mirrors placeStation but emits the
@@ -707,6 +783,7 @@ export class Game {
 
   setTool(tool: Tool): void {
     if (this.tool === "line" && tool !== "line") this.cancelDraft();
+    if (this.tool === "station" && tool !== "station") this.pendingStation = null; // drop the ghost on tool change
     if (tool !== this.tool) audio.tick();
     this.tool = tool;
     this.refresh();
@@ -1655,6 +1732,7 @@ export class Game {
       pinnedLabel,
       selectedLine: this.selectedLine,
       snapRing: this.snapRingView(),
+      ghostStation: this.pendingStation ? { lng: this.pendingStation.lng, lat: this.pendingStation.lat } : null,
     };
   }
 
