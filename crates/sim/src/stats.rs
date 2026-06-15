@@ -104,6 +104,10 @@ pub struct StationStat {
     /// Remaining siege resistance — a town's FRONTIER garrison (S11), grinding down under siege; 0 once
     /// captured (or for a non-town / before the war ticks). The HUD shows it for sink (town) stations.
     pub town_resistance: f64,
+    /// Forge-Line BUFFER fill 0..1 (fantasy #8): the fullest of this node's commodity buffers / BUFFER_CAP.
+    /// A backed-up SOURCE reads ~1 (ship it!), a starved SINK ~0. 0 for transit / non-forge. Derived from
+    /// the hashed `forge_stock` for the HUD's node buffer pips — NOT hashed itself (it's a snapshot readout).
+    pub buffer_fill: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

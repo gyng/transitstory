@@ -889,6 +889,17 @@ impl World {
                 denied: *self.denied_at.get(s).unwrap_or(&0) as f64,
                 abandoned: *self.abandoned_at.get(s).unwrap_or(&0) as f64,
                 town_resistance: *self.town_value.get(s).unwrap_or(&0) as f64,
+                buffer_fill: {
+                    // The fullest of this node's commodity buffers, normalised by BUFFER_CAP (snapshot of
+                    // the hashed forge_stock; render-only). 0 for transit (forge_stock empty).
+                    let base = s * crate::forge::N_COMMODITIES;
+                    let cap = crate::forge::BUFFER_CAP.max(1) as f64;
+                    (base..base + crate::forge::N_COMMODITIES)
+                        .filter_map(|i| self.forge_stock.get(i))
+                        .map(|&v| v as f64 / cap)
+                        .fold(0.0, f64::max)
+                        .min(1.0)
+                },
             })
             .collect();
 

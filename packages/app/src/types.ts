@@ -79,6 +79,9 @@ export interface PerStation {
   /** Remaining siege resistance — a town's frontier garrison (S11), grinding down under siege; 0 once
    *  captured or for a non-town. The HUD shows it for sink (town) stations in arcadia. */
   townResistance: number;
+  /** Forge-Line buffer fill 0..1 (fantasy #8) — the fullest of this node's commodity buffers. Backed-up
+   *  source ~1 (ship it), starved sink ~0. Drives the node buffer pips; 0 for transit. */
+  bufferFill: number;
 }
 
 export interface PerLine {

@@ -58,6 +58,13 @@ export interface WaitingDot {
   lat: number;
   count: number;
 }
+/** A node BUFFER-FILL pip (fantasy #8): `fill` 0..1 of the node's Forge-Line buffer — a backed-up source
+ *  (ship it) reads high, a starved sink reads low. Rendered as a small gauge dot on the node. */
+export interface BufferPip {
+  lng: number;
+  lat: number;
+  fill: number;
+}
 export interface HazardDot {
   lng: number;
   lat: number;
@@ -262,6 +269,7 @@ export interface RenderView {
   blueprint: [number, number][]; // in-progress line being drawn (T11)
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
+  bufferPips: BufferPip[]; // fantasy #8: node Forge-Line buffer-fill gauges (empty for transit)
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
@@ -791,6 +799,28 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getLineWidth: view.waiting.map((w) => waitBand(w.count)).join(","),
       },
     }),
+    // NODE BUFFER-FILL gauges (fantasy #8): a small filled pip on each node whose colour reads its Forge-Line
+    // buffer — slate (low) → amber (filling) → vermillion (backed up: ship it!). Driven by the ~3 Hz stats
+    // slice (not per frame). Empty for transit. Bands keyed for the updateTrigger.
+    new ScatterplotLayer({
+      id: "buffer-pips",
+      data: view.bufferPips,
+      getPosition: (d: BufferPip) => [d.lng, d.lat],
+      getFillColor: (d: BufferPip) =>
+        d.fill >= 0.85 ? [214, 60, 40, 240] : d.fill >= 0.5 ? [230, 159, 0, 230] : [120, 132, 144, 205],
+      getRadius: (d: BufferPip) => 3 + Math.min(3, d.fill * 3),
+      radiusUnits: "pixels",
+      radiusMinPixels: 3,
+      radiusMaxPixels: 7,
+      stroked: true,
+      getLineColor: [20, 20, 24, 200],
+      lineWidthMinPixels: 1,
+      filled: true,
+      updateTriggers: {
+        getFillColor: view.bufferPips.map((b) => (b.fill >= 0.85 ? 2 : b.fill >= 0.5 ? 1 : 0)).join(","),
+        getRadius: view.bufferPips.map((b) => Math.round(b.fill * 4)).join(","),
+      },
+    }),
     // Starved-only halos for the city overview: below DETAIL_ZOOM the full "waiting" layer is
     // LOD-dropped (hundreds of small queues read as a flashing swarm), but a STARVED platform is
     // exactly the signal a player zooms out to compare — so the worst band stays visible at any
@@ -1046,6 +1076,32 @@ export function raiderLayer(positionsLngLat: Float32Array, count: number): Layer
     radiusUnits: "pixels",
     radiusMinPixels: 4,
     radiusMaxPixels: 9,
+  });
+}
+
+/** Entity BADGE glyphs (fantasy #10): a small symbol pinned on each moving unit so legions (⚔) + raider
+ *  marauders (☣) read as what they are at a glance, not just coloured dots. `positions` are lng/lat (tiny
+ *  counts → a plain array). characterSet seeds the atlas. Trains already carry their load ring; peeps stay
+ *  plain dots (cosmetic). */
+const ENTITY_CHARSET = "⚔☣";
+export function entityBadgeLayer(
+  id: string,
+  positions: [number, number][],
+  glyph: string,
+  color: [number, number, number, number],
+): Layer {
+  return new TextLayer({
+    id,
+    data: positions,
+    getPosition: (d: [number, number]) => d,
+    getText: () => glyph,
+    getSize: 11,
+    sizeUnits: "pixels",
+    getColor: color,
+    fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+    characterSet: ENTITY_CHARSET,
+    getTextAnchor: "middle",
+    getAlignmentBaseline: "center",
   });
 }
 

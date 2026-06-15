@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyIntentLayer, armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -68,9 +68,9 @@ export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "b
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "armies", "raiders", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "armies", "army-badges", "raiders", "raider-badges", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand"]),
-  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
@@ -1390,13 +1390,18 @@ export class Game {
 
     // Waiting-passenger halos from the latest stats snapshot (positioned at stations).
     const waiting: WaitingDot[] = [];
+    const bufferPips: BufferPip[] = [];
     for (const ps of this.lastStats.perStation) {
+      const s = stationsV[ps.stationId];
+      if (!s) continue;
       if (ps.waiting > 0) {
-        const s = stationsV[ps.stationId];
-        if (s) {
-          const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-          waiting.push({ lng, lat, count: ps.waiting });
-        }
+        const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+        waiting.push({ lng, lat, count: ps.waiting });
+      }
+      // Node Forge-Line buffer gauge (#8): show only a meaningfully-filled buffer (slate→amber→red).
+      if (ps.bufferFill > 0.12) {
+        const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+        bufferPips.push({ lng, lat, fill: ps.bufferFill });
       }
     }
 
@@ -1469,6 +1474,7 @@ export class Game {
       rivers: this.rivers, // baked flow-accumulation drainage (cold water); empty for transit cities
       vehicles: [],
       waiting,
+      bufferPips,
       hazards,
       demand,
       desire,
@@ -1613,12 +1619,15 @@ export class Game {
    *  instances mean deck only re-uploads the small per-frame vehicle + peep layers. */
   /** Marching-legion dots (fantasy). Read each compose like the vehicle layer; metres→lng/lat in place.
    *  Null when there are no legions (transit always; arcadia until the first launch). */
-  armyLayerAt(): Layer | null {
+  armyLayerAt(): Layer[] {
     const xy = this.bridge.armyPositions();
     const count = xy.length >> 1;
-    if (count === 0) return null;
+    if (count === 0) return [];
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
-    return armyLayer(xy, count);
+    // #10: a ⚔ badge over each legion so it reads as an army, not just a crimson dot.
+    const pos: [number, number][] = [];
+    for (let i = 0; i < count; i++) pos.push([xy[i * 2], xy[i * 2 + 1]]);
+    return [armyLayer(xy, count), entityBadgeLayer("army-badges", pos, "⚔", [255, 236, 200, 240])];
   }
 
   /** Legion INTENT arcs (fantasy, S11 — the AI general's "why" made spatial): a faint crimson arc from
@@ -1643,12 +1652,15 @@ export class Game {
 
   /** Decadence-raider dots (fantasy, S11 — the rival). Same metres→lng/lat-in-place path as legions.
    *  Null when no raiders march (transit always; arcadia until the rival fields one). */
-  raiderLayerAt(): Layer | null {
+  raiderLayerAt(): Layer[] {
     const xy = this.bridge.raiderPositions();
     const count = xy.length >> 1;
-    if (count === 0) return null;
+    if (count === 0) return [];
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
-    return raiderLayer(xy, count);
+    // #10: a ☣ badge over each raider so the rival's marauders read as a threat at a glance.
+    const pos: [number, number][] = [];
+    for (let i = 0; i < count; i++) pos.push([xy[i * 2], xy[i * 2 + 1]]);
+    return [raiderLayer(xy, count), entityBadgeLayer("raider-badges", pos, "☣", [40, 50, 30, 235])];
   }
 
   /** Spell-flash bursts (fantasy, S11 — the spell arm). `[x_m,y_m,kind,alpha,...]` → lng/lat objects.
@@ -1689,10 +1701,8 @@ export class Game {
     const peep = peeps ? [peeps] : [];
     const intent = this.armyIntentLayerAt();
     const intentArcs = intent ? [intent] : []; // legion→target intent, under the legion dots (over the network)
-    const armies = this.armyLayerAt();
-    const army = armies ? [armies] : []; // legions above carts, below peeps/labels (z-order)
-    const raiders = this.raiderLayerAt();
-    const raider = raiders ? [raiders] : []; // the rival's marauders, above legions (the incoming threat)
+    const army = this.armyLayerAt(); // [dot, ⚔ badge] — legions above carts, below peeps/labels (z-order)
+    const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rival's marauders, above legions
     const flash = this.spellFlashLayerAt();
     const spells = flash ? [flash] : []; // spell bursts on top (the magic reads over everything)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
