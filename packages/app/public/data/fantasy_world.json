@@ -338,8 +338,8 @@
         "value": 0,
         "demands": [
           "grain",
-          "ore",
-          "fuel"
+          "fuel",
+          "ore"
         ],
         "decadence": 0,
         "recipe": []
@@ -566,7 +566,9 @@
       "productionMicro": 10,
       "influenceHops": 100,
       "capitalXMm": 14722432,
-      "capitalYMm": 8250000
+      "capitalYMm": 8250000,
+      "initialGold": 150,
+      "buildGoldDivisor": 15000000
     }
   },
   "rivers": [

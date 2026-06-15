@@ -80,6 +80,10 @@ pub struct StatsSnapshot {
     /// AUTOCAST toggle state (S11) — the HUD's spell-bar checkbox reflects it. False (manual cast) by
     /// default; always false for transit.
     pub autocast: bool,
+    /// Fantasy (#economy) build-cost divisor: gold price of a build = capital_delta / this. >0 ⇒ the gold
+    /// build economy is ON (the HUD shows track costs in gold + an afford warning). 0 for transit / a realm
+    /// with free building (the shipped default). The UI divides `preview_line_cost` by it to price a draft.
+    pub build_gold_divisor: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

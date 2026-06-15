@@ -136,6 +136,16 @@ DECADENCE_CREEP_PER_S = 20
 # keep the slow default (golden-neutral). Playtest-calibrated balance knob.
 PRODUCTION_MICRO = 10
 
+# Fantasy BUILD ECONOMY (#economy): building rail/trains SPENDS gold from the realm treasury, so a build is
+# an ROI decision (route around the costly ridge, don't over-extend). gold price = line capital ($-scale,
+# terrain-aware) / BUILD_GOLD_DIVISOR. The continent's lines span tens of km (~hundreds of M$ capital), so a
+# 15M divisor prices a typical line at ~20-50 gold. INITIAL_GOLD seeds the treasury (CityData.initial_gold →
+# world.tribute) — generous enough to lay the bootstrap chains, then deliveries fund expansion. Both are
+# per-city knobs; 0 (the native/golden default) ⇒ free building, byte-identical (golden-neutral). Balance
+# knobs — tightened once winnability is re-certified end-to-end.
+BUILD_GOLD_DIVISOR = 15_000_000
+INITIAL_GOLD = 150
+
 # --- S6 solvability validator (docs/fantasy-map.md): a baked world is CERTIFIED winnable or it's re-rolled
 #     (deterministic seed sequence) — the bake is a pure function of the requested seed that always emits a
 #     playable map. Constraints assert: both chains well-supplied (a forest-poor seed silently starves
@@ -584,7 +594,8 @@ def seed_decadence(biome, capital, towns):
             "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
             "armySpeedMmS": ARMY_SPEED_MM_S, "creepPerS": DECADENCE_CREEP_PER_S,
             "productionMicro": PRODUCTION_MICRO, "influenceHops": influence_hops,
-            "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
+            "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm),
+            "initialGold": INITIAL_GOLD, "buildGoldDivisor": BUILD_GOLD_DIVISOR}
 
 
 def validate(biome, capital, fields, relax=None):

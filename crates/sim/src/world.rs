@@ -467,6 +467,8 @@ impl World {
         // meter. 0 for every transit city / the golden fixture / native tests ⇒ byte-identical (zero
         // re-pins). Clamped ≥ 0 (a negative bake can't bank surplus).
         let initial_decadence = city.initial_decadence.max(0);
+        // Fantasy economy: the realm's starting gold (seeds `tribute`). 0 for transit + golden fixtures.
+        let city_initial_gold = city.initial_gold.max(0);
         // Fantasy S10: derive the decadence CA's static board (hex domain + creep gradient + reservoir)
         // from the baked terrain. Empty unless a baked world supplies buildability + a capital, so this
         // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
@@ -505,7 +507,8 @@ impl World {
             bounty: Vec::new(),
             decadence: initial_decadence,
             decadence_accum: 0,
-            tribute: 0,
+            // Fantasy economy: the baked starting war-chest (0 for transit + golden fixtures ⇒ byte-identical).
+            tribute: city_initial_gold,
             mana: 0,
             manpower: 0,
             spells_cast: 0,
@@ -654,7 +657,11 @@ impl World {
             } else {
                 100
             };
-            capital += per_km * track_pct / 100 * seg_m / 1000;
+            // Fantasy TERRAIN multiplier (#terrain): rail through hills/forest/mountains/ley costs more —
+            // route around the ridge or pay to cross it. ×100 (no change) for PLAIN + every transit class,
+            // so existing cities + the golden fixtures (no biome codes ≥ 6) are byte-identical (golden-neutral).
+            let terrain_pct = Self::terrain_capital_pct(c);
+            capital += per_km * track_pct / 100 * terrain_pct / 100 * seg_m / 1000;
                 // Surface track through built-up land takes land (rail + heavy rail).
                 if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
                     capital += TAKING_PER_KM_BUILT * seg_m / 1000;
@@ -872,6 +879,56 @@ impl World {
         self.economy_enabled && self.capital_total() > old_capital && self.balance() < 0
     }
 
+    /// Fantasy (#terrain): per-segment capital MULTIPLIER (percent) by terrain. Hills/forest/mountains/ley
+    /// cost more to lay rail through; PLAIN and EVERY transit cost-class stay ×100 (`(x*100)/100 == x`,
+    /// exact integer identity ⇒ existing cities + both golden fixtures byte-identical). Only the fantasy
+    /// hex grid carries biome codes ≥ 6, so this is golden-neutral. WATER keeps ×100 — its expense is the
+    /// existing water-crossing path (parked unless Elevated/Tunnel), not this multiplier.
+    fn terrain_capital_pct(c: u8) -> i64 {
+        use crate::city::biome;
+        match c {
+            biome::MOUNTAIN => 320, // a ridge to blast/tunnel through
+            biome::HILL => 190,     // grading + cuttings
+            biome::FOREST => 140,   // timber to clear
+            biome::LEY => 130,      // unstable arcane ground
+            _ => 100,               // PLAIN / OPEN / ROAD / RAIL / BUILT / WATER / PARK — unchanged
+        }
+    }
+
+    /// The GOLD price of a capital delta under the fantasy build economy: `delta / build_gold_divisor`,
+    /// or 0 when off (not arcadia, divisor 0, or capital didn't rise). The shared transit cost formula
+    /// ($-scale, now terrain-aware) divided down to the small-integer gold scale.
+    fn build_gold_cost(&self, delta_capital: i64) -> i64 {
+        if delta_capital <= 0 || self.city.build_gold_divisor <= 0 {
+            return 0;
+        }
+        if crate::ruleset::canon(&self.city.ruleset) != "arcadia" {
+            return 0;
+        }
+        delta_capital / self.city.build_gold_divisor
+    }
+
+    /// Unified post-mutation afford-gate for a capital-RAISING command. Returns true ⇒ the caller must
+    /// restore the pre-command state (rejected). On the affordable path it CHARGES the cost:
+    ///  • Fantasy (arcadia + `build_gold_divisor` > 0): spends `build_gold_cost(delta)` from `tribute`;
+    ///    rejects (no spend) if the realm can't afford it.
+    ///  • Transit ($ economy on): the classic `overspent` budget check (no running spend — `balance()`
+    ///    derives from `capital_total()`).
+    ///  • Otherwise (building is free): never rejects.
+    fn cannot_afford(&mut self, old_capital: i64) -> bool {
+        // Fantasy gold economy takes precedence in arcadia.
+        let gold = self.build_gold_cost(self.capital_total() - old_capital);
+        if gold > 0 {
+            if gold > self.tribute {
+                return true; // can't afford — caller restores
+            }
+            self.tribute -= gold;
+            return false;
+        }
+        // Transit budget gate (unchanged).
+        self.overspent(old_capital)
+    }
+
     /// Accrue recurring maintenance (opex) for one running step. Exact integer accrual via a
     /// sub-day remainder; only charged while the economy is enabled. Deterministic.
     fn accrue_opex(&mut self, dt_ms: i64) {
@@ -1037,6 +1094,7 @@ impl World {
             tech_unlocked: self.tech_unlocked,
             spells_cast: self.spells_cast,
             autocast: self.autocast,
+            build_gold_divisor: self.city.build_gold_divisor.max(0) as f64,
         }
     }
 
@@ -1244,13 +1302,13 @@ impl World {
                     }
                     self.rebuild_line_geometry(*line);
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         // Can't afford this extension — restore the line exactly (afford-gate).
                         self.lines[line.index()].stops = saved_stops;
                         self.rebuild_line_geometry(*line);
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
-                            reason: "Not enough money for this extension".into(),
+                            reason: "Not enough funds for this extension".into(),
                         }]
                     } else {
                         vec![Event::StopAdded {
@@ -1290,11 +1348,11 @@ impl World {
                     }
                     self.rebuild_line_geometry(*line);
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         self.lines[li].branches = saved;
                         self.rebuild_line_geometry(*line);
                         self.recompute_line_buildability(*line);
-                        vec![Event::Rejected { reason: "Not enough money for this branch".into() }]
+                        vec![Event::Rejected { reason: "Not enough funds for this branch".into() }]
                     } else {
                         vec![Event::BranchStopAdded { line: *line, branch: *branch, station: *station }]
                     }
@@ -1340,10 +1398,10 @@ impl World {
                         }
                     }
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         self.lines[li].paths[bi + 1].span_mode = saved;
                         self.recompute_line_buildability(*line);
-                        vec![Event::Rejected { reason: "Not enough money to grade-separate this branch".into() }]
+                        vec![Event::Rejected { reason: "Not enough funds to grade-separate this branch".into() }]
                     } else {
                         vec![Event::BranchTrackSet { line: *line, branch: *branch, mode: m }]
                     }
@@ -1370,11 +1428,11 @@ impl World {
                     let saved = self.lines[line.index()].trainset;
                     self.lines[line.index()].trainset = Some(TrainsetAssignment { spec: *spec, count });
                     self.recompute_line_buildability(*line); // train count affects capital cost
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         self.lines[line.index()].trainset = saved;
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
-                            reason: "Not enough money for these trains".into(),
+                            reason: "Not enough funds for these trains".into(),
                         }]
                     } else {
                         vec![Event::TrainsetAssigned { line: *line, count }]
@@ -1424,13 +1482,13 @@ impl World {
                         }
                     }
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         for (p, sm) in self.lines[li].paths.iter_mut().zip(saved) {
                             p.span_mode = sm;
                         }
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
-                            reason: "Not enough money to grade-separate this line".into(),
+                            reason: "Not enough funds to grade-separate this line".into(),
                         }]
                     } else {
                         vec![Event::SegmentModeSet { line: *line, span: *span, mode: m }]
@@ -1464,13 +1522,13 @@ impl World {
                     // change trainset count, so it must NOT set dispatch_dirty — vehicles keep their
                     // positions and re-derive single-track occupancy next tick.
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         for (p, tt) in self.lines[li].paths.iter_mut().zip(saved) {
                             p.track_type = tt;
                         }
                         self.recompute_line_buildability(*line);
                         vec![Event::Rejected {
-                            reason: "Not enough money to double-track this line".into(),
+                            reason: "Not enough funds to double-track this line".into(),
                         }]
                     } else {
                         vec![Event::SegmentTrackSet { line: *line, span: *span, track: t }]
@@ -1546,11 +1604,11 @@ impl World {
                     // Bending the track changes its length → geometry, buildability and cost.
                     self.rebuild_line_geometry(*line);
                     self.recompute_line_buildability(*line);
-                    if self.overspent(old_capital) {
+                    if self.cannot_afford(old_capital) {
                         self.lines[line.index()].waypoints = saved;
                         self.rebuild_line_geometry(*line);
                         self.recompute_line_buildability(*line);
-                        vec![Event::Rejected { reason: "Not enough money to reroute this line".into() }]
+                        vec![Event::Rejected { reason: "Not enough funds to reroute this line".into() }]
                     } else {
                         vec![Event::WaypointsSet { line: *line }]
                     }

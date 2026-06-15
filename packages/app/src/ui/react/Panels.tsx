@@ -186,6 +186,7 @@ function LineList() {
 
 function Editor({ l }: { l: PerLine }) {
   const game = useGame();
+  const stats = useStats();
   const id = l.lineId;
   const mins = Math.max(2, Math.min(20, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN)));
   // Local preview of the headway slider — `input` updates only this label; `change` commits.
@@ -500,7 +501,12 @@ function Editor({ l }: { l: PerLine }) {
         )}
         {tight && <div style={{ color: "#e69f00" }}>⤳ Tight curves — trains slow here.</div>}
         <div style={{ color: "#7a818a" }}>
-          Build impact: <b>{Math.round(l.disruption)}</b> · Cost: <b>${Math.round(l.capitalCost / 1e6)}M</b>
+          Build impact: <b>{Math.round(l.disruption)}</b> · Cost:{" "}
+          {stats.buildGoldDivisor > 0 ? (
+            <b>{Math.round(l.capitalCost / stats.buildGoldDivisor)}⬢</b>
+          ) : (
+            <b>${Math.round(l.capitalCost / 1e6)}M</b>
+          )}
         </div>
       </div>
     </div>

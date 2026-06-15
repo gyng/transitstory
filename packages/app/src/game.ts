@@ -65,6 +65,7 @@ const EMPTY_STATS: Stats = {
   techUnlocked: 0,
   spellsCast: 0,
   autocast: false,
+  buildGoldDivisor: 0,
 };
 
 export type Mode = "build" | "run";
@@ -893,6 +894,12 @@ export class Game {
         this.refresh();
         return;
       }
+      if (p.goldShort > 0) {
+        this.notice = `Not enough gold — ${p.goldShort}⬢ short (deliver supply or build a shorter route)`;
+        audio.alert();
+        this.refresh();
+        return;
+      }
     }
     const ids = [...this.draft];
     const wps = this.draftWaypoints.map((span) => span.map(([x, y]) => [x, y] as [number, number]));
@@ -1161,7 +1168,7 @@ export class Game {
   /** Live preview of the in-progress route for the build HUD (client-side geometry; the $ cost
    *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
    *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
-  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean; shortM: number } {
+  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean; shortM: number; goldCost: number; goldShort: number } {
     const len = (pts: [number, number][]) => {
       let mm = 0;
       for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
@@ -1180,7 +1187,12 @@ export class Game {
     // The core's afford-gate is still the authority at commit — this is the early warning.
     const s = this.lastStats;
     const shortM = s?.economyEnabled ? Math.max(0, (cost - s.balance) / 1e6) : 0;
-    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid(), shortM };
+    // Fantasy gold build economy (#economy): price the draft in gold + how far it overshoots the treasury.
+    // The core afford-gate is still the authority at commit; this is the early warning the player draws against.
+    const div = s?.buildGoldDivisor ?? 0;
+    const goldCost = div > 0 ? Math.round(cost / div) : 0;
+    const goldShort = div > 0 ? Math.max(0, goldCost - (s?.tribute ?? 0)) : 0;
+    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid(), shortM, goldCost, goldShort };
   }
 
   // --- geometry helpers ---

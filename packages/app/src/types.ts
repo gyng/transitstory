@@ -170,6 +170,9 @@ export interface Stats {
   spellsCast: number;
   /** Autocast toggle state (S11) — the spell bar's checkbox reflects it. False (manual cast) by default. */
   autocast: boolean;
+  /** Fantasy (#economy) build-cost divisor: gold price of a build = capitalCost / this. >0 ⇒ the gold build
+   *  economy is ON (the HUD prices track in gold + warns when unaffordable). 0 = free building (transit). */
+  buildGoldDivisor: number;
 }
 
 export interface StationView {

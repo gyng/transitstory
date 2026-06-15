@@ -33,8 +33,8 @@ export function DraftControls() {
 
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
-  const cost = p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
-  const short = p.shortM > 0;
+  const cost = p.goldCost > 0 ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
+  const short = p.shortM > 0 || p.goldShort > 0;
   const ready = game.draft.length >= 2 && !p.invalid && !short;
   // Extending a committed line: the seed terminus isn't a NEW stop — count and label accordingly.
   const extending = game.extendTarget !== null;

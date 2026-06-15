@@ -88,6 +88,20 @@ pub struct CityData {
     /// a Command.
     #[serde(default)]
     pub influence_hops: i64,
+    /// Fantasy (arcadia) economy: the realm's STARTING gold treasury, seeded into `tribute` at
+    /// construction (the war-chest you build your first rail with). A per-city knob baked by
+    /// `scripts/build_world.py`. **0 (serde + `Default`) ⇒ the shipped behaviour (tribute starts 0)** —
+    /// every transit city, the arcadia golden fixture, and native tests are byte-identical (golden-neutral).
+    #[serde(default)]
+    pub initial_gold: i64,
+    /// Fantasy (arcadia) economy: the divisor turning a line's terrain-aware capital cost ($-scale, the
+    /// shared transit formula) into a GOLD build price (`gold = capital_delta / build_gold_divisor`).
+    /// Building/extending/grade-separating/buying trains then SPENDS gold, afford-gated against `tribute`.
+    /// A per-city knob baked by `scripts/build_world.py`. **0 (serde + `Default`) ⇒ NO gold build-cost
+    /// (building is free, the shipped behaviour)** — so transit, the arcadia golden, and native tests are
+    /// byte-identical (golden-neutral; the charge is a pure `apply`-time gate on the already-hashed `tribute`).
+    #[serde(default)]
+    pub build_gold_divisor: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy
@@ -157,6 +171,21 @@ pub mod class {
     pub const BUILT: u8 = 3;
     pub const WATER: u8 = 4;
     pub const PARK: u8 = 5;
+}
+
+/// Fantasy (arcadia) BIOME codes — the baked hex-terrain `c` values in the fantasy buildability grid
+/// (`scripts/build_world.py`). They share the cell-class byte with `class` above but occupy codes ≥ 6,
+/// so a transit grid (classes 0–5) never collides. WATER reuses `class::WATER` (4) so the existing
+/// water-crossing logic applies to fantasy lakes/seas unchanged. The terrain-cost multiplier
+/// (`World::terrain_capital_pct`) and the decadence domain filter key off these; transit cities + the
+/// golden fixtures carry none of 6–10, so reading them is golden-neutral.
+pub mod biome {
+    pub const WATER: u8 = 4; // == class::WATER — handled by the water-crossing path, not the terrain multiplier
+    pub const MOUNTAIN: u8 = 6; // near-impassable ridge — massive earthworks to rail through
+    pub const HILL: u8 = 7; // rising ground — grading + cuttings
+    pub const FOREST: u8 = 8; // timber to clear
+    pub const LEY: u8 = 9; // unstable arcane ground
+    pub const PLAIN: u8 = 10; // open lowland — the cheap baseline (×1)
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

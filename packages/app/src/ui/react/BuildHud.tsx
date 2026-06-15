@@ -23,7 +23,9 @@ export function BuildHud() {
 
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
-  const cost = p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
+  // Fantasy gold build economy prices in gold (⬢); transit prices in $. goldShort > 0 ⇒ unaffordable.
+  const cost = p.goldCost > 0 ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
+  const unaffordable = p.invalid || p.goldShort > 0;
 
   return (
     <div
@@ -33,7 +35,7 @@ export function BuildHud() {
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        background: p.invalid ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
+        background: unaffordable ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
         color: "#fff",
         borderRadius: 999,
         font: "600 13px system-ui,sans-serif",
@@ -48,10 +50,16 @@ export function BuildHud() {
       <span data-testid="build-hud-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
       <span style={{ opacity: 0.55 }}>·</span>
       <span>~{km} km</span>
-      {p.costM > 0 && (
+      {(p.costM > 0 || p.goldCost > 0) && (
         <>
           <span style={{ opacity: 0.55 }}>·</span>
           <span data-testid="build-hud-cost">{cost}</span>
+        </>
+      )}
+      {p.goldShort > 0 && !p.invalid && (
+        <>
+          <span style={{ opacity: 0.55 }}>·</span>
+          <span>⚠ {p.goldShort}⬢ short</span>
         </>
       )}
       {p.invalid && (
