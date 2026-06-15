@@ -120,6 +120,14 @@ pub struct CityData {
     /// a non-hashed accumulator and only mutates the already-hashed `forge_stock`, gated off by default).
     #[serde(default)]
     pub walk_backstop_micro: i64,
+    /// Fantasy/design: force EVERY span of every line to SINGLE track (no double-tracking). Baked true for
+    /// arcadia — single track reads cleaner (one rail, not a doubled ribbon) AND makes opposing trains MEET
+    /// at passing places, so signalling matters (the gameplay reason). A per-city knob. **false (serde +
+    /// `Default`) ⇒ the normal Double-default (the shipped behaviour)** — so transit, the arcadia golden
+    /// fixture, and native tests keep Double track, byte-identical (the enforced SINGLE only writes the
+    /// already-hashed per-span `track_type`, and only when a baked world sets this).
+    #[serde(default)]
+    pub force_single_track: bool,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

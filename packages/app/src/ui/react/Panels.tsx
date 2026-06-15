@@ -452,31 +452,36 @@ function Editor({ l }: { l: PerLine }) {
             })}
           </div>
           {/* Track type (P2): Single track is cheaper to build but lower capacity — opposing trains
-              must meet at passing places (stations). */}
-          <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
-            {([0, 1] as const).map((t) => {
-              const on = allTrack === t;
-              return (
-                <button
-                  key={t}
-                  data-testid={`track-${t}`}
-                  title={t === 1 ? "Single track: ~half the cost, lower capacity (trains meet at stations)" : "Double track: full capacity"}
-                  onClick={() => game.setLineTrack(id, t)}
-                  style={{
-                    flex: 1,
-                    padding: "5px",
-                    borderRadius: "6px",
-                    border: "1px solid #d7dade",
-                    cursor: "pointer",
-                    font: "600 12px system-ui",
-                    ...(on ? { background: "#5a3e85", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
-                  }}
-                >
-                  {t === 1 ? "Single track" : "Double track"}
-                </button>
-              );
-            })}
-          </div>
+              must meet at passing places (stations). HIDDEN in arcadia: all fantasy track is forced SINGLE
+              (readability + it makes meets/signalling matter), so there's no Double/Single choice to offer. */}
+          {stats.ruleset !== "arcadia" ? (
+            <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
+              {([0, 1] as const).map((t) => {
+                const on = allTrack === t;
+                return (
+                  <button
+                    key={t}
+                    data-testid={`track-${t}`}
+                    title={t === 1 ? "Single track: ~half the cost, lower capacity (trains meet at stations)" : "Double track: full capacity"}
+                    onClick={() => game.setLineTrack(id, t)}
+                    style={{
+                      flex: 1,
+                      padding: "5px",
+                      borderRadius: "6px",
+                      border: "1px solid #d7dade",
+                      cursor: "pointer",
+                      font: "600 12px system-ui",
+                      ...(on ? { background: "#5a3e85", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
+                    }}
+                  >
+                    {t === 1 ? "Single track" : "Double track"}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ marginTop: "4px", color: "#7a818a", fontSize: 11 }}>⚊ Single track — opposing carts meet at stations.</div>
+          )}
         </div>
       )}
 

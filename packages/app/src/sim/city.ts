@@ -86,6 +86,7 @@ export function buildCoreCity(
   const core: Record<string, unknown> = { seed: raw.seed, demand: { cell_m: demand.cellM, cells } };
   if (raw.patienceMs !== undefined) core.patience_ms = raw.patienceMs; // per-city demand knob (city.rs)
   if (raw.ruleset) core.ruleset = raw.ruleset; // the fantasy-fork seam (World::new selects the mode)
+  if (raw.ruleset === "arcadia") core.force_single_track = true; // fantasy: all track SINGLE (readability + forces meets/signals)
   if (raw.gridCellMm) core.grid_cell_mm = raw.gridCellMm; // hex lattice for the fantasy map
   const dec = raw.supplyGraph?.decadenceSeed;
   if (dec?.initialDecadence) core.initial_decadence = dec.initialDecadence; // baked starting corruption (S4)

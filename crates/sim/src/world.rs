@@ -694,6 +694,17 @@ impl World {
         if idx >= self.lines.len() {
             return;
         }
+        // Fantasy/design: force SINGLE track on every span (no double-tracking) — one rail reads cleaner and
+        // makes opposing trains MEET at passing places, so signalling matters. Done HERE (one chokepoint
+        // after every geometry/track change) so the cost below + dispatch later both see SINGLE; the hashed
+        // `track_type` becomes SINGLE for a baked-flag world. Off (the default) ⇒ untouched ⇒ byte-identical.
+        if self.city.force_single_track {
+            for p in self.lines[idx].paths.iter_mut() {
+                for t in p.track_type.iter_mut() {
+                    *t = crate::line::track::SINGLE;
+                }
+            }
+        }
         // Per-span build modes live on each Path now (sized in Path::rebuild); nothing to size here.
         let (disr, water, mut capital) = self.line_cost_metrics(&self.lines[idx]);
         // Per-MODEL rolling-stock cost (depot rework Stage 1): RAIL reads its roster (Heavy pricier,
