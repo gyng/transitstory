@@ -93,7 +93,7 @@ TOWN_MIN_SPACING = 9      # hex spacing between towns (room to build between the
 # wins (and the #9 area-of-influence gate would soft-lock it). Force a small grain/fuel/ore cluster within
 # first-cart reach of the citadel so a SHORT rail bootstraps the manpower the capital-barracks spends on its
 # first legions. The far attractor deposits stay for the disjoint mid/late chains.
-CLUSTER_MIN, CLUSTER_MAX = 3, 9   # the bootstrap ring (hexes from the capital): railable yet early-reachable
+CLUSTER_MIN, CLUSTER_MAX = 8, 16  # the bootstrap ring (hexes): a satisfying FIRST rail, not jammed on the doorstep
 CLUSTER_MAX_FALLBACK = 16         # if a biome is absent in the tight ring, search out to here (grain is essential)
 CLUSTER_YIELD = {"grain": 120, "fuel": 90, "ore": 100}
 TOWN_MIN_FROM_CAPITAL = 5  # don't spawn a neutral town on top of the capital
@@ -365,6 +365,33 @@ def poisson_select(candidates, scores, min_spacing, budget):
     return chosen
 
 
+def select_arc(candidates, capital, scores, min_spacing, budget, bands=3):
+    """Pick ~budget cells SPREAD across `bands` distance-from-capital rings (near/mid/far) so the result
+    forms an expansion ARC instead of one far cluster (the old attractor-only placement bunched everything in
+    one corner — trial feedback: 'good but varied distribution'). Greedy by score within each band; min-spacing
+    enforced across ALL picks. Deterministic (each band sorted by (-score,r,q); fixed band boundaries)."""
+    cl = list(candidates)
+    if not cl or budget <= 0:
+        return []
+    d = {c: hex_dist(c, capital) for c in cl}
+    lo, hi = min(d.values()), max(d.values())
+    span = max(1, hi - lo)
+    chosen = []
+    for b in range(bands):
+        b0 = lo + span * b // bands
+        b1 = hi if b == bands - 1 else lo + span * (b + 1) // bands
+        quota = budget // bands + (1 if b < budget % bands else 0)
+        band = sorted((c for c in cl if b0 <= d[c] <= b1), key=lambda c: (-scores[c], c[1], c[0]))
+        taken = 0
+        for c in band:
+            if taken >= quota:
+                break
+            if all(hex_dist(c, ch) >= min_spacing for ch in chosen):
+                chosen.append(c)
+                taken += 1
+    return chosen
+
+
 def place_capital_cluster(biome, capital, avoid):
     """Item #3 — carve a near-capital BOOTSTRAP VALLEY (FOR THE AI TO USE). The attractor deposits land ~90+
     hexes out, so nothing mints manpower before the decadence wins. RE-BIOME a few passable cells just outside
@@ -398,25 +425,23 @@ def place_capital_cluster(biome, capital, avoid):
 
 
 def place_resources(biome, capital, rough):
-    """S2: stamp each resource kind on its gated biome, biased toward its attractor centre (+ aether pushed
-    FAR from the capital), then Poisson-rarefy to a baked budget. Returns a list of dicts
-    {kind,q,r,yield} with i64 yields. Pure function of the (deterministic) inputs."""
-    ore_att, bread_att = pick_attractors(biome, capital)
-    atts = {"ore": ore_att, "bread": bread_att}
+    """S2: stamp each resource kind on its gated biome. The two CHAIN inputs (grain/fuel/ore) spread across an
+    EXPANSION ARC — near/mid/far distance bands from the capital — so supply exists at EVERY range instead of
+    bunching in one far corner (trial feedback: 'good but varied distribution of towns etc'). AETHER stays
+    SCARCE + FAR (the arcane late prize). The biome gates still keep the chains terrain-separated (grain=plains,
+    ore=hills). i64 yields. Pure + deterministic."""
     out = []
-    for name, gate_biome, budget, spacing, base, att_key, far_cap in RESOURCES:
+    for name, gate_biome, budget, spacing, base, _att_key, far_cap in RESOURCES:
         cands = [(q, r) for r in range(H) for q in range(W) if biome[r, q] == gate_biome]
         if not cands:
             continue
-        att = atts[att_key]
-        scores = {}
-        for (q, r) in cands:
-            # higher score = closer to the attractor; aether also rewarded for distance from the capital
-            s = -float(hex_dist((q, r), att)) + 4.0 * float(rough[r, q])
-            if far_cap:
-                s += 0.6 * float(hex_dist((q, r), capital))
-            scores[(q, r)] = s
-        for (q, r) in poisson_select(cands, scores, spacing, budget):
+        if far_cap:  # AETHER: scarce + far (poisson by distance-from-capital — the arcane is a late prize)
+            scores = {(q, r): float(hex_dist((q, r), capital)) + 2.0 * float(rough[r, q]) for (q, r) in cands}
+            picks = poisson_select(cands, scores, spacing, budget)
+        else:  # GRAIN / FUEL / ORE: spread across the distance arc (roughness as the scatter score)
+            scores = {(q, r): float(rough[r, q]) for (q, r) in cands}
+            picks = select_arc(cands, capital, scores, spacing, budget)
+        for (q, r) in picks:
             # i64 yield: base + a deterministic per-site variation from the roughness field (no f32 weight)
             yld = int(base + round(40.0 * float(rough[r, q])))
             out.append({"kind": name, "q": int(q), "r": int(r), "yield": yld})
@@ -472,7 +497,9 @@ def place_towns(biome, capital, resources, rough, ore_att, forced_starter=None):
         # suitability: close to resources (sum of inverse hex distance) + a mild far-from-capital spread
         near = sum(1.0 / (1.0 + hex_dist((q, r), (rq, rr))) for (rq, rr, _) in res_qr)
         scores[(q, r)] = near + 0.02 * hex_dist((q, r), capital) + 0.3 * float(rough[r, q])
-    chosen = poisson_select(cands, scores, TOWN_MIN_SPACING, TOWN_BUDGET)
+    # Spread the neutral towns across the EXPANSION ARC (near/mid/far bands from the capital) so they form a
+    # graded journey outward, not one far cluster (trial: 'good but varied distribution of towns').
+    chosen = select_arc(cands, capital, scores, TOWN_MIN_SPACING, TOWN_BUDGET)
     # Item #3: the near-capital bootstrap cell is THE starter (pinned); else the nearest Poisson town.
     if forced_starter is not None:
         chosen = [forced_starter] + chosen
