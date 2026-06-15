@@ -818,6 +818,48 @@ impl World {
         self.lines.iter().filter(|l| !l.removed).map(|l| l.capital_cost).sum()
     }
 
+    /// Fantasy (arcadia) #9 — is `(x_mm, y_mm)` inside the realm's AREA OF INFLUENCE? You may only
+    /// extend rail to a station within `influence_hops` grid-hexes of a HOLDING (the capital, or any
+    /// town conquest has flipped — `town_value == 0`). Conquest expands the buildable frontier.
+    ///
+    /// The hex reach is approximated as a forgiving euclidean disc: `hops` cells of pitch
+    /// `grid_cell_mm`, scaled by ×173/100 ≈ √3 so the disc covers the hex's corner reach (an
+    /// over-approximation — generous by design, so a just-reachable town is never a pixel short).
+    /// Integer-exact (i128 to avoid `r²` overflow); no float, no map iteration — determinism-safe.
+    ///
+    /// **`influence_hops <= 0` ⇒ no gate (returns `true`)** — every transit city, the arcadia golden
+    /// fixture, and native tests build unconstrained, so the gate is golden-neutral (a pure read in
+    /// `apply` that never touches hashed state).
+    pub(crate) fn buildable_at(&self, x_mm: i64, y_mm: i64) -> bool {
+        let hops = self.city.influence_hops;
+        if hops <= 0 {
+            return true;
+        }
+        let size = self.city.grid_cell_mm.max(1);
+        let r_mm = hops.saturating_mul(size).saturating_mul(173) / 100;
+        let r2 = (r_mm as i128) * (r_mm as i128);
+        let within = |hx: i64, hy: i64| -> bool {
+            let dx = (x_mm - hx) as i128;
+            let dy = (y_mm - hy) as i128;
+            dx * dx + dy * dy <= r2
+        };
+        // The capital is always a holding (the seat you start from).
+        if within(self.city.capital_x_mm, self.city.capital_y_mm) {
+            return true;
+        }
+        // Each captured town (siege ground its garrison to 0) extends the frontier. Player-placed
+        // stations and still-neutral towns keep `town_value > 0`, so they never widen the realm.
+        for (s, st) in self.stations.iter().enumerate() {
+            if st.removed {
+                continue;
+            }
+            if self.town_value.get(s).copied() == Some(0) && within(st.pos.x_mm, st.pos.y_mm) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Current money: start budget + fares − capital − opex. Negative = over budget.
     fn balance(&self) -> i64 {
         START_BUDGET + self.ridership_total as i64 * FARE - self.capital_total() - self.opex_accrued
@@ -900,6 +942,9 @@ impl World {
                         .fold(0.0, f64::max)
                         .min(1.0)
                 },
+                // #9: captured-holding flag, the EXACT mirror of `buildable_at`'s per-town test — true only
+                // once siege grinds a town's garrison to 0 (None before the war ticks ⇒ false, no false discs).
+                captured: self.town_value.get(s) == Some(&0),
             })
             .collect();
 
@@ -1181,7 +1226,13 @@ impl World {
             } => {
                 let valid_line = line.index() < self.lines.len();
                 let valid_station = station.index() < self.stations.len();
-                if valid_line && valid_station {
+                if valid_line && valid_station && !self.buildable_at(self.stations[station.index()].pos.x_mm, self.stations[station.index()].pos.y_mm) {
+                    // #9 area-of-influence gate (arcadia): no laying rail to a station beyond the realm's
+                    // reach. Checked before any mutation; 0-hops cities (transit/golden) never reach here.
+                    vec![Event::Rejected {
+                        reason: "Beyond the realm's reach — capture a closer town to extend your influence".into(),
+                    }]
+                } else if valid_line && valid_station {
                     let old_capital = self.capital_total();
                     let saved_stops = self.lines[line.index()].stops.clone();
                     {
@@ -1220,7 +1271,12 @@ impl World {
                     && station.index() < self.stations.len()
                     && bi <= self.lines[li].branches.len()
                     && (*diverge_at as usize) < self.lines[li].stops.len();
-                if ok {
+                if ok && !self.buildable_at(self.stations[station.index()].pos.x_mm, self.stations[station.index()].pos.y_mm) {
+                    // #9 area-of-influence gate (arcadia): a spur, too, stays within the realm's reach.
+                    vec![Event::Rejected {
+                        reason: "Beyond the realm's reach — capture a closer town to extend your influence".into(),
+                    }]
+                } else if ok {
                     let old_capital = self.capital_total();
                     let saved = self.lines[li].branches.clone();
                     {

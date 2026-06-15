@@ -79,6 +79,15 @@ pub struct CityData {
     /// both golden fixtures are byte-identical (golden-neutral); only a baked world that sets it speeds up.
     #[serde(default)]
     pub production_micro: i64,
+    /// Fantasy (arcadia) #9: AREA-OF-INFLUENCE radius in HEXES — you may only lay track within this many
+    /// grid-hops of a holding (the capital + any captured town); conquest expands the buildable frontier.
+    /// Baked by `scripts/build_world.py` from the town arc (covers the nearest neutral + the largest gap),
+    /// so the map is winnable-by-construction. **0 (serde + `Default`) ⇒ NO gate** — every transit city, the
+    /// arcadia golden fixture, and native tests build with unlimited reach (golden-neutral; the gate is a
+    /// pure `apply`-time validation that never touches hashed state). A construction-time map property, NOT
+    /// a Command.
+    #[serde(default)]
+    pub influence_hops: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

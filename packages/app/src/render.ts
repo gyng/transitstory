@@ -65,6 +65,13 @@ export interface BufferPip {
   lat: number;
   fill: number;
 }
+/** Fantasy (arcadia) #9: one AREA-OF-INFLUENCE disc — a holding (the capital or a captured town) and
+ *  the build reach around it (metres). Their union is the realm border; you may only lay rail inside it. */
+export interface InfluenceDisc {
+  lng: number;
+  lat: number;
+  radiusM: number;
+}
 export interface HazardDot {
   lng: number;
   lat: number;
@@ -270,6 +277,7 @@ export interface RenderView {
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   bufferPips: BufferPip[]; // fantasy #8: node Forge-Line buffer-fill gauges (empty for transit)
+  influence: InfluenceDisc[]; // fantasy #9: realm-border discs (capital + captured towns) — empty for transit
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
@@ -445,6 +453,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       capRounded: true,
       jointRounded: true,
       updateTriggers: { getColor: view.rivers.length, getWidth: view.rivers.length },
+    }),
+    // AREA OF INFLUENCE (#9): the realm border — a faint warm wash + gold ring per HOLDING (the capital +
+    // each captured town), radius = the build reach in METRES (a true spatial fact, so it scales with zoom
+    // like the catchment). Their union is where rail may go; conquest grows it outward. Drawn over the
+    // terrain/water but UNDER the POIs + network so it never hides a clickable node. The low fill alpha
+    // keeps overlaps from muddying (a slightly warmer heartland reads as a feature). Empty for transit.
+    new ScatterplotLayer({
+      id: "influence",
+      data: view.influence,
+      getPosition: (d: InfluenceDisc) => [d.lng, d.lat],
+      getRadius: (d: InfluenceDisc) => d.radiusM,
+      radiusUnits: "meters",
+      getFillColor: [208, 162, 72, 18], // faint warm gold — the empire's reach (warmth vs the cold frontier)
+      getLineColor: [232, 192, 102, 150], // a soft gold ring marks the buildable border (a load-bearing affordance)
+      stroked: true,
+      filled: true,
+      lineWidthUnits: "pixels",
+      getLineWidth: 2,
+      lineWidthMinPixels: 1.5,
+      updateTriggers: { getRadius: view.influence.length, getFillColor: view.influence.length },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
     // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the

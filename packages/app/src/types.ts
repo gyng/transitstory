@@ -82,6 +82,9 @@ export interface PerStation {
   /** Forge-Line buffer fill 0..1 (fantasy #8) — the fullest of this node's commodity buffers. Backed-up
    *  source ~1 (ship it), starved sink ~0. Drives the node buffer pips; 0 for transit. */
   bufferFill: number;
+  /** Captured-holding flag (fantasy #9) — true once conquest flips a town (its garrison hits 0). The exact
+   *  mirror of the core's build gate; drives the realm-border overlay's per-town disc. false for transit. */
+  captured: boolean;
 }
 
 export interface PerLine {

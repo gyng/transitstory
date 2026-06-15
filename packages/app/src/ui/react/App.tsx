@@ -88,6 +88,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
         const [lng, lat] = mmToLngLat([a.xMm, a.yMm]);
         return { lng, lat };
       });
+      game.influenceHops = sg.decadenceSeed?.influenceHops ?? 0; // #9 area-of-influence build gate
     }
     // Baked rivers (additive top-level manifest field): i64-mm cell-centre endpoints → lng/lat via the one
     // coordinate boundary. Render-only cold water; never reaches the core.

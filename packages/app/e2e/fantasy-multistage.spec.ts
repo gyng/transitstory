@@ -1,14 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-// S7e-2 — the 3-STAGE Forge-Line chain on the BAKED world. The baked continent now carries FORGE nodes
-// (processors) and ARMS towns whose recipe is [INGOT=4, AETHER=2]. INGOT has NO source — it must be
-// FORGED from ore at a forge node, then shipped onward. This proves, end-to-end on the real bundle +
-// geometry, that the full chain closes: ore → forge → INGOT → arms-town, plus aether → arms-town, both
-// consumed by Liebig → tribute. Tribute can ONLY appear if (a) the forge converted ore → ingot and (b)
-// commodity-aware routing carried the ore to the forge (not past it to the town) — so a positive tribute
-// is direct proof the processor + commodity routing work on the baked data. Deterministic via tickMs.
-test("fantasy baked world: 3-stage Forge-Line (ore → forge → arms town) yields tribute", async ({ page }) => {
-  test.setTimeout(60_000);
+// S7e-2 — the 3-STAGE Forge-Line chain on the BAKED world, NOW behind the #9 area-of-influence gate. The
+// baked continent carries FORGE nodes (processors) and ARMS towns whose recipe is [INGOT=4, AETHER=2].
+// INGOT has NO source — it must be FORGED from ore at a forge node. The arms town, its forge, and the ore
+// sit within the capital's starting reach, but AETHER is baked far + scarce (the arcane resource) — BEYOND
+// the cold-start frontier. So the full chain can ONLY close AFTER conquest extends the realm to the aether:
+// bootstrap a reachable BREAD chain → fund a legion → capture the arms town → its captured-holding disc
+// brings the aether into reach → wire the aether leg → ore→forge→INGOT + aether → Liebig → tribute. This
+// proves, end-to-end on the real bundle, BOTH the forge/commodity-routing mechanic AND that #9's
+// progression (conquer to unlock the deeper chain) actually works. Deterministic via tickMs (no rAF).
+test("fantasy baked world: conquest unlocks the 3-stage Forge-Line (ore → forge → arms town) for tribute", async ({ page }) => {
+  test.setTimeout(90_000); // conquest ramp + the 3-stage forge ramp, both deterministic tick-steps
   await page.goto("/?city=fantasy");
   await page.waitForFunction(() => (window as any).__APP_READY && (window as any).__MAP_READY, undefined, { timeout: 30_000 });
 
@@ -18,69 +20,91 @@ test("fantasy baked world: 3-stage Forge-Line (ore → forge → arms town) yiel
     const nt = sg.towns.length;
     const KIND: Record<string, number> = { ore: 0, grain: 1, aether: 2, fuel: 3 };
     const hex = (a: any, b: any) => (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
-    // nearest RAW resource of a commodity to a node → station id (towns 0..nt-1, then resources at nt+ri)
     const nearestSrc = (node: any, comm: number) => {
       let bi = -1, bd = 1e9;
-      sg.resources.forEach((r: any, ri: number) => {
-        if (KIND[r.kind] === comm) { const d = hex(node, r); if (d < bd) { bd = d; bi = ri; } }
-      });
+      sg.resources.forEach((r: any, ri: number) => { if (KIND[r.kind] === comm) { const d = hex(node, r); if (d < bd) { bd = d; bi = ri; } } });
       return bi < 0 ? -1 : nt + bi;
     };
-    // nearest FORGE (processor node) to a node → station id
     const nearestForge = (node: any) => {
       let bi = -1, bd = 1e9;
-      sg.resources.forEach((r: any, ri: number) => {
-        if (r.kind === "forge") { const d = hex(node, r); if (d < bd) { bd = d; bi = ri; } }
-      });
+      sg.resources.forEach((r: any, ri: number) => { if (r.kind === "forge") { const d = hex(node, r); if (d < bd) { bd = d; bi = ri; } } });
       return bi < 0 ? -1 : nt + bi;
     };
-    // an ARMS town: recipe includes INGOT (4) — a 3-stage chain (INGOT is forged from ore, not mined).
-    const armsTi = sg.towns.findIndex((t: any) => Array.isArray(t.recipe) && t.recipe.includes(4));
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
+    const cap = sg.towns[capitalIdx];
+    // The ARMS town NEAREST the capital (so it's within starting reach to lay the conquest line + siege it).
+    const armsTi = sg.towns.map((t: any, i: number) => ({ t, i }))
+      .filter((x: any) => Array.isArray(x.t.recipe) && x.t.recipe.includes(4))
+      .sort((a: any, b: any) => hex(cap, a.t) - hex(cap, b.t))[0].i;
     const arms = sg.towns[armsTi];
-    const forgeSid = nearestForge(arms);          // the forge nearest the arms town
+    const forgeSid = nearestForge(arms);
     const forge = sg.resources[forgeSid - nt];
-    const oreSid = nearestSrc(forge, 0);          // ore for the forge to convert → INGOT
-    const aetherSid = nearestSrc(arms, 2);        // aether (the arms town's other Liebig input)
+    const oreSid = nearestSrc(forge, 0);
+    const aetherSid = nearestSrc(arms, 2);
+    // A reachable BREAD town (raw recipe, all commodities < 4) to bootstrap tribute → fund the legion.
+    const bread = sg.towns.map((t: any, i: number) => ({ t, i }))
+      .filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2 && x.t.recipe.every((c: number) => c < 4))
+      .sort((a: any, b: any) => hex(cap, a.t) - hex(cap, b.t))[0];
     const tt = (window as any).__ot_test;
-    // The player wires the chain across three lines: ore→forge, forge→arms-town, aether→arms-town.
-    tt.drawLine([oreSid, forgeSid]);   // stage 1: mine ore → forge (forge consumes ore, makes INGOT)
-    tt.drawLine([forgeSid, armsTi]);   // stage 2: forge INGOT → arms town
-    tt.drawLine([aetherSid, armsTi]);  // stage 3: aether → arms town (the second Liebig input)
-    for (let l = 0; l < 3; l++) { tt.assignTrainset(l, 4); tt.setHeadwayMs(l, 120000); }
-    return { ruleset: tt.stats().ruleset, armsRecipe: arms.recipe, forgeKind: forge.kind, oreSid, forgeSid, aetherSid };
+    let line = 0;
+    // Bootstrap: a reachable BREAD chain (src → town → src) so two-input Liebig tribute funds the war.
+    tt.drawLine([nearestSrc(bread.t, bread.t.recipe[0]), bread.i, nearestSrc(bread.t, bread.t.recipe[1])]);
+    tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
+    // The reachable two legs of the ARMS chain (ore → forge → arms town); the aether leg waits on conquest.
+    const oreForgeArms = tt.drawLine([oreSid, forgeSid, armsTi]);
+    tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
+    // Conquest: capital-barracks → the arms town, with a bounty to steer the legion onto it. Capturing the
+    // arms town flips it to a HOLDING whose influence disc reaches its (otherwise out-of-reach) aether.
+    tt.drawLine([capitalIdx, armsTi]);
+    tt.assignTrainset(line, 2); tt.setHeadwayMs(line, 120000);
+    tt.postBounty(armsTi, 3000);
+    line++;
+    return { ruleset: tt.stats().ruleset, armsRecipe: arms.recipe, forgeKind: forge.kind, armsTi, aetherSid, oreForgeArms, line };
   });
   expect(start.ruleset).toBe("arcadia");
-  expect(start.armsRecipe).toContain(4);      // a genuine 3-stage (INGOT-consuming) town
-  expect(start.forgeKind).toBe("forge");      // the middle node is a processor
-  expect(start.oreSid).toBeGreaterThan(0);    // every leg resolved to a real station
-  expect(start.aetherSid).toBeGreaterThan(0);
+  expect(start.armsRecipe).toContain(4); // a genuine 3-stage (INGOT-consuming) town
+  expect(start.forgeKind).toBe("forge"); // the middle node is a processor
+  expect(start.oreForgeArms).toBeGreaterThanOrEqual(0); // the reachable two legs committed
 
-  // Run a long deterministic stretch (each tickMs step is instant — no rAF). The forge must first
-  // accumulate ore, convert it to INGOT, and ship it on before the arms town can consume INGOT+AETHER —
-  // a longer ramp than a 2-stage chain, so budget generously (still well inside the decadence runway).
-  let tribute = 0;
-  const traj: number[] = [];
-  for (let i = 0; i < 30; i++) {
-    tribute = await page.evaluate(() => {
-      (window as any).__ot_test.tickMs(150000); // 150 sim-sec per step
-      return (window as any).__ot_test.stats().tribute;
+  // Phase 1 — run until conquest CAPTURES the arms town (extending the realm to its aether).
+  let captured = 0;
+  for (let i = 0; i < 30 && captured < 1; i++) {
+    captured = await page.evaluate(() => {
+      (window as any).__ot_test.tickMs(150000);
+      return (window as any).__ot_test.stats().townsCaptured;
     });
-    traj.push(tribute);
-    if (tribute > 0) break;
+  }
+  expect(captured).toBeGreaterThanOrEqual(1); // the legion conquered the arms town — the frontier moved
+
+  // Phase 2 — the aether is NOW within reach (the captured arms town's disc covers it): wire the final leg.
+  const aetherLeg = await page.evaluate((aetherSid: number) => {
+    const tt = (window as any).__ot_test;
+    const armsTi = (tt.stats().perStation.find((p: any) => p.captured) || {}).stationId;
+    const ln = tt.drawLine([aetherSid, armsTi ?? 0]); // aether → arms town (the second Liebig input)
+    if (ln >= 0) { tt.assignTrainset(ln, 4); tt.setHeadwayMs(ln, 120000); }
+    return ln;
+  }, start.aetherSid);
+  expect(aetherLeg).toBeGreaterThanOrEqual(0); // conquest UNLOCKED the formerly-gated aether leg
+
+  // Phase 3 — with all three legs flowing, the 3-stage chain closes: ore→forge→INGOT + aether → Liebig.
+  let econ = { gold: 0, mana: 0, manpower: 0 };
+  const traj: any[] = [];
+  for (let i = 0; i < 30; i++) {
+    econ = await page.evaluate(() => {
+      (window as any).__ot_test.tickMs(150000);
+      const s = (window as any).__ot_test.stats();
+      return { gold: s.tribute, mana: s.mana, manpower: s.manpower };
+    });
+    traj.push(econ);
+    if (econ.manpower > 0 && econ.mana > 0) break;
   }
   // eslint-disable-next-line no-console
-  console.log("3-STAGE FORGE-LINE tribute trajectory:", JSON.stringify(traj));
-  expect(tribute).toBeGreaterThan(0); // the full 3-stage chain closed on the real baked world
-
-  // S11 ECONOMY SPLIT: the arms town consumes INGOT + AETHER → it mints MANPOWER (from ingot) and MANA
-  // (from aether) ALONGSIDE gold. So an ARMS chain (unlike a BREAD chain, which is gold-only) feeds all
-  // three channels — proven here on the real bundle.
-  const econ = await page.evaluate(() => {
-    const s = (window as any).__ot_test.stats();
-    return { gold: s.tribute, mana: s.mana, manpower: s.manpower };
-  });
-  expect(econ.manpower).toBeGreaterThan(0); // INGOT delivered → manpower
-  expect(econ.mana).toBeGreaterThan(0); // AETHER delivered → mana
+  console.log("3-STAGE FORGE-LINE (post-conquest) econ trajectory:", JSON.stringify(traj.slice(-3)));
+  // The arms town consumes INGOT (forged from ore) + AETHER → it mints MANPOWER (ingot) and MANA (aether)
+  // alongside GOLD. A positive manpower is direct proof the forge converted ore→ingot AND commodity routing
+  // carried the ore to the forge (not past it) — the 3-stage mechanic, closed only after conquest reached aether.
+  expect(econ.manpower).toBeGreaterThan(0); // INGOT delivered → manpower (the forge fired)
+  expect(econ.mana).toBeGreaterThan(0); // AETHER delivered → mana (the unlocked leg flowed)
   expect(econ.gold).toBeGreaterThan(0); // …and gold all the same
 
   await page.screenshot({ path: "../../docs/progress/fantasy-economy-split.png" });

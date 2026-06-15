@@ -108,6 +108,13 @@ pub struct StationStat {
     /// A backed-up SOURCE reads ~1 (ship it!), a starved SINK ~0. 0 for transit / non-forge. Derived from
     /// the hashed `forge_stock` for the HUD's node buffer pips — NOT hashed itself (it's a snapshot readout).
     pub buffer_fill: f64,
+    /// Fantasy (arcadia) #9: this station is a CAPTURED HOLDING — a town conquest flipped (its garrison
+    /// ground to 0). The EXACT mirror of `World::buildable_at`'s per-town test (`town_value == Some(0)`),
+    /// so the realm-border overlay matches the gate: **false** before the war ticks (resistance not yet
+    /// initialised) and for still-neutral towns / player stations; true only once a town actually falls.
+    /// A snapshot readout (NOT hashed); false for transit. The capital is a holding via the baked seat, not
+    /// this flag (its garrison never reaches 0), so the overlay adds it separately — no double-count.
+    pub captured: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

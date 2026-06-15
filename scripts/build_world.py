@@ -569,10 +569,21 @@ def seed_decadence(biome, capital, towns):
     # creep-gradient origin for the in-core DecadenceField. Same hex transform as the reservoir.
     cap_x_mm = round(float(GRID_CELL_MM) * (SQRT3 * capital[0] + SQRT3 / 2.0 * capital[1]))
     cap_y_mm = round(float(GRID_CELL_MM) * (1.5 * capital[1]))
+    # Item #9 — the AREA-OF-INFLUENCE build radius (hexes). Derived from the town arc so the realm is
+    # WINNABLE BY CONSTRUCTION: rail is buildable only within `influenceHops` of the capital + each captured
+    # town, and conquering extends it. Set to cover the nearest neutral (so the first target is reachable)
+    # AND the largest consecutive town gap (so each conquest opens the next), + a grace margin. Bigger gaps
+    # ⇒ a more generous radius — the gate still walls off the DEEP frontier until you expand into it.
+    nd = sorted(hex_dist((t["q"], t["r"]), capital) for t in towns if t["kind"] == "neutral")
+    if nd:
+        gaps = [nd[0]] + [nd[i] - nd[i - 1] for i in range(1, len(nd))]
+        influence_hops = int(round(max(gaps) * 1.25)) + CAPITAL_GRACE_HEXES
+    else:
+        influence_hops = 9999  # no neutral towns ⇒ no gate
     return {"capitalGraceHexes": CAPITAL_GRACE_HEXES, "reservoir": reservoir,
             "initialDecadence": initial, "growthPerS": DECADENCE_GROWTH_PER_S,
             "armySpeedMmS": ARMY_SPEED_MM_S, "creepPerS": DECADENCE_CREEP_PER_S,
-            "productionMicro": PRODUCTION_MICRO,
+            "productionMicro": PRODUCTION_MICRO, "influenceHops": influence_hops,
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
 
 

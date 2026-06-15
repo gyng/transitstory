@@ -337,9 +337,9 @@
         "yMm": 8250000,
         "value": 0,
         "demands": [
-          "fuel",
           "grain",
-          "ore"
+          "ore",
+          "fuel"
         ],
         "decadence": 0,
         "recipe": []
@@ -564,6 +564,7 @@
       "armySpeedMmS": 200000,
       "creepPerS": 20,
       "productionMicro": 10,
+      "influenceHops": 100,
       "capitalXMm": 14722432,
       "capitalYMm": 8250000
     }
