@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { armyIntentLayer, armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -1595,6 +1595,26 @@ export class Game {
     return armyLayer(xy, count);
   }
 
+  /** Legion INTENT arcs (fantasy, S11 — the AI general's "why" made spatial): a faint crimson arc from
+   *  each MARCHING legion to its target town, so the player reads where the AI is sending its legions (you
+   *  steer by rail + bounty; the legions execute). Idle/besieging legions emit a zero-length arc (target ==
+   *  own position) which we skip. Null when no legion is marching. */
+  armyIntentLayerAt(): Layer | null {
+    const pos = this.bridge.armyPositions();
+    const tgt = this.bridge.armyTargets();
+    const count = Math.min(pos.length, tgt.length) >> 1;
+    if (count === 0) return null;
+    const arcs: IntentArc[] = [];
+    for (let i = 0; i < count; i++) {
+      const px = pos[i * 2], py = pos[i * 2 + 1], tx = tgt[i * 2], ty = tgt[i * 2 + 1];
+      if (px === tx && py === ty) continue; // zero-length → idle/besieging legion: no forward intent
+      const [flng, flat] = metersToLngLat([px, py]);
+      const [tlng, tlat] = metersToLngLat([tx, ty]);
+      arcs.push({ from: [flng, flat], to: [tlng, tlat] });
+    }
+    return arcs.length > 0 ? armyIntentLayer(arcs) : null;
+  }
+
   /** Decadence-raider dots (fantasy, S11 — the rival). Same metres→lng/lat-in-place path as legions.
    *  Null when no raiders march (transit always; arcadia until the rival fields one). */
   raiderLayerAt(): Layer | null {
@@ -1632,6 +1652,8 @@ export class Game {
 
   composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
+    const intent = this.armyIntentLayerAt();
+    const intentArcs = intent ? [intent] : []; // legion→target intent, under the legion dots (over the network)
     const armies = this.armyLayerAt();
     const army = armies ? [armies] : []; // legions above carts, below peeps/labels (z-order)
     const raiders = this.raiderLayerAt();
@@ -1649,7 +1671,7 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
-    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...army, ...raider, ...spells, ...peep, ...above] });
+    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */

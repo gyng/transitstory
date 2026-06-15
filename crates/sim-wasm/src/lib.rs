@@ -90,6 +90,14 @@ impl Sim {
         sim::render_buf::army_positions_m(&self.world)
     }
 
+    /// Interleaved legion TARGET positions `[x0,y0,...]` in metres (fantasy, S11 — the AI general's intent),
+    /// aligned with `armyPositions`. A marching legion's entry is its target town; others collapse to their
+    /// own spot (zero-length arc). Lets the UI draw legion→target intent arcs. Empty for transit.
+    #[wasm_bindgen(js_name = armyTargets)]
+    pub fn army_targets(&self) -> Vec<f32> {
+        sim::render_buf::army_targets_m(&self.world)
+    }
+
     /// Interleaved RAIDER positions `[x0,y0,...]` in metres (fantasy, S11 — the rival). Empty for transit /
     /// a realm the rival hasn't reached. Read each frame like army positions; bounded (capped raiders).
     #[wasm_bindgen(js_name = raiderPositions)]

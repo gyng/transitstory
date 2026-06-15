@@ -71,6 +71,38 @@ fn legion_position_survives_a_set_headway() {
     assert_eq!(w.armies.s_mm[0], before, "a SetHeadway's v.clear() must NOT move a legion (separate SoA)");
 }
 
+/// S11 render: the legion INTENT-arc data feed (`render_buf::army_targets_m`, what the UI draws an arc to).
+/// For a MARCHING legion the buffer reports its TARGET town's position (so the arc points where it's
+/// headed) and that differs from the legion's own position; the two buffers stay index-aligned. Render-only
+/// (a copy-out, never hashed) — this just pins the feed the `armyIntentLayer` consumes.
+#[test]
+fn army_targets_buffer_points_a_marching_legion_at_its_town() {
+    let mut w = war_world();
+    // Run until a legion is MARCHING (launched + en route, not yet besieging the town).
+    let mut idx = None;
+    for _ in 0..6000 {
+        w.tick(50);
+        if let Some(i) = (0..w.armies.len()).find(|&i| w.armies.state[i] == sim::army::MARCHING) {
+            idx = Some(i);
+            break;
+        }
+    }
+    let i = idx.expect("a legion should be marching within the run");
+    let pos = sim::render_buf::army_positions_m(&w);
+    let tgt = sim::render_buf::army_targets_m(&w);
+    assert_eq!(pos.len(), tgt.len(), "the two buffers are index-aligned (one [x,y] per legion)");
+    // The marching legion's target entry = its target town's centre (station coords → metres).
+    let town = &w.stations[w.armies.target[i] as usize];
+    let to_m = |mm: i64| (mm as f64 / 1000.0) as f32;
+    assert!((tgt[i * 2] - to_m(town.pos.x_mm)).abs() < 1.0, "target buffer = the town's x");
+    assert!((tgt[i * 2 + 1] - to_m(town.pos.y_mm)).abs() < 1.0, "target buffer = the town's y");
+    // A marching legion is BETWEEN its start and its target, so the arc has real length (pos != target).
+    assert!(
+        (pos[i * 2] - tgt[i * 2]).abs() > 1.0 || (pos[i * 2 + 1] - tgt[i * 2 + 1]).abs() > 1.0,
+        "a marching legion's position differs from its target → the intent arc is non-degenerate"
+    );
+}
+
 /// S8b — the conquest loop: legions march to the far-end town, besiege it, and FLIP it. Over a long
 /// run MANY legions launch (tribute keeps funding them) and all target that one town, so this also
 /// exercises the gate-blind EXACTLY-ONCE property: a town is captured ONCE, not re-counted each tick a

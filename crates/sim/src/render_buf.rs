@@ -227,6 +227,36 @@ pub fn army_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved legion TARGET positions `[x0,y0, ...]` in metres (fantasy, S11 render — the AI general's
+/// intent). Same length/order as [`army_positions_m`]: a MARCHING legion emits its target town's centre
+/// (so the UI can draw an intent arc from the legion to where it's headed); a besieging/idle legion emits
+/// its OWN position (a zero-length arc → invisible). Render-only copy-out (float allowed). Empty for transit.
+pub fn army_targets_m(w: &World) -> Vec<f32> {
+    let a = &w.armies;
+    let mut out = Vec::with_capacity(a.len() * 2);
+    for i in 0..a.len() {
+        let own = || {
+            w.lines
+                .get(a.line[i].index())
+                .and_then(|l| l.paths.get(a.path[i] as usize))
+                .map(|p| p.point_at(a.s_mm[i]))
+                .unwrap_or((0, 0))
+        };
+        // Only a MARCHING legion has a forward intent to draw; otherwise collapse the arc to its own spot.
+        let (x, y) = if a.state[i] == crate::army::MARCHING {
+            w.stations
+                .get(a.target[i] as usize)
+                .map(|s| (s.pos.x_mm, s.pos.y_mm))
+                .unwrap_or_else(own)
+        } else {
+            own()
+        };
+        out.push(mm_to_m(x));
+        out.push(mm_to_m(y));
+    }
+    out
+}
+
 /// Interleaved RAIDER positions `[x0_m, y0_m, ...]` in metres (fantasy S11 — the rival). Raiders march
 /// free 2-D (their position IS the authoritative hashed state), so this is a direct copy-out of the
 /// MARCHING raiders. Empty for transit / a realm the rival hasn't reached.

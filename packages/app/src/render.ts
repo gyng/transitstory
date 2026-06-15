@@ -875,6 +875,32 @@ export function vehicleLayers(dots: VehicleDot[]): Layer[] {
  *  with a gold ring so they read distinctly from the line-tinted commodity carts. `positionsLngLat` is
  *  interleaved lng/lat (the caller converts from the sim's metres). Few in number (capped), so a plain
  *  per-compose ScatterplotLayer is cheap — no binary-attribute path needed. */
+/** A legion INTENT arc (fantasy/arcadia, S11 — the AI general's "why" made spatial): from a marching
+ *  legion to the town it's headed for. The caller filters out zero-length (idle/besieging) arcs. */
+export interface IntentArc {
+  from: [number, number];
+  to: [number, number];
+}
+
+/** Legion INTENT arcs: faint crimson curves from each marching legion to its target town — so the player
+ *  reads WHERE the AI is sending its legions (you steer by rail + bounty, the legions execute). Under the
+ *  legion dots (the dot stays on top of its own line), over the network. Few + short-lived, so a plain
+ *  per-compose ArcLayer is cheap (mirrors the army/raider dot layers). */
+export function armyIntentLayer(arcs: IntentArc[]): Layer {
+  return new ArcLayer({
+    id: "army-intent",
+    data: arcs,
+    getSourcePosition: (d: IntentArc) => d.from,
+    getTargetPosition: (d: IntentArc) => d.to,
+    getSourceColor: [150, 24, 24, 50], // faint at the legion
+    getTargetColor: [150, 24, 24, 165], // stronger at the destination (where the intent points)
+    getWidth: 2,
+    widthUnits: "pixels",
+    widthMinPixels: 1.5,
+    getHeight: 0.5,
+  });
+}
+
 export function armyLayer(positionsLngLat: Float32Array, count: number): Layer {
   return new ScatterplotLayer({
     id: "armies",

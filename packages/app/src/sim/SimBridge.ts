@@ -114,6 +114,13 @@ export class SimBridge {
     return this.sim.armyPositions();
   }
 
+  /** Interleaved legion TARGET positions `[x0,y0,...]` in metres, aligned with `armyPositions` (fantasy/
+   *  arcadia, S11 — the AI intent). A marching legion's entry is its target town; others collapse to their
+   *  own spot. Empty otherwise. */
+  armyTargets(): Float32Array {
+    return this.sim.armyTargets();
+  }
+
   /** Interleaved raider positions `[x0,y0,...]` in metres (fantasy/arcadia, S11 — the rival). Empty otherwise. */
   raiderPositions(): Float32Array {
     return this.sim.raiderPositions();
