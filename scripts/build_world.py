@@ -88,6 +88,14 @@ FORGE_BUDGET = 4
 #     early prizes, far/aether-adjacent = late prizes). Town value i64. ---
 TOWN_BUDGET = 9            # neutral towns (excl. the capital); the starter is the nearest of these
 TOWN_MIN_SPACING = 9      # hex spacing between towns (room to build between them)
+# Item #3 — the near-capital BOOTSTRAP cluster (FOR THE AI TO USE): the attractor-based deposits land ~90
+# hexes from the SW-corner capital, so the realm can't mint manpower / field a legion before the decadence
+# wins (and the #9 area-of-influence gate would soft-lock it). Force a small grain/fuel/ore cluster within
+# first-cart reach of the citadel so a SHORT rail bootstraps the manpower the capital-barracks spends on its
+# first legions. The far attractor deposits stay for the disjoint mid/late chains.
+CLUSTER_MIN, CLUSTER_MAX = 3, 9   # the bootstrap ring (hexes from the capital): railable yet early-reachable
+CLUSTER_MAX_FALLBACK = 16         # if a biome is absent in the tight ring, search out to here (grain is essential)
+CLUSTER_YIELD = {"grain": 120, "fuel": 90, "ore": 100}
 TOWN_MIN_FROM_CAPITAL = 5  # don't spawn a neutral town on top of the capital
 TOWN_MIN_FROM_RESOURCE = 3  # a town sits NEAR resources but never ON one — you must RAIL the goods in
 TOWN_BASE_VALUE = 1000     # conquest reward floor
@@ -357,6 +365,38 @@ def poisson_select(candidates, scores, min_spacing, budget):
     return chosen
 
 
+def place_capital_cluster(biome, capital, avoid):
+    """Item #3 — carve a near-capital BOOTSTRAP VALLEY (FOR THE AI TO USE). The attractor deposits land ~90+
+    hexes out, so nothing mints manpower before the decadence wins. RE-BIOME a few passable cells just outside
+    the citadel to PLAIN/FOREST/HILL and stamp GRAIN (→ manpower → the capital-barracks's first legions),
+    FUEL (→ mana) and ORE (→ the arms chain) on them; pick a STARTER-town cell within reach. A short rail
+    capital→grain→starter then bootstraps the manpower the AI fields legions with. Returns (resources,
+    starter_cell); MUTATES `biome`. Deterministic: nearest passable ring cells in (dist,r,q) order. The far
+    deposits (place_resources) stay for the mid/late disjoint chains."""
+    ring = sorted(
+        ((hex_dist((q, r), capital), r, q) for r in range(H) for q in range(W)
+         if biome[r, q] not in (WATER, MOUNTAIN) and (q, r) not in avoid
+         and CLUSTER_MIN <= hex_dist((q, r), capital) <= CLUSTER_MAX),
+        key=lambda t: (t[0], t[1], t[2]))
+    out, used = [], set()
+    for kind, gate in (("grain", PLAIN), ("fuel", FOREST), ("ore", HILL)):
+        for _d, r, q in ring:
+            if (q, r) in used:
+                continue
+            biome[r, q] = gate  # re-biome: the citadel's home valley supports the bootstrap chain by construction
+            out.append({"kind": kind, "q": int(q), "r": int(r), "yield": int(CLUSTER_YIELD[kind])})
+            used.add((q, r))
+            break
+    # the STARTER-town cell: the nearest remaining ring cell ≥ TOWN_MIN_FROM_RESOURCE from the new sources
+    # (the goods must be RAILED in, not sit under the town) — a short capital→grain→starter manpower chain.
+    starter = None
+    for _d, r, q in ring:
+        if (q, r) not in used and all(hex_dist((q, r), c) >= TOWN_MIN_FROM_RESOURCE for c in used):
+            starter = (q, r)
+            break
+    return out, starter
+
+
 def place_resources(biome, capital, rough):
     """S2: stamp each resource kind on its gated biome, biased toward its attractor centre (+ aether pushed
     FAR from the capital), then Poisson-rarefy to a baked budget. Returns a list of dicts
@@ -413,24 +453,32 @@ def place_forges(biome, resources, towns):
     return forges
 
 
-def place_towns(biome, capital, resources, rough, ore_att):
+def place_towns(biome, capital, resources, rough, ore_att, forced_starter=None):
     """S3: the capital + Poisson-spread neutral towns, suitability-sited near resource clusters and graded
     by distance from the capital into the expansion arc. Each town carries an i64 value and a 2–3-good
-    demand set (its nearest distinct resource kinds). Returns a list of dicts {kind,q,r,value,demands}."""
+    demand set (its nearest distinct resource kinds). `forced_starter` (item #3) pins the STARTER town at the
+    near-capital bootstrap cell so the AI has an early manpower sink. Returns a list of dicts {kind,q,r,...}."""
     res_qr = [(x["q"], x["r"], x["kind"]) for x in resources]
     cands = [(q, r) for r in range(H) for q in range(W)
              if biome[r, q] not in (WATER, MOUNTAIN)
              and hex_dist((q, r), capital) >= TOWN_MIN_FROM_CAPITAL
              # NEAR resources but never ON one (≥ TOWN_MIN_FROM_RESOURCE): the goods must be RAILED in,
              # not sitting under the town — else source==sink and there's nothing to transport.
-             and all(hex_dist((q, r), (rq, rr)) >= TOWN_MIN_FROM_RESOURCE for (rq, rr, _) in res_qr)]
+             and all(hex_dist((q, r), (rq, rr)) >= TOWN_MIN_FROM_RESOURCE for (rq, rr, _) in res_qr)
+             # keep the Poisson neutrals clear of the forced near-capital starter (it's added explicitly).
+             and (forced_starter is None or hex_dist((q, r), forced_starter) >= TOWN_MIN_SPACING)]
     scores = {}
     for (q, r) in cands:
         # suitability: close to resources (sum of inverse hex distance) + a mild far-from-capital spread
         near = sum(1.0 / (1.0 + hex_dist((q, r), (rq, rr))) for (rq, rr, _) in res_qr)
         scores[(q, r)] = near + 0.02 * hex_dist((q, r), capital) + 0.3 * float(rough[r, q])
     chosen = poisson_select(cands, scores, TOWN_MIN_SPACING, TOWN_BUDGET)
-    starter = min(chosen, key=lambda c: (hex_dist(c, capital), c[1], c[0])) if chosen else None
+    # Item #3: the near-capital bootstrap cell is THE starter (pinned); else the nearest Poisson town.
+    if forced_starter is not None:
+        chosen = [forced_starter] + chosen
+        starter = forced_starter
+    else:
+        starter = min(chosen, key=lambda c: (hex_dist(c, capital), c[1], c[0])) if chosen else None
 
     def demand_set(q, r):
         kinds = {k for (_, _, k) in res_qr}
@@ -637,9 +685,13 @@ def generate(seed):
 
     # S2: stamp ORE/GRAIN/FUEL/AETHER on qualifying biomes, Poisson-rarefy to a budget, bias to attractors.
     resources = place_resources(biome, capital, rough)
+    # Item #3: carve a near-capital bootstrap valley (grain/fuel/ore + a starter-town cell) so the AI can
+    # mint manpower + field legions early. Avoids existing deposit cells (no re-biome clobber). Far deposits stay.
+    cluster_res, starter_cell = place_capital_cluster(biome, capital, {(x["q"], x["r"]) for x in resources})
+    resources = cluster_res + resources
     ore_att, bread_att = pick_attractors(biome, capital)
-    # S3: capital + Poisson-spread neutral towns, suitability-sited near resources, expansion-arc graded.
-    towns = place_towns(biome, capital, resources, rough, ore_att)
+    # S3: capital + Poisson neutral towns + the PINNED near-capital starter (the early manpower sink).
+    towns = place_towns(biome, capital, resources, rough, ore_att, forced_starter=starter_cell)
     # S7e multi-stage: INGOT forges on the ore→ARMS-town corridor (placed AFTER towns so each ARMS town's
     # forge sits between it and its nearest ore — kept in a separate list: infrastructure, not an attractor).
     forges = place_forges(biome, resources, towns)
