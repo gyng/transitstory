@@ -1,13 +1,14 @@
 // Title screen + start menu. Center stage is a randomly-picked, gloriously over-the-top
 // light-novel "subtitle" (/title/subN.webp). The clickable station-master pigeon perches in
-// the bottom-left corner; the real "Transit Story" wordmark sits in the bottom-right. Then
-// pick a city + start mode and boot.
+// the bottom-left corner; the real "Transit Story" wordmark sits in the bottom-right. The
+// fantasy campaign is the headline (a real, clickable CTA); the real cities collapse under a
+// submenu so the fork reads as a fantasy game first, a city-roster second.
 //
 // All motion is transform/opacity only (compositor-friendly) and is disabled under
-// prefers-reduced-motion. Nothing here overflows the viewport. The mascot hop is a
-// self-contained DOM micro-interaction driven through a ref — removing `jump` on animationend
-// lets the idle bob resume (a sticky class would leave the pigeon static). The random subtitle
-// is chosen ONCE (frontend chrome RNG, not the sim).
+// prefers-reduced-motion. The menu SCROLLS when its content overflows (collapsed real-cities
+// section expanded on a short viewport): `#menu` is the scroll container, justify-content
+// flex-start + an auto-margin inner block centers when it fits but never clips the top.
+// The random subtitle is chosen ONCE (frontend chrome RNG, not the sim).
 import { useRef, useState } from "react";
 import { CITIES, personalBest, realmsSaved, type CityEntry } from "../../sim/cities";
 import { withBase } from "../../config";
@@ -49,11 +50,15 @@ const MENU_CSS = `
         rgba(255,176,32,.07),rgba(0,158,115,.08),rgba(26,182,240,.10));
       filter:blur(60px);animation:ot-spin 72s linear infinite}
 
+    /* ---- scroll inner: centers when it fits, scrolls (top never clipped) when it overflows ---- */
+    #menu .ot-scroll{position:relative;z-index:1;width:100%;margin:auto 0;display:flex;
+      flex-direction:column;align-items:center}
+
     /* ---- center stage: the absurd light-novel subtitle ---- */
     /* Fixed stage height reserves the subtitle's vertical space, so cycling to a new image
        (which remounts + loads async) never reflows the menu below it — no layout shift. */
     #menu .ot-stage{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-      height:42vh;margin-bottom:18px}
+      height:clamp(180px,34vh,320px);margin-bottom:16px}
     #menu .ot-stage::before{content:"";position:absolute;width:120%;height:120%;border-radius:50%;
       background:radial-gradient(closest-side,rgba(120,180,230,.20),transparent 72%);
       filter:blur(14px);animation:ot-breathe 7s ease-in-out infinite}
@@ -74,35 +79,52 @@ const MENU_CSS = `
     #menu .ot-city.sel{border-color:#1ab6f0;background:#11405a;transform:translateY(-2px);
       box-shadow:0 0 0 1px rgba(26,182,240,.45),0 10px 26px rgba(10,143,204,.4)}
     #menu .ot-mode{display:flex;gap:10px;justify-content:center;margin-bottom:16px;flex-wrap:wrap;
-      animation:ot-fadeup .5s .5s both}
+      animation:ot-fadeup .5s both}
     #menu .ot-modebtn{pointer-events:auto;padding:9px 14px;border-radius:9px;border:1px solid #39414a;
       background:#1c232b;color:#eef1f4;cursor:pointer;transition:border-color .14s ease,background .14s ease,transform .14s ease}
     #menu .ot-modebtn:hover{transform:translateY(-2px)}
     #menu .ot-modebtn.sel{background:#11405a;border-color:#1ab6f0}
     #menu .ot-start{pointer-events:auto;padding:13px 34px;border:0;border-radius:11px;
       background:linear-gradient(180deg,#1ab6f0,#0a8fcc);color:#fff;font:700 17px system-ui;cursor:pointer;
-      animation:ot-fadeup .5s .6s both,ot-pulse 2.6s 1.2s ease-in-out infinite;
-      transition:transform .14s ease}
+      animation:ot-fadeup .5s both;transition:transform .14s ease}
     #menu .ot-start:hover{transform:translateY(-2px) scale(1.03)}
     #menu .ot-start:active{transform:translateY(0) scale(.98)}
 
-    /* ---- PRIMARY mode: the fantasy campaign (the fork's headline) ---- */
-    #menu .ot-primary{pointer-events:auto;width:100%;margin-bottom:16px;padding:18px 20px;border-radius:14px;
+    /* ---- PRIMARY mode: the fantasy campaign (the fork's headline, a real clickable CTA) ---- */
+    #menu .ot-primary{pointer-events:auto;width:100%;margin-bottom:10px;padding:18px 20px;border-radius:14px;
       border:2px solid rgba(155,89,222,.55);text-align:left;position:relative;overflow:hidden;color:#f3eefb;
       background:linear-gradient(135deg,rgba(58,30,86,.94),rgba(26,28,58,.94));
-      box-shadow:0 12px 30px rgba(80,40,140,.32);animation:ot-fadeup .5s .2s both;cursor:not-allowed}
-    #menu .ot-primary[disabled]{opacity:.92}
+      box-shadow:0 12px 30px rgba(80,40,140,.32);cursor:pointer;
+      animation:ot-fadeup .5s .2s both,ot-pulse-p 3s 1.4s ease-in-out infinite;
+      transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+    #menu .ot-primary:hover{transform:translateY(-3px);border-color:rgba(186,120,255,.85);
+      box-shadow:0 18px 44px rgba(120,60,190,.5)}
+    #menu .ot-primary:active{transform:translateY(-1px) scale(.995)}
     #menu .ot-primary .ot-badge{position:absolute;top:12px;right:14px;font:700 10px system-ui;letter-spacing:.06em;
       text-transform:uppercase;color:#e3d4ff;background:rgba(155,89,222,.28);padding:3px 9px;border-radius:999px;
       border:1px solid rgba(155,89,222,.55)}
     #menu .ot-primary h2{margin:0 0 5px;font:800 22px system-ui}
     #menu .ot-primary p{margin:0;color:#c6bfdb;font-size:13px;line-height:1.45;max-width:48ch}
+    #menu .ot-primary .ot-cta{display:inline-flex;align-items:center;gap:8px;margin-top:13px;
+      padding:10px 18px;border-radius:9px;font:700 14px system-ui;color:#fff;
+      background:linear-gradient(180deg,#9b59de,#7a3fc8);box-shadow:0 6px 16px rgba(120,60,190,.45)}
 
-    /* ---- SECONDARY section header: real cities, demoted below the campaign ---- */
-    #menu .ot-secthead{width:100%;display:flex;align-items:center;gap:10px;margin:0 0 10px;
+    /* ---- the no-objective sandbox realm (hand-authored Arcadia), demoted to a quiet link ---- */
+    #menu .ot-sandbox-link{pointer-events:auto;align-self:flex-start;margin:0 0 16px;padding:7px 12px;
+      border:1px solid #39414a;border-radius:8px;background:#1c232b;color:#b9b1d0;cursor:pointer;
+      font:600 12px system-ui;animation:ot-fadeup .5s .25s both;
+      transition:transform .14s ease,border-color .14s ease,color .14s ease}
+    #menu .ot-sandbox-link:hover{transform:translateY(-1px);border-color:rgba(155,89,222,.55);color:#e3d4ff}
+
+    /* ---- SECONDARY section header: a collapse toggle for the real cities, below the campaign ---- */
+    #menu .ot-secthead{pointer-events:auto;width:100%;display:flex;align-items:center;gap:10px;margin:4px 0 12px;
+      padding:6px 2px;border:0;background:none;cursor:pointer;
       color:#8a93a3;font:700 11px system-ui;letter-spacing:.06em;text-transform:uppercase;
-      animation:ot-fadeup .5s .3s both}
+      animation:ot-fadeup .5s .3s both;transition:color .14s ease}
+    #menu .ot-secthead:hover{color:#c4ccd6}
     #menu .ot-secthead::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,#39414a,transparent)}
+    #menu .ot-chev{display:inline-block;transition:transform .18s ease}
+    #menu .ot-chev.open{transform:rotate(90deg)}
     #menu .ot-grid .ot-city{opacity:.9}
 
     /* ---- bottom-left: clickable pigeon ---- */
@@ -136,6 +158,7 @@ const MENU_CSS = `
       45%{transform:translateY(-40px) scaleY(1.08)}70%{transform:translateY(0) scaleY(.94)}100%{transform:translateY(0) scaleY(1)}}
     @keyframes ot-breathe{0%,100%{transform:scale(.95);opacity:.55}50%{transform:scale(1.05);opacity:.85}}
     @keyframes ot-pulse{0%,100%{box-shadow:0 6px 18px rgba(10,143,204,.45)}50%{box-shadow:0 8px 30px rgba(26,182,240,.7)}}
+    @keyframes ot-pulse-p{0%,100%{box-shadow:0 12px 30px rgba(80,40,140,.32)}50%{box-shadow:0 14px 40px rgba(155,89,222,.52)}}
     @keyframes ot-pan{to{transform:translate(36px,36px)}}
     @keyframes ot-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
     @keyframes ot-bubble{0%{opacity:0;transform:translate(-50%,-100%) scale(.6)}
@@ -156,11 +179,21 @@ export function Menu({
   const [subIdx, setSubIdx] = useState(() => 1 + Math.floor(Math.random() * SUBTITLE_COUNT));
   const heroSrc = withBase(`/title/sub${subIdx}.webp`);
   const cycleSub = () => setSubIdx((i) => (i % SUBTITLE_COUNT) + 1);
-  const [selected, setSelected] = useState<CityEntry>(CITIES[0]);
+
+  // The fantasy entries split out of the city grid: the baked, certified-winnable continent is
+  // the headline CAMPAIGN; the hand-authored one is a free-build sandbox. Real cities populate
+  // the collapsible grid (everything that isn't an arcadia ruleset).
+  const fantasyEntry = CITIES.find((c) => c.id === "fantasy") ?? CITIES.find((c) => c.kind === "arcadia");
+  const arcadiaEntry = CITIES.find((c) => c.id === "arcadia");
+  const realCities = CITIES.filter((c) => c.kind !== "arcadia");
+
+  const [showCities, setShowCities] = useState(false);
+  const [selected, setSelected] = useState<CityEntry>(realCities[0] ?? CITIES[0]);
   const [withNetwork, setWithNetwork] = useState(true);
   const [scenario, setScenario] = useState<string | null>(null);
   // A resumable autosave, read once at mount (frontend-only; not the sim).
   const [save] = useState<SaveBlob | null>(() => readSave());
+  const saved = realmsSaved();
   const mascotRef = useRef<HTMLButtonElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
@@ -190,10 +223,12 @@ export function Menu({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "flex-start",
         gap: "6px",
-        padding: "18px",
-        overflow: "hidden",
+        // A minimum vertical margin so an overflowing menu scrolls cleanly and the top is never
+        // clipped (the auto-margin inner block still centers it when it fits).
+        padding: "clamp(20px,4vh,48px) 18px",
+        overflowY: "auto",
         color: "#eef1f4",
         fontFamily: "system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
         background: "radial-gradient(120% 90% at 50% 22%,#28313a 0%,#161b21 55%,#0c0f13 100%)",
@@ -203,157 +238,173 @@ export function Menu({
 
       <div className="ot-bg" />
 
-      {/* Center stage: a random over-the-top light-novel subtitle — click it to cycle to the
-          next. `key={subIdx}` remounts the img so the entrance pop replays on each cycle. */}
-      <div className="ot-stage">
-        <img
-          key={subIdx}
-          className="ot-hero"
-          data-testid="subtitle"
-          alt="Transit Story"
-          decoding="async"
-          src={heroSrc}
-          role="button"
-          aria-label="Show another subtitle"
-          title="Click for another"
-          onClick={cycleSub}
-          style={{ cursor: "pointer" }}
-        />
-      </div>
+      <div className="ot-scroll">
+        {/* Center stage: a random over-the-top light-novel subtitle — click it to cycle to the
+            next. `key={subIdx}` remounts the img so the entrance pop replays on each cycle. */}
+        <div className="ot-stage">
+          <img
+            key={subIdx}
+            className="ot-hero"
+            data-testid="subtitle"
+            alt="Transit Story"
+            decoding="async"
+            src={heroSrc}
+            role="button"
+            aria-label="Show another subtitle"
+            title="Click for another"
+            onClick={cycleSub}
+            style={{ cursor: "pointer" }}
+          />
+        </div>
 
-      <div className="ot-card">
-        {/* PRIMARY mode: the fantasy campaign — the fork's headline. Not yet playable (no fantasy
-            ruleset/world baked), so it renders as a prominent, disabled "in development" hero card.
-            When the fantasy world is baked this becomes a real selectable mode that calls onStart. */}
-        <button
-          className="ot-primary"
-          data-testid="mode-fantasy"
-          disabled
-          aria-disabled="true"
-          title="The fantasy campaign is in development"
-        >
-          <span className="ot-badge">In development</span>
-          <h2>⚔️ Arcadia — Fantasy Campaign</h2>
-          <p>
-            Supply your towns, forge armies, and conquer the realm from a lone capital. The new
-            primary mode — coming soon.
-          </p>
-        </button>
+        <div className="ot-card">
+          {/* PRIMARY mode: the fantasy campaign — the fork's headline and the default new game.
+              Clicking begins the certified-winnable baked continent (`fantasy`) with the
+              "Against the Dark" victory objective — the same setup the e2e victory test boots. */}
+          <button
+            className="ot-primary"
+            data-testid="mode-fantasy"
+            title="Begin the Arcadia campaign"
+            onClick={() => fantasyEntry && onStart(fantasyEntry, false, "arcadia-conquest")}
+          >
+            <span className="ot-badge">{saved > 0 ? `⚜ ${saved} saved` : "New campaign"}</span>
+            <h2>⚔️ Arcadia — Fantasy Campaign</h2>
+            <p>
+              Supply your towns, forge armies, and conquer the realm from a lone capital — before
+              the decadence reaches your gates. Single-track rails, meeting points, a continent to save.
+            </p>
+            <span className="ot-cta">▶ Begin — Against the Dark</span>
+          </button>
 
-        {/* SECONDARY mode: the classic real-map transit builder, demoted below the campaign. */}
-        <div className="ot-secthead">Real cities · classic transit</div>
-
-        <div className="ot-grid">
-          {CITIES.map((c, i) => (
+          {/* The no-objective sandbox realm (the hand-authored Arcadia) for free building. */}
+          {arcadiaEntry && (
             <button
-              key={c.id}
-              className={`ot-city${selected.id === c.id ? " sel" : ""}`}
-              data-testid={`city-${c.id}`}
-              style={{ animationDelay: `${0.24 + i * 0.05}s` }}
-              onClick={() => {
-                setSelected(c);
-                // Drop a city-specific challenge that no longer applies to the new city.
-                const sc = scenario ? SCENARIOS[scenario] : null;
-                if (sc?.cityId && sc.cityId !== c.id) setScenario(null);
+              className="ot-sandbox-link"
+              data-testid="mode-fantasy-sandbox"
+              title="Free-build sandbox realm — no victory clock"
+              onClick={() => onStart(arcadiaEntry, false, null)}
+            >
+              🗺 Free sandbox realm
+            </button>
+          )}
+
+          {/* SECONDARY: the classic real-map transit builder, collapsed under a submenu so the
+              fantasy campaign reads as the headline. Expands to the full city roster + controls. */}
+          <button
+            className="ot-secthead"
+            data-testid="real-cities-toggle"
+            aria-expanded={showCities}
+            onClick={() => setShowCities((v) => !v)}
+          >
+            <span className={`ot-chev${showCities ? " open" : ""}`}>▸</span>
+            Real cities · classic transit
+          </button>
+
+          {showCities && (
+            <>
+              <div className="ot-grid">
+                {realCities.map((c, i) => (
+                  <button
+                    key={c.id}
+                    className={`ot-city${selected.id === c.id ? " sel" : ""}`}
+                    data-testid={`city-${c.id}`}
+                    style={{ animationDelay: `${0.04 + i * 0.04}s` }}
+                    onClick={() => {
+                      setSelected(c);
+                      // Drop a city-specific challenge that no longer applies to the new city.
+                      const sc = scenario ? SCENARIOS[scenario] : null;
+                      if (sc?.cityId && sc.cityId !== c.id) setScenario(null);
+                    }}
+                  >
+                    <div style={{ font: "600 16px system-ui" }}>{c.name}</div>
+                    <div style={{ color: "#9aa3ad", fontSize: "12px", marginTop: "3px" }}>{c.blurb}</div>
+                    {/* The score-chase line: the city's real network is the bar; the personal best is
+                        the player's standing against it (from-scratch runs only). */}
+                    <div data-testid={`city-score-${c.id}`} style={{ fontSize: "11px", marginTop: "4px", color: "#8a93a3" }}>
+                      real network ~{c.realScore}
+                      {(() => {
+                        const best = personalBest(c.id);
+                        if (best === null) return null;
+                        const beat = best > c.realScore;
+                        return (
+                          <span style={{ color: beat ? "#1ab560" : "#8a93a3" }}>
+                            {" "}· your best {best}{beat ? " 🏆" : ""}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Start mode toggle. */}
+              <div className="ot-mode">
+                <button
+                  className={`ot-modebtn${withNetwork ? " sel" : ""}`}
+                  data-testid="mode-network"
+                  onClick={() => setWithNetwork(true)}
+                >
+                  Start with the real network
+                </button>
+                <button
+                  className={`ot-modebtn${!withNetwork ? " sel" : ""}`}
+                  data-testid="mode-sandbox"
+                  onClick={() => setWithNetwork(false)}
+                >
+                  Empty sandbox
+                </button>
+              </div>
+
+              {/* Optional challenge: Free Play, or a scored scenario (objectives layer). */}
+              <div className="ot-mode" style={{ marginTop: "-4px" }}>
+                <button
+                  className={`ot-modebtn${scenario === null ? " sel" : ""}`}
+                  data-testid="scenario-none"
+                  onClick={() => setScenario(null)}
+                >
+                  Free play
+                </button>
+                {Object.values(SCENARIOS)
+                  .filter((sc) => !sc.cityId || sc.cityId === selected.id)
+                  .map((sc) => (
+                    <button
+                      key={sc.id}
+                      className={`ot-modebtn${scenario === sc.id ? " sel" : ""}`}
+                      data-testid={`scenario-${sc.id}`}
+                      title={sc.blurb}
+                      onClick={() => setScenario(sc.id)}
+                    >
+                      🎯 {sc.title}
+                    </button>
+                  ))}
+              </div>
+
+              <button className="ot-start" data-testid="start" onClick={() => onStart(selected, withNetwork, scenario)}>
+                ▶ Start
+              </button>
+            </>
+          )}
+
+          {save && onResume && (
+            <button
+              data-testid="resume"
+              onClick={() => onResume(save)}
+              style={{
+                pointerEvents: "auto",
+                marginTop: "14px",
+                padding: "9px 22px",
+                border: "1px solid #39414a",
+                borderRadius: "9px",
+                background: "#1c232b",
+                color: "#eef1f4",
+                font: "600 14px system-ui",
+                cursor: "pointer",
               }}
             >
-              <div style={{ font: "600 16px system-ui" }}>{c.name}</div>
-              <div style={{ color: "#9aa3ad", fontSize: "12px", marginTop: "3px" }}>{c.blurb}</div>
-              {/* The score-chase line: the city's real network is the bar; the personal best is
-                  the player's standing against it (from-scratch runs only). */}
-              <div data-testid={`city-score-${c.id}`} style={{ fontSize: "11px", marginTop: "4px", color: "#8a93a3" }}>
-                {c.kind === "arcadia" ? (
-                  // S11 PRESTIGE: the arcadia campaign's score-chase is "realms saved" (campaigns won), not
-                  // a coverage anchor (its realScore is 0 — there's no real-world network to beat).
-                  (() => {
-                    const saved = realmsSaved();
-                    return saved > 0 ? <span style={{ color: "#caa64a" }}>⚜ {saved} realm{saved === 1 ? "" : "s"} saved</span> : <span>a continent to save</span>;
-                  })()
-                ) : (
-                  <>
-                    real network ~{c.realScore}
-                    {(() => {
-                      const best = personalBest(c.id);
-                      if (best === null) return null;
-                      const beat = best > c.realScore;
-                      return (
-                        <span style={{ color: beat ? "#1ab560" : "#8a93a3" }}>
-                          {" "}· your best {best}{beat ? " 🏆" : ""}
-                        </span>
-                      );
-                    })()}
-                  </>
-                )}
-              </div>
+              ↩ Resume {save.cityName}
             </button>
-          ))}
+          )}
         </div>
-
-        {/* Start mode toggle. */}
-        <div className="ot-mode">
-          <button
-            className={`ot-modebtn${withNetwork ? " sel" : ""}`}
-            data-testid="mode-network"
-            onClick={() => setWithNetwork(true)}
-          >
-            Start with the real network
-          </button>
-          <button
-            className={`ot-modebtn${!withNetwork ? " sel" : ""}`}
-            data-testid="mode-sandbox"
-            onClick={() => setWithNetwork(false)}
-          >
-            Empty sandbox
-          </button>
-        </div>
-
-        {/* Optional challenge: Free Play, or a scored scenario (objectives layer). */}
-        <div className="ot-mode" style={{ marginTop: "-4px" }}>
-          <button
-            className={`ot-modebtn${scenario === null ? " sel" : ""}`}
-            data-testid="scenario-none"
-            onClick={() => setScenario(null)}
-          >
-            Free play
-          </button>
-          {Object.values(SCENARIOS)
-            .filter((sc) => !sc.cityId || sc.cityId === selected.id)
-            .map((sc) => (
-            <button
-              key={sc.id}
-              className={`ot-modebtn${scenario === sc.id ? " sel" : ""}`}
-              data-testid={`scenario-${sc.id}`}
-              title={sc.blurb}
-              onClick={() => setScenario(sc.id)}
-            >
-              🎯 {sc.title}
-            </button>
-          ))}
-        </div>
-
-        <button className="ot-start" data-testid="start" onClick={() => onStart(selected, withNetwork, scenario)}>
-          ▶ Start
-        </button>
-
-        {save && onResume && (
-          <button
-            data-testid="resume"
-            onClick={() => onResume(save)}
-            style={{
-              pointerEvents: "auto",
-              marginTop: "12px",
-              padding: "9px 22px",
-              border: "1px solid #39414a",
-              borderRadius: "9px",
-              background: "#1c232b",
-              color: "#eef1f4",
-              font: "600 14px system-ui",
-              cursor: "pointer",
-            }}
-          >
-            ↩ Resume {save.cityName}
-          </button>
-        )}
       </div>
 
       {/* Bottom-left: the clickable station-master pigeon — hops + chirps when poked. */}

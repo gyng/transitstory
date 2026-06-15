@@ -6,6 +6,8 @@ test("start menu boots the chosen city", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('[data-testid="menu"]')).toBeVisible();
 
+  // Real cities collapse under a submenu (the fantasy campaign is the headline) — expand it first.
+  await page.locator('[data-testid="real-cities-toggle"]').click();
   // Choose Tokyo, empty sandbox, start.
   await page.locator('[data-testid="city-tokyo"]').click();
   await page.locator('[data-testid="mode-sandbox"]').click();
