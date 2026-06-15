@@ -24,49 +24,84 @@ export function BuildHud() {
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
   // Fantasy gold build economy prices in gold (⬢); transit prices in $. goldShort > 0 ⇒ unaffordable.
-  const cost = p.goldCost > 0 ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
+  const inGold = p.goldCost > 0;
+  const cost = inGold ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
   const unaffordable = p.invalid || p.goldShort > 0;
+  // Bill of materials: per-terrain cell count + cost share (fantasy grid; the work the track entails).
+  const total = inGold ? p.goldCost : Math.round(p.costM);
+  const unit = inGold ? "⬢" : "M";
+  const bom = p.stops >= 2 ? game.draftBom(total) : [];
 
   return (
-    <div
-      data-testid="build-hud"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 12px",
-        background: unaffordable ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
-        color: "#fff",
-        borderRadius: 999,
-        font: "600 13px system-ui,sans-serif",
-        boxShadow: "var(--ot-shadow)",
-        pointerEvents: "none",
-        whiteSpace: "nowrap",
-        maxWidth: "92vw",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-    >
-      <span data-testid="build-hud-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
-      <span style={{ opacity: 0.55 }}>·</span>
-      <span>~{km} km</span>
-      {(p.costM > 0 || p.goldCost > 0) && (
-        <>
-          <span style={{ opacity: 0.55 }}>·</span>
-          <span data-testid="build-hud-cost">{cost}</span>
-        </>
-      )}
-      {p.goldShort > 0 && !p.invalid && (
-        <>
-          <span style={{ opacity: 0.55 }}>·</span>
-          <span>⚠ {p.goldShort}⬢ short</span>
-        </>
-      )}
-      {p.invalid && (
-        <>
-          <span style={{ opacity: 0.55 }}>·</span>
-          <span>⚠ crosses water — elevate/tunnel, or use a ferry</span>
-        </>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, pointerEvents: "none" }}>
+      <div
+        data-testid="build-hud"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 12px",
+          background: unaffordable ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
+          color: "#fff",
+          borderRadius: 999,
+          font: "600 13px system-ui,sans-serif",
+          boxShadow: "var(--ot-shadow)",
+          whiteSpace: "nowrap",
+          maxWidth: "92vw",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        <span data-testid="build-hud-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
+        <span style={{ opacity: 0.55 }}>·</span>
+        <span>~{km} km</span>
+        {(p.costM > 0 || p.goldCost > 0) && (
+          <>
+            <span style={{ opacity: 0.55 }}>·</span>
+            <span data-testid="build-hud-cost">{cost}</span>
+          </>
+        )}
+        {p.goldShort > 0 && !p.invalid && (
+          <>
+            <span style={{ opacity: 0.55 }}>·</span>
+            <span>⚠ {p.goldShort}⬢ short</span>
+          </>
+        )}
+        {p.invalid && (
+          <>
+            <span style={{ opacity: 0.55 }}>·</span>
+            <span>⚠ crosses water — elevate/tunnel, or use a ferry</span>
+          </>
+        )}
+      </div>
+      {/* Bill of materials: the work the track entails, per terrain (count + cost share). */}
+      {bom.length > 0 && (
+        <div
+          data-testid="build-hud-bom"
+          style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 5, maxWidth: "92vw" }}
+        >
+          {bom.map((b) => (
+            <span
+              key={b.kind}
+              data-testid={`bom-${b.kind}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "3px 9px",
+                borderRadius: 999,
+                background: "rgba(20,24,28,.9)",
+                color: "#eef1f4",
+                font: "600 11px system-ui,sans-serif",
+                boxShadow: "var(--ot-shadow)",
+              }}
+            >
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: `rgb(${b.tint})`, flex: "0 0 auto" }} />
+              {b.count}× {b.kind}
+              {b.cost > 0 && <span style={{ opacity: 0.7 }}>{b.cost}{unit}</span>}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );

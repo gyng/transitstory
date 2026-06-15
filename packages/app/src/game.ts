@@ -1352,6 +1352,43 @@ export class Game {
     return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid(), shortM, goldCost, goldShort };
   }
 
+  /** Bill-of-materials for the in-progress draft (fantasy grid): how many lattice cells of each terrain
+   *  the track crosses + each terrain's SHARE of `total` cost (attributed by relative build weight), so
+   *  the player sees WHERE the cost comes from — "2× water" is why a line is dear. Empty off-grid. */
+  draftBom(total: number): { kind: string; count: number; cost: number; tint: string }[] {
+    if (this.cellMm <= 0 || this.draft.length < 1) return [];
+    const pts = this.draftPointsMm(); // the dense one-bend route (cell centres)
+    if (pts.length < 2) return [];
+    // [label, relative build weight, chip tint] keyed by biome class (mirrors the routing cost order).
+    const W: Record<number, [string, number, string]> = {
+      10: ["plains", 1.0, "150,165,150"],
+      4: ["water", 8.0, "90,130,200"],
+      6: ["mountain", 3.2, "120,110,110"],
+      7: ["hill", 1.9, "150,140,120"],
+      8: ["forest", 1.4, "110,150,110"],
+      9: ["ley", 1.3, "170,130,210"],
+    };
+    const groups = new Map<number, { count: number; weight: number }>();
+    for (const [x, y] of pts) {
+      const cls = this.build.classifyMm(x, y);
+      const key = W[cls] ? cls : 10; // unknown / open → plains
+      const g = groups.get(key) ?? { count: 0, weight: 0 };
+      g.count++;
+      g.weight += W[key][1];
+      groups.set(key, g);
+    }
+    let wsum = 0;
+    for (const g of groups.values()) wsum += g.weight;
+    const out = [...groups.entries()].map(([cls, g]) => ({
+      kind: W[cls][0],
+      count: g.count,
+      cost: wsum > 0 ? Math.round(total * (g.weight / wsum)) : 0,
+      tint: W[cls][2],
+    }));
+    out.sort((a, b) => b.cost - a.cost || b.count - a.count);
+    return out;
+  }
+
   // --- geometry helpers ---
 
   /** Nearest station id to a screen pixel within `maxPx`, else null (screen-space snap). */
