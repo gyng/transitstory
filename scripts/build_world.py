@@ -50,7 +50,8 @@ MAP_CONST = 0x4D41_505F_5631       # "MAP_V1" — decorrelates the bake RNG from
 #     to S10's per-tick decadence-CA bench — size conservatively LOW until then) ---
 W, H = 128, 128                     # axial extent (q in [0,W), r in [0,H)) -> 16384 cells, ~half land
 GRID_CELL_MM = 250_000              # hex centre-to-corner size (= hexgrid size_mm); matches the arcadia demo
-DEFAULT_SEED = 7
+DEFAULT_SEED = 65  # certified-winnable AND opposite-corner: capital in the SW corner (8,0), the decadence
+#                    reservoir in the NE (15 from the corner) — a 231/254 diagonal (see pick_capital).
 
 # biome class codes (docs/fantasy-map.md S1); 0=Open (unused here), 4=WATER reuses the existing rail gate
 WATER, MOUNTAIN, HILL, FOREST, LEY, PLAIN = 4, 6, 7, 8, 9, 10
@@ -886,16 +887,17 @@ def compute_rivers(elev_filled, land):
 
 
 def pick_capital(biome, elev):
-    """Most-coastal buildable land cell in the SW (0,0)-ward quadrant: minimise elev (coastal) + a gentle
-    pull toward the corner. Deterministic argmin over a fixed scan."""
+    """The buildable land cell CLOSEST to the SW (0,0) corner — the ally seat. The decadence reservoir is
+    seeded farthest-from-capital, so a corner capital auto-places the enemy at the diagonally-OPPOSITE
+    corner. Corner distance dominates; elev (coastal) breaks exact ties. Deterministic argmin."""
     best, best_score = None, 1e18
     for r in range(H // 2):
         for q in range(W // 2):
             c = biome[r, q]
             if c == WATER or c == MOUNTAIN:
                 continue
-            corner_pull = (q + r) / float(W + H)         # 0 at the corner, ~1 far
-            score = elev[r, q] + 0.5 * corner_pull
+            corner_dist = q + r                          # hex steps toward the (0,0) corner (0 = the corner)
+            score = corner_dist + 0.001 * elev[r, q]     # corner distance dominates; elev breaks exact ties
             if score < best_score:
                 best_score, best = score, (q, r)
     if best is None:                                      # degenerate: no SW land — fall back to any land
