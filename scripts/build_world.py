@@ -140,7 +140,27 @@ V_ATTRACTOR_SEP = 20                # ore highland ↔ breadbasket min hex separ
 V_CORNUCOPIA_RADIUS = 8             # no single cell has all 4 resource kinds within this
 V_AETHER_MIN_DIST = 15              # every aether node ≥ this many hexes from the capital
 V_FUNNEL_RADIUS, V_FUNNEL_MIN = 3, 12  # ≥ this many passable cells within R of the capital (not a funnel)
-V_MAX_REROLL = 48                   # bounded re-roll; the relaxation ladder (soften softest first) is the TODO fallback
+V_MAX_REROLL = 48                   # bounded strict re-roll before the relaxation ladder softens a constraint
+
+# The RELAXATION LADDER: when no seed certifies STRICT, soften one RELAXABLE threshold a notch at a time
+# (softest-first, cumulative, deterministic) and re-sweep — so the bake is a TOTAL function of the seed (it
+# always terminates with a playable map), not generate-and-pray. The HARD constraints (aether floor, chains
+# supplied, capital↔resources + capital↔reservoir reachability, source≠sink, aether-before-the-tide) are
+# NEVER on the ladder. Strict-first means a winnable strict seed (the committed seed 12) is byte-identical.
+RELAXABLE_DEFAULT = {
+    "aether_max": V_AETHER_MAX,
+    "attractor_sep": V_ATTRACTOR_SEP,
+    "cornucopia_radius": V_CORNUCOPIA_RADIUS,
+    "aether_min_dist": V_AETHER_MIN_DIST,
+    "funnel_min": V_FUNNEL_MIN,
+}
+RELAX_LADDER = [
+    ("cornucopia_radius", 6), ("cornucopia_radius", 4),
+    ("attractor_sep", 16), ("attractor_sep", 12),
+    ("aether_min_dist", 12), ("aether_min_dist", 10),
+    ("aether_max", 7),
+    ("funnel_min", 10), ("funnel_min", 8),
+]
 
 # pointy-top axial 6-neighbourhood (matches the hex adjacency the sim walks)
 AXIAL_DIRS = ((+1, 0), (+1, -1), (0, -1), (-1, 0), (-1, +1), (0, +1))
@@ -481,57 +501,89 @@ def seed_decadence(biome, capital, towns):
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm)}
 
 
-def validate(biome, capital, fields):
-    """S6: list the solvability constraints a baked world VIOLATES (empty list = certified winnable). Pure."""
+def validate(biome, capital, fields, relax=None):
+    """S6: list the solvability constraints a baked world VIOLATES (empty list = certified winnable). Pure.
+    `relax` overrides the RELAXABLE thresholds (the relaxation ladder); the HARD constraints always use the
+    strict globals. Default (relax=None) = fully strict — the byte-identical original behaviour."""
     from collections import Counter
+    rx = relax or RELAXABLE_DEFAULT
     res, dec = fields["resources"], fields["decadence"]
     by = Counter(x["kind"] for x in res)
     fails = []
-    if not (V_AETHER_MIN <= by["aether"] <= V_AETHER_MAX):
-        fails.append(f"aether {by['aether']} not in [{V_AETHER_MIN},{V_AETHER_MAX}]")
+    # HARD — the arcane floor + both chains supplied (a starved chain is unwinnable, never relax).
+    if by["aether"] < V_AETHER_MIN:
+        fails.append(f"aether {by['aether']} < {V_AETHER_MIN} (can't arm legions)")
     for k in ("grain", "fuel", "ore"):
         if by[k] < V_MIN_PER_KIND:
             fails.append(f"{k} {by[k]} < {V_MIN_PER_KIND} (chain under-supplied)")
-    if hex_dist(fields["ore_att"], fields["bread_att"]) < V_ATTRACTOR_SEP:
+    # RELAXABLE — aether scarcity ceiling.
+    if by["aether"] > rx["aether_max"]:
+        fails.append(f"aether {by['aether']} > {rx['aether_max']} (not scarce)")
+    # RELAXABLE — the two chains pulled apart.
+    if hex_dist(fields["ore_att"], fields["bread_att"]) < rx["attractor_sep"]:
         fails.append("attractor centres too close (chains not separable)")
     passable = (biome != WATER) & (biome != MOUNTAIN)
     reach = hex_flood(passable, capital)
+    # HARD — every resource rail-reachable from the capital.
     if not all(bool(reach[x["r"], x["q"]]) for x in res):
         fails.append("a resource is unreachable from the capital")
-    if any(x["kind"] == "aether" and hex_dist((x["q"], x["r"]), capital) < V_AETHER_MIN_DIST for x in res):
-        fails.append(f"aether closer than {V_AETHER_MIN_DIST} hexes (not a late prize)")
+    # RELAXABLE — aether is a LATE prize (far from the capital).
+    if any(x["kind"] == "aether" and hex_dist((x["q"], x["r"]), capital) < rx["aether_min_dist"] for x in res):
+        fails.append(f"aether closer than {rx['aether_min_dist']} hexes (not a late prize)")
+    # RELAXABLE — no cornucopia hex (all 4 kinds clustered).
     if len(set(by)) == 4 and any(
-            len({y["kind"] for y in res if hex_dist((x["q"], x["r"]), (y["q"], y["r"])) <= V_CORNUCOPIA_RADIUS}) == 4
+            len({y["kind"] for y in res if hex_dist((x["q"], x["r"]), (y["q"], y["r"])) <= rx["cornucopia_radius"]}) == 4
             for x in res):
         fails.append("cornucopia hex (all 4 resources clustered)")
+    # HARD — capital reachable FROM the reservoir (loseable, not walled off).
     if not all(bool(reach[a["r"], a["q"]]) for a in dec["reservoir"]):
         fails.append("capital walled off from the reservoir (unloseable)")
+    # HARD — you can REACH THE ARCANE BEFORE THE TIDE REACHES YOU: the nearest aether is closer to the
+    # capital than the nearest reservoir anchor. Else SPELLCRAFT/the arms chain is unreachable in time —
+    # a structurally-unwinnable race. Never relaxed (it's the win-condition's load-bearing geometry).
+    aether_d = [hex_dist((x["q"], x["r"]), capital) for x in res if x["kind"] == "aether"]
+    rsv_d = [hex_dist((a["q"], a["r"]), capital) for a in dec["reservoir"]]
+    if aether_d and rsv_d and min(aether_d) >= min(rsv_d):
+        fails.append("aether farther than the reservoir (can't reach the arcane before the tide)")
+    # HARD — a town never sits ON a resource (source==sink → nothing to transport).
     towns = fields["towns"]
     res_cells = {(x["q"], x["r"]) for x in res}
     if any((t["q"], t["r"]) in res_cells for t in towns):
         fails.append("a town coincides with a resource (source==sink — nothing to transport)")
+    # RELAXABLE — the capital isn't a build funnel.
     near_pass = sum(1 for r in range(max(0, capital[1] - V_FUNNEL_RADIUS), min(H, capital[1] + V_FUNNEL_RADIUS + 1))
                     for q in range(max(0, capital[0] - V_FUNNEL_RADIUS), min(W, capital[0] + V_FUNNEL_RADIUS + 1))
                     if passable[r, q] and hex_dist((q, r), capital) <= V_FUNNEL_RADIUS)
-    if near_pass < V_FUNNEL_MIN:
-        fails.append(f"capital is a {near_pass}-cell funnel (< {V_FUNNEL_MIN})")
+    if near_pass < rx["funnel_min"]:
+        fails.append(f"capital is a {near_pass}-cell funnel (< {rx['funnel_min']})")
     return fails
 
 
 def generate_valid(seed):
-    """S6: generate the first CERTIFIED-winnable world at or after `seed` (deterministic re-roll). Returns
-    (certified_seed, biome, capital, fields, failures) — failures non-empty only if the bounded re-roll is
-    exhausted (then it's the best-effort last world + its violations; the relaxation ladder is the TODO)."""
-    last = None
-    for i in range(V_MAX_REROLL):
-        s = seed + i
-        biome, capital, fields = generate(s)
-        fails = validate(biome, capital, fields)
-        last = (s, biome, capital, fields, fails)
-        if not fails:
-            return last
-    assert last is not None  # V_MAX_REROLL ≥ 1, so the loop always ran at least once
-    return last  # bounded re-roll exhausted: best-effort last world + its violations
+    """S6: the first CERTIFIED-winnable world at/after `seed`. STRICT-FIRST (a winnable strict seed is
+    byte-identical to the old behaviour); only if NO seed certifies strict does the RELAXATION LADDER soften
+    one RELAXABLE constraint a notch at a time (softest-first) and re-sweep — so the bake is a TOTAL function
+    of the seed (always terminates with a playable map). Returns (seed, biome, capital, fields, fails,
+    relaxations) — `relaxations` lists which thresholds were softened ([] = certified strict)."""
+    relax = dict(RELAXABLE_DEFAULT)
+    relaxations = []
+    rung = 0
+    while True:
+        last = None
+        for i in range(V_MAX_REROLL):
+            s = seed + i
+            biome, capital, fields = generate(s)
+            fails = validate(biome, capital, fields, relax)
+            last = (s, biome, capital, fields, fails)
+            if not fails:
+                return (s, biome, capital, fields, fails, relaxations)
+        if rung >= len(RELAX_LADDER):
+            assert last is not None  # V_MAX_REROLL ≥ 1 so the sweep always ran
+            return (*last, relaxations)  # ladder exhausted: best-effort world + its violations (main warns)
+        key, val = RELAX_LADDER[rung]
+        relax[key] = val
+        relaxations.append(f"{key}->{val}")
+        rung += 1
 
 
 def generate(seed):
@@ -1028,6 +1080,19 @@ def selftest(seed):
           V_AETHER_MIN <= by_cert["aether"] <= V_AETHER_MAX
           and all(by_cert[k] >= V_MIN_PER_KIND for k in ("grain", "fuel", "ore")))
 
+    # --- S6 relaxation ladder: total-function termination guarantee + the disjoint hard/relaxable sets ---
+    relaxations = generate_valid(seed)[5]
+    check(f"the committed seed certifies STRICT (no relaxation needed): {relaxations or 'strict'}",
+          relaxations == [])
+    check("relaxation-ladder keys are all RELAXABLE (disjoint from the HARD constraints)",
+          set(k for k, _ in RELAX_LADDER) <= set(RELAXABLE_DEFAULT))
+    # the new HARD 'aether before the tide' constraint has teeth: a world whose aether sits FARTHER from the
+    # capital than its reservoir must be rejected (the arcane is unreachable before the realm falls).
+    far_aether = {**cf, "resources": [{"kind": "aether", "q": ccap[0], "r": ccap[1] + 40, "yield": 40}],
+                  "decadence": {**cf["decadence"], "reservoir": [{"q": ccap[0], "r": ccap[1] + 5}]}}
+    check("validator HARD-rejects aether-farther-than-the-reservoir (reach-the-arcane-first has teeth)",
+          any("arcane before the tide" in f for f in validate(cb, ccap, far_aether)))
+
     check("determinism: forge placement identical across two bakes (S7e multi-stage)", f1["forges"] == f2["forges"])
 
     # --- RIVERS: sink-fill leaves no pits, drainage forest is acyclic + downhill, flux conserved, deterministic ---
@@ -1105,12 +1170,13 @@ def main():
         sys.exit(0 if selftest(seed) else 1)
     # S6: certify the world (re-roll from the requested seed until solvability passes) so the committed bake
     # is always winnable; the manifest records the CERTIFIED seed (so loading reproduces it).
-    cert, biome, capital, fields = generate_valid(seed)[:4]
-    fails = validate(biome, capital, fields)
+    cert, biome, capital, fields, fails, relaxations = generate_valid(seed)
     if fails:
-        print(f"  !! WARNING: re-roll exhausted; world NOT certified — violations: {fails}")
+        print(f"  !! WARNING: ladder exhausted; world NOT certified — violations: {fails}")
+    elif relaxations:
+        print(f"  [S6] requested seed {seed} not strictly winnable; certified seed {cert} with relaxations: {relaxations}")
     elif cert != seed:
-        print(f"  [S6] requested seed {seed} not winnable; certified seed {cert}")
+        print(f"  [S6] requested seed {seed} not winnable; certified seed {cert} (strict)")
     seed = cert
     cells = emit(cid, seed, biome, capital, fields["resources"], fields["towns"], fields["decadence"], fields["forges"], fields["rivers"])
     hist = biome_hist(biome)
