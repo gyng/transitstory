@@ -43,6 +43,10 @@ export const cmd = {
   }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
   setEconomy: (enabled: boolean): Command => ({ SetEconomy: { enabled } }),
+  /** Depot rework: toggle the depot requirement (a line needs a depot stop to run trains). Transit opt-in. */
+  setRequireDepot: (enabled: boolean): Command => ({ SetRequireDepot: { enabled } }),
+  /** Depot rework: place a DEPOT (a station + flag). A line runs trains only if it stops at one. Both modes. */
+  placeDepot: (x_mm: number, y_mm: number, name: string | null = null): Command => ({ PlaceDepot: { x_mm, y_mm, name } }),
   /** Bulldoze a station (tombstone; dropped from any line through it). */
   removeStation: (station: number): Command => ({ RemoveStation: { station } }),
   /** Bulldoze a whole line (tombstone; its vehicles despawn). */

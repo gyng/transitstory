@@ -106,6 +106,12 @@ pub enum Command {
     SetEconomy {
         enabled: bool,
     },
+    /// Toggle the DEPOT requirement (depot rework): when on, a line runs trains only if one of its stops
+    /// is a depot (built + connected). BAKED on for arcadia (the fantasy rework); a runtime opt-in for the
+    /// real-city transit mode (off by default). Mode-agnostic + deterministic (logged); mirrors SetEconomy.
+    SetRequireDepot {
+        enabled: bool,
+    },
     /// Bulldoze a station: tombstone it (the id/slot is never reused — determinism) and drop it
     /// from every line that stops there. Its catchment frees up for neighbours.
     RemoveStation {
@@ -127,6 +133,16 @@ pub enum Command {
     /// route, so building one is the player's prerequisite for war (agency). FANTASY-ONLY: the transit
     /// ruleset rejects it (the disjoint-save guard's first real cross-mode teeth).
     PlaceBarracks {
+        x_mm: i64,
+        y_mm: i64,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Place a DEPOT (depot rework): a station flagged as a depot. A line runs trains only if one of its
+    /// stops is a depot — so a depot must be BUILT and CONNECTED (a stop on the line). Unlike a barracks,
+    /// a depot is MODE-AGNOSTIC (both games can use it); the `require_depot` toggle decides whether it's
+    /// enforced (baked on for arcadia, an opt-in for transit). Creates a station + sets the depot flag.
+    PlaceDepot {
         x_mm: i64,
         y_mm: i64,
         #[serde(default)]
@@ -191,6 +207,8 @@ pub enum Event {
     WaypointsSet { line: LineId },
     DemandModeSet { agents: bool },
     BarracksPlaced { id: StationId, name: String },
+    DepotPlaced { id: StationId, name: String },
+    RequireDepotSet { enabled: bool },
     BountyPosted { station: StationId, amount: i64 },
     TechUnlocked { tech: u8, balance_left: i64 },
     SpellCast { kind: u8, balance_left: i64 },

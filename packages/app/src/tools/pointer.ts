@@ -90,6 +90,11 @@ export function attachPointer(game: Game): void {
       return;
     }
 
+    if (game.mode === "build" && game.tool === "depot") {
+      game.placeDepot(e.lngLat.lng, e.lngLat.lat); // depot rework: a node a line needs to run trains. Sticky.
+      return;
+    }
+
     if (game.mode === "build" && game.tool === "bounty") {
       const town = game.nearestStation(px, py); // fantasy: bait legions toward the nearest town. Sticky.
       if (town !== null) game.postBounty(town);

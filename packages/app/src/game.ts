@@ -46,6 +46,7 @@ const EMPTY_STATS: Stats = {
   demandOriginTotal: 0,
   buildDifficulty: 0,
   economyEnabled: false,
+  requireDepot: false,
   balance: 0,
   capitalSpent: 0,
   fareRevenue: 0,
@@ -70,7 +71,7 @@ const EMPTY_STATS: Stats = {
 };
 
 export type Mode = "build" | "run";
-export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty";
+export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty" | "depot";
 
 /** Map-lens (#5) → the deck layer ids HIDDEN in that view mode (terrain + the player's network/vehicles are
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
@@ -498,6 +499,28 @@ export class Game {
     }
     this.refresh();
     return id;
+  }
+
+  /** Place a DEPOT (depot rework) — a station + flag; a line runs trains only if it stops at one. Mirrors
+   *  placeStation/placeBarracks. Mode-agnostic (both games), but the tool only shows when depots are required. */
+  placeDepot(lng: number, lat: number): number {
+    const [x_mm, y_mm] = lngLatToMm([lng, lat]);
+    const events = this.bridge.apply(cmd.placeDepot(x_mm, y_mm));
+    const placed = events.find((e) => "DepotPlaced" in e) as { DepotPlaced: { id: number } } | undefined;
+    const id = placed ? placed.DepotPlaced.id : -1;
+    if (id >= 0) {
+      this.selectedStation = id;
+      this.effects.ripple(lng, lat, "176,138,92"); // ox-cart brown ping — a depot
+      audio.place();
+    }
+    this.refresh();
+    return id;
+  }
+
+  /** Depot rework: toggle the depot requirement (the real-city transit opt-in; baked on for arcadia). */
+  setRequireDepot(on: boolean): void {
+    this.noteRejections(this.bridge.apply(cmd.setRequireDepot(on)));
+    this.refresh();
   }
 
   /** Post a BOUNTY on a town (fantasy, the Majesty steering lever) — baits AI legions toward it. The
@@ -1371,6 +1394,7 @@ export class Game {
           boardings: ps?.boardings ?? 0, // throughput → dot radius
           serving: ps?.serving ?? 0, // 0 = orphaned → muted fill
           bounty: s.bounty, // fantasy: >0 → a ⚑ marker (the steering lever's visual feedback)
+          isDepot: s.isDepot, // depot rework: → a 🏭/brown-ring marker (a line needs one to run trains)
         };
       });
 

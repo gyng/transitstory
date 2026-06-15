@@ -21,6 +21,8 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
     },
     placeStationLngLat: (lng, lat) => game.placeStation(lng, lat),
     placeBarracksLngLat: (lng, lat) => game.placeBarracks(lng, lat),
+    placeDepotLngLat: (lng, lat) => game.placeDepot(lng, lat),
+    setRequireDepot: (enabled) => game.setRequireDepot(enabled),
     postBounty: (station, amount) => game.postBounty(station, amount),
     unlockTech: (tech) => game.unlockTech(tech),
     castSpell: (kind) => game.castSpell(kind),

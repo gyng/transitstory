@@ -40,6 +40,9 @@ pub struct StatsSnapshot {
     pub build_difficulty: u8,
     /// Economy (dollars). `balance` = start budget + fares − capital; informational if economy off.
     pub economy_enabled: bool,
+    /// Depot rework: whether the depot requirement is ON (a line needs a depot stop to run trains). Baked on
+    /// for arcadia; the transit Settings toggle reflects + flips it. The HUD warns a depot-less line.
+    pub require_depot: bool,
     pub balance: f64,
     pub capital_spent: f64,
     pub fare_revenue: f64,
@@ -197,6 +200,9 @@ pub struct StationView {
     /// Posted bounty on this town (fantasy, S8 steering) — >0 draws a marker so the player SEES where
     /// they've baited the legions. 0 for transit + un-bountied towns. Render read-out, not hashed.
     pub bounty: f64,
+    /// Depot rework: this station is a DEPOT (a line needs one as a stop to run trains). Draws a 🏭 marker
+    /// so the player SEES which nodes are depots. false for plain stations. Render read-out, not hashed.
+    pub is_depot: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -22,6 +22,8 @@ export interface StationDot {
   serving: number;
   /** Posted bounty (fantasy) — >0 draws a ⚑ marker so the player sees where they've baited legions. */
   bounty?: number;
+  /** Depot rework: this station is a DEPOT — draws a 🏭 marker so the player sees which nodes run trains. */
+  isDepot?: boolean;
 }
 export interface LinePath {
   id: number;
@@ -828,6 +830,23 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getLineColor: [214, 158, 0, 255], // gold bounty halo
       lineWidthMinPixels: 2,
       updateTriggers: { getLineColor: view.stations.map((s) => ((s.bounty ?? 0) > 0 ? 1 : 0)).join(",") },
+    }),
+    // Depot markers (depot rework): a brown double-ring around each DEPOT station — the node a line needs to
+    // run trains. Distinct from the gold bounty halo; font-independent. Rebuilt on refresh (depots change via
+    // a Command), not per frame. Empty unless depots are placed.
+    new ScatterplotLayer({
+      id: "depot-markers",
+      data: view.stations.filter((s) => s.isDepot),
+      getPosition: (d: StationDot) => [d.lng, d.lat],
+      getRadius: 9,
+      radiusUnits: "pixels",
+      radiusMinPixels: 8,
+      stroked: true,
+      filled: true,
+      getFillColor: [176, 138, 92, 70], // faint ox-cart-brown depot pad
+      getLineColor: [120, 86, 50, 255], // dark brown ring
+      lineWidthMinPixels: 2.5,
+      updateTriggers: { getFillColor: view.stations.map((s) => (s.isDepot ? 1 : 0)).join(",") },
     }),
     // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is always
     // visible). Stroked-only so it doesn't occlude the station dot. Three bands so "filling up"

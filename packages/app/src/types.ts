@@ -21,6 +21,10 @@ export type Command =
   | { SetSegmentTrack: { line: number; span: number; track: number } }
   | { SetRunning: { running: boolean } }
   | { SetEconomy: { enabled: boolean } }
+  // depot rework: a line runs trains only if a stop is a depot (when required). Baked on for arcadia;
+  // a transit opt-in via SetRequireDepot. PlaceDepot mirrors PlaceBarracks (a station + a flag).
+  | { SetRequireDepot: { enabled: boolean } }
+  | { PlaceDepot: { x_mm: number; y_mm: number; name: string | null } }
   | { RemoveStation: { station: number } }
   | { RemoveLine: { line: number } }
   // waypoints: per-span control points that bend the track; each span is a list of [x_mm, y_mm].
@@ -57,6 +61,8 @@ export type Event =
   | { WaypointsSet: { line: number } }
   | { DemandModeSet: { agents: boolean } }
   | { BarracksPlaced: { id: number; name: string } }
+  | { DepotPlaced: { id: number; name: string } }
+  | { RequireDepotSet: { enabled: boolean } }
   | { BountyPosted: { station: number; amount: number } }
   | { TechUnlocked: { tech: number; balance_left: number } }
   | { SpellCast: { kind: number; balance_left: number } }
@@ -123,6 +129,9 @@ export interface Stats {
   /** Average platform wait (ms) per boarding; 0 before the first boarding. */
   avgWaitMs: number;
   avgLoadFactor: number;
+  /** Depot rework: whether a line needs a depot stop to run trains (baked on for arcadia; the transit
+   *  Settings toggle reflects + flips it). The Editor warns a depot-less line; the Depot tool shows when on. */
+  requireDepot: boolean;
   coverageScore: number;
   simHour: number;
   period: string;
@@ -186,6 +195,8 @@ export interface StationView {
   removed: boolean;
   /** Posted bounty (fantasy) — >0 draws a ⚑ marker on the town. 0 for transit + un-bountied towns. */
   bounty: number;
+  /** Depot rework: this station is a DEPOT (a line needs one as a stop to run trains). Draws a 🏭 marker. */
+  isDepot: boolean;
 }
 
 /** One OD "desire line" from a selected origin station to a destination it draws riders toward

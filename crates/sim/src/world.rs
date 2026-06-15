@@ -136,6 +136,11 @@ pub struct World {
     /// Per-station BARRACKS flag (fantasy S8): legions launch only from a barracks on a built route.
     /// **Hashed** (set by `PlaceBarracks`, a pure function of the command log). Empty for transit.
     pub is_barracks: Vec<bool>,
+    /// Per-station DEPOT flag (depot rework): a line runs trains only if one of its stops is a depot, when
+    /// `require_depot` is on. **Hashed** (set by `PlaceDepot`, a pure function of the command log). Empty
+    /// until the first depot — so transit + both golden fixtures keep a length-0 vec (one append re-pin,
+    /// then byte-identical). Mirrors `is_barracks`.
+    pub is_depot: Vec<bool>,
     /// Per-town BOUNTY (fantasy S8 — the Majesty steering lever): a posted bounty pulls AI legions
     /// toward that town (the highest-bounty uncaptured town on a route becomes the target). **Hashed**
     /// (set by `PostBounty`). Empty for transit. Steering only for now; the payout economics are S11.
@@ -269,6 +274,10 @@ pub struct World {
     /// Optional economy (NIMBY-style): when OFF (the default), money is informational only —
     /// when ON, construction you can't afford is rejected and opex drains the balance.
     pub economy_enabled: bool,
+    /// Depot rework: when ON, a line runs trains only if a stop is a DEPOT. Seeded from `CityData.require_
+    /// _depot` (baked on for arcadia) + toggled by `SetRequireDepot` (the transit opt-in). NOT in `Canonical`
+    /// (like `economy_enabled`) — the command is logged so replay sets it identically; off ⇒ byte-identical.
+    pub require_depot: bool,
     /// Cumulative maintenance (opex) charged so far, and the sub-day remainder (exact integer
     /// accrual). Affects `balance` → the afford-gate, so both are folded into state_hash.
     pub opex_accrued: i64,
@@ -425,6 +434,9 @@ struct Canonical<'a> {
     /// Cumulative spells cast (fantasy, S11). Appended LAST — 0 for transit + the goldens (no SPELLCRAFT),
     /// so the re-pin is an appended zero, behaviour byte-identical.
     spells_cast: u32,
+    /// Per-station DEPOT flags (depot rework). Appended LAST — empty for transit + both goldens (no depot
+    /// placed), so the re-pin is an appended length-0 slice, behaviour byte-identical.
+    is_depot: &'a [bool],
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -482,6 +494,8 @@ impl World {
         let initial_decadence = city.initial_decadence.max(0);
         // Fantasy economy: the realm's starting gold (seeds `tribute`). 0 for transit + golden fixtures.
         let city_initial_gold = city.initial_gold.max(0);
+        // Depot rework: the baked depot requirement (true for arcadia; false for transit + golden fixtures).
+        let city_require_depot = city.require_depot;
         // Fantasy S10: derive the decadence CA's static board (hex domain + creep gradient + reservoir)
         // from the baked terrain. Empty unless a baked world supplies buildability + a capital, so this
         // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
@@ -518,6 +532,7 @@ impl World {
             town_value: Vec::new(),
             towns_captured: 0,
             is_barracks: Vec::new(),
+            is_depot: Vec::new(),
             bounty: Vec::new(),
             decadence: initial_decadence,
             decadence_accum: 0,
@@ -555,6 +570,7 @@ impl World {
             last_upkeep_day: 0,
             growth_cap_w,
             economy_enabled: false,
+            require_depot: city_require_depot,
             opex_accrued: 0,
             opex_rem: 0,
             router: Box::new(crate::routing::RaptorRouter),
@@ -846,6 +862,17 @@ impl World {
         self.lines.iter().filter(|l| !l.removed).map(|l| l.capital_cost).sum()
     }
 
+    /// Depot rework: is `line` served by a DEPOT — i.e. does one of its stops (trunk or branch) carry the
+    /// depot flag? The "built + connected" test the rolling-stock gate keys on. Index-ordered, deterministic.
+    fn line_has_depot(&self, line: LineId) -> bool {
+        let Some(l) = self.lines.get(line.index()) else { return false };
+        if l.removed {
+            return false;
+        }
+        let is_depot = |s: &StationId| self.is_depot.get(s.index()).copied().unwrap_or(false);
+        l.stops.iter().any(is_depot) || l.branches.iter().any(|b| b.stops.iter().any(is_depot))
+    }
+
     /// Fantasy (arcadia) #9 — is `(x_mm, y_mm)` inside the realm's AREA OF INFLUENCE? You may only
     /// extend rail to a station within `influence_hops` grid-hexes of a HOLDING (the capital, or any
     /// town conquest has flipped — `town_value == 0`). Conquest expands the buildable frontier.
@@ -1132,6 +1159,7 @@ impl World {
             demand_origin_total: self.city.demand.cells.iter().map(|c| c.origin_w as f64).sum(),
             build_difficulty,
             economy_enabled: self.economy_enabled,
+            require_depot: self.require_depot,
             balance: balance as f64,
             capital_spent: capital_spent as f64,
             fare_revenue: fare_revenue as f64,
@@ -1266,6 +1294,24 @@ impl World {
                 self.is_barracks[id.index()] = true;
                 self.demand_dirty = true;
                 vec![Event::BarracksPlaced { id, name }]
+            }
+            Command::PlaceDepot { x_mm, y_mm, name } => {
+                // A depot IS a station + a flag (mirrors a barracks). A line runs trains only if one of its
+                // stops is a depot (when `require_depot` is on), so building + connecting one is the
+                // prerequisite for rolling stock. Mode-agnostic (both games can build depots).
+                let id = StationId(self.stations.len() as u32);
+                let name = name.clone().unwrap_or_else(|| format!("Depot {}", id.0 + 1));
+                self.stations.push(Station::new(PointMm::new(*x_mm, *y_mm), name.clone()));
+                while self.is_depot.len() < self.stations.len() {
+                    self.is_depot.push(false);
+                }
+                self.is_depot[id.index()] = true;
+                self.demand_dirty = true;
+                vec![Event::DepotPlaced { id, name }]
+            }
+            Command::SetRequireDepot { enabled } => {
+                self.require_depot = *enabled;
+                vec![Event::RequireDepotSet { enabled: *enabled }]
             }
             Command::PostBounty { station, amount } => {
                 let s = station.index();
@@ -1480,7 +1526,13 @@ impl World {
                 }
             }
             Command::AssignTrainset { line, spec, count } => {
-                if line.index() < self.lines.len() {
+                if line.index() < self.lines.len() && self.require_depot && !self.line_has_depot(*line) {
+                    // Depot rework: a line runs trains only if it's served by a DEPOT (a depot stop). Gate
+                    // before any mutation; off (require_depot false) ⇒ never reached ⇒ byte-identical.
+                    vec![Event::Rejected {
+                        reason: "This line needs a depot — build one and add it as a stop to run trains".into(),
+                    }]
+                } else if line.index() < self.lines.len() {
                     let count = (*count).clamp(1, MAX_TRAINS_PER_LINE);
                     let old_capital = self.capital_total();
                     let saved = self.lines[line.index()].trainset;
@@ -1763,6 +1815,7 @@ impl World {
             raider_breach: self.raider_breach,
             raider_breach_heal_accum: self.raider_breach_heal_accum,
             spells_cast: self.spells_cast,
+            is_depot: &self.is_depot,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)
@@ -1780,6 +1833,7 @@ impl World {
                 name: s.name.clone(),
                 removed: s.removed,
                 bounty: self.bounty.get(i).copied().unwrap_or(0) as f64,
+                is_depot: self.is_depot.get(i).copied().unwrap_or(false),
             })
             .collect()
     }
