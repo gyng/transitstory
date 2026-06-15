@@ -515,6 +515,7 @@ export class Game {
       for (const cb of this.onChange) cb();
       return -1;
     }
+    const before = this.resBefore();
     const events = this.bridge.apply(cmd.placeStation(xMm, yMm));
     const placed = events.find((e) => "StationPlaced" in e) as
       | { StationPlaced: { id: number } }
@@ -525,6 +526,7 @@ export class Game {
       const [slng, slat] = mmToLngLat([xMm, yMm]);
       this.effects.ripple(slng, slat); // selection-blue placement ring (at the snapped cell)
       audio.place();
+      this.floatSpend(slng, slat, before); // float any gold the station cost
     }
     this.refresh();
     return id;
@@ -570,6 +572,7 @@ export class Game {
    *  fantasy command; the transit ruleset rejects it (no node created), so the tool is fantasy-only. */
   placeBarracks(lng: number, lat: number): number {
     const [x_mm, y_mm] = lngLatToMm([lng, lat]);
+    const before = this.resBefore();
     const events = this.bridge.apply(cmd.placeBarracks(x_mm, y_mm));
     const placed = events.find((e) => "BarracksPlaced" in e) as { BarracksPlaced: { id: number } } | undefined;
     const id = placed ? placed.BarracksPlaced.id : -1;
@@ -577,6 +580,7 @@ export class Game {
       this.selectedStation = id;
       this.effects.ripple(lng, lat);
       audio.place();
+      this.floatSpend(lng, lat, before);
     }
     this.refresh();
     return id;
@@ -619,8 +623,30 @@ export class Game {
    *  AddStop is rejected (the afford-gate mid-sequence), the whole line is rolled back with a
    *  RemoveLine — a committed network never silently differs from the blueprint that was drawn.
    *  (The log stays append-only; the rollback is itself a Command.) */
+  /** Snapshot the three spendable resources (gold / mana / manpower) before a build, so the spend can
+   *  be floated afterwards. */
+  private resBefore(): [number, number, number] {
+    const s = this.bridge.stats();
+    return [s.tribute, s.mana, s.manpower];
+  }
+
+  /** Float the resources a just-applied build SPENT (−X⬢ gold · −X✦ mana · −X⚔ manpower) at `lng,lat` —
+   *  the immediate cost feedback, matching the income/upkeep floats. Inert when nothing was spent. */
+  private floatSpend(lng: number, lat: number, before: [number, number, number]): void {
+    const s = this.bridge.stats();
+    const drops: [number, string, string][] = [
+      [Math.round(before[0] - s.tribute), "⬢", "224,96,84"],
+      [Math.round(before[1] - s.mana), "✦", "150,120,224"],
+      [Math.round(before[2] - s.manpower), "⚔", "206,158,96"],
+    ];
+    for (const [d, glyph, color] of drops) {
+      if (d > 0) this.effects.floatText(lng, lat, `−${d}${glyph}`, color, { rise: 30, size: 16, ttl: 1700 });
+    }
+  }
+
   drawLineByIds(ids: number[]): number {
     if (ids.length < 2) return -1;
+    const before = this.resBefore(); // capture gold before the build, to float the spend on success
     const ev = this.bridge.apply(cmd.createLine(this.nextLineColor(), null, false, this.transport));
     const created = ev.find((e) => "LineCreated" in e) as
       | { LineCreated: { id: number } }
@@ -648,6 +674,9 @@ export class Game {
         colorToRgb(lv.color).join(","),
       );
       audio.connect();
+      // Float the gold this line cost, at its midpoint (the resource-change feedback).
+      const [mlng, mlat] = mmToLngLat(lv.polylineMm[Math.floor(lv.polylineMm.length / 2)]);
+      this.floatSpend(mlng, mlat, before);
     }
     this.refresh();
     return lineId;
