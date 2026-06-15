@@ -3,25 +3,55 @@
 // techUnlocked bitset) and emits ONE Command per purchase via Game.unlockTech (the core afford-gates +
 // prereq-gates + rejects a repeat, so the panel just resyncs from the next snapshot). Bottom-left; arcadia
 // only. Techs gate behind their tier-1 prereq, so the panel reads as a small tree.
+import { useState } from "react";
 import { useGame, useStats } from "./GameContext";
 import { TECHS, techUnlocked } from "../../commands/codec";
 
 export function TechPanel() {
   const s = useStats();
   const game = useGame();
+  // Collapsed by default — the tech tree opens from a launcher button instead of always occupying the
+  // bottom-left (trial feedback #2: "tech should be in a menu"). Arcadia only.
+  const [open, setOpen] = useState(false);
   if (s.ruleset !== "arcadia") return null;
   const mana = Math.round(s.mana);
   const owned = (id: number) => techUnlocked(s.techUnlocked, id);
   const prereqMet = (prereq: number) => prereq < 0 || owned(prereq);
+
+  if (!open) {
+    // How many techs are affordable right now → a subtle "you can spend" nudge on the launcher.
+    const buyable = TECHS.filter((t) => !owned(t.id) && prereqMet(t.prereq) && mana >= t.cost).length;
+    return (
+      <button
+        data-testid="tech-launcher"
+        onClick={() => setOpen(true)}
+        title="Forge of Ages — spend mana on permanent upgrades"
+        style={{
+          // Stacked ABOVE the bottom-left Realm ledger (ServiceReport) so they don't overlap/intercept.
+          position: "fixed", bottom: 215, left: 14, zIndex: 10, padding: "7px 12px", borderRadius: 10,
+          border: "1px solid #d7dade", background: "rgba(255,255,255,.95)",
+          boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
+          font: "600 13px system-ui,sans-serif", color: "#1c2024", cursor: "pointer",
+        }}
+      >
+        ⚒ Forge <span style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>✦ {mana}</span>
+        {buyable > 0 && (
+          <span data-testid="tech-buyable" style={{ marginLeft: 6, background: "var(--ot-gauge-good,#009e73)", color: "#fff", borderRadius: 8, padding: "0 6px", fontSize: 11 }}>
+            {buyable}
+          </span>
+        )}
+      </button>
+    );
+  }
 
   return (
     <div
       data-testid="tech-panel"
       style={{
         position: "fixed",
-        bottom: 10,
-        left: 10,
-        zIndex: 9,
+        bottom: 215, // stacked above the Realm ledger (bottom-left), like the launcher
+        left: 14,
+        zIndex: 10,
         width: 224,
         maxHeight: "62vh",
         overflowY: "auto",
@@ -33,10 +63,20 @@ export function TechPanel() {
         color: "#1c2024",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <b>⚒ Forge of Ages</b>
-        <span title="Mana — the tech resource, minted by aether" style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>
-          ✦ {mana}
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span title="Mana — the tech resource, minted by aether" style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>
+            ✦ {mana}
+          </span>
+          <button
+            data-testid="tech-close"
+            onClick={() => setOpen(false)}
+            title="Close"
+            style={{ border: 0, background: "transparent", color: "#8a909a", cursor: "pointer", font: "15px system-ui", lineHeight: 1, padding: 0 }}
+          >
+            ✕
+          </button>
         </span>
       </div>
       {TECHS.map((t) => {

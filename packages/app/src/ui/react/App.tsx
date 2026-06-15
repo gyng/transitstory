@@ -125,6 +125,27 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   map.once("load", () => game.refresh());
   game.refresh();
 
+  // Cinematic intro (arcadia, fresh start only): establish on the whole continent, then fly INTO the
+  // capital so the player starts at their seat. The flyTo keeps the map non-idle, so __MAP_READY (which
+  // fires on 'idle') only resolves AFTER it settles — e2e waiting on __MAP_READY is unaffected. Skipped on
+  // resume + when the player prefers reduced motion (jump straight in).
+  if (game.ruleset === "arcadia" && !resume) {
+    const cap = game.towns.find((t) => t.kind === "capital");
+    if (cap) {
+      const wide = (city.raw.zoom ?? 10) - 2;
+      const near = (city.raw.zoom ?? 10) + 3; // past DETAIL_ZOOM → the capital's detailed seat (icons/nodes show)
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      map.once("load", () => {
+        if (reduce) {
+          map.jumpTo({ center: [cap.lng, cap.lat], zoom: near });
+        } else {
+          map.jumpTo({ center: city.raw.center, zoom: wide }); // full-continent establishing shot
+          map.flyTo({ center: [cap.lng, cap.lat], zoom: near, duration: 2600, essential: true });
+        }
+      });
+    }
+  }
+
   window.__ot = { map, bridge, city, overlay, game };
   window.__APP_READY = true;
   return { game, loop, cityName: city.raw.name };

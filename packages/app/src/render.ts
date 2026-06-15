@@ -185,6 +185,29 @@ function resourceColor(kind: string): [number, number, number] {
   }
 }
 
+/** Distinctive node ICONS (trial feedback #4/#13): a glyph per resource / town kind so the player reads
+ *  WHAT each node is at a glance, not just its colour. BMP symbols (wide font coverage); the explicit
+ *  NODE_CHARSET below seeds deck's TextLayer atlas so they render. Drawn OVER the coloured dots, which stay
+ *  as the colour-blind-safe channel. */
+function resourceGlyph(kind: string): string {
+  switch (kind) {
+    case "ore": return "⛏";
+    case "grain": return "✿";
+    case "fuel": return "♣";
+    case "aether": return "✦";
+    case "forge": return "⚒";
+    default: return "◆";
+  }
+}
+function townGlyph(kind: string): string {
+  if (kind === "capital") return "★"; // the citadel — the seat
+  if (kind === "starter") return "✪"; // your first hold
+  return "⌂"; // a neutral town
+}
+/** Every glyph the node-icon TextLayers can emit (+ the player-barracks ⚔) — deck builds its font atlas
+ *  from this explicit set so non-ASCII symbols actually render. */
+const NODE_CHARSET = "⛏✿♣✦⚒◆★✪⌂⚔";
+
 /** Fantasy terrain palette — value-not-color (docs/fantasy-map.md "The look"): a muted ash-grey
  *  ramp where elevation reads as VALUE (plains pale → mountains near-black), forest a touch cooler,
  *  WATER a desaturated blue-grey, and LEY a faint violet — the ONLY ground chroma (the aether prize).
@@ -435,6 +458,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       filled: true,
       updateTriggers: { getFillColor: view.resources.length },
     }),
+    // RESOURCE ICONS (#4): a glyph per kind over the coloured source dots (⛏ ore / ✿ grain / ♣ fuel /
+    // ✦ aether / ⚒ forge). White for contrast on the dot. characterSet seeds the atlas so symbols render.
+    new TextLayer({
+      id: "resource-icons",
+      data: view.resources,
+      getPosition: (d: ResourceMarker) => [d.lng, d.lat],
+      getText: (d: ResourceMarker) => resourceGlyph(d.kind),
+      getSize: 13,
+      sizeUnits: "pixels",
+      getColor: [250, 250, 250, 240],
+      fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+      characterSet: NODE_CHARSET,
+      getTextAnchor: "middle",
+      getAlignmentBaseline: "center",
+      updateTriggers: { getText: view.resources.length },
+    }),
     // DECADENCE RESERVOIR anchors (the far-edge tide origin): low-chroma cold-violet dots — the corruption
     // source the conquest race runs against. (The full creeping field is the S10 CA; this is the S4 seed.)
     new ScatterplotLayer({
@@ -472,6 +511,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getLineColor: view.towns.map((t) => t.chain).join(","),
         getRadius: view.towns.map((t) => `${t.kind}:${t.value}`).join(","),
       },
+    }),
+    // TOWN ICONS (#13): a distinctive glyph per kind on each settlement (★ citadel / ✪ starter hold /
+    // ⌂ neutral town). Dark for contrast on the bright town fills. Over the town dots, under the network.
+    new TextLayer({
+      id: "town-icons",
+      data: view.towns,
+      getPosition: (d: TownMarker) => [d.lng, d.lat],
+      getText: (d: TownMarker) => townGlyph(d.kind),
+      getSize: (d: TownMarker) => (d.kind === "capital" ? 18 : 14),
+      sizeUnits: "pixels",
+      getColor: [28, 26, 30, 245],
+      fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+      characterSet: NODE_CHARSET,
+      getTextAnchor: "middle",
+      getAlignmentBaseline: "center",
+      updateTriggers: { getText: view.towns.map((t) => t.kind).join(","), getSize: view.towns.map((t) => t.kind).join(",") },
     }),
     // ROAD corridors (very back, under the network): the cells where a bus runs cheap + fast.
     // Muted slate so it reads as ground truth, not network identity. Metre-radius so it scales

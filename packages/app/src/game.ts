@@ -1692,7 +1692,7 @@ export class Game {
     // Same cheap id-filter, no rebuild. (Town fills + tide fill stay at all zooms — they're the strategy.)
     const below =
       this.ruleset === "arcadia" && !detail
-        ? this.below.filter((l) => l.id !== "resources" && l.id !== "tide-front")
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front")
         : this.below;
     this.overlay.setProps({ layers: [...below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above] });
   }

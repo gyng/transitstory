@@ -30,8 +30,9 @@ test("fantasy baked world: rail-only gate + the tech panel", async ({ page }) =>
   });
   expect(built).toBeGreaterThan(0); // rail is buildable in the realm
 
-  // The TECH panel renders, offering the mana-bought upgrades; Forge Mastery starts UNowned and (mana 0)
-  // unaffordable — tech is MANA-gated (aether is your science).
+  // The TECH tree lives behind a launcher (collapsed by default); open it. It offers the mana-bought
+  // upgrades; Forge Mastery starts UNowned and (mana 0) unaffordable — tech is MANA-gated (aether is your science).
+  await page.getByTestId("tech-launcher").click();
   await expect(page.getByTestId("tech-panel")).toContainText("Forge of Ages");
   await expect(page.getByTestId("tech-0")).toHaveAttribute("data-owned", "0");
   const techRejected = await page.evaluate(() => {
