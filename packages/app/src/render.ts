@@ -170,6 +170,15 @@ export interface TownMarker {
   chain: string; // S7e: "bread" (needs grain+fuel) | "arms" (needs ore+aether) | "" (capital/none)
 }
 
+/** A persistent NAMEPLATE above a fantasy node (town/resource): `title` = its name, `sub` = its key stats
+ *  (a town's tribute + needs; a resource's kind + yield). Shown LOD-gated (zoomed in only). */
+export interface NodePlate {
+  lng: number;
+  lat: number;
+  title: string;
+  sub: string;
+}
+
 /** One decadence reservoir anchor (S4) — the far-edge tide origin / raider spawn. */
 export interface DecadenceAnchor {
   lng: number;
@@ -341,6 +350,8 @@ export interface RenderView {
   ghostStation?: { lng: number; lat: number } | null;
   /** TTD signal markers (single-track block state) — only populated when the Signals lens is on. */
   signals?: SignalMarker[];
+  /** Node nameplates (town/resource name + key stats) — fantasy only; drawn LOD-gated (zoomed in). */
+  nodePlates?: NodePlate[];
 }
 
 export function colorToRgb(u: number): Rgb {
@@ -1018,6 +1029,36 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         stroked: true,
         getLineColor: [255, 255, 255, 255],
         lineWidthMinPixels: 2,
+      }),
+    );
+  }
+
+  // Node NAMEPLATES (LOD): a name + key-stat plate above each town/resource node, so the supply graph
+  // reads at a glance when zoomed in. Dropped at the strategic overview (composeAndSet's !detail filter).
+  if (view.nodePlates && view.nodePlates.length > 0) {
+    above.push(
+      new TextLayer<NodePlate>({
+        id: "node-plates",
+        data: view.nodePlates,
+        getPosition: (d: NodePlate) => [d.lng, d.lat],
+        getText: (d: NodePlate) => `${d.title}\n${d.sub}`,
+        getSize: 11,
+        sizeUnits: "pixels",
+        getColor: [238, 240, 244, 255],
+        getPixelOffset: [0, -20], // float the plate above the node glyph
+        background: true,
+        getBackgroundColor: [18, 22, 26, 205],
+        backgroundPadding: [6, 3],
+        getTextAnchor: "middle",
+        getAlignmentBaseline: "bottom",
+        lineHeight: 1.15,
+        fontFamily: '"Segoe UI Symbol", system-ui, sans-serif',
+        characterSet: "auto",
+        fontSettings: { sdf: true },
+        outlineWidth: 1,
+        outlineColor: [0, 0, 0, 180],
+        pickable: false,
+        updateTriggers: { getText: view.nodePlates.map((p) => `${p.title}|${p.sub}`).join(",") },
       }),
     );
   }

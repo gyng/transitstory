@@ -1858,7 +1858,37 @@ export class Game {
       selectedLine: this.selectedLine,
       snapRing: this.snapRingView(),
       ghostStation: this.pendingStation ? { lng: this.pendingStation.lng, lat: this.pendingStation.lat } : null,
+      nodePlates: this.nodePlatesView(),
     };
+  }
+
+  /** Node nameplates (fantasy): a name + key-stat plate over each town/resource node. The name is the
+   *  co-located station's (matched by hex cell); the stats come from the baked node data (a town's
+   *  tribute + needs; a resource's kind + yield). Empty for transit cities. */
+  private nodePlatesView(): import("./render").NodePlate[] {
+    const cm = this.cellMm;
+    if (cm <= 0) return [];
+    const out: import("./render").NodePlate[] = [];
+    const nameByCell = new Map<string, string>();
+    for (const s of this.bridge.stationsView()) {
+      if (!s.removed) nameByCell.set(`${Math.floor(s.xMm / cm)},${Math.floor(s.yMm / cm)}`, s.name);
+    }
+    const nameAt = (lng: number, lat: number): string => {
+      const [x, y] = lngLatToMm([lng, lat]);
+      return nameByCell.get(`${Math.floor(x / cm)},${Math.floor(y / cm)}`) ?? "";
+    };
+    for (const t of this.towns) {
+      const needs = t.chain === "bread" ? "needs grain+fuel" : t.chain === "arms" ? "needs ore+aether" : "";
+      const title = nameAt(t.lng, t.lat) || (t.kind === "capital" ? "The Capital" : t.kind === "starter" ? "Your Hold" : "Town");
+      // The capital is your seat (its conquest "value" is 0); other towns show their worth + what to supply.
+      const sub = t.kind === "capital" ? "the realm's seat" : `⚜${t.value.toLocaleString()}${needs ? ` · ${needs}` : ""}`;
+      out.push({ lng: t.lng, lat: t.lat, title, sub });
+    }
+    for (const r of this.resources) {
+      const title = nameAt(r.lng, r.lat) || r.kind;
+      out.push({ lng: r.lng, lat: r.lat, title, sub: `yield ${r.yield}` }); // title already names the good
+    }
+    return out;
   }
 
   /** The pre-commit snap highlight datum (or null): the station the next click would chain
@@ -2464,7 +2494,7 @@ export class Game {
     // starved-only subset at overview (a starved platform must be findable at ANY zoom).
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
-      : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
+      : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label" && l.id !== "node-plates");
     // Arcadia LOD: at overview, drop the dense resource-POI swarm (~30 dots) + the tide-frontier beads so
     // the continent reads as terrain + towns + the tide WASH (the strategic picture); they return on zoom-in.
     // Same cheap id-filter, no rebuild. (Town fills + tide fill stay at all zooms — they're the strategy.)
