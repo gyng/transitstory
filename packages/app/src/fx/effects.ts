@@ -27,6 +27,31 @@ type Flash = {
 
 type Throb = { lng: number; lat: number; rgb: string };
 
+// Floating combat/economy text: rises + fades from an anchor (cargo "+12⬢", "⚔ Conquered!", "−$30/day").
+type Float = {
+  lng: number;
+  lat: number;
+  born: number;
+  ttl: number;
+  text: string;
+  rgb: string;
+  rise: number; // px it floats upward over its life
+  size: number; // px font size
+};
+
+// Steam/dust puff — a soft grey blob that expands + drifts up + fades (a one-shot, detached from the
+// train that emitted it, so a moving train leaves a trail). Arcadia steam-era flavour.
+type Puff = {
+  lng: number;
+  lat: number;
+  born: number;
+  ttl: number;
+  r0: number;
+  r1: number;
+  drift: number; // px upward drift over life
+  jitter: number; // px horizontal drift (varies the trail)
+};
+
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t) * (1 - t); // cubic ease-out
 
 export class Effects {
@@ -35,6 +60,8 @@ export class Effects {
   private rings: Ring[] = [];
   private flashes: Flash[] = [];
   private throbs: Throb[] = []; // continuous (starved stations) — replaced wholesale per stats tick
+  private floats: Float[] = []; // rising combat/economy text
+  private puffs: Puff[] = []; // train steam/dust trail
   private dpr = 1;
   private wasActive = false; // so an idle canvas is a true no-op (no per-frame clear when nothing's live)
 
@@ -85,6 +112,35 @@ export class Effects {
     this.flashes.push({ pts, born: performance.now(), ttl: 720, rgb });
   }
 
+  /** Floating text that rises + fades — profit/loss ("+12⬢", "−$30/day"), conquest ("⚔ Conquered!"). */
+  floatText(lng: number, lat: number, text: string, rgb = "230,210,120", opts?: { rise?: number; size?: number; ttl?: number }): void {
+    this.floats.push({
+      lng,
+      lat,
+      born: performance.now(),
+      ttl: opts?.ttl ?? 1500,
+      text,
+      rgb,
+      rise: opts?.rise ?? 34,
+      size: opts?.size ?? 14,
+    });
+  }
+
+  /** A bold one-shot burst — conquest / combat / a satisfying build pop. Brighter + bigger than `burst`. */
+  boom(lng: number, lat: number, rgb = "230,180,70"): void {
+    const now = performance.now();
+    this.rings.push({ lng, lat, born: now, ttl: 700, rgb, r0: 5, r1: 46, w0: 4, alpha: 0.85 });
+    this.rings.push({ lng, lat, born: now + 90, ttl: 620, rgb, r0: 3, r1: 30, w0: 2.5, alpha: 0.6 }); // echo ring
+  }
+
+  /** A steam/dust puff at a train — a one-shot blob that expands, drifts up, and fades (leaves a trail). */
+  puff(lng: number, lat: number): void {
+    // jitter via a cheap born-derived pseudo-random (no Math.random needed for this client-only FX, but it's
+    // fine here — purely cosmetic, never in the deterministic core).
+    const j = (Math.random() - 0.5) * 10;
+    this.puffs.push({ lng, lat, born: performance.now(), ttl: 1100, r0: 2.5, r1: 11, drift: 16, jitter: j });
+  }
+
   /** Replace the continuously-throbbing set (e.g. starved stations) — called on the stats tick. */
   setThrobs(points: { lng: number; lat: number }[], rgb = "214,40,40"): void {
     this.throbs = points.map((p) => ({ lng: p.lng, lat: p.lat, rgb }));
@@ -94,6 +150,8 @@ export class Effects {
     this.rings = [];
     this.flashes = [];
     this.throbs = [];
+    this.floats = [];
+    this.puffs = [];
   }
 
   // --- per-frame draw (called from GameLoop.frame with the rAF timestamp) ---------------------
@@ -102,7 +160,13 @@ export class Effects {
     const cx = this.cx;
     // True idle no-op: when nothing is live AND nothing was live last frame, do zero work (not even
     // a clear). Only when we just went idle do we clear the last frame's pixels once.
-    if (this.rings.length === 0 && this.flashes.length === 0 && this.throbs.length === 0) {
+    if (
+      this.rings.length === 0 &&
+      this.flashes.length === 0 &&
+      this.throbs.length === 0 &&
+      this.floats.length === 0 &&
+      this.puffs.length === 0
+    ) {
       if (this.wasActive) {
         cx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.wasActive = false;
@@ -113,9 +177,11 @@ export class Effects {
     cx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     cx.clearRect(0, 0, this.canvas.width / this.dpr, this.canvas.height / this.dpr);
 
+    this.drawPuffs(now); // smoke under everything
     this.drawThrobs(now);
     this.drawRings(now);
     this.drawFlashes(now);
+    this.drawFloats(now); // text on top
   }
 
   private drawThrobs(now: number): void {
@@ -184,6 +250,56 @@ export class Effects {
       }
     }
     this.flashes = live;
+  }
+
+  private drawFloats(now: number): void {
+    const cx = this.cx;
+    const live: Float[] = [];
+    cx.textAlign = "center";
+    cx.textBaseline = "middle";
+    for (const f of this.floats) {
+      const t = (now - f.born) / f.ttl;
+      if (t >= 1) continue;
+      live.push(f);
+      const k = easeOut(t);
+      const p = this.map.project([f.lng, f.lat]);
+      const y = p.y - 8 - f.rise * k; // float upward
+      // Fade in fast, hold, fade out: 1 for the first 60%, then ramp to 0.
+      const a = t < 0.15 ? t / 0.15 : t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+      cx.font = `700 ${f.size}px ui-sans-serif, system-ui, sans-serif`;
+      // dark halo for legibility over the bright map, then the coloured text.
+      cx.lineWidth = 3;
+      cx.strokeStyle = `rgba(12,14,18,${(0.7 * a).toFixed(3)})`;
+      cx.strokeText(f.text, p.x, y);
+      cx.fillStyle = `rgba(${f.rgb},${a.toFixed(3)})`;
+      cx.fillText(f.text, p.x, y);
+    }
+    this.floats = live;
+  }
+
+  private drawPuffs(now: number): void {
+    const cx = this.cx;
+    const live: Puff[] = [];
+    for (const e of this.puffs) {
+      const t = (now - e.born) / e.ttl;
+      if (t >= 1) continue;
+      live.push(e);
+      const k = easeOut(t);
+      const r = e.r0 + (e.r1 - e.r0) * k;
+      const p = this.map.project([e.lng, e.lat]);
+      const x = p.x + e.jitter * k;
+      const y = p.y - e.drift * k; // drift upward as it dissipates
+      const a = (1 - t) * 0.5; // bright steam — must read over the dark ash continent
+      const grad = cx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(244,245,248,${a.toFixed(3)})`);
+      grad.addColorStop(0.6, `rgba(232,234,240,${(a * 0.6).toFixed(3)})`);
+      grad.addColorStop(1, "rgba(232,234,240,0)");
+      cx.fillStyle = grad;
+      cx.beginPath();
+      cx.arc(x, y, r, 0, Math.PI * 2);
+      cx.fill();
+    }
+    this.puffs = live;
   }
 
   /** Point at arc-length fraction `f` (0..1) along a projected polyline. */

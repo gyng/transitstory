@@ -18,6 +18,12 @@ import type { Event, PerLine, PerStation, Stats } from "./types";
 import { lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
 import { meanStopQueue } from "./ui/react/lineEconomics";
 
+/** Compact number for floating juice text — "1.2M" / "45k" / "678" (the caller adds any $/⬢/sign). */
+function fmtShort(n: number): string {
+  const a = Math.abs(n);
+  return a >= 1e6 ? `${Math.round(n / 1e5) / 10}M` : a >= 1e4 ? `${Math.round(n / 1e3)}k` : `${Math.round(n)}`;
+}
+
 const EMPTY_STATS: Stats = {
   simClockMs: 0,
   running: false,
@@ -187,6 +193,20 @@ export class Game {
   readonly sky: Sky;
   /** Per-station boardings from the previous stats snapshot — to emit a board-burst on the delta. */
   private prevBoardings: Map<number, number> = new Map();
+  /** Cumulative economy/combat readings from the previous stats snapshot — diffed to emit floating
+   *  "+gold"/"+$fare"/"−$upkeep"/"⚔ Conquered!" juice. Seeded on the first snapshot (no spurious floats). */
+  private prevJuice: { tribute: number; fare: number; opex: number; towns: number; day: number; seeded: boolean } = {
+    tribute: 0,
+    fare: 0,
+    opex: 0,
+    towns: 0,
+    day: 0,
+    seeded: false,
+  };
+  /** Round-robin cursor so each train trails ONE steam puff every few stats ticks (a trail, not a fog). */
+  private puffCursor = 0;
+  /** Town ids already celebrated with a conquest boom — so a fallen town fires its "⚔ Conquered!" once. */
+  private celebratedTowns = new Set<number>();
   /** Cached last peep sweep (lng/lat interleaved + paired citizen ids) for click-to-inspect. */
   private peepXY: Float32Array = new Float32Array(0);
   private peepCit: Uint32Array = EMPTY_U32;
@@ -629,6 +649,10 @@ export class Game {
     this.bridge.apply(cmd.setRunning(mode === "run"));
     if (mode === "run") this.cancelDraft();
     else this.effects.clear(); // back to Build — drop any lingering run-mode throbs/bursts
+    // Re-baseline the economy/combat juice so the next run diffs from the current totals (no stale floats
+    // after an undo/load reset the cumulative counters). celebratedTowns rebuilds from the live `captured`.
+    this.prevJuice.seeded = false;
+    this.celebratedTowns.clear();
     audio.toggle(mode === "run");
     this.refresh();
   }
@@ -1629,6 +1653,86 @@ export class Game {
       const p = at(id);
       if (p) this.effects.burst(p.lng, p.lat);
     }
+    this.emitEconomyJuice(s, sv, deltas);
+    this.emitTrainPuffs();
+  }
+
+  /** Floating profit/loss + conquest text driven off the cumulative-stat deltas between snapshots:
+   *  "+N⬢" gold where cargo just landed, "+$N" fares (transit), "−$N/day" upkeep on the day roll, and
+   *  a "⚔ Conquered!" boom on a town that just fell. Purely client-side acknowledgement (no sim read). */
+  private emitEconomyJuice(s: Stats, sv: ReturnType<SimBridge["stationsView"]>, deltas: { id: number; d: number }[]): void {
+    const at = (id: number): { lng: number; lat: number } | null => {
+      const v = sv[id];
+      if (!v || v.removed) return null;
+      const [lng, lat] = mmToLngLat([v.xMm, v.yMm]);
+      return { lng, lat };
+    };
+    const prev = this.prevJuice;
+    if (!prev.seeded) {
+      // First snapshot of a run: record baselines so we don't float the whole accumulated total at once,
+      // and mark already-captured towns as celebrated so only NEW falls fire a boom (resume/load safe).
+      for (const ps of s.perStation) if (ps.captured) this.celebratedTowns.add(ps.stationId);
+      this.prevJuice = { tribute: s.tribute, fare: s.fareRevenue, opex: s.opexSpent, towns: s.townsCaptured, day: s.simDay, seeded: true };
+      return;
+    }
+
+    const arcadia = this.ruleset === "arcadia";
+    // Income float at the busiest delivery point (top boarding-delta station = where cargo/riders moved).
+    const top = deltas[0] ? at(deltas[0].id) : null;
+    if (arcadia) {
+      const dGold = Math.round(s.tribute - prev.tribute);
+      if (dGold > 0 && top) this.effects.floatText(top.lng, top.lat, `+${dGold}⬢`, "235,205,110");
+    } else if (s.economyEnabled) {
+      const dFare = Math.round(s.fareRevenue - prev.fare);
+      if (dFare > 0 && top) this.effects.floatText(top.lng, top.lat, `+$${fmtShort(dFare)}`, "120,210,140");
+    }
+
+    // Daily upkeep on the day rollover (the recurring drain made legible, as requested).
+    if (s.economyEnabled && s.simDay > prev.day) {
+      const dOpex = Math.round(s.opexSpent - prev.opex);
+      if (dOpex > 0) {
+        // Anchor at the network centroid so it reads as a realm-wide charge, not a single station's.
+        const live = sv.filter((v) => !v.removed);
+        if (live.length) {
+          const cx = live.reduce((a, v) => a + v.xMm, 0) / live.length;
+          const cy = live.reduce((a, v) => a + v.yMm, 0) / live.length;
+          const [lng, lat] = mmToLngLat([cx, cy]);
+          this.effects.floatText(lng, lat, `−$${fmtShort(dOpex)}/day`, "224,96,84", { rise: 26, size: 15, ttl: 1900 });
+        }
+      }
+    }
+
+    // Conquest: a town just fell — boom + "⚔ Conquered!" at each newly-captured holding (once each).
+    if (s.townsCaptured > prev.towns) {
+      for (const ps of s.perStation) {
+        if (ps.captured && !this.celebratedTowns.has(ps.stationId)) {
+          this.celebratedTowns.add(ps.stationId);
+          const p = at(ps.stationId);
+          if (p) {
+            this.effects.boom(p.lng, p.lat, "235,180,70");
+            this.effects.floatText(p.lng, p.lat, "⚔ Conquered!", "245,200,90", { rise: 40, size: 16, ttl: 2100 });
+          }
+        }
+      }
+    }
+
+    this.prevJuice = { tribute: s.tribute, fare: s.fareRevenue, opex: s.opexSpent, towns: s.townsCaptured, day: s.simDay, seeded: true };
+  }
+
+  /** Steam/dust trail off the moving trains (arcadia steam-era flavour): each stats tick, one puff for a
+   *  rotating slice of vehicles, so every train leaves a drifting trail without fogging the map. */
+  private emitTrainPuffs(): void {
+    if (this.ruleset !== "arcadia") return; // steam reads odd on an electric metro; fantasy carts only
+    const pos = this.bridge.vehiclePositions(); // interleaved metres
+    const n = pos.length / 2;
+    if (n === 0) return;
+    const PER_TICK = Math.min(8, n); // cap the spawn rate so the trail stays a wisp, not a cloud
+    for (let k = 0; k < PER_TICK; k++) {
+      const vi = (this.puffCursor + k) % n;
+      const [lng, lat] = metersToLngLat([pos[vi * 2], pos[vi * 2 + 1]]);
+      this.effects.puff(lng, lat);
+    }
+    this.puffCursor = (this.puffCursor + PER_TICK) % n;
   }
 
   /** Rebuild cached topology layers from authoritative sim views; recompose with current
