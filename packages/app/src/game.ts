@@ -64,6 +64,15 @@ const EMPTY_STATS: Stats = {
 export type Mode = "build" | "run";
 export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty";
 
+/** Map-lens (#5) → the deck layer ids HIDDEN in that view mode (terrain + the player's network/vehicles are
+ *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
+ *  supply detail + the legions, leaving the tide + raiders. */
+const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "armies", "raiders", "spells"]),
+  military: new Set(["rivers", "resources", "resource-icons", "demand"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies"]),
+};
+
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
 const BOUNTY_AMOUNT = 1000;
 
@@ -113,6 +122,10 @@ export class Game {
   /** "Roads" overlay toggle — paints the ROAD corridors where buses run cheap + fast. Also
    *  auto-shown while drawing a Bus line (so you see where to route it). Memoized lng/lat below. */
   showRoads = false;
+  /** Map LENS / view mode (fantasy #5): emphasise one reading of the busy arcadia map by dimming the
+   *  others. "realm" = everything; "supply" = sources/towns/rivers/icons; "military" = legions/raiders/
+   *  intent/towns; "decadence" = the tide/front/reservoir. Read in composeAndSet (render-only). */
+  lens: "realm" | "supply" | "military" | "decadence" = "realm";
   private roadCells: import("./render").RoadCell[] | null = null;
   /** Baked fantasy terrain hexes (lng/lat + biome code) — the map itself. Set once at load from the
    *  city's buildability raster (fantasy only; empty for transit cities), so the array identity is
@@ -677,6 +690,12 @@ export class Game {
   /** Toggle the travel-demand heat map layer. */
   setShowDemand(on: boolean): void {
     this.showDemand = on;
+    this.refresh();
+  }
+
+  /** Set the map LENS / view mode (fantasy #5) — emphasises one reading of the map by dimming the rest. */
+  setLens(lens: Game["lens"]): void {
+    this.lens = lens;
     this.refresh();
   }
 
@@ -1694,7 +1713,14 @@ export class Game {
       this.ruleset === "arcadia" && !detail
         ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front")
         : this.below;
-    this.overlay.setProps({ layers: [...below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above] });
+    let layers = [...below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
+    // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
+    // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
+    if (this.ruleset === "arcadia" && this.lens !== "realm") {
+      const hide = LENS_HIDE[this.lens];
+      layers = layers.filter((l) => !hide.has(l.id as string));
+    }
+    this.overlay.setProps({ layers });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */

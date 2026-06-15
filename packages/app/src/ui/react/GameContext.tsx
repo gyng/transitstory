@@ -23,6 +23,7 @@ export interface GameUI {
   showReach: boolean;
   showRoads: boolean;
   showPeeps: boolean;
+  lens: Game["lens"];
   selectedLine: number | null;
   selectedStation: number | null;
   notice: string | null;
@@ -43,6 +44,7 @@ function snapUI(g: Game): GameUI {
     showReach: g.showReach,
     showRoads: g.showRoads,
     showPeeps: g.showPeeps,
+    lens: g.lens,
     selectedLine: g.selectedLine,
     selectedStation: g.selectedStation,
     notice: g.notice,
@@ -62,6 +64,7 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
     a.showReach === b.showReach &&
     a.showRoads === b.showRoads &&
     a.showPeeps === b.showPeeps &&
+    a.lens === b.lens &&
     a.selectedLine === b.selectedLine &&
     a.selectedStation === b.selectedStation &&
     a.notice === b.notice &&

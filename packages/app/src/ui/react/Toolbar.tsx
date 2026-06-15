@@ -384,6 +384,40 @@ export function Toolbar() {
           }}
         />
 
+        {/* Map LENSES (#5): a compact arcadia-only view-mode selector — emphasise one reading of the busy
+            map by dimming the others (filtering in Game.composeAndSet). Lives with the other view controls. */}
+        {ui.ruleset === "arcadia" && (
+          <>
+            <span style={SEP_STYLE} />
+            <div data-testid="lens-bar" style={{ display: "flex", gap: 2 }}>
+              {([
+                ["realm", "◉", "everything"],
+                ["supply", "⛏", "sources, towns, rivers — your economy"],
+                ["military", "⚔", "legions, raiders, conquest targets"],
+                ["decadence", "☠", "the creeping rot — the tide + its front"],
+              ] as const).map(([id, icon, title]) => (
+                <button
+                  key={id}
+                  data-testid={`lens-${id}`}
+                  title={`Lens: ${title}`}
+                  onClick={() => game.setLens(id)}
+                  style={{
+                    border: "1px solid #d7dade",
+                    borderRadius: 6,
+                    padding: "6px 9px",
+                    cursor: "pointer",
+                    font: "600 14px system-ui,sans-serif",
+                    background: ui.lens === id ? "#1c2024" : "#fff",
+                    color: ui.lens === id ? "#fff" : "#1c2024",
+                  }}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         <Button label="⚙" testid="open-settings" onClick={() => setSettingsOpen((o) => !o)} />
         </div>
       </div>
