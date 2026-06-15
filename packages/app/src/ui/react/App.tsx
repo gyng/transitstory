@@ -3,7 +3,7 @@
 // the floating chrome inside #ui. The map/deck overlay live in the separate #map div and the
 // rAF loop runs entirely outside React (AGENTS render-hot-path / two-clocks rules).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createMap } from "../../map/basemap";
+import { applyArcadiaBasemap, createMap } from "../../map/basemap";
 import { createOverlay } from "../../map/overlay";
 import { loadCity } from "../../sim/city";
 import { mmToLngLat } from "../../coords/geo";
@@ -57,7 +57,11 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   // S11 rail-gate: arcadia builds RAIL only (+ Heavy Rail once teched). Enable rail + heavy here so the
   // chord/settings can't select bus/ferry/plane; the toolbar only SHOWS heavy once HEAVY_RAIL is unlocked,
   // and the sim rejects an un-teched heavy line regardless (the source of truth).
-  if (game.ruleset === "arcadia") game.enabledModes = new Set([0, 4]);
+  if (game.ruleset === "arcadia") {
+    game.enabledModes = new Set([0, 4]);
+    applyArcadiaBasemap(map); // dead ash-grey void under the baked continent (figure-ground)
+    game.sky.setEnabled(false); // no day/night hue wash in the value-not-hue fantasy world
+  }
   game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   game.demandCellM = city.demandCellM; // sizes the demand-heat hexagons to the grid pitch
   // Fantasy baked terrain IS the map: feed the raw buildability cells (exact hex centres — NOT the
@@ -195,6 +199,57 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [world]);
+
+  // Game-feel CAMERA: WASD / arrow keys pan (held-key rAF for smooth continuous motion), Q/E (and
+  // =/+ / -) zoom. The map + this rAF live OUTSIDE React (AGENTS two-clocks) — this drives the MapLibre
+  // camera imperatively, never the sim. We disable MapLibre's native keyboard handler and own all of it
+  // (else arrows double-pan once the canvas has focus). Ignores typing in inputs + OS/undo chords.
+  useEffect(() => {
+    if (!world) return;
+    const map = world.game.map;
+    map.keyboard.disable(); // own keyboard nav fully (no native arrow/-/+ double-handling)
+    const held = new Set<string>();
+    const PAN = 12; // px per frame per axis
+    const DIRS: Record<string, [number, number]> = {
+      w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+      arrowup: [0, -1], arrowdown: [0, 1], arrowleft: [-1, 0], arrowright: [1, 0],
+    };
+    let raf = 0;
+    const tick = () => {
+      let dx = 0, dy = 0;
+      for (const k of held) { const v = DIRS[k]; if (v) { dx += v[0]; dy += v[1]; } }
+      if (dx || dy) {
+        const len = Math.hypot(dx, dy) || 1; // normalise so a diagonal isn't ~41% faster than a cardinal
+        map.panBy([(dx / len) * PAN, (dy / len) * PAN], { duration: 0 });
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = 0;
+      }
+    };
+    const onDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // let undo/redo/OS chords pass through
+      const k = e.key.toLowerCase();
+      if (k === "q" || k === "-" || k === "_") { e.preventDefault(); map.easeTo({ zoom: map.getZoom() - 0.6, duration: 140 }); return; }
+      if (k === "e" || k === "=" || k === "+") { e.preventDefault(); map.easeTo({ zoom: map.getZoom() + 0.6, duration: 140 }); return; }
+      if (!(k in DIRS)) return;
+      e.preventDefault();
+      held.add(k);
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const onUp = (e: KeyboardEvent) => { held.delete(e.key.toLowerCase()); };
+    const stop = () => { held.clear(); if (raf) { cancelAnimationFrame(raf); raf = 0; } };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", stop); // tab-switch mid-press must not strand a key (camera drift)
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", stop);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [world]);
 
   if (!world) {

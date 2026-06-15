@@ -2,7 +2,7 @@
 // 5 Heavy Rail) drive construction; selecting one opens its build controls in a popover ABOVE
 // the bar. Right of the modes: Run/Build, speed, the Demand map-layer toggle, and Settings.
 // Keyboard 1–5 chord the modes. Emits to Game / GameLoop only (never mutates sim state directly).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Tool } from "../../game";
 import { useGame, useGameUI, useLoop, useStats } from "./GameContext";
@@ -13,12 +13,12 @@ import { BuildHud } from "./BuildHud";
 
 // Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
 const TOOL_HINT: Record<Tool, string> = {
-  station: "Click to place — stays armed for the next one · Esc or right-click when done",
+  station: "[T] Click to place — stays armed for the next one · Esc or right-click when done",
   line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel",
-  select: "Click a station or line to inspect it",
-  bulldozer: "Click a station or line to demolish it · Esc or right-click to stop",
-  barracks: "Click to place a barracks — it fields legions once supplied · Esc / right-click when done",
-  bounty: "Click a town to post a bounty — baits AI legions to attack it · Esc / right-click when done",
+  select: "[V] Click a station or line to inspect it",
+  bulldozer: "[X] Click a station or line to demolish it · Esc or right-click to stop",
+  barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc / right-click when done",
+  bounty: "[Y] Click a town to post a bounty — baits AI legions to attack it · Esc / right-click when done",
 };
 
 const TOOLS: [Tool, string][] = [
@@ -143,22 +143,60 @@ export function Toolbar() {
 
   const [speed, setSpeed] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The keydown handler reads the live speed via a ref so the single window listener stays stable across
+  // speed changes (no add/remove churn that would also re-bind the co-located tool/Space handlers).
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
 
-  // Keyboard chords: 1–4 select modes; R toggles build↔run (ignored while typing).
+  // Game keyboard: 1–5 chord transport modes; R / Space toggle Build↔Run; T/V/X (+ arcadia B/Y) arm the
+  // build tools; ',' / '.' step the speed ladder. (WASD/arrows/Q/E camera nav live in App.tsx.) Ignored
+  // while typing in a field and for ctrl/meta/alt chords (so Ctrl-Z etc. pass through).
   useEffect(() => {
+    const setSpd = (mult: number) => {
+      setSpeed(mult);
+      loop.setSpeed(mult);
+    };
+    const stepSpeed = (dir: number) => {
+      const i = SPEEDS.findIndex(([v]) => v === speedRef.current);
+      const ni = Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 0 : i) + dir));
+      setSpd(SPEEDS[ni][0]);
+    };
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      const m = MODES.find((x) => x.key === e.key);
-      if (m) {
-        game.setTransport(m.id);
-      } else if (e.key === "r" || e.key === "R") {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Space = pause/resume. Blur the focused element first so a focused Run/Build pill can't ALSO fire on
+      // the keyup-as-click (single toggle by construction, not by listener ordering).
+      if (e.code === "Space") {
+        e.preventDefault();
+        (document.activeElement as HTMLElement | null)?.blur?.();
         game.setMode(game.mode === "build" ? "run" : "build");
+        return;
+      }
+      if (e.key === ",") { stepSpeed(-1); return; }
+      if (e.key === ".") { stepSpeed(1); return; }
+      const m = MODES.find((x) => x.key === e.key);
+      if (m) { game.setTransport(m.id); return; }
+      if (e.key === "r" || e.key === "R") {
+        game.setMode(game.mode === "build" ? "run" : "build");
+        return;
+      }
+      // Build-tool hotkeys — letters chosen disjoint from the WASD/Q/E camera keys (T=sTation, V=select,
+      // X=bulldoze; arcadia adds B=Barracks, Y=bountY). Arming a tool in Run flips to Build first so it
+      // isn't silently inert behind the build-gated pointer/popover.
+      const lk = e.key.toLowerCase();
+      const TOOL_KEYS: Record<string, Tool> = { t: "station", v: "select", x: "bulldozer" };
+      if (ui.ruleset === "arcadia") { TOOL_KEYS.b = "barracks"; TOOL_KEYS.y = "bounty"; }
+      const tool = TOOL_KEYS[lk];
+      if (tool) {
+        if (game.mode === "run") game.setMode("build");
+        game.setTool(tool);
+        return;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game]);
+  }, [game, loop, ui.ruleset]);
 
   const enabled = new Set(ui.enabledModes);
   // S11 RAIL-GATE: arcadia builds RAIL only; Heavy Rail (mode 4) appears once its tech is unlocked.

@@ -41,3 +41,48 @@ export function createMap(
 
   return map;
 }
+
+/** Repaint the (real-world) Positron basemap into a DEAD ASH-GREY void for the fantasy/arcadia continent —
+ *  so the baked terrain island is the only inhabited ground and figure-ground holds (the locked vision: "a
+ *  dead grey world ... muted ash-grey hex vellum"). Off-continent the world must read DEADER than the empire,
+ *  not brighter (the default near-white Positron inverts that). Overrides the loaded style's paint in place
+ *  (no style-swap → no network risk on the critical path): a dead-vellum background (always-settable
+ *  fallback), dead water/land fills, hidden labels, near-invisible road/boundary lines. Hosted CARTO layer
+ *  ids can drift, so every override is guarded; the background fallback alone guarantees no white sheet.
+ *  Idempotent + style-reload safe via the `styledata` retry. Call once in boot for arcadia cities only. */
+const DEAD_VELLUM = "#2b2d31"; // darker than terrain PLAIN [128,128,124] and WATER [34,40,52]
+export function applyArcadiaBasemap(map: maplibregl.Map): void {
+  let done = false;
+  const apply = () => {
+    if (done) return;
+    try {
+      map.setPaintProperty("background", "background-color", DEAD_VELLUM);
+    } catch {
+      /* style may have no 'background' layer — the fills below still dead the canvas */
+    }
+    const layers = map.getStyle()?.layers;
+    if (!layers) return; // style not loaded yet — a later styledata fires this again
+    for (const layer of layers) {
+      const id = layer.id;
+      try {
+        if (layer.type === "symbol") {
+          map.setLayoutProperty(id, "visibility", "none"); // basemap place labels off (deck TextLayer owns text)
+        } else if (layer.type === "fill" && /water|ocean|sea|river|lake|bay/i.test(id)) {
+          map.setPaintProperty(id, "fill-color", "#26282c");
+        } else if (layer.type === "fill") {
+          map.setPaintProperty(id, "fill-color", "#2f3135");
+          map.setPaintProperty(id, "fill-opacity", 1);
+        } else if (layer.type === "line") {
+          map.setPaintProperty(id, "line-color", "#303236");
+          map.setPaintProperty(id, "line-opacity", 0.25); // roads/borders barely there — the dead world stays dead
+        }
+      } catch {
+        /* hosted-style layer id drifted — skip this one, the background fallback already holds */
+      }
+    }
+    done = true;
+    map.off("styledata", apply);
+  };
+  map.on("styledata", apply);
+  apply(); // apply now if the style is already loaded; otherwise the styledata retry catches it
+}

@@ -112,7 +112,10 @@ export function GameProvider({
       const s = game.bridge.stats();
       setStats(s);
       game.setStats(s);
-      game.sky.set(s.simHour); // day/night mood wash (two-clocks: rides the 3 Hz slice, not rAF)
+      // Day/night mood wash (two-clocks: rides the 3 Hz slice, not rAF). NOT in arcadia — the fantasy
+      // world reads in VALUE and reserves warmth for the empire; a time-varying hue wash would muddy the
+      // warmth-vs-decadence read and fight the tide's own cold-violet.
+      if (game.ruleset !== "arcadia") game.sky.set(s.simHour);
     }, 333);
 
     loop.start();

@@ -43,3 +43,12 @@ export function withBase(path: string): string {
 export const LINE_PALETTE: number[] = [
   0x0072b2, 0xd55e00, 0x44aa99, 0xcc79a7, 0x882255, 0x56b4e9, 0xf0e442, 0x000000,
 ];
+
+/** ARCADIA line palette — the empire is the ONLY warm thing on the ash world, so every line stays in the
+ *  warm half (slot 0 = warm, never the cold selection-blue). CB strategy for an all-warm ramp (the hardest
+ *  case): 6 tones ordered by INTERLEAVED lightness (copper↔oxblood↔orange↔rust↔ochre↔brick) so index-adjacent
+ *  lines contrast in value AND hue-temperature, not red/green. Kept clear of capital-gold (0xebaf2d) so
+ *  dominion-gold never reads as a player line. Used by `nextLineColor` only in the arcadia ruleset. */
+export const ARCADIA_LINE_PALETTE: number[] = [
+  0xd98c3a, 0x7a2e1f, 0xe07b2e, 0x9c3b1f, 0xc96a2c, 0xa83232,
+];

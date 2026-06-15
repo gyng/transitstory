@@ -96,24 +96,30 @@ export function OnboardingCoach() {
         <span className="ot-line" />
         <span className="ot-dot b" />
       </div>
-      {arcadia ? (
-        <div style={{ lineHeight: 1.35 }}>
-          <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
-          <div style={{ color: "#aeb6bf", marginTop: 2 }}>
-            ① {onLineTool ? "Draw rail" : "Pick Draw line, then rail"} a resource → a town to deliver supply
-            (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them · ③ Hold the ☠ Decadence
-            back before it reaches your capital
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {arcadia ? (
+          <div style={{ lineHeight: 1.35 }}>
+            <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
+            <div style={{ color: "#aeb6bf", marginTop: 2 }}>
+              ① {onLineTool ? "Draw rail" : "Pick Draw line, then rail"} a resource → a town to deliver supply
+              (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them · ③ Hold the ☠ Decadence
+              back before it reaches your capital
+            </div>
           </div>
-        </div>
-      ) : (
-        <div style={{ lineHeight: 1.35 }}>
-          <b style={{ fontSize: 14 }}>Build your first line</b>
-          <div style={{ color: "#aeb6bf", marginTop: 2 }}>
-            ① {onStationTool ? "Click the map" : "Pick the Station tool, then click"} to place 2 stations · ②
-            Draw a line between them · ③ Press ▶ Run
+        ) : (
+          <div style={{ lineHeight: 1.35 }}>
+            <b style={{ fontSize: 14 }}>Build your first line</b>
+            <div style={{ color: "#aeb6bf", marginTop: 2 }}>
+              ① {onStationTool ? "Click the map" : "Pick the Station tool, then click"} to place 2 stations · ②
+              Draw a line between them · ③ Press ▶ Run
+            </div>
           </div>
+        )}
+        {/* Camera + global keys (one line, cut-first). Tool keys are surfaced in each tool's popover hint. */}
+        <div style={{ color: "#8b939c", fontSize: 11 }}>
+          Camera: WASD / arrows pan · Q E zoom · Space pause · , . speed
         </div>
-      )}
+      </div>
       <button
         onClick={markSeen}
         aria-label="Dismiss onboarding"

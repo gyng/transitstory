@@ -135,18 +135,21 @@ export interface DecadenceAnchor {
  *  floor rises (the corruption showing through). */
 function townColor(kind: string, decadence: number): [number, number, number, number] {
   if (kind === "capital") return [235, 175, 45, 255]; // gold — the seat of warmth
-  if (kind === "starter") return [220, 150, 80, 255]; // warm amber — your first hold
+  if (kind === "starter") return [225, 135, 55, 255]; // warm amber-orange — your first hold (warmer than capital gold)
+  // Neutral "good" towns: sickly cold-bright cyan-green (benevolent-but-unwell) → dark cold as the
+  // decadence floor rises. Off the blue family + warm lines (no collision with selection-blue/the empire);
+  // ≥80 value units clean→decayed so corruption still darkens legibly.
   const t = Math.max(0, Math.min(1, decadence / 5000)); // 0 clean … 1 deep frontier
-  const r = Math.round(150 - 80 * t);
-  const g = Math.round(175 - 85 * t);
-  const b = Math.round(185 - 55 * t); // sickly cold-bright → dark cold
+  const r = Math.round(168 - 90 * t);
+  const g = Math.round(200 - 92 * t);
+  const b = Math.round(196 - 84 * t);
   return [r, g, b, 255];
 }
 /** Town RING colour = its supply CHAIN (S7e), so the player reads which good a town demands at a glance and
  *  knows which sources to connect: BREAD towns (grain+fuel) ring wheat-gold, ARMS towns (ore+aether) ring
  *  arcane-violet, the capital/none a neutral dark frame. */
 function townRingColor(chain: string): [number, number, number, number] {
-  if (chain === "bread") return [225, 180, 70, 235]; // wheat-gold — needs grain + fuel
+  if (chain === "bread") return [205, 165, 55, 235]; // deeper wheat — needs grain + fuel (distinct from capital-gold fill)
   if (chain === "arms") return [150, 100, 215, 235]; // arcane-violet — needs ore + aether
   return [30, 30, 36, 230]; // capital / none
 }
@@ -163,7 +166,7 @@ function townRadius(kind: string, value: number): number {
  *  Drawn with a white stroke so they pop on the muted grey continent. */
 function resourceColor(kind: string): [number, number, number] {
   switch (kind) {
-    case "ore": return [0, 114, 178];     // iron blue
+    case "ore": return [38, 150, 168];    // steel-cyan iron — kept OFF the load-bearing selection-blue #0072b2
     case "grain": return [230, 159, 0];   // wheat gold
     case "fuel": return [0, 158, 115];    // forest green
     case "aether": return [148, 96, 210]; // arcane violet
@@ -178,12 +181,12 @@ function resourceColor(kind: string): [number, number, number] {
  *  Hue is reserved for the player's network; the dead world stays grey so figure-ground holds. */
 function terrainColor(c: number): [number, number, number, number] {
   switch (c) {
-    case 4: return [38, 52, 70, 255];     // WATER — desaturated blue-grey (sea)
-    case 10: return [150, 150, 142, 255]; // PLAIN — pale ash (buildable lowland)
-    case 8: return [108, 124, 110, 255];  // FOREST — cool green-grey (fuel country)
-    case 7: return [104, 100, 96, 255];   // HILL — mid grey (rising ground)
+    case 4: return [34, 40, 52, 255];     // WATER — near-neutral cold sea (slightly darker/deader than land)
+    case 10: return [128, 128, 124, 255]; // PLAIN — pale ash (buildable lowland)
+    case 8: return [96, 100, 96, 255];    // FOREST — ~30 value below plain (fuel country), barely cooler
+    case 7: return [96, 94, 92, 255];     // HILL — mid grey (rising ground)
     case 6: return [40, 38, 40, 255];     // MOUNTAIN — near-black ridge (impassable)
-    case 9: return [120, 96, 156, 255];   // LEY — faint violet (the arcane, the only chroma)
+    case 9: return [120, 96, 156, 255];   // LEY — faint violet (the arcane: the ONLY ground chroma)
     default: return [70, 70, 70, 255];
   }
 }
@@ -235,6 +238,8 @@ export interface RenderView {
   terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
   terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
   tideCells: TideCell[]; // fantasy S10c: corrupted decadence-CA hexes (the cold creep) — empty for transit
+  tidePulse?: number; // fantasy: tide-frontier ring alpha (150..230), advanced on the ~3 Hz recompose (NOT per frame)
+  arcadia?: boolean; // fantasy ruleset → cold-violet demand overlay + arcadia LOD (warmth stays the empire's)
   resources: ResourceMarker[]; // baked fantasy supply-chain source nodes (POI dots) — empty for transit
   towns: TownMarker[]; // baked fantasy towns (sinks + conquest targets) — empty for transit
   decadenceAnchors: DecadenceAnchor[]; // baked far-edge reservoir anchors (the tide origin) — empty for transit
@@ -273,14 +278,16 @@ function hexRadius(cellM: number): number {
  *  (no station in range) glows warm + solid — the gap to fill; served demand fades cool +
  *  translucent — you've got it covered. Alpha (faint↔solid) is the colour-blind-safe channel,
  *  with warm/cool hue as the secondary cue. Weight still modulates intensity. */
-function demandColor(w: number, served?: boolean): [number, number, number, number] {
+function demandColor(w: number, served?: boolean, cold?: boolean): [number, number, number, number] {
   const t = Math.max(0, Math.min(1, w / 5));
-  if (served) return [90, 130, 170, Math.round(10 + t * 26)]; // cool + faint
-  // unmet: warm + solid, intensity rising with demand weight
+  if (served) return cold ? [120, 124, 136, Math.round(8 + t * 22)] : [90, 130, 170, Math.round(10 + t * 26)];
+  // ARCADIA: warmth is reserved for the empire, so UNMET supply-demand glows cold-violet (the "cold need"
+  // language of the tide), strength still on alpha (CB-safe). TRANSIT keeps the warm unmet-demand heat.
+  const a = Math.round(58 + t * 112);
+  if (cold) return [110, 100, 140, a];
   const r = Math.round(120 + t * 120);
   const g = Math.round(72 + (1 - t) * 36);
   const b = Math.round(60 - t * 30);
-  const a = Math.round(58 + t * 112);
   return [r, g, b, a];
 }
 
@@ -350,11 +357,35 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       radiusUnits: "meters",
       angle: 30,
       getPosition: (d: TideCell) => [d.lng, d.lat],
-      // cold low-chroma violet; alpha ramps with the tide strength (30..225) so the front reads faint.
-      getFillColor: (d: TideCell) => [78, 70, 120, Math.round(30 + Math.min(1, d.v) * 195)],
+      // Cold grey-violet (low chroma so terrain VALUE reads through). Strength SQUARED → a faint leading
+      // edge and a near-solid deep rear; alpha ceiling 150 (was 225) keeps the ground legible even at full
+      // rot. The hard wedge edge is replaced by the animated tide-frontier rings below.
+      getFillColor: (d: TideCell) => {
+        const s = Math.min(1, d.v);
+        return [86, 80, 104, Math.round(18 + s * s * 132)];
+      },
       filled: true,
       stroked: false,
       updateTriggers: { getFillColor: view.tideCells.length },
+    }),
+    // TIDE FRONTIER (the ONE decadence telegraph): a moving beaded line of cold-violet rings on the
+    // ADVANCING band (0.2 ≤ v ≤ 0.5) — restores the front-edge legibility the softened fill gives up, and
+    // its pulse signals the rot is alive + creeping. Derived from the same tide buffer (read-only); the
+    // pulse rides a quantized ~3 Hz phase, never per rAF (two-clocks). Empty for transit.
+    new ScatterplotLayer({
+      id: "tide-front",
+      data: view.tideCells.filter((d) => d.v >= 0.2 && d.v <= 0.5),
+      getPosition: (d: TideCell) => [d.lng, d.lat],
+      getFillColor: [0, 0, 0, 0],
+      getLineColor: [120, 110, 150, view.tidePulse ?? 200],
+      radiusUnits: "meters",
+      getRadius: view.terrainCellM * 0.6,
+      stroked: true,
+      filled: false,
+      lineWidthUnits: "pixels",
+      getLineWidth: 1.5,
+      lineWidthMinPixels: 1.5,
+      updateTriggers: { getLineColor: view.tidePulse, data: view.tideCells.length },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
     // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the
@@ -382,7 +413,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "decadence-anchors",
       data: view.decadenceAnchors,
       getPosition: (d: DecadenceAnchor) => [d.lng, d.lat],
-      getFillColor: [92, 70, 120, 200], // cold violet, translucent
+      getFillColor: [86, 80, 104, 170], // low-chroma cold grey-violet (matches the tamed tide)
       radiusUnits: "pixels",
       getRadius: 7,
       radiusMinPixels: 5,
@@ -444,12 +475,12 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       radius: hexRadius(view.demandCellM),
       radiusUnits: "meters",
       getPosition: (d: DemandPoint) => [d.lng, d.lat],
-      getFillColor: (d: DemandPoint) => demandColor(d.weight, d.served),
+      getFillColor: (d: DemandPoint) => demandColor(d.weight, d.served, view.arcadia),
       filled: true,
       stroked: false,
       // `demand` is a fresh array only when the served set is recomputed (topology/toggle), so
       // identity is stable across frames; this trigger guards the in-place served recolor.
-      updateTriggers: { getFillColor: view.demand.map((d) => (d.served ? 1 : 0)).join("") },
+      updateTriggers: { getFillColor: view.demand.map((d) => (d.served ? 1 : 0)).join("") + (view.arcadia ? "c" : "") },
     }),
     // Walk shed (hexagons over the reachable buildability cells): the REAL, lopsided catchment —
     // water severs it, a crossed motorway pinches it. Catchment blue, alpha fading with the

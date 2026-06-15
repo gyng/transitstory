@@ -4,7 +4,7 @@
 import type { Map as MlMap } from "maplibre-gl";
 import type { MapboxOverlay } from "@deck.gl/mapbox";
 import type { Layer, PickingInfo } from "@deck.gl/core";
-import { BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
+import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
 import { armyIntentLayer, armyLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
@@ -1438,6 +1438,9 @@ export class Game {
       terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
       terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
       tideCells: this.decadenceTideAt(), // fantasy S10c: the cold decadence creep (read on each refresh)
+      tidePulse: this.nextTidePulse(), // tide-frontier ring alpha, advanced per ~3 Hz recompose (not per frame)
+      arcadia: this.ruleset === "arcadia", // cold-violet demand overlay + arcadia LOD
+
       resources: this.resources, // baked fantasy supply-chain source nodes; empty for transit cities
       towns: this.towns, // baked fantasy towns (sinks + conquest targets); empty for transit cities
       decadenceAnchors: this.decadenceAnchors, // baked far-edge reservoir anchors; empty for transit cities
@@ -1650,6 +1653,15 @@ export class Game {
     return out;
   }
 
+  /** Tide-frontier ring alpha — a slow triangle pulse (150..230) advanced ONE step per buildView (the
+   *  ~3 Hz recompose), so the decadence front visibly breathes without any per-frame work (two-clocks).
+   *  Integer-quantized so deck's updateTriggers only fire on a real change. */
+  private tidePhase = 0;
+  private nextTidePulse(): number {
+    this.tidePhase = (this.tidePhase + 1) % 12;
+    return 150 + Math.round((80 * Math.abs(6 - this.tidePhase)) / 6); // triangle 150..230
+  }
+
   composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
     const intent = this.armyIntentLayerAt();
@@ -1671,7 +1683,14 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label");
-    this.overlay.setProps({ layers: [...this.below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above] });
+    // Arcadia LOD: at overview, drop the dense resource-POI swarm (~30 dots) + the tide-frontier beads so
+    // the continent reads as terrain + towns + the tide WASH (the strategic picture); they return on zoom-in.
+    // Same cheap id-filter, no rebuild. (Town fills + tide fill stay at all zooms — they're the strategy.)
+    const below =
+      this.ruleset === "arcadia" && !detail
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "tide-front")
+        : this.below;
+    this.overlay.setProps({ layers: [...below, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above] });
   }
 
   /** Per-line colour table indexed by line id (for vehicle tint). */
@@ -1793,9 +1812,12 @@ export class Game {
     }
   }
 
-  /** The next palette colour for a new line (deterministic by line index). */
+  /** The next palette colour for a new line (deterministic by line index). Arcadia draws from the all-warm
+   *  palette so the empire is the only warmth (the colour is logged in the CreateLine command, so this only
+   *  picks the hue for NEW lines — golden-neutral). */
   nextLineColor(): number {
     const n = this.bridge.linesView().length;
-    return LINE_PALETTE[n % LINE_PALETTE.length];
+    const pal = this.ruleset === "arcadia" ? ARCADIA_LINE_PALETTE : LINE_PALETTE;
+    return pal[n % pal.length];
   }
 }
