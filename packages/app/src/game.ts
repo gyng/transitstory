@@ -2447,9 +2447,11 @@ export class Game {
         ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front" && l.id !== "trees")
         : this.below;
     // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
-    // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only.
+    // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only, and only
+    // when zoomed IN (LOD): at the strategic overview they'd swarm + compete with the player's trains, so
+    // drop them below DETAIL_ZOOM (the same gate peeps use) — the continent reads as terrain + network there.
     const ambient =
-      this.ruleset === "arcadia" && this.showAmbient && this.ambientCarts.length > 0
+      this.ruleset === "arcadia" && this.showAmbient && detail && this.ambientCarts.length > 0
         ? (() => {
             const carts = this.ambientTradersAt(performance.now());
             return [ambientTraderLayer(carts), ambientCargoLayer(carts)];

@@ -102,8 +102,9 @@ export function OnboardingCoach() {
             <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
               ① {onLineTool ? "Draw rail" : "Pick Draw line, then rail"} a resource → a town to deliver supply
-              (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them · ③ Hold the ☠ Decadence
-              back before it reaches your capital
+              (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them, and conquer towns to grow
+              your ⚜ Standing (right gauge) · ③ Hold Standing ahead of the ☠ Decadence — you lose if the rot
+              reaches your capital (100%)
             </div>
           </div>
         ) : (

@@ -366,6 +366,7 @@ export function Toolbar() {
         <Button
           label="🛣 Roads"
           testid="layer-roads"
+          title="Road corridors where buses run cheap + fast. Turn on when planning a bus line — route along roads to cut cost and speed service."
           onClick={() => game.setShowRoads(!ui.showRoads)}
           style={{
             background: ui.showRoads ? "#0072b2" : "#fff",
