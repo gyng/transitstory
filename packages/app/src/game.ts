@@ -218,6 +218,9 @@ export class Game {
   readonly sky: Sky;
   /** Per-station boardings from the previous stats snapshot — to emit a board-burst on the delta. */
   private prevBoardings: Map<number, number> = new Map();
+  /** Per-station ALIGHTINGS from the previous snapshot — fantasy income floats at the delivery (earning)
+   *  spots: tribute lands where cargo alights at a sink, so the gold floats where it was actually earned. */
+  private prevAlightings: Map<number, number> = new Map();
   /** Cumulative economy/combat readings from the previous stats snapshot — diffed to emit floating
    *  "+gold"/"+$fare"/"−$upkeep"/"⚔ Conquered!" juice. Seeded on the first snapshot (no spurious floats). */
   private prevJuice: { tribute: number; fare: number; opex: number; towns: number; day: number; seeded: boolean } = {
@@ -1989,6 +1992,7 @@ export class Game {
       // First snapshot of a run: record baselines so we don't float the whole accumulated total at once,
       // and mark already-captured towns as celebrated so only NEW falls fire a boom (resume/load safe).
       for (const ps of s.perStation) if (ps.captured) this.celebratedTowns.add(ps.stationId);
+      for (const ps of s.perStation) this.prevAlightings.set(ps.stationId, ps.alightings); // baseline (no first-tick float)
       this.prevJuice = { tribute: s.tribute, fare: s.fareRevenue, opex: s.opexSpent, towns: s.townsCaptured, day: s.simDay, seeded: true };
       return;
     }
@@ -1998,7 +2002,30 @@ export class Game {
     const top = deltas[0] ? at(deltas[0].id) : null;
     if (arcadia) {
       const dGold = Math.round(s.tribute - prev.tribute);
-      if (dGold > 0 && top) this.effects.floatText(top.lng, top.lat, `+${dGold}⬢`, "235,205,110");
+      // Tribute is earned where cargo ALIGHTS at a sink — float the gold at those delivery spots (spread
+      // across the busiest, proportional to deliveries), so the player sees WHERE the realm earned, not a
+      // lump at one station. The alighting delta is the per-spot earning signal.
+      const earned: { id: number; d: number }[] = [];
+      for (const ps of s.perStation) {
+        const pa = this.prevAlightings.get(ps.stationId) ?? ps.alightings;
+        const d = ps.alightings - pa;
+        if (d > 0) earned.push({ id: ps.stationId, d });
+        this.prevAlightings.set(ps.stationId, ps.alightings);
+      }
+      earned.sort((a, b) => b.d - a.d);
+      const spots = earned.slice(0, 4);
+      if (dGold > 0 && spots.length > 0) {
+        const tot = spots.reduce((acc, x) => acc + x.d, 0) || 1;
+        let shown = 0;
+        spots.forEach((x, i) => {
+          const share = i === spots.length - 1 ? dGold - shown : Math.round((dGold * x.d) / tot);
+          shown += share;
+          const p = at(x.id);
+          if (share > 0 && p) this.effects.floatText(p.lng, p.lat, `+${share}⬢`, "235,205,110");
+        });
+      } else if (dGold > 0 && top) {
+        this.effects.floatText(top.lng, top.lat, `+${dGold}⬢`, "235,205,110"); // fallback: lump at the busiest spot
+      }
     } else if (s.economyEnabled) {
       const dFare = Math.round(s.fareRevenue - prev.fare);
       if (dFare > 0 && top) this.effects.floatText(top.lng, top.lat, `+$${fmtShort(dFare)}`, "120,210,140");

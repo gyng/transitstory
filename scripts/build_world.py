@@ -50,8 +50,10 @@ MAP_CONST = 0x4D41_505F_5631       # "MAP_V1" — decorrelates the bake RNG from
 #     to S10's per-tick decadence-CA bench — size conservatively LOW until then) ---
 W, H = 128, 128                     # axial extent (q in [0,W), r in [0,H)) -> 16384 cells, ~half land
 GRID_CELL_MM = 250_000              # hex centre-to-corner size (= hexgrid size_mm); matches the arcadia demo
-DEFAULT_SEED = 65  # certified-winnable AND opposite-corner: capital in the SW corner (8,0), the decadence
-#                    reservoir in the NE (15 from the corner) — a 231/254 diagonal (see pick_capital).
+DEFAULT_SEED = 12  # the ally capital is INSET (SW quadrant ~(21,21), ~22 from every edge — not jammed in
+#                    the extreme corner) while the decadence reservoir stays at the FAR edge: a 201/254
+#                    diagonal that gives the tide runway, so the realm is comfortably winnable (an inset
+#                    enemy shortens the runway → the realm falls too fast). See pick_capital.
 
 # biome class codes (docs/fantasy-map.md S1); 0=Open (unused here), 4=WATER reuses the existing rail gate
 WATER, MOUNTAIN, HILL, FOREST, LEY, PLAIN = 4, 6, 7, 8, 9, 10
@@ -111,7 +113,7 @@ TOWN_GLYPH = {"capital": "@", "starter": "s", "neutral": "t"}
 CAPITAL_GRACE_HEXES = 6    # the clean buffer around the capital (no decadence floor here)
 DECADENCE_BASE = 200       # a neutral town's floor just past the grace ring
 DECADENCE_PER_HEX = 30     # + per hex of frontier depth (far towns are more corrupt)
-RESERVOIR_ANCHORS = 5      # far-edge coastal cells = the tide origin + raider spawns
+RESERVOIR_ANCHORS = 5      # far-edge coastal cells = the tide origin + raider spawns (FAR = the tide runway)
 # Decadence GROWTH per sim-second on the baked continent — FAR gentler than the demo's 50/s (decadence.rs
 # BASE_GROWTH): the continent is large (long supply lines, slow two-chain Liebig tribute), so the lose meter
 # (threshold 20000) must fill over ~thousands of sim-sec to leave room to ramp up. Balance knob; the headless
@@ -577,6 +579,10 @@ def seed_decadence(biome, capital, towns):
                 continue
             if any(not in_bounds(q + dq, r + dr) or biome[r + dr, q + dq] == WATER for dq, dr in AXIAL_DIRS):
                 coastal.append((hex_dist((q, r), capital), q, r))
+    # The reservoir stays FAR from the (inset) capital — the Dark emanates from the far edge. This long
+    # diagonal is also the decadence tide's runway: it must travel the whole span to reach the capital, so
+    # the player gets time to establish. (Insetting the enemy too shortens the runway → the realm falls
+    # before you can act — see DEFAULT_SEED note. Only the ALLY capital is pulled in from the extreme edge.)
     coastal.sort(key=lambda t: (-t[0], t[2], t[1]))
     reservoir = []
     for _, q, r in coastal[:RESERVOIR_ANCHORS]:
@@ -887,17 +893,19 @@ def compute_rivers(elev_filled, land):
 
 
 def pick_capital(biome, elev):
-    """The buildable land cell CLOSEST to the SW (0,0) corner — the ally seat. The decadence reservoir is
-    seeded farthest-from-capital, so a corner capital auto-places the enemy at the diagonally-OPPOSITE
-    corner. Corner distance dominates; elev (coastal) breaks exact ties. Deterministic argmin."""
+    """The buildable land cell nearest the INSET SW anchor (~1/6 in from the corner) — the ally seat sits
+    in the SW QUADRANT, opposite the enemy, but NOT jammed in the extreme corner/edge (which cramps build
+    space + throws half the influence radius off-map). The reservoir is seeded inset-far-from-capital, so
+    the enemy lands inset-NE. Deterministic argmin on distance² to the anchor; elev breaks exact ties."""
+    tq, tr = W // 6, H // 6                               # the SW inset anchor (~21,21): corner-ward, with room
     best, best_score = None, 1e18
-    for r in range(H // 2):
-        for q in range(W // 2):
+    for r in range(H):
+        for q in range(W):
             c = biome[r, q]
             if c == WATER or c == MOUNTAIN:
                 continue
-            corner_dist = q + r                          # hex steps toward the (0,0) corner (0 = the corner)
-            score = corner_dist + 0.001 * elev[r, q]     # corner distance dominates; elev breaks exact ties
+            d2 = (q - tq) ** 2 + (r - tr) ** 2           # distance² to the inset anchor (smaller = better)
+            score = d2 + 0.001 * elev[r, q]
             if score < best_score:
                 best_score, best = score, (q, r)
     if best is None:                                      # degenerate: no SW land — fall back to any land
