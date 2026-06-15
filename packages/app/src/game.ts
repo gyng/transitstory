@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type VehicleDot, type WaitingDot } from "./render";
+import { ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -140,6 +140,9 @@ export class Game {
    *  stable across frames (no per-frame rebuild). `terrainCellM` = the hex circumradius in metres. */
   terrain: TerrainCell[] = [];
   terrainCellM = 0;
+  /** Fantasy 3D diorama (#3d-trees): lowpoly pines instanced on the forest hexes. Built once at load from
+   *  the terrain (arcadia only; empty for transit). Stable identity (no per-frame rebuild). */
+  trees: TreeInstance[] = [];
   /** Baked fantasy resource nodes (lng/lat + kind + yield) — the supply-chain sources. Set once at load
    *  from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity across frames. */
   resources: ResourceMarker[] = [];
@@ -1535,6 +1538,7 @@ export class Game {
       roadCellM: this.build.cellMm / 1000, // mm → m (the buildability grid pitch)
       terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
       terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
+      trees: this.ruleset === "arcadia" ? this.trees : [], // 3D diorama pines; LOD-dropped at overview in composeAndSet
       tideCells: this.decadenceTideAt(), // fantasy S10c: the cold decadence creep (read on each refresh)
       tidePulse: this.nextTidePulse(), // tide-frontier ring alpha, advanced per ~3 Hz recompose (not per frame)
       arcadia: this.ruleset === "arcadia", // cold-violet demand overlay + arcadia LOD
@@ -1770,6 +1774,30 @@ export class Game {
    *  every town, each town with its nearest neighbour town, and each town draws from its nearest resource.
    *  Carts (ping-ponging traders) are seeded per route. Called once at load (arcadia only); render-only, so
    *  the variety RNG here never touches the deterministic core. Idempotent (clears + rebuilds). */
+  /** Fantasy 3D diorama (#3d-trees): scatter lowpoly pines across the forest hexes (biome FOREST=8),
+   *  jittered within each hex + varied in height/yaw/tint so a stand reads natural. Capped for perf; built
+   *  once at load (arcadia only). The variety RNG is render-only — never touches the deterministic core. */
+  buildTrees(): void {
+    this.trees = [];
+    if (this.ruleset !== "arcadia" || this.terrain.length === 0) return;
+    const FOREST = 8;
+    const forest = this.terrain.filter((c) => c.c === FOREST);
+    if (forest.length === 0) return;
+    const CAP = 4200;
+    const jitterMm = this.terrainCellM * 1000 * 0.46; // up to ~46% of a hex off-centre
+    // Thin the forest cells to the cap, then 1–2 pines per kept cell.
+    const stride = Math.max(1, Math.ceil((forest.length * 2) / CAP));
+    for (let i = 0; i < forest.length && this.trees.length < CAP; i += stride) {
+      const c = forest[i];
+      const [mx, my] = lngLatToMm([c.lng, c.lat]);
+      const k = 1 + (Math.random() < 0.6 ? 1 : 0);
+      for (let j = 0; j < k && this.trees.length < CAP; j++) {
+        const [lng, lat] = mmToLngLat([mx + (Math.random() * 2 - 1) * jitterMm, my + (Math.random() * 2 - 1) * jitterMm]);
+        this.trees.push({ lng, lat, scale: 120 + Math.random() * 110, yaw: Math.random() * 360, shade: Math.random() });
+      }
+    }
+  }
+
   buildAmbientTrade(): void {
     this.ambientRoutes = [];
     this.ambientCarts = [];
@@ -1961,7 +1989,7 @@ export class Game {
     // Same cheap id-filter, no rebuild. (Town fills + tide fill stay at all zooms — they're the strategy.)
     const below =
       this.ruleset === "arcadia" && !detail
-        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front")
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front" && l.id !== "trees")
         : this.below;
     // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
     // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only.

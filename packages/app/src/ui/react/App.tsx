@@ -61,6 +61,10 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     game.enabledModes = new Set([0, 4]);
     applyArcadiaBasemap(map); // dead ash-grey void under the baked continent (figure-ground)
     game.sky.setEnabled(false); // no day/night hue wash in the value-not-hue fantasy world
+    // #3d-trees diorama: tilt the camera so the lowpoly pines (+ terrain) read as a TTD-style 3D scene.
+    // A modest pitch keeps the strategic overview legible; the player can still pan/zoom freely.
+    map.setMaxPitch(60);
+    map.setPitch(45);
   }
   game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   game.demandCellM = city.demandCellM; // sizes the demand-heat hexagons to the grid pitch
@@ -98,6 +102,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
       const [tlng, tlat] = mmToLngLat([rv.x1Mm, rv.y1Mm]);
       return { from: [flng, flat] as [number, number], to: [tlng, tlat] as [number, number], wclass: rv.wclass, ford: rv.ford };
     });
+    game.buildTrees(); // #3d-trees — scatter lowpoly pines on the forest hexes for the 3D diorama
   }
   const loop = new GameLoop(game);
   attachPointer(game);

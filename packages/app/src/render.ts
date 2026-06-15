@@ -3,7 +3,9 @@
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
 import { ArcLayer, ColumnLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
+import { pineGeometry } from "./render/treeMesh";
 import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
 export type Rgb = [number, number, number];
@@ -52,6 +54,17 @@ export interface VehicleDot {
   angle: number;
   /** Load factor (onboard / capacity), 0..~1 — drives the crowding ring colour + train size. */
   load: number;
+}
+
+/** Fantasy 3D diorama (#3d-trees): one lowpoly pine instanced on a forest hex. Position is lng/lat
+ *  (the mesh stands up in Z); `scale` jitters the height, `yaw` the facing, `shade` the green tint, so a
+ *  forest reads as a varied stand rather than a clone army. Render-only (a SimpleMeshLayer), baked once. */
+export interface TreeInstance {
+  lng: number;
+  lat: number;
+  scale: number; // height in map-metres (sizeScale ×1 mesh unit)
+  yaw: number; // facing, degrees
+  shade: number; // 0..1 → green tint lerp (darker valley pines → lighter highland)
 }
 
 /** Living-world (#living): one ambient ox-cart / trader trundling a baked trade route between towns,
@@ -296,6 +309,7 @@ export interface RenderView {
   roadCellM: number; // buildability cell pitch (m) → sizes the road hexagons to tile the grid
   terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
   terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
+  trees: TreeInstance[]; // fantasy 3D diorama: lowpoly pines on forest hexes (empty for transit / at overview)
   tideCells: TideCell[]; // fantasy S10c: corrupted decadence-CA hexes (the cold creep) — empty for transit
   tidePulse?: number; // fantasy: tide-frontier ring alpha (150..230), advanced on the ~3 Hz recompose (NOT per frame)
   arcadia?: boolean; // fantasy ruleset → cold-violet demand overlay + arcadia LOD (warmth stays the empire's)
@@ -403,6 +417,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       stroked: false,
       updateTriggers: { getFillColor: view.terrain.length },
     }),
+    // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain
+    // (under the network/POIs). Empty for transit / at overview (LOD), so it's a no-op there.
+    treeLayer(view.trees),
     // DECADENCE TIDE (fantasy S10c, over terrain, under everything else): the cold corruption creeping
     // from the far edge toward the warm capital. Value-not-hue per the art direction — a single
     // low-chroma cold violet, STRENGTH = ALPHA (faint at the front, opaque deep). Same pointy-top hex
@@ -1029,6 +1046,30 @@ export function ambientTraderLayer(carts: AmbientTrader[]): Layer {
     lineWidthMinPixels: 0.6,
     pickable: false,
     updateTriggers: { getFillColor: carts.map((c) => (c.dim ? 1 : 0)).join("") },
+  });
+}
+
+/** Fantasy 3D diorama (#3d-trees): the forest as instanced lowpoly pines (one SimpleMeshLayer). Stands up
+ *  in Z so it reads under the tilted arcadia camera. Per-instance scale/yaw/tint for a varied stand; flat-
+ *  shaded under deck's default lighting for the faceted lowpoly look. Static (baked once), so it rides the
+ *  cached topo path — never rebuilt per frame. Empty for transit / when zoomed too far out (LOD). */
+export function treeLayer(trees: TreeInstance[]): Layer {
+  return new SimpleMeshLayer<TreeInstance>({
+    id: "trees",
+    data: trees,
+    mesh: pineGeometry(),
+    getPosition: (d) => [d.lng, d.lat],
+    getColor: (d) => {
+      // valley pine (deep green) → highland fir (cooler, lighter); a touch of per-tree variation via shade.
+      const g = Math.round(86 + d.shade * 46);
+      return [Math.round(34 + d.shade * 24), g, Math.round(40 + d.shade * 18)];
+    },
+    getOrientation: (d) => [0, d.yaw, 0],
+    getScale: (d) => [d.scale, d.scale, d.scale],
+    sizeScale: 1,
+    pickable: false,
+    material: { ambient: 0.55, diffuse: 0.7, shininess: 16, specularColor: [40, 50, 40] },
+    updateTriggers: { getColor: trees.length, getScale: trees.length },
   });
 }
 
