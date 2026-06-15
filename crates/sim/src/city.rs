@@ -111,6 +111,15 @@ pub struct CityData {
     /// `tribute`, gated off by default, and the day cursor is an un-hashed deterministic accumulator).
     #[serde(default)]
     pub gold_upkeep_per_day: i64,
+    /// Fantasy (arcadia) #11 — the OFF-RAIL goods BACKSTOP rate (µ-units of each recipe input walked into a
+    /// town per ms, when the realm holds a source of it). Peeps haul goods on foot when no railway serves a
+    /// town, so it never FULLY starves — but the trickle is a fraction of a rail load, so the railway is
+    /// still how you win (it INDUSTRIALISES the slow walking trade). A per-city knob baked by
+    /// `scripts/build_world.py`. **0 (serde + `Default`) ⇒ NO backstop (rail-only, the shipped behaviour)** —
+    /// so transit, the arcadia golden, and native tests are byte-identical (golden-neutral; the trickle uses
+    /// a non-hashed accumulator and only mutates the already-hashed `forge_stock`, gated off by default).
+    #[serde(default)]
+    pub walk_backstop_micro: i64,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

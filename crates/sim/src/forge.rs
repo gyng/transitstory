@@ -122,6 +122,12 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
         world.forge_stock[slot] = (world.forge_stock[slot] + units).min(BUFFER_CAP);
     }
 
+    // OFF-RAIL BACKSTOP (#11): peeps haul goods on foot, so a town never FULLY starves — each net-SINK gets
+    // a SLOW trickle of every recipe input the realm can source, walked into its buffer to be consumed below
+    // (the railway then INDUSTRIALISES this: a rail load dwarfs the trickle). Gated on a baked rate (0 ⇒ no
+    // backstop ⇒ byte-identical); integer + a NON-hashed `walk_accum` ⇒ deterministic + golden-neutral.
+    walk_backstop(world, dt, n);
+
     // Town consumption (the Liebig consume, single-input S7d): a net-SINK node (a town: captured dest
     // weight > origin) consumes the commodity DELIVERED into its buffer → global TRIBUTE (the supply
     // score, the game's core payoff). A node is either a net source or a net sink, never both, so this
@@ -187,6 +193,82 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
                 world.tribute = world.tribute.saturating_add(got); // GOLD, unchanged
                 world.mana = world.mana.saturating_add(mana);
                 world.manpower = world.manpower.saturating_add(manpower);
+            }
+        }
+    }
+}
+
+/// Off-rail goods BACKSTOP (#11): the slow walking trade that keeps a rail-less town alive. Each net-SINK
+/// accrues a baked µ-rate per ms and, when it rolls a whole unit, gains 1 unit of EACH recipe input the
+/// realm can SOURCE (a commodity some net-source node makes) — walked in from the surrounding land. The
+/// consume phase then turns it into a trickle of tribute. The railway dwarfs this (a full delivered load
+/// vs a per-tick unit), so rail still wins; the backstop only stops a frontier town from flatlining.
+///
+/// 0 rate (every transit city + both golden fixtures) ⇒ this returns immediately ⇒ byte-identical. The
+/// `walk_accum` remainder is NOT hashed (regenerated on replay like `forge_accum`); only the already-hashed
+/// `forge_stock` is mutated, and only when the baked rate is on ⇒ golden-neutral, no re-pin.
+fn walk_backstop(world: &mut World, dt: i64, n: usize) {
+    let rate = world.city.walk_backstop_micro;
+    if rate <= 0 || dt <= 0 {
+        return;
+    }
+    if world.walk_accum.len() != n {
+        world.walk_accum.resize(n, 0);
+    }
+    // Which commodities the realm can SOURCE (some net-source node makes them) — peeps can only walk in a
+    // good that exists somewhere. Index-ordered scan; cheap (≤ N_COMMODITIES bools).
+    let mut has_source = [false; N_COMMODITIES];
+    for s in 0..n {
+        let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
+        if comm >= FIRST_MID {
+            continue; // a processor's OUTPUT isn't a raw the land grows; only true raw sources seed the walk
+        }
+        let co = world.captured_origin.get(s).copied().unwrap_or(0.0);
+        let cd = world.captured_dest.get(s).copied().unwrap_or(0.0);
+        if co > cd {
+            has_source[comm] = true;
+        }
+    }
+    for s in 0..n {
+        // Only true final sinks (net-sink, raw-good consumers) get the backstop — mirrors the consume gate.
+        let comm = (world.station_commodity.get(s).copied().unwrap_or(0) as usize).min(N_COMMODITIES - 1);
+        if comm >= FIRST_MID {
+            continue;
+        }
+        // Scope it to YOUR territory — a CAPTURED town (siege ground its garrison to 0) trades a little on
+        // foot. Neutral towns yield nothing until you rail to them (delivery) or conquer them, so the
+        // backstop can't mint free income from the whole map — it only rewards ground you already hold.
+        if world.town_value.get(s).copied() != Some(0) {
+            continue;
+        }
+        let co = world.captured_origin.get(s).copied().unwrap_or(0.0);
+        let cd = world.captured_dest.get(s).copied().unwrap_or(0.0);
+        if cd <= co {
+            continue;
+        }
+        let acc = &mut world.walk_accum[s];
+        *acc = acc.saturating_add(rate.saturating_mul(dt));
+        let units = *acc / MICRO;
+        if units <= 0 {
+            continue;
+        }
+        *acc -= units * MICRO;
+        let base = s * N_COMMODITIES;
+        // Walk in one trickle of EACH recipe input the realm can source (keeps the Liebig min balanced).
+        // A sink with no explicit recipe takes its own demanded commodity (the single-input consume path).
+        match world.station_recipe.get(s).cloned() {
+            Some(r) if !r.is_empty() => {
+                for &c in &r {
+                    let ci = c as usize;
+                    if ci < N_COMMODITIES && has_source[ci] {
+                        world.forge_stock[base + ci] = (world.forge_stock[base + ci] + units).min(BUFFER_CAP);
+                    }
+                }
+            }
+            _ => {
+                if has_source[comm] {
+                    world.forge_stock[base + comm] = (world.forge_stock[base + comm] + units).min(BUFFER_CAP);
+                }
             }
         }
     }

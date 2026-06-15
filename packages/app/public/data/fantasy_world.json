@@ -337,9 +337,9 @@
         "yMm": 8250000,
         "value": 0,
         "demands": [
-          "ore",
           "fuel",
-          "grain"
+          "grain",
+          "ore"
         ],
         "decadence": 0,
         "recipe": []
@@ -569,7 +569,8 @@
       "capitalYMm": 8250000,
       "initialGold": 150,
       "buildGoldDivisor": 15000000,
-      "goldUpkeepPerDay": 15
+      "goldUpkeepPerDay": 15,
+      "walkBackstopMicro": 40
     }
   },
   "rivers": [

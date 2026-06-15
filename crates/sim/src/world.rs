@@ -105,6 +105,10 @@ pub struct World {
     /// `forge_stock` accrual exact. Derived/transient like `spawn_accum` (regenerated bit-identically on
     /// replay from the same tick sequence), so NOT folded into `Canonical`.
     pub forge_accum: Vec<i64>,
+    /// Sub-unit (µ-unit) OFF-RAIL backstop remainder per node (fantasy #11) — the integer fixed-point
+    /// accumulator for the slow walking-goods trickle into a starved town. Derived/transient like
+    /// `forge_accum` (regenerated bit-identically on replay), so NOT folded into `Canonical`.
+    pub walk_accum: Vec<i64>,
     /// The war machine's legions (fantasy, S8) — a SEPARATE SoA from `vehicles` so `dispatch`'s
     /// `v.clear()` (every `SetHeadway`) can't teleport a marching army (binding condition #2). Its
     /// authoritative fields are hashed; empty for transit. See [`crate::army`].
@@ -504,6 +508,7 @@ impl World {
             spawn_accum: Vec::new(),
             forge_stock: Vec::new(),
             forge_accum: Vec::new(),
+            walk_accum: Vec::new(),
             armies: crate::army::ArmySoA::default(),
             raiders: crate::raider::RaiderSoA::default(),
             raider_spawn_accum_ms: 0,
