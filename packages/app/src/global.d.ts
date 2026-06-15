@@ -21,8 +21,6 @@ declare global {
       tickMs(ms: number): void;
       placeStationLngLat(lng: number, lat: number): number;
       placeBarracksLngLat(lng: number, lat: number): number;
-      placeDepotLngLat(lng: number, lat: number): number;
-      setRequireDepot(enabled: boolean): void;
       postBounty(station: number, amount: number): void;
       unlockTech(tech: number): void;
       castSpell(kind: number): void;

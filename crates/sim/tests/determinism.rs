@@ -62,8 +62,7 @@ fn replay_equality() {
 //   0x9c0d_0265_845a_38b3 — S11 rival (the raider SoA slices + spawn-accum/cursor/breach/breach-heal-accum
 //                           appended, all empty/0 for transit — no reservoir ⇒ no raiders)
 //   0x8453_c57f_e54e_5829 — S11 spell arm (the `spells_cast` u32 appended, 0 for transit — no SPELLCRAFT)
-//   0x28b0_c152_a41f_cdab — depot rework (the `is_depot` Vec<bool> appended, empty for transit — no depot)
-const GOLDEN_TRANSIT_HASH: u64 = 0x28b0_c152_a41f_cdab;
+const GOLDEN_TRANSIT_HASH: u64 = 0x8453_c57f_e54e_5829;
 
 #[test]
 fn golden_transit_hash_pinned() {

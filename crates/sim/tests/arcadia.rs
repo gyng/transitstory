@@ -235,9 +235,7 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // appended zero bytes only). Prior: 0x1757_0632_3aee_0a4a.
 // S11 spell arm: the `spells_cast` u32 joins Canonical (0 — the fixture's log predates SPELLCRAFT, so the
 // spell arm never casts; appended zero only). Prior: 0xbb8a_7ea7_9311_814e.
-// Depot rework: the `is_depot` Vec<bool> joins Canonical (empty — the fixture places no depot; appended
-// length-0 slice only, behaviour byte-identical). Prior: 0xbdd6_84be_e6be_b78a.
-const GOLDEN_ARCADIA_HASH: u64 = 0x523b_1a62_1611_df7e;
+const GOLDEN_ARCADIA_HASH: u64 = 0xbdd6_84be_e6be_b78a;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

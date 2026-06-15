@@ -120,13 +120,6 @@ pub struct CityData {
     /// a non-hashed accumulator and only mutates the already-hashed `forge_stock`, gated off by default).
     #[serde(default)]
     pub walk_backstop_micro: i64,
-    /// Depot rework: when true, a line runs trains only if one of its stops is a DEPOT (built + connected).
-    /// Baked TRUE for the arcadia continent (the fantasy rolling-stock rework); the real-city transit mode
-    /// opts in at runtime via `SetRequireDepot`. **false (serde + `Default`) ⇒ NO depot requirement (the
-    /// shipped behaviour)** — so transit, the arcadia golden fixture, and native tests run trains freely,
-    /// byte-identical (the gate is a pure `apply`-time check; only the appended `is_depot` Vec re-pins).
-    #[serde(default)]
-    pub require_depot: bool,
     /// How long (sim ms) a waiting rider tolerates before giving up (renege). A per-city
     /// demand knob, NOT a hardcoded constant. Cities loaded from JSON without the field get
     /// `default_patience_ms`; `CityData::default()` leaves it 0, which DISABLES renege (handy

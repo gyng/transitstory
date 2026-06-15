@@ -19,7 +19,6 @@ const TOOL_HINT: Record<Tool, string> = {
   bulldozer: "[X] Click a station or line to demolish it · Esc or right-click to stop",
   barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc / right-click when done",
   bounty: "[Y] Click a town to post a bounty — baits AI legions to attack it · Esc / right-click when done",
-  depot: "[D] Click to place a depot — add it as a stop on a line so that line can run trains · Esc when done",
 };
 
 const TOOLS: [Tool, string][] = [
@@ -34,9 +33,6 @@ const FANTASY_TOOLS: [Tool, string][] = [
   ["barracks", "🏰 Barracks"],
   ["bounty", "⚑ Bounty"],
 ];
-
-// Depot rework: the Depot tool shows whenever depots are REQUIRED (baked on for arcadia; the transit opt-in).
-const DEPOT_TOOL: [Tool, string] = ["depot", "🏭 Depot"];
 
 // A doubling gear ladder (1×→8×) for fine control, plus a max fast-forward. The sim is a GameLoop
 // knob (loop.setSpeed), never a Command — speed never touches sim state.
@@ -189,7 +185,7 @@ export function Toolbar() {
       // X=bulldoze; arcadia adds B=Barracks, Y=bountY). Arming a tool in Run flips to Build first so it
       // isn't silently inert behind the build-gated pointer/popover.
       const lk = e.key.toLowerCase();
-      const TOOL_KEYS: Record<string, Tool> = { t: "station", v: "select", x: "bulldozer", d: "depot" };
+      const TOOL_KEYS: Record<string, Tool> = { t: "station", v: "select", x: "bulldozer" };
       if (ui.ruleset === "arcadia") { TOOL_KEYS.b = "barracks"; TOOL_KEYS.y = "bounty"; }
       const tool = TOOL_KEYS[lk];
       if (tool) {
@@ -261,7 +257,7 @@ export function Toolbar() {
             {activeMode.hint}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            {[...TOOLS, ...(stats.requireDepot ? [DEPOT_TOOL] : []), ...(ui.ruleset === "arcadia" ? FANTASY_TOOLS : [])].map(([t, label]) => {
+            {[...TOOLS, ...(ui.ruleset === "arcadia" ? FANTASY_TOOLS : [])].map(([t, label]) => {
               const on = ui.tool === t;
               const activeBg = t === "bulldozer" ? "#d62828" : "#1c2024"; // bulldozer reads destructive
               return (

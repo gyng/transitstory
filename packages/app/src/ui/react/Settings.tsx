@@ -131,16 +131,6 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         on={stats.economyEnabled}
         onToggle={() => game.setEconomy(!stats.economyEnabled)}
       />
-      {/* Depot rework: the transit opt-in (baked on for arcadia, so the toggle is real-city only). When on,
-          a line runs trains only if a stop is a depot — build one with the 🏭 Depot tool + add it to the line. */}
-      {ui.ruleset !== "arcadia" && (
-        <Toggle
-          label="🏭  Require depots"
-          testid="setting-depot"
-          on={stats.requireDepot}
-          onToggle={() => game.setRequireDepot(!stats.requireDepot)}
-        />
-      )}
 
       <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
         Demand model
