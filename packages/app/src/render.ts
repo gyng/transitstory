@@ -961,9 +961,9 @@ const ARROW_MAPPING = { arrow: { x: 0, y: 0, width: 64, height: 64, mask: true, 
 /** Crowding band for a moving train, mirroring loadPip / the waiting-ring language so "busy" and
  *  "crush" read the same colour wherever they appear. Outline only — the body keeps line identity. */
 function loadRing(load: number): { color: [number, number, number, number]; width: number } {
-  if (load >= 0.9) return { color: [214, 40, 40, 240], width: 2.5 }; // crush — vermillion
-  if (load >= 0.6) return { color: [230, 159, 0, 230], width: 2 }; // busy — amber
-  return { color: [255, 255, 255, 230], width: 1.5 }; // healthy — white
+  if (load >= 0.9) return { color: [214, 40, 40, 255], width: 4 }; // crush — thick vermillion (unmistakable)
+  if (load >= 0.6) return { color: [230, 159, 0, 245], width: 3 }; // busy — amber
+  return { color: [255, 255, 255, 230], width: 1.5 }; // healthy — thin white
 }
 
 /** The per-frame vehicle layers (moving trains): a line-coloured body whose radius grows and
@@ -980,9 +980,12 @@ export function vehicleLayers(dots: VehicleDot[]): Layer[] {
       id: "vehicles",
       data: dots,
       getPosition: (d: VehicleDot) => [d.lng, d.lat],
-      getRadius: (d: VehicleDot) => 7 + d.load * 3,
+      // Load reads as SIZE — an empty train is a small dot, a crush-loaded one a big fat blob (the "more
+      // cars = more load" cue, without per-car path geometry). The thicker white→amber→red ring reinforces it.
+      getRadius: (d: VehicleDot) => 5 + d.load * 11,
       radiusUnits: "pixels",
-      radiusMinPixels: 6,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 18,
       getFillColor: (d: VehicleDot) => d.color,
       stroked: true,
       getLineColor: (d: VehicleDot) => loadRing(d.load).color,
