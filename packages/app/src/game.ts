@@ -579,7 +579,8 @@ export class Game {
     this.refresh();
   }
 
-  /** Pick a roster entry (AIR's aircraft ladder) for a line, keeping its train count. */
+  /** Pick a roster entry — the rolling-stock MODEL — for a line, keeping its train count. The roster is
+   *  AIR's aircraft ladder or RAIL's train-model catalog (Standard/Heavy/Express); `spec` is the index. */
   setAircraft(line: number, spec: number): void {
     const count = Math.max(1, this.lineTrains(line));
     this.noteRejections(this.bridge.apply(cmd.assignTrainset(line, spec, count)));

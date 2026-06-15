@@ -91,14 +91,48 @@ pub const AIR_ROSTER: &[TrainsetSpec] = &[
     TrainsetSpec { capacity: 525, v_max_mm_s: 2_100_000_000, accel_mm_s2: 2_700_000_000, decel_mm_s2: 2_700_000_000, dwell_ms: 120_000, length_mm: 73_000 },
 ];
 
-/// Resolve the concrete vehicle spec for a line: its mode default, or the assigned aircraft within
+/// RAIL rolling-stock roster — the train MODELS a player buys per line via `AssignTrainset{spec}`
+/// (the depot rework's catalog, Stage 1). Index 0 is the default and is **byte-identical to `SPECS[0]`**
+/// (the shipped metro), so a default route — and every existing save + both golden fixtures — replays
+/// bit-for-bit (the state hash is unaffected; `rail_roster_default_is_byte_identical` pins this). Higher
+/// indices trade **capacity ⇄ speed ⇄ cost** so no model is strictly best: Heavy hauls far more per trip
+/// but is slower + pricier (the bulk-freight workhorse); Express is fast + cheap but light (rush a thin
+/// spoke). Per-model build cost lives in `RAIL_COST` (parallel). Names/icons for the picker live in
+/// the frontend `shared.ts` mirror. Other modes keep their single preset (no roster yet).
+pub const RAIL_ROSTER: &[TrainsetSpec] = &[
+    // 0 Standard — the shipped metro (MUST equal SPECS[0] exactly; golden-locked).
+    TrainsetSpec { capacity: 7, v_max_mm_s: 660_000, accel_mm_s2: 810_000, decel_mm_s2: 1_080_000, dwell_ms: 700, length_mm: 140_000 },
+    // 1 Heavy — bulk hauler: ~2× capacity, slower top speed + longer dwell (loading), longer consist.
+    TrainsetSpec { capacity: 15, v_max_mm_s: 480_000, accel_mm_s2: 600_000, decel_mm_s2: 900_000, dwell_ms: 1_000, length_mm: 210_000 },
+    // 2 Express — fast + light: higher top speed, short dwell, short consist, but ~half the capacity.
+    TrainsetSpec { capacity: 4, v_max_mm_s: 900_000, accel_mm_s2: 1_020_000, decel_mm_s2: 1_260_000, dwell_ms: 500, length_mm: 90_000 },
+];
+
+/// Per-RAIL-model build cost ($/vehicle), parallel to `RAIL_ROSTER`. Index 0 MUST equal the global
+/// `TRAIN_COST` (world.rs) so a default route's capital — and the goldens — are byte-identical. Heavy
+/// costs more (you pay for the haul), Express less (light stock). Read by `recompute_line_buildability`.
+pub const RAIL_COST: &[i64] = &[15_000_000, 27_000_000, 11_000_000];
+
+/// Build cost ($/vehicle) for a line's chosen model. RAIL reads its roster; every other mode keeps the
+/// flat `TRAIN_COST` (byte-identical — `default_train_cost` 15M passed by the caller). Out-of-range
+/// spec ids clamp to the last entry (never panics).
+#[inline]
+pub fn train_cost(mode: u8, spec_id: u8, default_train_cost: i64) -> i64 {
+    match mode {
+        tmode::RAIL => RAIL_COST[(spec_id as usize).min(RAIL_COST.len() - 1)],
+        _ => default_train_cost,
+    }
+}
+
+/// Resolve the concrete vehicle spec for a line: its mode default, or the assigned model within
 /// the mode's roster. `spec_id == 0` is ALWAYS the mode default (so a default route — and every
-/// existing save — replays bit-for-bit and the state hash is unaffected); only AIR currently offers
-/// alternate stock. Out-of-range ids clamp to the last roster entry (never panics on the hot path).
+/// existing save — replays bit-for-bit and the state hash is unaffected). RAIL + AIR offer alternate
+/// stock; other modes keep their single preset. Out-of-range ids clamp to the last roster entry.
 #[inline]
 pub fn spec_for(mode: u8, spec_id: u8) -> TrainsetSpec {
     match mode {
         tmode::AIR => AIR_ROSTER[(spec_id as usize).min(AIR_ROSTER.len() - 1)],
+        tmode::RAIL => RAIL_ROSTER[(spec_id as usize).min(RAIL_ROSTER.len() - 1)],
         // Other modes have no roster yet — the mode preset regardless of spec id (always 0 today).
         _ => spec_for_mode(mode),
     }

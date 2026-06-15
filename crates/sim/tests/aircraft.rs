@@ -62,13 +62,15 @@ fn spec_id_clamps_in_range() {
     assert_eq!(clamped.dwell_ms, last.dwell_ms);
 }
 
-/// Non-air modes have no roster yet: any spec id resolves to the mode preset, so a stray spec on a
-/// rail/bus/ferry/heavy line is harmless.
+/// BUS/FERRY/HEAVY have no roster: any spec id resolves to the mode preset, so a stray spec is harmless.
+/// (RAIL now HAS a model catalog — covered by tests/train_models.rs — and spec 0 stays the mode preset.)
 #[test]
-fn non_air_modes_ignore_spec_id() {
-    for mode in [tmode::RAIL, tmode::BUS, tmode::FERRY, tmode::HEAVY] {
+fn non_roster_modes_ignore_spec_id() {
+    for mode in [tmode::BUS, tmode::FERRY, tmode::HEAVY] {
         assert_eq!(spec_for(mode, 3).capacity, spec_for_mode(mode).capacity, "mode {mode}");
     }
+    // RAIL spec 0 is still the mode preset (the golden-locked default); only spec > 0 picks a new model.
+    assert_eq!(spec_for(tmode::RAIL, 0).capacity, spec_for_mode(tmode::RAIL).capacity);
 }
 
 /// A globe-scale AIR line assigned a non-default aircraft (the widebody, spec 2). Two cities ~1000 km

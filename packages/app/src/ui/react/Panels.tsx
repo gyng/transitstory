@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PerLine, Stats } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { AIR_ROSTER, PANEL_STYLE, SIM_MS_PER_CLOCK_MIN, hex, loadPip, modeIcon } from "./shared";
+import { AIR_ROSTER, RAIL_ROSTER, PANEL_STYLE, SIM_MS_PER_CLOCK_MIN, hex, loadPip, modeIcon } from "./shared";
 import { linePnl, lineSatisfaction, fmtSignedMoney, fmtCount, shortLineName, swatchInk } from "./lineEconomics";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
@@ -356,6 +356,43 @@ function Editor({ l }: { l: PerLine }) {
                 >
                   <span>{sel ? "✓ " : ""}{a.name}</span>
                   <span style={{ color: "#7a818a", fontWeight: 400 }}>{a.capacity} seats · {a.turnMin} min turn</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Train-model picker (RAIL lines): the depot rework's catalog — buy Standard / Heavy / Express.
+          A real capacity ⇄ speed ⇄ cost tradeoff: Heavy hauls twice the load but is slower + pricier,
+          Express is fast + cheap but light. Index = AssignTrainset.spec; the sim clamps anything sane. */}
+      {l.mode === 0 && (
+        <div data-testid="model-picker" style={{ marginBottom: "10px" }}>
+          <div style={{ fontWeight: 600, marginBottom: "4px" }}>Train model</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {RAIL_ROSTER.map((m, i) => {
+              const sel = (l.trainsetSpec ?? 0) === i;
+              return (
+                <button
+                  key={m.name}
+                  data-testid={`model-${i}`}
+                  title={m.blurb}
+                  onClick={() => game.setAircraft(id, i)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "5px 8px",
+                    border: sel ? "1px solid #0072b2" : "1px solid #d7dade",
+                    borderRadius: 7,
+                    background: sel ? "#eef4fb" : "#fff",
+                    font: "600 12px system-ui",
+                    color: "#1c2024",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>{sel ? "✓ " : ""}{m.name}</span>
+                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{m.capacity} cap · {m.kmh} km/h · ${m.costM}M</span>
                 </button>
               );
             })}

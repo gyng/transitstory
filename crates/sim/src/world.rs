@@ -681,7 +681,13 @@ impl World {
         }
         // Per-span build modes live on each Path now (sized in Path::rebuild); nothing to size here.
         let (disr, water, mut capital) = self.line_cost_metrics(&self.lines[idx]);
-        capital += self.lines[idx].trainset.map(|t| t.count as i64).unwrap_or(0) * TRAIN_COST;
+        // Per-MODEL rolling-stock cost (depot rework Stage 1): RAIL reads its roster (Heavy pricier,
+        // Express cheaper); every other mode keeps the flat TRAIN_COST. spec 0 ⇒ TRAIN_COST ⇒ byte-identical.
+        let mode = self.lines[idx].mode;
+        capital += self.lines[idx]
+            .trainset
+            .map(|t| t.count as i64 * crate::trainset::train_cost(mode, t.spec, TRAIN_COST))
+            .unwrap_or(0);
         self.lines[idx].disruption_units = disr;
         self.lines[idx].crosses_water_surface = water;
         self.lines[idx].capital_cost = capital;
