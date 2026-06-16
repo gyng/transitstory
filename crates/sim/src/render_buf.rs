@@ -273,6 +273,23 @@ pub fn raider_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved RAIDER TARGET positions `[tx0,ty0,...]` in metres (#war — the rival's intent), aligned 1:1
+/// with `raider_positions_m` (same MARCHING filter + order). Each entry is where that raider is HEADING:
+/// the capital (a breacher), a supply-line seam (a saboteur), or a captured town (a reclaimer) — so the UI
+/// can draw the rival's intent and the player can see the smart enemy coming. Empty for transit.
+pub fn raider_targets_m(w: &World) -> Vec<f32> {
+    let r = &w.raiders;
+    let mut out = Vec::with_capacity(r.live() * 2);
+    for i in 0..r.len() {
+        if r.state[i] != crate::raider::MARCHING {
+            continue;
+        }
+        out.push(mm_to_m(r.tx_mm[i]));
+        out.push(mm_to_m(r.ty_mm[i]));
+    }
+    out
+}
+
 /// Interleaved SPELL FLASHES `[x0_m, y0_m, kind0, alpha0, ...]` (fantasy S11 — the spell arm). A brief
 /// burst at each auto-cast site; `kind` (0 purge / 1 smite / 2 warpath) picks the colour, `alpha` (1→0
 /// over the flash's life) the fade. Render-only (the flashes are not hashed). Empty otherwise.

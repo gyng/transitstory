@@ -126,6 +126,12 @@ export class SimBridge {
     return this.sim.raiderPositions();
   }
 
+  /** Interleaved raider TARGET positions `[tx0,ty0,...]` in metres (#war — the rival's intent), aligned with
+   *  raiderPositions. Where each raider is heading (capital / supply seam / captured town). Empty for transit. */
+  raiderTargets(): Float32Array {
+    return this.sim.raiderTargets();
+  }
+
   /** Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy/arcadia, S11 — the spell arm). */
   spellFlashes(): Float32Array {
     return this.sim.spellFlashes();

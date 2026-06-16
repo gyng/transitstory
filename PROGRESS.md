@@ -2901,6 +2901,21 @@ re-take it — a stable-ish boundary where conquest rate meets re-contest rate.
   captured town flips back to contested; `towns_captured` untouched). Native 52/52, both goldens unchanged,
   the winnability e2e all pass (the conquest e2e's captured town is RAILED ⇒ defended ⇒ unaffected).
 
+## War-batch polish — the rival's intent made legible (2026-06-16)
+
+The smarter AI (S5/S6) was only visible via OUTCOMES (a cut line, a "⚔ Lost!" town). Now the rival's INTENT
+reads on the map: a toxic-green arc (the raiders' own rot hue, distinct from the player's red legion intent)
+from each SMART raider — a SABOTEUR heading for your rail, a RECLAIMER heading for an unheld town — to its
+target, so you see the threat coming and can rail-to / defend it. BREACHERS (capital-bound) are filtered out
+(the obvious rot threat; drawing them would fan a mess of lines into the capital).
+
+- **Core/wasm:** `render_buf::raider_targets_m` (the raider `tx/ty` in metres, aligned 1:1 with
+  `raider_positions_m`) + the `raiderTargets` wasm export — render-only (not hashed), so golden-neutral.
+- **Frontend:** `raiderIntentLayer` (an ArcLayer mirroring `armyIntentLayer`) + `Game.raiderIntentLayerAt`
+  (filters out capital-target breachers by comparing to the capital marker), wired into composeAndSet under
+  the raider dots, and hidden in the Supply lens. Native goldens unchanged, the rival/arcadia e2e pass with
+  the new layer live (the render path renders cleanly with raiders afield).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

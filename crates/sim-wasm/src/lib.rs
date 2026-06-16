@@ -105,6 +105,14 @@ impl Sim {
         sim::render_buf::raider_positions_m(&self.world)
     }
 
+    /// Interleaved RAIDER TARGET positions `[tx0,ty0,...]` in metres (#war — the rival's intent), aligned
+    /// with `raiderPositions`. Each raider's entry is where it's HEADING (capital / supply seam / captured
+    /// town), so the UI can draw the rival's intent. Empty for transit / before the rival reaches the realm.
+    #[wasm_bindgen(js_name = raiderTargets)]
+    pub fn raider_targets(&self) -> Vec<f32> {
+        sim::render_buf::raider_targets_m(&self.world)
+    }
+
     /// Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy, S11 — the spell arm). Empty
     /// otherwise. Read each frame like positions; tiny (a handful of brief flashes).
     #[wasm_bindgen(js_name = spellFlashes)]

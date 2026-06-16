@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -77,7 +77,7 @@ export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "b
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "armies", "army-badges", "raiders", "raider-badges", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "army-badges", "raiders", "raider-badges", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
   decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges", "ambient-traders"]),
 };
@@ -2463,6 +2463,27 @@ export class Game {
     return arcs.length > 0 ? armyIntentLayer(arcs) : null;
   }
 
+  /** Rail-attack intent (#war): toxic-green arcs from each SMART raider (a saboteur heading for your rail, a
+   *  reclaimer heading for an unheld town) to its target — so the rival's targeting reads on the map and you
+   *  can rail-to / defend the threatened spot. Breachers (capital-bound) are filtered out: they're the
+   *  obvious rot threat AND would fan a mess of lines into the capital. Null when no smart raider marches. */
+  raiderIntentLayerAt(): Layer | null {
+    const pos = this.bridge.raiderPositions();
+    const tgt = this.bridge.raiderTargets();
+    const count = Math.min(pos.length, tgt.length) >> 1;
+    if (count === 0) return null;
+    const cap = this.towns.find((t) => t.kind === "capital");
+    const arcs: IntentArc[] = [];
+    for (let i = 0; i < count; i++) {
+      const [tlng, tlat] = metersToLngLat([tgt[i * 2], tgt[i * 2 + 1]]);
+      // Skip a breacher (target ≈ the capital — the same position the capital town marker sits at).
+      if (cap && Math.abs(tlng - cap.lng) < 1e-5 && Math.abs(tlat - cap.lat) < 1e-5) continue;
+      const [flng, flat] = metersToLngLat([pos[i * 2], pos[i * 2 + 1]]);
+      arcs.push({ from: [flng, flat], to: [tlng, tlat] });
+    }
+    return arcs.length > 0 ? raiderIntentLayer(arcs) : null;
+  }
+
   /** Decadence-raider dots (fantasy, S11 — the rival). Same metres→lng/lat-in-place path as legions.
    *  Null when no raiders march (transit always; arcadia until the rival fields one). */
   raiderLayerAt(): Layer[] {
@@ -2514,6 +2535,8 @@ export class Game {
     const peep = peeps ? [peeps] : [];
     const intent = this.armyIntentLayerAt();
     const intentArcs = intent ? [intent] : []; // legion→target intent, under the legion dots (over the network)
+    const rIntent = this.raiderIntentLayerAt();
+    const raiderIntentArcs = rIntent ? [rIntent] : []; // #war: smart-raider→target intent (your rail / unheld towns)
     const army = this.armyLayerAt(); // [dot, ⚔ badge] — legions above carts, below peeps/labels (z-order)
     const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rival's marauders, above legions
     const flash = this.spellFlashLayerAt();
@@ -2550,7 +2573,7 @@ export class Game {
     // TTD signals (opt-in lens): single-track block state UNDER the vehicles, so a cart rides on top of
     // the signal that gates it. Per-frame (occupancy shifts with the trains), like the other motion layers.
     const signals = this.showSignals ? [signalLayer(this.signalMarkers())] : [];
-    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...army, ...raider, ...spells, ...peep, ...above];
+    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...army, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

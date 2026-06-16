@@ -1307,6 +1307,25 @@ export function armyIntentLayer(arcs: IntentArc[]): Layer {
   });
 }
 
+/** Rail-attack intent (#war): the RIVAL's targeting made legible — a toxic-green arc from each SMART raider
+ *  (a saboteur heading for your rail, a reclaimer heading for an unheld town) to its target, so you see the
+ *  smart enemy coming and can rail-to / defend it. Toxic green = the raiders' own rot hue (distinct from the
+ *  player's red legion intent). Breachers (capital-bound) are filtered out upstream so the map stays legible. */
+export function raiderIntentLayer(arcs: IntentArc[]): Layer {
+  return new ArcLayer({
+    id: "raider-intent",
+    data: arcs,
+    getSourcePosition: (d: IntentArc) => d.from,
+    getTargetPosition: (d: IntentArc) => d.to,
+    getSourceColor: [120, 170, 70, 40], // faint at the raider
+    getTargetColor: [150, 200, 90, 175], // stronger at what it's coming for (your rail / unheld town)
+    getWidth: 1.5,
+    widthUnits: "pixels",
+    widthMinPixels: 1,
+    getHeight: 0.3,
+  });
+}
+
 export function armyLayer(positionsLngLat: Float32Array, count: number): Layer {
   return new ScatterplotLayer({
     id: "armies",
