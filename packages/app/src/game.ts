@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -1708,13 +1708,24 @@ export class Game {
         // A line with surface track over water renders red until elevated/tunnelled.
         const color = l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color);
         const mode = l.mode; // heavy/high-speed rail (4) gets distinct mainline styling
+        const raided = (l.raidedRemainingMs ?? 0) > 0; // #war: a raider has CUT this line (trains frozen)
         // The trunk, plus one path per branch (P3) — all the same id/colour so a Y-shaped line
         // (e.g. the Circle Line's Marina Bay spur) draws as one coloured service.
         const paths = [l.polylineMm, ...(l.branchPolylinesMm ?? [])];
         return paths
           .filter((p) => p.length >= 2)
-          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode }));
+          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided }));
       });
+
+    // Rail-attack (#war): a "⚔ RAIDED" badge + recovery countdown at each cut line's midpoint, so the
+    // player SEES which supply line a raider severed and how long until it re-opens (the front pressure).
+    const raidLabels: RaidLabel[] = [];
+    for (const l of linesV) {
+      if (l.removed || (l.raidedRemainingMs ?? 0) <= 0 || l.polylineMm.length < 2) continue;
+      const [mx, my] = l.polylineMm[Math.floor(l.polylineMm.length / 2)];
+      const [lng, lat] = mmToLngLat([mx, my]);
+      raidLabels.push({ lng, lat, text: `⚔ RAIDED ${Math.ceil((l.raidedRemainingMs ?? 0) / 1000)}s` });
+    }
 
     // Blueprint: the draft threaded through its control points (so bends render live) + cursor leg.
     const blueprint: [number, number][] = this.draftPointsMm().map((p) => mmToLngLat(p));
@@ -1851,6 +1862,7 @@ export class Game {
       waiting,
       bufferPips,
       frontier, // #infrastructure rail-frontier node-halos (where rail may extend); empty unless the gate is on
+      raidLabels, // #war: "⚔ RAIDED" badges + countdown on cut lines; empty unless a raider severed one
       hazards,
       demand,
       desire,

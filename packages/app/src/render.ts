@@ -28,6 +28,13 @@ export interface LinePath {
   color: Rgb;
   path: [number, number][];
   mode: number; // transport mode (trainset::tmode); 4 = heavy/high-speed rail (distinct styling)
+  raided?: boolean; // #war: this line is CUT (a raider severed it) — its trains are frozen; renders red
+}
+/** Rail-attack (#war): a "⚔ RAIDED" badge at a severed line's midpoint, with the live recovery countdown. */
+export interface RaidLabel {
+  lng: number;
+  lat: number;
+  text: string;
 }
 export interface CatchmentCircle {
   lng: number;
@@ -321,6 +328,7 @@ export interface RenderView {
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   bufferPips: BufferPip[]; // fantasy #8: node Forge-Line buffer-fill gauges (empty for transit)
   frontier: FrontierNode[]; // fantasy #infrastructure: rail-frontier node-halos (where rail may extend) — empty for transit
+  raidLabels: RaidLabel[]; // fantasy #war: "⚔ RAIDED" badge + countdown on cut lines — empty unless a raider severed one
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
@@ -761,6 +769,22 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       capRounded: true,
       jointRounded: true,
     }),
+    // Rail-attack (#war): a RAIDED line glows angry red OVER its own colour — a raider severed it, its
+    // trains are frozen until it recovers. Drawn just over the network so the cut reads instantly; the
+    // line's hue still peeks at the casing edges, so identity isn't lost. updateTriggers keyed on the raided
+    // set so the overlay only rebuilds when a line is cut or re-opens (no per-frame churn).
+    new PathLayer({
+      id: "lines-raided",
+      data: view.lines.filter((d) => d.raided),
+      getPath: (d: LinePath) => d.path,
+      getColor: [224, 48, 48, 205],
+      getWidth: 5,
+      widthUnits: "pixels",
+      widthMinPixels: 3,
+      capRounded: true,
+      jointRounded: true,
+      updateTriggers: { getColor: view.lines.filter((d) => d.raided).length },
+    }),
     // OD "desire lines" from the SELECTED station only (on-demand → never mud): curved arcs to the
     // destinations its riders are drawn toward. Origin = selection blue, destination = warm, with
     // width + dest opacity scaling with the gravity pull — "where do people here want to go". Over
@@ -984,6 +1008,25 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getText: view.pinnedLabel?.text ?? "",
         getPosition: view.pinnedLabel ? `${view.pinnedLabel.lng},${view.pinnedLabel.lat}` : "",
       },
+    }),
+    // Rail-attack (#war): the "⚔ RAIDED Xs" badge at each cut line's midpoint — a red plate with the live
+    // recovery countdown, so the severed supply line + its time-to-reopen read at a glance (front pressure).
+    new TextLayer<RaidLabel>({
+      id: "raid-labels",
+      data: view.raidLabels,
+      getPosition: (d) => [d.lng, d.lat],
+      getText: (d) => d.text,
+      characterSet: "auto",
+      getSize: 12,
+      sizeUnits: "pixels",
+      getColor: [255, 244, 238, 255],
+      fontWeight: 700,
+      background: true,
+      getBackgroundColor: [184, 28, 28, 235],
+      backgroundPadding: [6, 3],
+      getTextAnchor: "middle",
+      getAlignmentBaseline: "center",
+      updateTriggers: { getText: view.raidLabels.map((r) => r.text).join("|") },
     }),
   ];
 

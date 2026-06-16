@@ -238,4 +238,9 @@ pub struct LineView {
     pub track_types: Vec<u8>,
     /// Tombstoned (bulldozed): kept for index-stable ids, but the frontend skips rendering it.
     pub removed: bool,
+    /// Rail-attack (#war): ms remaining on this line's RAID — 0 = operational, >0 = CUT (its trains frozen),
+    /// so the frontend draws it severed/red with a countdown. A render readout (NOT hashed); 0 for transit
+    /// + every un-raided line.
+    #[serde(default)]
+    pub raided_remaining_ms: f64,
 }

@@ -62,7 +62,9 @@ fn replay_equality() {
 //   0x9c0d_0265_845a_38b3 — S11 rival (the raider SoA slices + spawn-accum/cursor/breach/breach-heal-accum
 //                           appended, all empty/0 for transit — no reservoir ⇒ no raiders)
 //   0x8453_c57f_e54e_5829 — S11 spell arm (the `spells_cast` u32 appended, 0 for transit — no SPELLCRAFT)
-const GOLDEN_TRANSIT_HASH: u64 = 0x8453_c57f_e54e_5829;
+//   0x28b0_c152_a41f_cdab — war-batch rail-attack (the `line_disabled_until_ms` slice appended, EMPTY for
+//                           transit — no raiders ⇒ no raid ⇒ no cut lines; the re-pin is the length-0 byte)
+const GOLDEN_TRANSIT_HASH: u64 = 0x28b0_c152_a41f_cdab;
 
 #[test]
 fn golden_transit_hash_pinned() {

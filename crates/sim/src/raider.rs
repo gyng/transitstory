@@ -38,6 +38,16 @@ const RAIDER_DAMAGE: i64 = 300;
 const BREACH_HEAL_PER_S: i64 = 6;
 /// A raider within this range (mm) of a station ON A BUILT LINE is cut down (coverage = defence).
 const DEFENSE_RANGE_MM: i64 = 4_000_000;
+/// Rail-attack (#war): a raider that slips the station cordon and reaches an OPERATIONAL line's TRACK
+/// within this range (mm of the stop-to-stop polyline) CUTS it — freezing its trains for `RAIL_DISABLE_MS`
+/// — and spends itself (despawn). Strictly SMALLER than `DEFENSE_RANGE_MM`, so a defended station always
+/// cuts the raider down before it can reach the adjacent track; only LONG sparse spans (mid-span > def
+/// range from either endpoint) expose a seam a raider can sever. Denser networks defend; this is the front.
+const RAIL_ATTACK_RANGE_MM: i64 = 2_000_000;
+/// How long a cut line stays RAIDED (sim-ms) — its trains freeze in place, no delivery, until it lapses.
+/// Longer than the base spawn period so a raid is a real disruption you must out-build, not a blink; the
+/// line auto-recovers (no permanent loss — the log is append-only, the timer just gates dispatch/advance).
+const RAIL_DISABLE_MS: i64 = 120_000;
 /// Within this range (mm) of the capital counts as ARRIVED (deepen the rot + despawn).
 const ARRIVE_MM: i64 = 2_000_000;
 /// Base spawn period (ms). The cadence SHORTENS as decadence rises (decadence-fed spawning — "their
@@ -170,6 +180,7 @@ fn resolve(world: &mut World) {
     };
     let def2 = def_range.saturating_mul(def_range);
     let arr2 = ARRIVE_MM.saturating_mul(ARRIVE_MM);
+    let atk2 = (RAIL_ATTACK_RANGE_MM as i128) * (RAIL_ATTACK_RANGE_MM as i128); // #war: rail-attack reach²
     for i in 0..world.raiders.len() {
         if world.raiders.state[i] != MARCHING {
             continue;
@@ -177,6 +188,14 @@ fn resolve(world: &mut World) {
         let (x, y) = (world.raiders.x_mm[i], world.raiders.y_mm[i]);
         if intercepted(world, x, y, def2) {
             world.raiders.state[i] = DONE; // the rail network cuts it down
+            continue;
+        }
+        // Rail-attack (#war): the cordon missed it, but it has reached an OPERATIONAL line's TRACK — CUT
+        // that line (its trains freeze for RAIL_DISABLE_MS) and spend the raider in the raid. The vulnerable
+        // seam is a long span far from any defending station; a dense network leaves no gap to sever.
+        if let Some(li) = nearest_rail(world, x, y, atk2) {
+            world.disable_line(li, world.clock_ms.saturating_add(RAIL_DISABLE_MS));
+            world.raiders.state[i] = DONE;
             continue;
         }
         let (dx, dy) = (cx - x, cy - y);
@@ -224,4 +243,49 @@ fn intercepted(world: &World, x: i64, y: i64, def2: i64) -> bool {
         }
     }
     false
+}
+
+/// Rail-attack (#war): the nearest OPERATIONAL line whose TRACK (its stop-to-stop trunk polyline) passes
+/// within `range2` (mm²) of `(x, y)`, by line index. Index-ordered, lowest-index tiebreak ⇒ deterministic.
+/// Skips removed / sub-2-stop / already-RAIDED lines (a raider can't re-cut a frozen line). The trunk
+/// polyline uses stop positions (waypoint bends are ignored — a forgiving straight-segment approximation).
+fn nearest_rail(world: &World, x: i64, y: i64, range2: i128) -> Option<usize> {
+    let mut best: Option<(i128, usize)> = None;
+    for (li, line) in world.lines.iter().enumerate() {
+        if line.removed || line.stops.len() < 2 || world.line_disabled(li) {
+            continue;
+        }
+        for w in line.stops.windows(2) {
+            let (Some(a), Some(b)) = (world.stations.get(w[0].index()), world.stations.get(w[1].index()))
+            else {
+                continue;
+            };
+            if a.removed || b.removed {
+                continue;
+            }
+            let d2 = seg_dist2(x, y, a.pos.x_mm, a.pos.y_mm, b.pos.x_mm, b.pos.y_mm);
+            if d2 <= range2 && best.map_or(true, |(bd, _)| d2 < bd) {
+                best = Some((d2, li));
+            }
+        }
+    }
+    best.map(|(_, li)| li)
+}
+
+/// Squared distance (i128 mm²) from point P to segment AB — integer-exact (clamped i128 projection, no
+/// float), so the rail-attack proximity test is determinism-safe. Degenerate AB (a == b) ⇒ |PA|².
+fn seg_dist2(px: i64, py: i64, ax: i64, ay: i64, bx: i64, by: i64) -> i128 {
+    let (px, py) = (px as i128, py as i128);
+    let (ax, ay) = (ax as i128, ay as i128);
+    let (bx, by) = (bx as i128, by as i128);
+    let (abx, aby) = (bx - ax, by - ay);
+    let (apx, apy) = (px - ax, py - ay);
+    let ab2 = abx * abx + aby * aby;
+    if ab2 == 0 {
+        return apx * apx + apy * apy;
+    }
+    let t = (apx * abx + apy * aby).clamp(0, ab2); // projection param × ab2, clamped to the segment
+    let (cx, cy) = (ax + abx * t / ab2, ay + aby * t / ab2);
+    let (dx, dy) = (px - cx, py - cy);
+    dx * dx + dy * dy
 }

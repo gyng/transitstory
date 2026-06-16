@@ -141,6 +141,12 @@ pub struct World {
     /// Sub-unit accumulator for the breach HEAL (so a slow per-tick decay rate isn't truncated to 0). 0
     /// for transit/demo. Hashed.
     pub raider_breach_heal_accum: i64,
+    /// Rail-attack (#war): per-LINE "disabled until" clock-ms — a raider that reaches a line's track CUTS
+    /// it for `RAIL_DISABLE_MS`; while `clock_ms < disabled_until`, the line is RAIDED: its trains freeze
+    /// in place (no advance, no delivery) until the timer lapses. **Hashed** (gameplay-causal). Lazily
+    /// grown ONLY when a raid lands (index = LineId), so it stays EMPTY for transit + both golden fixtures
+    /// (zero raiders ⇒ no raid ⇒ no growth) — appended-last + empty ⇒ byte-identical, no golden re-pin.
+    pub line_disabled_until_ms: Vec<i64>,
     /// Per-town resistance (siege HP, fantasy S8b): a defended town grinds down under siege; 0 = fallen.
     /// **Hashed.** Lazily sized to the node count (empty for transit). Index = StationId.
     pub town_value: Vec<i64>,
@@ -444,6 +450,10 @@ struct Canonical<'a> {
     /// Cumulative spells cast (fantasy, S11). Appended LAST — 0 for transit + the goldens (no SPELLCRAFT),
     /// so the re-pin is an appended zero, behaviour byte-identical.
     spells_cast: u32,
+    /// Per-line rail-attack disable timers (#war). Appended LAST — EMPTY for transit + both goldens (zero
+    /// raiders ⇒ no raid ⇒ the lazy Vec never grows), so the re-pin is the appended length-0 byte ONCE then
+    /// behaviour-byte-identical forever. Hashed: a raided line freezes its trains (replay-causal).
+    line_disabled_until_ms: &'a [i64],
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -534,6 +544,7 @@ impl World {
             raider_cursor: 0,
             raider_breach: 0,
             raider_breach_heal_accum: 0,
+            line_disabled_until_ms: Vec::new(),
             town_value: Vec::new(),
             towns_captured: 0,
             is_barracks: Vec::new(),
@@ -959,6 +970,30 @@ impl World {
             || l.branches
                 .iter()
                 .any(|b| b.stops.iter().any(|s| reach.contains(&(s.index() as u32))))
+    }
+
+    /// Rail-attack (#war): is `line` currently RAIDED (its disable timer still ahead of the clock)? The
+    /// timer Vec is lazily grown, so an absent index reads 0 ⇒ never frozen (transit + goldens take this
+    /// path for every line). A pure read.
+    pub fn line_disabled(&self, line: usize) -> bool {
+        self.line_disabled_until_ms.get(line).copied().unwrap_or(0) > self.clock_ms
+    }
+
+    /// Rail-attack (#war): CUT `line` until `until_ms`, lazily growing the timer Vec so it stays EMPTY
+    /// until the first raid (golden-neutral). Returns true iff it cut a fresh/operational line (false for
+    /// an out-of-range or already-more-disabled line — a raider that hits an already-raided line is wasted).
+    pub(crate) fn disable_line(&mut self, line: usize, until_ms: i64) -> bool {
+        if line >= self.lines.len() {
+            return false;
+        }
+        if self.line_disabled_until_ms.len() <= line {
+            self.line_disabled_until_ms.resize(line + 1, 0);
+        }
+        if self.line_disabled_until_ms[line] >= until_ms {
+            return false;
+        }
+        self.line_disabled_until_ms[line] = until_ms;
+        true
     }
 
     /// Current money: start budget + fares − capital − opex. Negative = over budget.
@@ -1876,6 +1911,7 @@ impl World {
             raider_breach: self.raider_breach,
             raider_breach_heal_accum: self.raider_breach_heal_accum,
             spells_cast: self.spells_cast,
+            line_disabled_until_ms: &self.line_disabled_until_ms,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)
@@ -2031,6 +2067,8 @@ impl World {
                 track_types: l.paths.first().map(|p| p.track_type.clone()).unwrap_or_default(),
                 crosses_water_surface: l.crosses_water_surface,
                 removed: l.removed,
+                // #war: ms left on this line's raid (0 = operational) — the lazy timer; absent ⇒ 0.
+                raided_remaining_ms: (self.line_disabled_until_ms.get(i).copied().unwrap_or(0) - self.clock_ms).max(0) as f64,
             })
             .collect()
     }

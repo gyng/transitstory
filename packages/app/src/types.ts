@@ -278,6 +278,9 @@ export interface LineView {
   trackTypes: number[]; // 0=Double,1=Single per span (P2)
   crossesWaterSurface: boolean;
   removed: boolean;
+  /** Rail-attack (#war): ms left on this line's RAID (0 = operational). >0 ⇒ the line is CUT (trains
+   *  frozen) and renders severed/red with a countdown. A render readout; 0 for transit / un-raided. */
+  raidedRemainingMs?: number;
 }
 
 /** The committed city manifest (frontend-facing fields; demand grid embedded for the sim). */

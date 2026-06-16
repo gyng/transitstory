@@ -206,6 +206,7 @@ fn cross_span_covered(cross_blocks: &[crate::world::CrossBlock], line: usize, pa
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
+    let disabled = &world.line_disabled_until_ms; // #war: RAIDED lines — their consists freeze in place
     let junctions = &world.junctions; // P4: immutable co-borrow (disjoint field) alongside &mut vehicles
     let cross_blocks = &world.cross_blocks; // Phase 2: cross-line shared-rail blocks (shared-rail.md)
     let build_lookup = &world.build_lookup;
@@ -414,6 +415,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         c_has_path[i] = true;
         let total = path.length_mm();
         if total <= 0 || path.arclen_mm.len() < 2 {
+            continue;
+        }
+        // Rail-attack (#war): a RAIDED line is frozen — its consist holds in place (c_move stays false ⇒
+        // no advance, no boarding, no delivery) until the disable timer lapses, then it resumes. The Vec is
+        // lazily grown, so absent ⇒ 0 ⇒ never frozen (transit + goldens take this path for every train).
+        if disabled.get(v.line[i].index()).copied().unwrap_or(0) > clock {
             continue;
         }
         if clock < v.dwell_until_ms[i] {

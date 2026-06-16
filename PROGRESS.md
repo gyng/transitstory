@@ -2798,6 +2798,37 @@ Replaced it with a real constraint: **the realm's rail must be ONE connected gra
   set green · tsc clean. Steps 1+2 of the war batch land together (core gate + frontier overlay) so the
   deployed UI stays consistent.
 
+## War-batch S3 — rail-attack: raiders cut over-extended track (owner-directed, 2026-06-16)
+
+Owner ask (war batch, item 2 of 4): *"enemy legions can attack rail to disable it for some time."* The rival
+already fields raiders (march the capital, deepen the rot, cut down by the station cordon). Now a raider that
+SLIPS the cordon and reaches an OPERATIONAL line's TRACK **cuts it** — the line's trains FREEZE in place (no
+advance, no delivery) for `RAIL_DISABLE_MS` (120 s), then it auto-recovers (no permanent loss — the log is
+append-only; the timer just gates dispatch/advance).
+
+- **Core (`raider.rs` + `world.rs` + `vehicle.rs`):** in `resolve`, a marching raider not intercepted by a
+  station but within `RAIL_ATTACK_RANGE_MM` (2 km, < the 4 km cordon) of a line's stop-to-stop polyline
+  (integer point-to-segment `seg_dist2`, i128, no float) CUTS that line (`disable_line` → a lazily-grown
+  per-line `line_disabled_until_ms` timer) and spends itself (DONE). `advance`'s Phase A.2 freezes a raided
+  line's consist (`c_move` stays false — the dwell-style hold). `line_disabled` is the query.
+- **Canonical re-pin (1st of the war batch):** `line_disabled_until_ms` joins Canonical (appended LAST,
+  EMPTY for transit + both goldens — zero raiders ⇒ no cut ⇒ the lazy Vec never grows), so the re-pin is the
+  appended length-0 byte ONCE: GOLDEN_TRANSIT `0x8453…` → `0x28b0_c152_a41f_cdab`, GOLDEN_ARCADIA `0xbdd6…`
+  → `0x523b_1a62_1611_df7e`. Behaviour byte-identical (the mechanic is inert without raiders).
+- **Render:** `LineView.raided_remaining_ms` (snapshot readout, mirrored in `types.ts`) drives a red
+  "lines-raided" PathLayer OVER the cut line + a "⚔ RAIDED Xs" countdown badge at its midpoint (visible at
+  all zooms — a severed supply line is strategic). The line's hue still peeks so identity isn't lost.
+- **Tests:** `raider.rs` +2 — `a_raider_at_the_track_cuts_the_line` (a placed raider at a long span's
+  midpoint, beyond the cordon, cuts the line + spends itself) and `a_raided_line_freezes_its_trains_then_resumes`
+  (the freeze→resume primitive). Native 52/52, both goldens re-pinned green, the winnability e2e (conquest /
+  victory / rival / arcadia) all still PASS with rail-attack live — raiders cut RAIL but the realm still holds.
+- **Firing rate / next step (honest):** capital-bound raiders march radially, so they shield a RADIAL supply
+  line via its endpoint cordons and mostly graze it near the (defended) capital — rail-attack bites
+  OVER-EXTENDED / chord spans the swarm crosses perpendicularly (correct: over-extension is the vulnerability,
+  dense networks defend). To make it FELT, the enemy must actively SEEK rail — that lands with the
+  front-aware AI (war-batch S6). A natural-trigger e2e is deferred (forcing a corridor-crossing chord + a
+  sustained swarm is too brittle for the minimal harness; the mechanic is the native gate).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

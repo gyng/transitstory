@@ -224,6 +224,80 @@ fn a_held_network_recovers_from_breaches_no_point_of_no_return() {
 }
 
 #[test]
+fn a_raided_line_freezes_its_trains_then_resumes() {
+    // Rail-attack (#war) — the FREEZE primitive (universal; no raider needed). A transit line (no reservoir
+    // ⇒ no natural raids to confound) runs until its trains move, then we CUT it (set the disable timer, the
+    // hashed field a raider sets). While raided the consist holds in place; once the timer lapses it resumes.
+    let mut w = World::new(
+        7,
+        CityData { id: "t".into(), ruleset: "transit".into(), seed: 7, ..Default::default() },
+    );
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 12_000_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..400 {
+        w.tick(50);
+    }
+    assert!(!w.vehicles.s_mm.is_empty(), "the line dispatched trains");
+
+    // CUT line 0 for a good stretch (a raid). Poke the hashed timer directly — the raider→cut path is
+    // exercised by `a_raider_at_the_track_cuts_the_line`; here we isolate the freeze.
+    let until = w.clock_ms + 200_000;
+    w.line_disabled_until_ms = vec![until];
+    let frozen = w.vehicles.s_mm.clone();
+    for _ in 0..200 {
+        w.tick(50); // 10_000 ms elapses, well inside the 200_000 ms cut
+    }
+    assert_eq!(w.vehicles.s_mm, frozen, "a RAIDED line's consist freezes in place — no advance while cut");
+
+    // Run past the timer; the consist resumes moving (auto-recovery, no permanent loss).
+    while w.clock_ms <= until {
+        w.tick(50);
+    }
+    for _ in 0..200 {
+        w.tick(50);
+    }
+    assert_ne!(w.vehicles.s_mm, frozen, "once the raid lapses the line re-enables and its trains move again");
+}
+
+#[test]
+fn a_raider_at_the_track_cuts_the_line() {
+    // Rail-attack (#war) — the raider→CUT path. A long line whose span midpoint sits BEYOND the station
+    // cordon (>DEFENSE_RANGE from either endpoint); a raider placed at that midpoint slips the cordon, reaches
+    // the track, and CUTS the line (disabling it) — spending itself in the raid (DONE). The vulnerable seam is
+    // a long sparse span; a dense network would have intercepted it first.
+    let mut w = World::new(12, hex_world(40, 40, (0, 0)));
+    // Two stations FAR apart so their span's middle is out of cordon reach (DEFENSE_RANGE = 4_000_000 mm =
+    // 16 cells at 250 m; the midpoint of (2,38)–(38,2) sits ~26 cells from either endpoint).
+    let a = hexgrid::center_of((2, 38), SIZE);
+    let b = hexgrid::center_of((38, 2), SIZE);
+    w.apply(&Command::PlaceStation { x_mm: a.x_mm, y_mm: a.y_mm, name: None }); // 0
+    w.apply(&Command::PlaceStation { x_mm: b.x_mm, y_mm: b.y_mm, name: None }); // 1
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::SetRunning { running: true });
+    assert!(!w.line_disabled(0), "the line starts operational");
+
+    // Place a raider at the span midpoint (a placement bypassing the reservoir spawn — the 3 SoA vecs are the
+    // whole state). One tick: march nudges it (~4.5 km) but it stays in range, then resolve CUTS the line.
+    let (mx, my) = ((a.x_mm + b.x_mm) / 2, (a.y_mm + b.y_mm) / 2);
+    w.raiders.x_mm.push(mx);
+    w.raiders.y_mm.push(my);
+    w.raiders.state.push(MARCHING);
+    let raider = w.raiders.len() - 1;
+    w.tick(50);
+
+    assert!(w.line_disabled(0), "a raider at the track CUTS the line (it's now raided)");
+    assert_eq!(w.raiders.state[raider], DONE, "the raider spent itself in the raid");
+}
+
+#[test]
 fn the_rival_replays_bit_for_bit() {
     fn run() -> u64 {
         let mut w = running_world();
