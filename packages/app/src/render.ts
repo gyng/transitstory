@@ -2,10 +2,11 @@
 // conversion happened at the geo.ts boundary in Game). Layer array order IS the z-order
 // (AGENTS IA): catchment < lines < blueprint < stations < vehicles < selection highlight.
 import type { Layer } from "@deck.gl/core";
-import { ArcLayer, ColumnLayer, IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { ArcLayer, ColumnLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 import { pineGeometry } from "./render/treeMesh";
+import { vehicleMesh, cargoMesh } from "./render/vehicleMesh";
 import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
 export type Rgb = [number, number, number];
@@ -72,8 +73,25 @@ export interface VehicleDot {
   /** Heading in radians (0 = +x / east), from the sim's vehicleAngles buffer — drives the
    *  directional triangle so you read which way each train is travelling. */
   angle: number;
-  /** Load factor (onboard / capacity), 0..~1 — drives the crowding ring colour + train size. */
+  /** Load factor (onboard / capacity), 0..~1 — drives the in-world cargo-stack height. */
   load: number;
+  /** Dominant cargo commodity (#in-world-cargo): 0 ore / 1 grain / 2 aether / 3 fuel / 4-7 processed;
+   *  255 = empty / a transit rider. Colours the 3D cargo block by the goods it hauls. */
+  cargo?: number;
+}
+
+/** The 3D cargo-block colour for a vehicle's hauled commodity (#in-world-cargo) — the supply-chain GOODS
+ *  made visible on the cart (ore steel-cyan, grain wheat-gold, aether violet, fuel green, processed steel),
+ *  or a pale "passengers/sacks" tone when empty / a transit rider (255). */
+function cargoColor(cargo: number | undefined): Rgb {
+  switch (cargo) {
+    case 0: return [70, 178, 196]; // ore — steel-cyan
+    case 1: return [240, 178, 40]; // grain — wheat gold
+    case 2: return [170, 120, 224]; // aether — arcane violet
+    case 3: return [40, 184, 142]; // fuel — forest green
+    case 4: case 5: case 6: case 7: return [176, 180, 188]; // processed (ingot/arms/…) — pale steel
+    default: return [222, 210, 188]; // empty / transit riders — pale sacks/passengers
+  }
 }
 
 /** Fantasy 3D diorama (#3d-trees): one lowpoly pine instanced on a forest hex. Position is lng/lat
@@ -1179,34 +1197,6 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
   return { below, above };
 }
 
-// A white triangle pointing +x (east) at angle 0, baked once to a data URL so the IconLayer can
-// rotate it by heading. `mask:true` makes it a tintable stencil so getColor carries line identity.
-function arrowIconUrl(): string {
-  const s = 64;
-  const c = document.createElement("canvas");
-  c.width = s;
-  c.height = s;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "#fff";
-  g.beginPath();
-  g.moveTo(58, 32); // tip (east)
-  g.lineTo(14, 13);
-  g.lineTo(26, 32);
-  g.lineTo(14, 51);
-  g.closePath();
-  g.fill();
-  return c.toDataURL();
-}
-const ARROW_ICON = typeof document !== "undefined" ? arrowIconUrl() : "";
-const ARROW_MAPPING = { arrow: { x: 0, y: 0, width: 64, height: 64, mask: true, anchorX: 32, anchorY: 32 } };
-
-/** Crowding band for a moving train, mirroring loadPip / the waiting-ring language so "busy" and
- *  "crush" read the same colour wherever they appear. Outline only — the body keeps line identity. */
-function loadRing(load: number): { color: [number, number, number, number]; width: number } {
-  if (load >= 0.9) return { color: [214, 40, 40, 255], width: 4 }; // crush — thick vermillion (unmistakable)
-  if (load >= 0.6) return { color: [230, 159, 0, 245], width: 3 }; // busy — amber
-  return { color: [255, 255, 255, 230], width: 1.5 }; // healthy — thin white
-}
 
 /** The per-frame vehicle layers (moving trains): a line-coloured body whose radius grows and
  *  whose outline shifts white→amber→red with load (identity + crowding, always visible against
@@ -1289,49 +1279,60 @@ export function treeLayer(trees: TreeInstance[]): Layer {
   });
 }
 
+// 3D-vehicle world scale (metres) — calibrated to the tree/diorama scale (~120-230) so a vehicle reads as a
+// chunky little cart on the continent. The mesh is ~1 unit long (X = forward), so this ≈ the body length.
+const VEHICLE_SCALE = 150;
+const VEHICLE_BED_M = 0.46 * VEHICLE_SCALE; // cargo sits on the cabin top (mesh z 0.46) → raise it this many metres
+
+/** Heading (CCW radians from +x = east) → deck SimpleMeshLayer orientation so the +X-forward mesh faces its
+ *  travel direction. The angle is the path TANGENT (heading_at), updated each tick, so the model turns
+ *  through CURVES automatically. Calibrated empirically (Playwright): deck's MIDDLE Euler component is the
+ *  vertical yaw for this Z-up mesh, and +degrees aligns the prow with the heading (verified heading == the
+ *  actual motion vector). */
+function yawOf(angle: number): [number, number, number] {
+  return [0, (angle * 180) / Math.PI, 0];
+}
+
 export function vehicleLayers(dots: VehicleDot[]): Layer[] {
+  // #3d-vehicles: real instanced 3D models on the world (not flat dots) — a low-poly car/cart yawed to its
+  // heading, line-coloured for identity, lit by the scene. Plus a CARGO block on the bed whose HEIGHT reads
+  // the load (#in-world-cargo: goods you SEE, not just a ring) — bright = full, flat = empty. Object-array +
+  // per-frame rebuild like the old dots (bounded visible count); the shared mesh uploads once.
+  const loaded = dots.filter((d) => d.load > 0.05);
   return [
-    // Body: the crowding-aware dot. Line-colour fill = identity; radius + outline colour/width
-    // track load (white healthy → amber busy → red crush, the loadPip/waiting-ring language).
-    // Pickable, id "vehicles" so the train inspector (getTooltip dispatch on layer.id) still fires.
-    new ScatterplotLayer({
+    new SimpleMeshLayer<VehicleDot>({
       id: "vehicles",
       data: dots,
-      getPosition: (d: VehicleDot) => [d.lng, d.lat],
-      // Load reads as SIZE — an empty train is a small dot, a crush-loaded one a big fat blob (the "more
-      // cars = more load" cue, without per-car path geometry). The thicker white→amber→red ring reinforces it.
-      getRadius: (d: VehicleDot) => 5 + d.load * 11,
-      radiusUnits: "pixels",
-      radiusMinPixels: 5,
-      radiusMaxPixels: 18,
-      getFillColor: (d: VehicleDot) => d.color,
-      stroked: true,
-      getLineColor: (d: VehicleDot) => loadRing(d.load).color,
-      getLineWidth: (d: VehicleDot) => loadRing(d.load).width,
-      lineWidthUnits: "pixels",
-      lineWidthMinPixels: 1.5,
-      pickable: true,
-      updateTriggers: {
-        getRadius: dots.map((d) => Math.round(d.load * 10)).join(","),
-        getLineColor: dots.map((d) => loadRing(d.load).width).join(","),
-        getLineWidth: dots.map((d) => loadRing(d.load).width).join(","),
-      },
+      mesh: vehicleMesh(),
+      getPosition: (d) => [d.lng, d.lat],
+      getColor: (d) => d.color,
+      getOrientation: (d) => yawOf(d.angle),
+      getScale: [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE],
+      sizeScale: 1,
+      pickable: true, // id "vehicles" so the train inspector (getTooltip dispatch on layer.id) still fires
+      material: { ambient: 0.62, diffuse: 0.72, shininess: 24, specularColor: [70, 70, 80] },
+      updateTriggers: { getOrientation: dots.length, getColor: dots.length },
     }),
-    // Direction: a small WHITE triangle rotated to the train's heading (deck getAngle is CCW
-    // degrees; our heading is CCW radians from +x → straight conversion). White so it reads on the
-    // line-coloured body; smaller than the dot so the identity colour still rings it. Not pickable.
-    new IconLayer({
-      id: "vehicle-dir",
-      data: dots,
-      getPosition: (d: VehicleDot) => [d.lng, d.lat],
-      getIcon: () => "arrow",
-      iconAtlas: ARROW_ICON,
-      iconMapping: ARROW_MAPPING,
-      getColor: [255, 255, 255, 235],
-      getAngle: (d: VehicleDot) => (d.angle * 180) / Math.PI,
-      getSize: (d: VehicleDot) => 9 + d.load * 3,
-      sizeUnits: "pixels",
-      sizeMinPixels: 7,
+    new SimpleMeshLayer<VehicleDot>({
+      id: "vehicle-cargo",
+      data: loaded,
+      mesh: cargoMesh(),
+      getPosition: (d) => [d.lng, d.lat],
+      // Cargo tone: coloured by the GOODS it hauls (ore/grain/aether/fuel/processed; or pale sacks/peeps),
+      // so you read WHAT each cart carries, not just that it's loaded (#in-world-cargo).
+      getColor: (d) => cargoColor(d.cargo),
+      getOrientation: (d) => yawOf(d.angle),
+      // Width fixed, HEIGHT ∝ load (a tall stack = a full car); raised onto the cabin bed via translation.
+      getScale: (d) => [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE * (0.07 + d.load * 0.5)],
+      getTranslation: [0, 0, VEHICLE_BED_M],
+      sizeScale: 1,
+      pickable: false,
+      material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
+      updateTriggers: {
+        getScale: loaded.map((d) => Math.round(d.load * 12)).join(","),
+        getOrientation: loaded.length,
+        getColor: loaded.map((d) => d.cargo ?? 255).join(","),
+      },
     }),
   ];
 }

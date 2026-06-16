@@ -142,6 +142,12 @@ export class SimBridge {
     return this.sim.armyStates();
   }
 
+  /** Per-vehicle CARGO commodity `[k0,...]` aligned with vehiclePositions (0 ore/1 grain/2 aether/3 fuel/
+   *  4-7 processed; 255 = empty/transit) — colours the in-world 3D cargo block by the goods it hauls. */
+  vehicleCargo(): Float32Array {
+    return this.sim.vehicleCargo();
+  }
+
   /** Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy/arcadia, S11 — the spell arm). */
   spellFlashes(): Float32Array {
     return this.sim.spellFlashes();

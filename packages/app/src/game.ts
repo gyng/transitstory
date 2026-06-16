@@ -2199,10 +2199,18 @@ export class Game {
     const n = pos.length / 2;
     if (n === 0) return;
     const PER_TICK = Math.min(8, n); // cap the spawn rate so the trail stays a wisp, not a cloud
+    // #3d: raise the steam to the 3D model's CHIMNEY (cabin top ~110 m) instead of its wheels. Convert that
+    // world height to screen px from the live zoom (mercator m/px ≈ 156543·cos(lat)/2^zoom), foreshortened
+    // by the camera pitch; clamped so it's a sensible lift at any zoom (tiny at overview, taller up close).
+    const zoom = this.map.getZoom();
+    const latRad = (this.map.getCenter().lat * Math.PI) / 180;
+    const mPerPx = (156543.03 * Math.max(0.01, Math.cos(latRad))) / 2 ** zoom;
+    const pitchFactor = Math.max(0.35, Math.cos((this.map.getPitch() * Math.PI) / 180));
+    const lift = Math.min(34, (110 / mPerPx) * pitchFactor);
     for (let k = 0; k < PER_TICK; k++) {
       const vi = (this.puffCursor + k) % n;
       const [lng, lat] = metersToLngLat([pos[vi * 2], pos[vi * 2 + 1]]);
-      this.effects.puff(lng, lat);
+      this.effects.puff(lng, lat, lift);
     }
     this.puffCursor = (this.puffCursor + PER_TICK) % n;
   }
@@ -2592,7 +2600,9 @@ export class Game {
     // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
     // separately in peepLayerAt. Cheap: a filter over ~17 already-built layers, no rebuild.
     const detail = this.map.getZoom() >= DETAIL_ZOOM;
-    const vlayers = detail ? vehicleLayers(vehicles) : vehicleLayers(vehicles).filter((l) => l.id !== "vehicle-dir");
+    // At the strategic overview, drop the per-car CARGO block (micro-detail that's sub-pixel when zoomed out);
+    // the 3D vehicle bodies stay so you still read the live network in motion.
+    const vlayers = detail ? vehicleLayers(vehicles) : vehicleLayers(vehicles).filter((l) => l.id !== "vehicle-cargo");
     // Exactly one waiting layer shows per frame: the full per-station halos when zoomed in, the
     // starved-only subset at overview (a starved platform must be findable at ANY zoom).
     const above = detail
@@ -2646,6 +2656,7 @@ export class Game {
     const lineIds = this.bridge.vehicleLineIds();
     const angles = this.bridge.vehicleAngles();
     const loads = this.bridge.vehicleLoads(); // interleaved [onboard, capacity] per vehicle
+    const cargo = this.bridge.vehicleCargo(); // dominant commodity per vehicle (255 = empty/transit)
     const colors = this.lineColors();
     const dots: VehicleDot[] = [];
     for (let i = 0; i < cur.length; i += 2) {
@@ -2655,7 +2666,7 @@ export class Game {
       const [lng, lat] = metersToLngLat([x, y]);
       const cap = loads[vi * 2 + 1] ?? 0;
       const load = cap > 0 ? (loads[vi * 2] ?? 0) / cap : 0;
-      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[vi]] ?? 0x444444), angle: angles[vi] ?? 0, load });
+      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[vi]] ?? 0x444444), angle: angles[vi] ?? 0, load, cargo: cargo[vi] ?? 255 });
     }
     return dots;
   }

@@ -50,6 +50,7 @@ type Puff = {
   r1: number;
   drift: number; // px upward drift over life
   jitter: number; // px horizontal drift (varies the trail)
+  lift: number; // #3d: px to raise the emission so steam leaves the 3D model's CHIMNEY, not its wheels
 };
 
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t) * (1 - t); // cubic ease-out
@@ -133,12 +134,13 @@ export class Effects {
     this.rings.push({ lng, lat, born: now + 90, ttl: 620, rgb, r0: 3, r1: 30, w0: 2.5, alpha: 0.6 }); // echo ring
   }
 
-  /** A steam/dust puff at a train — a one-shot blob that expands, drifts up, and fades (leaves a trail). */
-  puff(lng: number, lat: number): void {
+  /** A steam/dust puff at a train — a one-shot blob that expands, drifts up, and fades (leaves a trail).
+   *  `lift` raises the emission point (px) so steam leaves the 3D model's chimney, not its wheels. */
+  puff(lng: number, lat: number, lift = 0): void {
     // jitter via a cheap born-derived pseudo-random (no Math.random needed for this client-only FX, but it's
     // fine here — purely cosmetic, never in the deterministic core).
     const j = (Math.random() - 0.5) * 10;
-    this.puffs.push({ lng, lat, born: performance.now(), ttl: 1100, r0: 2.5, r1: 11, drift: 16, jitter: j });
+    this.puffs.push({ lng, lat, born: performance.now(), ttl: 1100, r0: 2.5, r1: 11, drift: 16, jitter: j, lift });
   }
 
   /** Replace the continuously-throbbing set (e.g. starved stations) — called on the stats tick. */
@@ -290,7 +292,7 @@ export class Effects {
       const r = e.r0 + (e.r1 - e.r0) * k;
       const p = this.map.project([e.lng, e.lat]);
       const x = p.x + e.jitter * k;
-      const y = p.y - e.drift * k; // drift upward as it dissipates
+      const y = p.y - e.lift - e.drift * k; // start at the chimney (lift), then drift upward as it dissipates
       const a = (1 - t) * 0.5; // bright steam — must read over the dark ash continent
       const grad = cx.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, `rgba(244,245,248,${a.toFixed(3)})`);

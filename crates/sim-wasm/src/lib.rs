@@ -67,6 +67,14 @@ impl Sim {
         sim::render_buf::vehicle_positions_m(&self.world)
     }
 
+    /// Per-vehicle dominant CARGO commodity `[k0,k1,...]` (#in-world-cargo), aligned with vehiclePositions:
+    /// the good each cart hauls (0 ore / 1 grain / 2 aether / 3 fuel / 4-7 processed), or 255 if empty /
+    /// a transit rider. Lets the 3D cargo block be coloured by its goods.
+    #[wasm_bindgen(js_name = vehicleCargo)]
+    pub fn vehicle_cargo(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_cargo_m(&self.world)
+    }
+
     /// Interleaved previous-tick positions in metres (for alpha interpolation).
     #[wasm_bindgen(js_name = vehiclePrevPositions)]
     pub fn vehicle_prev_positions(&self) -> Vec<f32> {

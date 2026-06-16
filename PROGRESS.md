@@ -2946,6 +2946,32 @@ ride the existing `spell_flashes` buffer (render-only/not hashed) with new kinds
 - **Deferred (minor):** a gold-tinted "baited!" arc when a launched legion takes a bounty (the tooltip + the
   visible bounty halo + the intent arc to it already convey it).
 
+## 3D vehicles on the world (owner-directed, 2026-06-16)
+
+Owner ask: *"are trains/cars real 3D entities? … they should be"* + *"load rings → more in-world (goods/peeps
+on the cars graphically)"* + *"smoke puffs updated for 3D"* + *"cars face the direction they're going + handle
+curves."* Vehicles were flat deck dots; now they're **instanced low-poly 3D models** on the (already-pitched,
+tree'd) world.
+
+- **Model (`render/vehicleMesh.ts`):** a flat-shaded low-poly cart — chassis + a sloped-prow cabin — built
+  once + instanced by a `SimpleMeshLayer` (mirrors `treeMesh`/`treeLayer`), lit by the scene, line-coloured
+  for identity, world-scaled (~150 m) to the diorama. Replaces the `vehicles` ScatterplotLayer + the arrow
+  `IconLayer` (both removed) — the 3D body shows heading; no flat dot.
+- **In-world cargo:** a second instanced box on the cabin bed whose HEIGHT reads the load and whose COLOUR is
+  the GOODS it hauls (a new render-only `vehicle_cargo_m` → `vehicleCargo`: the onboard commodity — ore
+  steel-cyan / grain wheat-gold / aether violet / fuel green / processed steel / pale sacks when empty). So
+  you see WHAT each cart carries, not just a ring. LOD-dropped at the strategic overview.
+- **Orientation + curves:** the model yaws to the vehicle's heading (`heading_at`, the path TANGENT — so it
+  turns through curves automatically). The deck yaw axis/sign was calibrated empirically in Playwright
+  (`[0, +deg, 0]`; verified the reported heading == the actual motion vector).
+- **Chimney smoke:** `effects.puff` gained a `lift` — the steam now leaves the 3D model's cabin top, not its
+  wheels (the lift is the model height projected to screen px from the live zoom + pitch, clamped).
+- Render-only / golden-neutral (the Pax queues are excluded from Canonical): native goldens UNCHANGED,
+  vitest 27/27, the vehicle/puff e2e (play / fleet / juice / playtest) all green with the mesh path live.
+- **Follow-ups queued (owner, same session):** trains pull a string of cargo CARS (multi-car); car count
+  editable in the trainset list; tracks that CURVE realistically on the hex grid (not abrupt corners); a
+  more game-like (less webapp) UI.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

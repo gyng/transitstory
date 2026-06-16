@@ -208,6 +208,20 @@ pub fn vehicle_positions_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Per-vehicle dominant CARGO commodity (#in-world-cargo), aligned 1:1 with `vehicle_positions_m`: the
+/// commodity of its onboard cargo (a cart carries one source's output), or 255 if empty / a transit rider.
+/// Lets the 3D cargo block be coloured by the GOODS it hauls (ore / grain / aether / fuel / processed).
+/// Render-only (the Pax queues are excluded from Canonical).
+pub fn vehicle_cargo_m(w: &World) -> Vec<f32> {
+    let v = &w.vehicles;
+    let mut out = Vec::with_capacity(v.len());
+    for i in 0..v.len() {
+        let kind = v.onboard_pax.get(i).and_then(|q| q.first()).map(|p| p.commodity).unwrap_or(255);
+        out.push(kind as f32);
+    }
+    out
+}
+
 /// Interleaved marching-legion positions `[x0,y0, ...]` in metres (fantasy, S8 render). Each army owns
 /// an arc-length `s_mm` on its route; we interpolate the route polyline (`Path::point_at`) to cartesian
 /// here in the copy-out (float allowed). Besieging/done legions sit at the target. Empty for transit.
