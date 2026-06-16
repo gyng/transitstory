@@ -2143,6 +2143,22 @@ export class Game {
         }
       }
     }
+    // Territory front (#war): a holding the rival RE-CONTESTED — a reclaimer re-garrisoned a town you took
+    // but didn't hold (rail to it / ward it to keep it). Flash "⚔ Lost!" once + FORGET it, so re-taking
+    // re-fires the conquest boom — the oscillating front made legible. (Arcadia only; reclaimers don't exist
+    // in transit.) Snapshot the lost ids first, then mutate the set (no in-iteration delete).
+    if (arcadia && this.celebratedTowns.size > 0) {
+      const heldNow = new Set(s.perStation.filter((ps) => ps.captured).map((ps) => ps.stationId));
+      const lost = [...this.celebratedTowns].filter((id) => !heldNow.has(id));
+      for (const id of lost) {
+        this.celebratedTowns.delete(id);
+        const p = at(id);
+        if (p) {
+          this.effects.boom(p.lng, p.lat, "224,64,64");
+          this.effects.floatText(p.lng, p.lat, "⚔ Lost!", "230,90,90", { rise: 38, size: 16, ttl: 2100 });
+        }
+      }
+    }
 
     this.prevJuice = { tribute: s.tribute, fare: s.fareRevenue, opex: s.opexSpent, towns: s.townsCaptured, day: s.simDay, seeded: true };
   }

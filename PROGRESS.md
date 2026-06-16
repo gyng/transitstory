@@ -2877,6 +2877,30 @@ remain the real ceilings, so it's "field from more bases," not "free legions."
   ample manpower ⇒ legions launch from BOTH (the load-balanced share), where pre-change only line 0 ever
   fielded. Native 52/52, both goldens still pinned (unchanged), the winnability e2e unaffected (single barracks).
 
+## War-batch S5 — territory front: the rival RE-TAKES your unheld ground (owner-directed, 2026-06-16)
+
+Owner ask (war batch, item 3): *"stable-ish fronts."* The rival now contests TERRITORY, not just the rail.
+Raiders cycle THREE roles by spawn-cursor parity (deterministic): **breacher** (march the capital, deepen
+the rot — the lose pressure), **saboteur** (cut a supply line's seam — S6), and **RECLAIMER** (march a
+CAPTURED town and re-garrison it). So the front oscillates: you take ground, the rival re-contests it, you
+re-take it — a stable-ish boundary where conquest rate meets re-contest rate.
+
+- **Core (`raider.rs`):** `nearest_captured_town` finds a reclaimer's target (a `town_value == 0` station);
+  on arrival the resolve flips it back to `RECLAIM_GARRISON` (the base siege HP, a LIGHT re-contest) and
+  spends the raider. A role with no objective falls back to the capital (no stall).
+- **Locked-invariant safe:** `towns_captured` is CUMULATIVE and the Standing gauge's conquest term reads
+  it, so re-garrisoning (which touches only `town_value`, never `towns_captured`) leaves the MONOTONIC
+  split-gauge invariant intact (the property test stays green). Reclaimers don't breach the capital, so
+  they add no rot — the lose pressure is unchanged.
+- **Self-balancing by defence:** a reclaimer is cut down by the station cordon (`intercepted`) before it
+  reaches a RAILED captured town — so a town you supplied/warded is SAFE; only OFF-network frontier grabs
+  (taken by a legion, never connected) get re-contested. "Hold conquered ground" = rail to it or ward it.
+- **No re-pin (golden-neutral):** no new Canonical field (`town_value` was already hashed; the target lives
+  in the S6 `raider_tx/ty`), and the goldens have no raiders ⇒ byte-identical.
+- **Tests (`raider.rs` +1):** `a_reclaimer_raider_re_garrisons_an_undefended_captured_town` (an off-network
+  captured town flips back to contested; `towns_captured` untouched). Native 52/52, both goldens unchanged,
+  the winnability e2e all pass (the conquest e2e's captured town is RAILED ⇒ defended ⇒ unaffected).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

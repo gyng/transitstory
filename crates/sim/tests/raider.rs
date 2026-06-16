@@ -334,6 +334,30 @@ fn a_saboteur_raider_seeks_and_cuts_a_long_line() {
 }
 
 #[test]
+fn a_reclaimer_raider_re_garrisons_an_undefended_captured_town() {
+    // #war territory front: a RECLAIMER raider marches a CAPTURED, UNDEFENDED town and RE-GARRISONS it
+    // (its ownership flips back to contested — you must HOLD conquered ground). `towns_captured` stays
+    // (cumulative), so the monotonic Standing gauge is untouched; only the town's CURRENT state flips.
+    let mut w = World::new(12, hex_world(40, 40, (0, 0)));
+    // An OFF-network captured town: a baked node the player took but never railed to ⇒ no cordon defends it.
+    let town = hexgrid::center_of((20, 20), SIZE);
+    w.apply(&Command::PlaceStation { x_mm: town.x_mm, y_mm: town.y_mm, name: None }); // station 0
+    w.town_value = vec![0]; // mark it CAPTURED (town_value == 0) — the conquest-flip a reclaimer reads
+    w.apply(&Command::SetRunning { running: true });
+    // Place a reclaimer AT the town (bypassing the reservoir spawn), aimed at it.
+    w.raiders.x_mm.push(town.x_mm);
+    w.raiders.y_mm.push(town.y_mm);
+    w.raiders.tx_mm.push(town.x_mm);
+    w.raiders.ty_mm.push(town.y_mm);
+    w.raiders.state.push(MARCHING);
+    let before = w.towns_captured;
+    w.tick(50);
+
+    assert!(w.town_value[0] > 0, "the captured town was RE-GARRISONED (ownership flipped to contested)");
+    assert_eq!(w.towns_captured, before, "towns_captured (cumulative) is UNTOUCHED — the monotonic Standing gauge stays safe");
+}
+
+#[test]
 fn the_rival_replays_bit_for_bit() {
     fn run() -> u64 {
         let mut w = running_world();

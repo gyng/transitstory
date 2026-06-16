@@ -56,11 +56,17 @@ const ARRIVE_MM: i64 = 2_000_000;
 const SPAWN_BASE_MS: i64 = 90_000;
 const SPAWN_DECADENCE_SCALE: i64 = 4_000;
 const SPAWN_MIN_MS: i64 = 12_000;
-/// Rail-attack targeting (#war): every Nth raider is a SABOTEUR — it aims at a player supply line's most
-/// vulnerable SEAM (its longest span's midpoint) instead of the capital, so the swarm actively SEEKS rail
-/// to cut (the felt rail-attack + a supply-defence front). The rest keep the capital-breach threat, so the
-/// realm's lose pressure (and winnability) is preserved. Tunable: 2 ⇒ half saboteurs, half breachers.
-const SABOTEUR_EVERY: u32 = 2;
+/// Front targeting (#war): the rival cycles THREE roles by spawn-cursor parity (deterministic, no rng):
+///   0 → BREACHER  — march the capital, deepen the rot (the lose pressure; winnability anchor).
+///   1 → SABOTEUR  — march a supply line's SEAM and cut it (the felt rail-attack + a supply front).
+///   2 → RECLAIMER — march a CAPTURED town and RE-GARRISON it (you must HOLD conquered ground — the
+///                   territory front oscillates: you take, the rival re-contests, you re-take).
+/// A role with no objective (no rail / no captured town) falls back to the capital, so no raider stalls.
+const ROLE_CYCLE: u32 = 3;
+/// Reclaim re-garrison (#war): a reclaimer flips a captured town back to this much siege resistance — a
+/// LIGHT re-contest (the base garrison, no depth bonus), so re-taking is a quick re-siege, not a fresh
+/// conquest. `towns_captured` is NOT touched (cumulative ⇒ the monotonic Standing gauge is untouched).
+const RECLAIM_GARRISON: i64 = 500;
 
 /// Separate Structure-of-Arrays for raiders. Authoritative (hashed) FREE 2-D position (they march off-rail,
 /// so the position IS the state — unlike legions, whose `s_mm` is the authority and x/y are render-only).
@@ -157,14 +163,14 @@ fn spawn(world: &mut World, dt_ms: i64) {
     world.raider_cursor = world.raider_cursor.wrapping_add(1);
     let axial = world.decadence_field.cells[cell as usize];
     let p = crate::hexgrid::center_of(axial, size);
-    // Targeting (#war): every SABOTEUR_EVERY-th raider aims at the nearest supply line's SEAM (to cut it);
-    // the rest aim at the capital (breach). A saboteur with no line to seek falls back to the capital, so it
-    // never stalls. Cursor-parity selection ⇒ deterministic, no rng.
+    // Targeting (#war): cycle the three roles by cursor parity (deterministic). Saboteurs aim at the nearest
+    // supply-line SEAM; reclaimers at the nearest CAPTURED town; breachers (and any role with no objective)
+    // at the capital — so a raider always has a fixed target and never stalls.
     let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
-    let target = if cursor % SABOTEUR_EVERY == SABOTEUR_EVERY - 1 {
-        nearest_seam(world, p.x_mm, p.y_mm).unwrap_or((cx, cy))
-    } else {
-        (cx, cy)
+    let target = match cursor % ROLE_CYCLE {
+        1 => nearest_seam(world, p.x_mm, p.y_mm).unwrap_or((cx, cy)),
+        2 => nearest_captured_town(world, p.x_mm, p.y_mm).map(|(_, tx, ty)| (tx, ty)).unwrap_or((cx, cy)),
+        _ => (cx, cy),
     };
     world.raiders.spawn_at(p.x_mm, p.y_mm, target.0, target.1); // skipped silently if the cap is hit (bounded)
 }
@@ -205,6 +211,25 @@ fn nearest_seam(world: &World, x: i64, y: i64) -> Option<(i64, i64)> {
         }
     }
     best.map(|(_, sx, sy)| (sx, sy))
+}
+
+/// Front targeting (#war): the nearest CAPTURED town (`town_value == 0`, the conquest-flip signal) to
+/// `(x, y)`, as `(station index, x, y)`. A reclaimer aims here to re-garrison it. Index-ordered, lowest-
+/// index tiebreak ⇒ deterministic. `None` if the realm holds no captured ground yet (early game).
+fn nearest_captured_town(world: &World, x: i64, y: i64) -> Option<(usize, i64, i64)> {
+    let mut best: Option<(i128, usize, i64, i64)> = None;
+    for s in 0..world.stations.len() {
+        if world.town_value.get(s).copied() != Some(0) || world.stations[s].removed {
+            continue;
+        }
+        let (px, py) = (world.stations[s].pos.x_mm, world.stations[s].pos.y_mm);
+        let (ddx, ddy) = ((px - x) as i128, (py - y) as i128);
+        let d2 = ddx * ddx + ddy * ddy;
+        if best.map_or(true, |(bd, _, _, _)| d2 < bd) {
+            best = Some((d2, s, px, py));
+        }
+    }
+    best.map(|(_, s, px, py)| (s, px, py))
 }
 
 /// MARCH: advance each MARCHING raider STRAIGHT at its TARGET (#war — the capital for a breacher, a supply
@@ -274,13 +299,27 @@ fn resolve(world: &mut World) {
             world.raiders.state[i] = DONE;
             continue;
         }
-        // Targeting (#war): a SABOTEUR reached its seam but found no line to cut (another raider beat it, or
-        // the line moved/was bulldozed) — RE-AIM it at the capital so it converges (the no-livelock fallback;
-        // a breacher's target already IS the capital, so this is a one-way, at-most-once switch).
+        // A raider reached its NON-capital target (a saboteur's seam or a reclaimer's town):
         let (tx, ty) = (world.raiders.tx_mm[i], world.raiders.ty_mm[i]);
         if (tx, ty) != (cx, cy) {
             let (sdx, sdy) = (tx - x, ty - y);
             if sdx.saturating_mul(sdx).saturating_add(sdy.saturating_mul(sdy)) <= arr2 {
+                // RECLAIMER (#war): an UNDEFENDED captured town here gets RE-GARRISONED — the territory front
+                // oscillates (you must hold conquered ground). It slipped the cordon (`intercepted` above), so
+                // only OFF-network / un-warded holdings are re-contestable; railed ones stay safe. `town_value`
+                // back up, `towns_captured` UNTOUCHED (cumulative ⇒ the monotonic Standing gauge is safe).
+                if let Some((t, _, _)) = nearest_captured_town(world, x, y) {
+                    let (cdx, cdy) = (world.stations[t].pos.x_mm - x, world.stations[t].pos.y_mm - y);
+                    if cdx.saturating_mul(cdx).saturating_add(cdy.saturating_mul(cdy)) <= arr2 {
+                        if let Some(v) = world.town_value.get_mut(t) {
+                            *v = RECLAIM_GARRISON;
+                        }
+                        world.raiders.state[i] = DONE;
+                        continue;
+                    }
+                }
+                // Nothing to reclaim/cut here (seam already cut, town defended/gone) — RE-AIM at the capital
+                // so it converges (the no-livelock fallback; a one-way, at-most-once switch).
                 world.raiders.tx_mm[i] = cx;
                 world.raiders.ty_mm[i] = cy;
             }
