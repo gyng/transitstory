@@ -94,32 +94,49 @@ pub(crate) fn maybe_launch(world: &mut World) {
     if world.manpower < launch_cost || world.armies.len() >= MAX_ARMIES {
         return;
     }
-    // Launch from a BARRACKS on a built route (the player's agency: no barracks ⇒ no army). The first
-    // such line (lowest index); the legion starts at the barracks's arc-length and marches to the
-    // far-end town (its target). Deterministic: index-ordered find, captured before the mutation.
-    let launch = world.lines.iter().enumerate().filter(|(_, l)| !l.removed).find_map(|(li, l)| {
-        let path = l.paths.first()?;
-        if path.length_mm() <= 0 {
-            return None;
+    // Launch from EVERY BARRACKS on a built route (#war "more legions": each base you build fields its own
+    // legion this tick, toward its own line's target — so multiple barracks open multiple fronts; one
+    // barracks behaves exactly as before). Collect the candidates in line-index order (deterministic,
+    // captured before any mutation), then field each while manpower + the SoA cap allow.
+    // Candidate launches: (load, line index, barracks arc-length, target). `load` = the legions already on
+    // this base's line, so a tight manpower pool is shared FAIRLY (the neediest base fields first) instead
+    // of the lowest-index barracks monopolising it. No new state — recomputed from the live SoA each tick;
+    // one barracks ⇒ the single candidate, identical to before.
+    let mut launches: Vec<(usize, usize, i64, u32)> = world
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| !l.removed)
+        .filter_map(|(li, l)| {
+            let path = l.paths.first()?;
+            if path.length_mm() <= 0 {
+                return None;
+            }
+            // A barracks stop anchors the launch.
+            let b_idx = l.stops.iter().position(|s| world.is_barracks.get(s.index()).copied().unwrap_or(false))?;
+            let b_arc = path.stop_arclen_mm.get(b_idx).copied().unwrap_or(0);
+            // TARGET (Majesty steering): the highest-bounty UNCAPTURED town on this route, excluding the
+            // barracks itself (tiebreak: lowest StationId, deterministic). No bounty anywhere ⇒ the route's
+            // far-end town (the default conquest direction).
+            let target = l
+                .stops
+                .iter()
+                .filter(|s| !world.is_barracks.get(s.index()).copied().unwrap_or(false))
+                .filter(|s| world.bounty.get(s.index()).copied().unwrap_or(0) > 0)
+                .filter(|s| world.town_value.get(s.index()).map(|&v| v > 0).unwrap_or(true))
+                .max_by_key(|s| (world.bounty.get(s.index()).copied().unwrap_or(0), core::cmp::Reverse(s.0)))
+                .map(|s| s.0)
+                .or_else(|| l.stops.last().map(|s| s.0))?;
+            let load = world.armies.line.iter().filter(|&&l| l == LineId(li as u32)).count();
+            Some((load, li, b_arc, target))
+        })
+        .collect();
+    // Fewest-legions base first (tiebreak: lowest line index) ⇒ deterministic load-balancing.
+    launches.sort_by_key(|&(load, li, _, _)| (load, li));
+    for (_load, li, b_arc, target) in launches {
+        if world.manpower < launch_cost || world.armies.len() >= MAX_ARMIES {
+            break; // out of manpower / at the SoA cap — the rest of the barracks wait for the next tick
         }
-        // A barracks stop anchors the launch.
-        let b_idx = l.stops.iter().position(|s| world.is_barracks.get(s.index()).copied().unwrap_or(false))?;
-        let b_arc = path.stop_arclen_mm.get(b_idx).copied().unwrap_or(0);
-        // TARGET (Majesty steering): the highest-bounty UNCAPTURED town on this route, excluding the
-        // barracks itself (tiebreak: lowest StationId, deterministic). No bounty anywhere ⇒ the route's
-        // far-end town (the default conquest direction).
-        let target = l
-            .stops
-            .iter()
-            .filter(|s| !world.is_barracks.get(s.index()).copied().unwrap_or(false))
-            .filter(|s| world.bounty.get(s.index()).copied().unwrap_or(0) > 0)
-            .filter(|s| world.town_value.get(s.index()).map(|&v| v > 0).unwrap_or(true))
-            .max_by_key(|s| (world.bounty.get(s.index()).copied().unwrap_or(0), core::cmp::Reverse(s.0)))
-            .map(|s| s.0)
-            .or_else(|| l.stops.last().map(|s| s.0))?;
-        Some((li, b_arc, target))
-    });
-    if let Some((li, b_arc, target)) = launch {
         world.manpower -= launch_cost; // V3: legions drawn from manpower
         // Strength stays the nominal LAUNCH_COST (a CONSCRIPTION legion is cheaper, not weaker).
         world.armies.push(LineId(li as u32), 0, b_arc, 1, LAUNCH_COST, target);

@@ -2860,6 +2860,23 @@ lose pressure (and winnability) is preserved.
   — and is left as a noted follow-up rather than half-built (guard the finished loop). The supply-corridor
   contest (saboteurs vs. the player's rail defence) is the front that landed.
 
+## War-batch S4 — more legions: every barracks fields from its own base (owner-directed, 2026-06-16)
+
+Owner ask (war batch, item 3): *"more legions/armies."* `maybe_launch` only ever fielded from the
+FIRST-indexed barracks line, so extra barracks were idle — the player couldn't open a second front. Now
+EVERY barracks on a built route fields legions toward its own line's target, and a tight manpower pool is
+shared FAIRLY: candidates are ordered by current legion LOAD (fewest-first, tiebreak lowest line index), so
+the lowest-index base can't monopolise the pool — each barracks contributes. `MAX_ARMIES` (256) + manpower
+remain the real ceilings, so it's "field from more bases," not "free legions."
+
+- **Core (`army.rs`):** the single `find_map` became a `filter_map` over all barracks lines + a
+  load-balancing `sort_by_key((load, li))`, then field each while manpower + the SoA cap allow. No new
+  state (load recomputed from the live `ArmySoA`), so it's **golden-neutral, no re-pin** — a one-barracks
+  realm (every existing fixture + e2e) is byte-identical (a single candidate sorts to itself).
+- **Test (`army.rs` +1):** `multiple_barracks_each_field_legions_from_their_own_base` — two barracks-lines +
+  ample manpower ⇒ legions launch from BOTH (the load-balanced share), where pre-change only line 0 ever
+  fielded. Native 52/52, both goldens still pinned (unchanged), the winnability e2e unaffected (single barracks).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

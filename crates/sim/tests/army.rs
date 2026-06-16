@@ -35,6 +35,51 @@ fn war_world() -> World {
     w
 }
 
+/// #war "more legions": EACH barracks on its own line fields legions toward that line's target — two bases
+/// open two fronts. Two barracks-lines + ample manpower ⇒ legions launch from BOTH (pre-change, only the
+/// first-indexed barracks ever fielded). Deterministic.
+#[test]
+fn multiple_barracks_each_field_legions_from_their_own_base() {
+    let city = CityData {
+        id: "arcadia".into(),
+        ruleset: "arcadia".into(),
+        seed: 12345,
+        grid_cell_mm: 100_000,
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 80.0, dest_w: 2.0, commodity: 1 }, // barracks A source (grain)
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 80.0, commodity: 1 }, // town A
+                DemandCell { x_mm: 0, y_mm: 2_000_000, origin_w: 80.0, dest_w: 2.0, commodity: 1 }, // barracks B source
+                DemandCell { x_mm: 1_500_000, y_mm: 2_000_000, origin_w: 2.0, dest_w: 80.0, commodity: 1 }, // town B
+            ],
+        },
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceBarracks { x_mm: 0, y_mm: 0, name: None }); // st0
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None }); // st1
+    w.apply(&Command::PlaceBarracks { x_mm: 0, y_mm: 2_000_000, name: None }); // st2
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 2_000_000, name: None }); // st3
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false }); // line 0
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
+    w.apply(&Command::SetHeadway { line: LineId(0), headway_ms: 120_000 });
+    w.apply(&Command::CreateLine { color: 2, name: None, loop_line: false, mode: 0, literal: false }); // line 1
+    w.apply(&Command::AddStop { line: LineId(1), station: StationId(2), after: None });
+    w.apply(&Command::AddStop { line: LineId(1), station: StationId(3), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(1), spec: 0, count: 3 });
+    w.apply(&Command::SetHeadway { line: LineId(1), headway_ms: 120_000 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..6000 {
+        w.tick(50);
+    }
+    let from0 = (0..w.armies.len()).any(|i| w.armies.line[i] == LineId(0));
+    let from1 = (0..w.armies.len()).any(|i| w.armies.line[i] == LineId(1));
+    assert!(from0 && from1, "both barracks field legions (line0={from0}, line1={from1}, total={})", w.armies.len());
+}
+
 /// Tribute funds a legion: once enough supply is consumed into tribute, the war machine fields an army
 /// that then marches along the route (its arc-length position advances). Deterministic.
 #[test]
