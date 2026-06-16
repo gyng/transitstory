@@ -148,6 +148,19 @@ export class SimBridge {
     return this.sim.vehicleCargo();
   }
 
+  /** Trailing CARGO CARS pulled by rail trains (#multi-car), flat across all vehicles — 6 f32 per car
+   *  `[x,y,angle,commodity,load,lineId]` (metres). A string of cars curving behind each loco. Empty for
+   *  bus/ferry/air (single body). Pair with `vehicleCarsPrev()` for alpha interpolation. */
+  vehicleCars(): Float32Array {
+    return this.sim.vehicleCars();
+  }
+
+  /** Previous-tick positions of the trailing cargo cars `[x0,y0,...]` (metres), aligned 1:1 per car with
+   *  `vehicleCars()` — the alpha-interpolation companion. */
+  vehicleCarsPrev(): Float32Array {
+    return this.sim.vehicleCarsPrev();
+  }
+
   /** Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy/arcadia, S11 — the spell arm). */
   spellFlashes(): Float32Array {
     return this.sim.spellFlashes();

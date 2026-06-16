@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -2459,7 +2459,7 @@ export class Game {
     this.below = below;
     this.above = above;
     this.refreshAmbientServed(); // re-evaluate which trade routes the rail now serves (station set changed)
-    this.composeAndSet(this.currentVehicleDots(), this.peepLayerAt(1));
+    this.composeAndSet(this.currentVehicleDots(), this.vehicleCarsAt(1), this.peepLayerAt(1));
     for (const cb of this.onChange) cb();
   }
 
@@ -2585,7 +2585,7 @@ export class Game {
     return 150 + Math.round((80 * Math.abs(6 - this.tidePhase)) / 6); // triangle 150..230
   }
 
-  composeAndSet(vehicles: VehicleDot[], peeps: Layer | null): void {
+  composeAndSet(vehicles: VehicleDot[], cars: CargoCar[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
     const intent = this.armyIntentLayerAt();
     const intentArcs = intent ? [intent] : []; // legion→target intent, under the legion dots (over the network)
@@ -2600,9 +2600,11 @@ export class Game {
     // direction arrows (micro-detail that turns to a flashing swarm at overview). Peeps are gated
     // separately in peepLayerAt. Cheap: a filter over ~17 already-built layers, no rebuild.
     const detail = this.map.getZoom() >= DETAIL_ZOOM;
-    // At the strategic overview, drop the per-car CARGO block (micro-detail that's sub-pixel when zoomed out);
-    // the 3D vehicle bodies stay so you still read the live network in motion.
-    const vlayers = detail ? vehicleLayers(vehicles) : vehicleLayers(vehicles).filter((l) => l.id !== "vehicle-cargo");
+    // At the strategic overview, drop the per-car CARGO detail — the trailing wagons + their load lumps and
+    // the bus/ferry cargo block (all micro-detail that's sub-pixel when zoomed out). The 3D locomotive bodies
+    // stay so you still read the live network in motion (a train collapses to its loco at overview).
+    const CARGO_LOD = new Set(["vehicle-cargo", "vehicle-wagons", "vehicle-wagon-cargo"]);
+    const vlayers = detail ? vehicleLayers(vehicles, cars) : vehicleLayers(vehicles, cars).filter((l) => !CARGO_LOD.has(l.id as string));
     // Exactly one waiting layer shows per frame: the full per-station halos when zoomed in, the
     // starved-only subset at overview (a starved platform must be findable at ANY zoom).
     const above = detail
@@ -2657,7 +2659,11 @@ export class Game {
     const angles = this.bridge.vehicleAngles();
     const loads = this.bridge.vehicleLoads(); // interleaved [onboard, capacity] per vehicle
     const cargo = this.bridge.vehicleCargo(); // dominant commodity per vehicle (255 = empty/transit)
-    const colors = this.lineColors();
+    const lines = this.bridge.linesView();
+    const colors = lines.map((l) => l.color);
+    // A rail/heavy line pulls cargo WAGONS (#multi-car) → its loco carries no on-body block (the load
+    // shows on the trailing cars). tmode RAIL=0, HEAVY=4 (trainset.rs). Bus/ferry/air pull nothing.
+    const pulls = lines.map((l) => l.mode === 0 || l.mode === 4);
     const dots: VehicleDot[] = [];
     for (let i = 0; i < cur.length; i += 2) {
       const vi = i / 2;
@@ -2666,9 +2672,29 @@ export class Game {
       const [lng, lat] = metersToLngLat([x, y]);
       const cap = loads[vi * 2 + 1] ?? 0;
       const load = cap > 0 ? (loads[vi * 2] ?? 0) / cap : 0;
-      dots.push({ lng, lat, color: colorToRgb(colors[lineIds[vi]] ?? 0x444444), angle: angles[vi] ?? 0, load, cargo: cargo[vi] ?? 255 });
+      const li = lineIds[vi];
+      dots.push({ lng, lat, color: colorToRgb(colors[li] ?? 0x444444), angle: angles[vi] ?? 0, load, cargo: cargo[vi] ?? 255, pullsCars: pulls[li] ?? false });
     }
     return dots;
+  }
+
+  /** Trailing cargo WAGONS interpolated at `alpha` (#multi-car) — the string of cars each rail train pulls,
+   *  one entry per car across all trains, curving behind its loco along the track. Built from the sim's
+   *  `vehicleCars` (6 f32/car) + `vehicleCarsPrev` (2 f32/car) buffers; the line colour tints the chassis,
+   *  the commodity colours the load lump. Empty when nothing rail is running. */
+  vehicleCarsAt(alpha: number): CargoCar[] {
+    const cur = this.bridge.vehicleCars(); // 6 per car: [x, y, angle, commodity, load, lineId]
+    if (cur.length === 0) return [];
+    const prev = this.bridge.vehicleCarsPrev(); // 2 per car: [x, y]
+    const colors = this.lineColors();
+    const cars: CargoCar[] = [];
+    for (let i = 0, p = 0; i < cur.length; i += 6, p += 2) {
+      const x = prev[p] + (cur[i] - prev[p]) * alpha;
+      const y = prev[p + 1] + (cur[i + 1] - prev[p + 1]) * alpha;
+      const [lng, lat] = metersToLngLat([x, y]);
+      cars.push({ lng, lat, angle: cur[i + 2], cargo: cur[i + 3], load: cur[i + 4], color: colorToRgb(colors[cur[i + 5] | 0] ?? 0x444444) });
+    }
+    return cars;
   }
 
   /** Current (non-interpolated) vehicle dots — the on-refresh recompose before the loop runs. */

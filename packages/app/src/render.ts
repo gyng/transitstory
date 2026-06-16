@@ -6,7 +6,7 @@ import { ArcLayer, ColumnLayer, PathLayer, ScatterplotLayer, TextLayer } from "@
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 import { pineGeometry } from "./render/treeMesh";
-import { vehicleMesh, cargoMesh } from "./render/vehicleMesh";
+import { vehicleMesh, cargoMesh, wagonMesh } from "./render/vehicleMesh";
 import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
 export type Rgb = [number, number, number];
@@ -78,6 +78,26 @@ export interface VehicleDot {
   /** Dominant cargo commodity (#in-world-cargo): 0 ore / 1 grain / 2 aether / 3 fuel / 4-7 processed;
    *  255 = empty / a transit rider. Colours the 3D cargo block by the goods it hauls. */
   cargo?: number;
+  /** True for a rail/heavy train (it pulls a string of cargo WAGONS, #multi-car), so the LOAD shows on
+   *  the trailing cars — the locomotive itself carries no stack. Bus/ferry/air are false: a single body,
+   *  so the cargo block rides on the vehicle itself (they pull nothing). */
+  pullsCars?: boolean;
+}
+
+/** One trailing cargo WAGON pulled by a rail train (#multi-car) — a flatcar curving behind the locomotive
+ *  along the track. Built per frame from the sim's `vehicleCars` buffer (interpolated cur↔prev), one per
+ *  car across all trains. The chassis takes the line `color`; the load lump takes the commodity colour. */
+export interface CargoCar {
+  lng: number;
+  lat: number;
+  /** Heading in radians (the path tangent at this car's arc-length) — yaws the wagon so it curves. */
+  angle: number;
+  /** Dominant commodity it hauls (0-7; 255 empty) — the load lump's colour. */
+  cargo: number;
+  /** Load factor 0..~1 — the load lump's HEIGHT (a tall lump = a full wagon). */
+  load: number;
+  /** Line colour (chassis tint) — binds the consist visually to its line, like the PathLayer. */
+  color: Rgb;
 }
 
 /** The 3D cargo-block colour for a vehicle's hauled commodity (#in-world-cargo) — the supply-chain GOODS
@@ -1283,6 +1303,8 @@ export function treeLayer(trees: TreeInstance[]): Layer {
 // chunky little cart on the continent. The mesh is ~1 unit long (X = forward), so this ≈ the body length.
 const VEHICLE_SCALE = 150;
 const VEHICLE_BED_M = 0.46 * VEHICLE_SCALE; // cargo sits on the cabin top (mesh z 0.46) → raise it this many metres
+const WAGON_BED_M = 0.14 * VEHICLE_SCALE; // a wagon's flatbed top (mesh z 0.14) → the load lump sits here
+const WAGON_LUMP_SCALE = VEHICLE_SCALE * 0.9; // the load lump is inset to sit between the wagon end-walls
 
 /** Heading (CCW radians from +x = east) → deck SimpleMeshLayer orientation so the +X-forward mesh faces its
  *  travel direction. The angle is the path TANGENT (heading_at), updated each tick, so the model turns
@@ -1293,12 +1315,15 @@ function yawOf(angle: number): [number, number, number] {
   return [0, (angle * 180) / Math.PI, 0];
 }
 
-export function vehicleLayers(dots: VehicleDot[]): Layer[] {
-  // #3d-vehicles: real instanced 3D models on the world (not flat dots) — a low-poly car/cart yawed to its
-  // heading, line-coloured for identity, lit by the scene. Plus a CARGO block on the bed whose HEIGHT reads
-  // the load (#in-world-cargo: goods you SEE, not just a ring) — bright = full, flat = empty. Object-array +
-  // per-frame rebuild like the old dots (bounded visible count); the shared mesh uploads once.
-  const loaded = dots.filter((d) => d.load > 0.05);
+export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[] {
+  // #3d-vehicles + #multi-car: real instanced 3D models on the world. A rail train is a LOCOMOTIVE (the
+  // boxy cab, line-coloured) PULLING a string of cargo WAGONS that curve behind it along the track — each
+  // wagon a line-tinted flatcar with a commodity-coloured load lump whose HEIGHT reads the load (goods you
+  // SEE, not a ring). Bus/ferry/air pull nothing, so THEY carry the cargo block on their own bed (the
+  // `vehicle-cargo` layer below, gated to non-train dots). Object-array + per-frame rebuild like the old
+  // dots (bounded visible count); the three shared meshes upload once.
+  const bodyCargo = dots.filter((d) => !d.pullsCars && d.load > 0.05); // bus/ferry/air carry their own load
+  const lumps = cars.filter((c) => c.load > 0.05);
   return [
     new SimpleMeshLayer<VehicleDot>({
       id: "vehicles",
@@ -1313,25 +1338,58 @@ export function vehicleLayers(dots: VehicleDot[]): Layer[] {
       material: { ambient: 0.62, diffuse: 0.72, shininess: 24, specularColor: [70, 70, 80] },
       updateTriggers: { getOrientation: dots.length, getColor: dots.length },
     }),
-    new SimpleMeshLayer<VehicleDot>({
-      id: "vehicle-cargo",
-      data: loaded,
+    // Trailing cargo WAGONS (rail/heavy only): a line-coloured flatcar per car, yawed to its OWN track
+    // tangent so the consist curves through bends instead of rigidly following the loco's heading.
+    new SimpleMeshLayer<CargoCar>({
+      id: "vehicle-wagons",
+      data: cars,
+      mesh: wagonMesh(),
+      getPosition: (d) => [d.lng, d.lat],
+      getColor: (d) => d.color,
+      getOrientation: (d) => yawOf(d.angle),
+      getScale: [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE],
+      sizeScale: 1,
+      pickable: false,
+      material: { ambient: 0.62, diffuse: 0.72, shininess: 24, specularColor: [70, 70, 80] },
+      updateTriggers: { getOrientation: cars.length, getColor: cars.length },
+    }),
+    // The load lump on each WAGON — commodity-coloured, HEIGHT ∝ load, raised onto the flatbed.
+    new SimpleMeshLayer<CargoCar>({
+      id: "vehicle-wagon-cargo",
+      data: lumps,
       mesh: cargoMesh(),
       getPosition: (d) => [d.lng, d.lat],
-      // Cargo tone: coloured by the GOODS it hauls (ore/grain/aether/fuel/processed; or pale sacks/peeps),
-      // so you read WHAT each cart carries, not just that it's loaded (#in-world-cargo).
       getColor: (d) => cargoColor(d.cargo),
       getOrientation: (d) => yawOf(d.angle),
-      // Width fixed, HEIGHT ∝ load (a tall stack = a full car); raised onto the cabin bed via translation.
+      getScale: (d) => [WAGON_LUMP_SCALE, WAGON_LUMP_SCALE, VEHICLE_SCALE * (0.07 + d.load * 0.5)],
+      getTranslation: [0, 0, WAGON_BED_M],
+      sizeScale: 1,
+      pickable: false,
+      material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
+      updateTriggers: {
+        getScale: lumps.map((d) => Math.round(d.load * 12)).join(","),
+        getOrientation: lumps.length,
+        getColor: lumps.map((d) => d.cargo).join(","),
+      },
+    }),
+    // Bus/ferry/air carry their cargo block on their OWN bed (no wagons to pull). Same `vehicle-cargo` id
+    // the LOD filter already drops at overview.
+    new SimpleMeshLayer<VehicleDot>({
+      id: "vehicle-cargo",
+      data: bodyCargo,
+      mesh: cargoMesh(),
+      getPosition: (d) => [d.lng, d.lat],
+      getColor: (d) => cargoColor(d.cargo),
+      getOrientation: (d) => yawOf(d.angle),
       getScale: (d) => [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE * (0.07 + d.load * 0.5)],
       getTranslation: [0, 0, VEHICLE_BED_M],
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
       updateTriggers: {
-        getScale: loaded.map((d) => Math.round(d.load * 12)).join(","),
-        getOrientation: loaded.length,
-        getColor: loaded.map((d) => d.cargo ?? 255).join(","),
+        getScale: bodyCargo.map((d) => Math.round(d.load * 12)).join(","),
+        getOrientation: bodyCargo.length,
+        getColor: bodyCargo.map((d) => d.cargo ?? 255).join(","),
       },
     }),
   ];

@@ -2972,6 +2972,32 @@ tree'd) world.
   editable in the trainset list; tracks that CURVE realistically on the hex grid (not abrupt corners); a
   more game-like (less webapp) UI.
 
+### Multi-car trains — the loco pulls a string of cargo wagons (owner-directed, #multi-car)
+
+"Trains should pull cars that carry cargo." A rail/heavy train now renders as a LOCOMOTIVE pulling a string
+of cargo WAGONS that curve behind it along the track, replacing the single block-on-the-loco.
+
+- **Sim (render-only copy-out):** `render_buf::vehicle_cars_m` emits a flat per-car buffer (6 f32:
+  `[x,y,angle,commodity,load,line_id]`) across all trains — each car placed at `s − dir·k·CAR_PITCH` along
+  the loco's `(line,path)` via `point_at`/`heading_at`, so it sits behind the loco AND yaws to its OWN local
+  tangent (curves with the bend). `vehicle_cars_prev_m` is the alpha-interpolation companion. `car_count`
+  derives the consist from capacity (RAIL/HEAVY only; clamped 2..=6: Standard→3, Heavy→5, Express→2, HSR→5);
+  bus/ferry/air pull nothing. New wasm ports `vehicleCars`/`vehicleCarsPrev` + SimBridge mirrors.
+- **Frontend:** `vehicleMesh.ts` gains a `wagonMesh` (line-coloured flatcar); `render.ts` draws the consist
+  as three layers — loco body, `vehicle-wagons` (chassis, line colour), `vehicle-wagon-cargo` (the load lump,
+  commodity colour, height ∝ load on the flatbed). The old on-loco block now renders ONLY for bus/ferry/air
+  (single body, no wagons) via `VehicleDot.pullsCars`. `Game.vehicleCarsAt(alpha)` builds the interpolated
+  cars; `composeAndSet`/`GameLoop` thread them through; all three LOD-dropped at the strategic overview.
+- **The pitch fix (live-test feedback):** first cut spaced cars by the real spec consist length
+  (140 m/3 ≈ 47 m) while the meshes draw at the ~150 m "diorama" `VEHICLE_SCALE` → 150 m meshes packed 47 m
+  apart overlapped into one stubby blob. `CAR_PITCH_MM = 150_000` (the VISUAL car length) spaces them
+  nose-to-tail; verified in Playwright (3 cars, 150 m loco→car1 gap, 450 m span, smooth cur↔prev interp).
+- **"Jitter" non-issue (live-test feedback):** the train looked like it shook in place — that was the test
+  harness (`tickMs` flips the sim's `running` flag but NOT `game.mode`, so the rAF — which only ticks in
+  RUN mode — never advanced; manual ticks teleported it in bursts). In real run mode the loop moves it
+  smoothly (627 m / 2 s measured). No code change.
+- Render-only / golden-neutral: native goldens UNCHANGED (transit + arcadia), vitest 27/27, tsc clean.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

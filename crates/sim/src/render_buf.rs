@@ -222,6 +222,96 @@ pub fn vehicle_cargo_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Trailing CARGO CARS pulled by each rail train (#multi-car), as a flat list ACROSS all vehicles —
+/// 6 f32 per car: `[x_m, y_m, angle_rad, commodity, load, line_id]`. A rail/heavy train is drawn as its
+/// locomotive body (the existing [`vehicle_positions_m`] entry) PLUS this string of cargo cars trailing
+/// behind it along the SAME polyline, so the consist curves with the track instead of being one block.
+/// Each car sits `k · car_len` back from the loco's arc-length on the train's `(line, path)` (clamped to
+/// the path), inheriting the loco's commodity + load factor; `line_id` lets the chassis take the line
+/// colour while the load lump takes the commodity colour. Cars are derived from capacity (a fatter train
+/// pulls more), so they're a pure copy-out (no hashed state) — bus/ferry/air emit none (single body).
+pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
+    let v = &w.vehicles;
+    let mut out: Vec<f32> = Vec::new();
+    for i in 0..v.len() {
+        let Some(line) = w.lines.get(v.line[i].index()) else { continue };
+        let cars = car_count(line.mode, line.vehicle_spec().capacity);
+        if cars == 0 {
+            continue;
+        }
+        let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
+        let len = path.length_mm();
+        let dir = v.dir[i] as i64;
+        let commodity = v.onboard_pax.get(i).and_then(|q| q.first()).map(|p| p.commodity).unwrap_or(255);
+        let cap = line.vehicle_spec().capacity.max(1);
+        let load = (v.onboard[i] as f32 / cap as f32).clamp(0.0, 1.0);
+        let line_id = v.line[i].0 as f32;
+        for k in 1..=cars {
+            let back = CAR_PITCH_MM * k as i64;
+            let s = (v.s_mm[i] - dir * back).clamp(0, len);
+            let (cx, cy) = path.point_at(s);
+            let mut ang = path.heading_at(s);
+            if dir < 0 {
+                ang += std::f32::consts::PI;
+            }
+            out.push(mm_to_m(cx));
+            out.push(mm_to_m(cy));
+            out.push(ang);
+            out.push(commodity as f32);
+            out.push(load);
+            out.push(line_id);
+        }
+    }
+    out
+}
+
+/// Previous-tick positions of the trailing cargo cars `[x0,y0, ...]` in metres, aligned 1:1 (per car)
+/// with [`vehicle_cars_m`] — the alpha-interpolation companion (same `k · car_len` standoff applied to
+/// the loco's PREVIOUS arc-length). Order/length match exactly so the frontend lerps each car cur↔prev.
+pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
+    let v = &w.vehicles;
+    let mut out: Vec<f32> = Vec::new();
+    for i in 0..v.len() {
+        let Some(line) = w.lines.get(v.line[i].index()) else { continue };
+        let cars = car_count(line.mode, line.vehicle_spec().capacity);
+        if cars == 0 {
+            continue;
+        }
+        let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
+        let len = path.length_mm();
+        let dir = v.dir[i] as i64;
+        for k in 1..=cars {
+            let back = CAR_PITCH_MM * k as i64;
+            let s = (v.prev_s_mm[i] - dir * back).clamp(0, len);
+            let (px, py) = path.point_at(s);
+            out.push(mm_to_m(px));
+            out.push(mm_to_m(py));
+        }
+    }
+    out
+}
+
+/// Centre-to-centre spacing (mm) between consecutive units of a consist (loco→car, car→car). This is a
+/// RENDER pitch, deliberately the VISUAL car length — the frontend draws each unit at `VEHICLE_SCALE`
+/// (≈150 m on the map, a "diorama" scale far larger than the real ~20 m wagon), so the cars must be
+/// spaced by that visual length to sit nose-to-tail; spacing by the real spec consist length packs
+/// 150 m meshes ~47 m apart and they overlap into one stubby blob. Kept just under the loco's visual
+/// length so couplers read as a thin gap. Tied to render.ts VEHICLE_SCALE (keep them in step).
+const CAR_PITCH_MM: i64 = 150_000;
+
+/// Cargo-car COUNT a train pulls, derived from its capacity (#multi-car): only RAIL + HEAVY-rail trains
+/// pull cars (bus/ferry/air are a single body → 0). A fatter train pulls more cars, clamped 2..=6 so
+/// every train reads as a STRING (never a lone wagon) and a giant HSR consist never explodes the instance
+/// count. Pure derivation (no hashed state): Standard(7)→3, Heavy(15)→5, Express(4)→2, HSR(18)→5.
+#[inline]
+fn car_count(mode: u8, capacity: u16) -> usize {
+    use crate::trainset::tmode;
+    match mode {
+        tmode::RAIL | tmode::HEAVY => (((capacity as usize) + 5) / 4).clamp(2, 6),
+        _ => 0,
+    }
+}
+
 /// Interleaved marching-legion positions `[x0,y0, ...]` in metres (fantasy, S8 render). Each army owns
 /// an arc-length `s_mm` on its route; we interpolate the route polyline (`Path::point_at`) to cartesian
 /// here in the copy-out (float allowed). Besieging/done legions sit at the target. Empty for transit.

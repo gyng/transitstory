@@ -63,6 +63,32 @@ export function vehicleMesh(): Geometry {
   return cached;
 }
 
+let wagonCached: Geometry | null = null;
+
+/** The shared CARGO-WAGON geometry (built once) — a flatcar the locomotive pulls (#multi-car): a low bed
+ *  slab with short end-walls, no cabin/prow (it's hauled, not driven), so a string of them reads as a
+ *  freight consist behind the loco. FORWARD is +X; the layer yaws each to its track tangent so the train
+ *  curves. Slightly shorter than the loco (~0.84 long) so cars read as separate units. Line-coloured via
+ *  getColor; the load lump (cargoMesh) rides on top, commodity-coloured. */
+export function wagonMesh(): Geometry {
+  if (wagonCached) return wagonCached;
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  // Flatbed: a thin low slab (the wagon floor + underframe).
+  box(pos, nrm, -0.42, -0.24, 0.0, 0.42, 0.24, 0.14);
+  // Low end-walls (front + back) so the bed reads as a freight wagon, not a plank.
+  box(pos, nrm, -0.42, -0.24, 0.14, -0.34, 0.24, 0.3);
+  box(pos, nrm, 0.34, -0.24, 0.14, 0.42, 0.24, 0.3);
+  wagonCached = new Geometry({
+    topology: "triangle-list",
+    attributes: {
+      POSITION: { size: 3, value: new Float32Array(pos) },
+      NORMAL: { size: 3, value: new Float32Array(nrm) },
+    },
+  });
+  return wagonCached;
+}
+
 let cargoCached: Geometry | null = null;
 
 /** The shared CARGO geometry (built once) — a unit box (footprint 0.7×0.36, height 1) sitting on the car

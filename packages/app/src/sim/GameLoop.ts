@@ -58,6 +58,6 @@ export class GameLoop {
     // Interpolation + dot assembly (line tint, heading, load) lives in Game.vehicleDotsAt so the
     // per-frame loop and the on-refresh recompose share one source. The peep layer is built at the
     // same alpha (riding peeps lerp with their train; walking peeps advance with the clock).
-    this.game.composeAndSet(this.game.vehicleDotsAt(alpha), this.game.peepLayerAt(alpha));
+    this.game.composeAndSet(this.game.vehicleDotsAt(alpha), this.game.vehicleCarsAt(alpha), this.game.peepLayerAt(alpha));
   }
 }

@@ -81,6 +81,21 @@ impl Sim {
         sim::render_buf::vehicle_prev_positions_m(&self.world)
     }
 
+    /// Trailing CARGO CARS pulled by rail trains (#multi-car), flat across all vehicles — 6 f32 per car
+    /// `[x_m,y_m,angle,commodity,load,line_id]`. Drawn as a string of cars curving behind each loco along
+    /// the track. Bus/ferry/air emit none. Pair with `vehicleCarsPrev` for alpha interpolation.
+    #[wasm_bindgen(js_name = vehicleCars)]
+    pub fn vehicle_cars(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_cars_m(&self.world)
+    }
+
+    /// Previous-tick positions of the trailing cargo cars `[x0,y0,...]` in metres, aligned 1:1 (per car)
+    /// with `vehicleCars` — the alpha-interpolation companion.
+    #[wasm_bindgen(js_name = vehicleCarsPrev)]
+    pub fn vehicle_cars_prev(&self) -> Vec<f32> {
+        sim::render_buf::vehicle_cars_prev_m(&self.world)
+    }
+
     #[wasm_bindgen(js_name = vehicleAngles)]
     pub fn vehicle_angles(&self) -> Vec<f32> {
         sim::render_buf::vehicle_angles(&self.world)
