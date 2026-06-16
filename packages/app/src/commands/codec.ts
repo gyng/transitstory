@@ -63,6 +63,8 @@ export const cmd = {
   castSpell: (kind: number): Command => ({ CastSpell: { kind } }),
   /** Fantasy/arcadia (S11): toggle autocast (on = the AI auto-fires spells each tick). Rejected in transit. */
   setAutocast: (enabled: boolean): Command => ({ SetAutocast: { enabled } }),
+  // TTD L2: set a station's platform berth count (k clamped to [1, MAX_PLATFORMS] in the core).
+  buildPlatforms: (station: number, k: number): Command => ({ BuildPlatforms: { station, k } }),
 };
 
 /** An economy channel (S11 split) — MUST mirror crates/sim/tech.rs `Channel`. */

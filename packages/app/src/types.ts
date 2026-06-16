@@ -36,7 +36,10 @@ export type Command =
   // fantasy/arcadia (S11): cast a spell (kind = spell id). Auto-targeted, player-cast; spends mana. Rejected in transit.
   | { CastSpell: { kind: number } }
   // fantasy/arcadia (S11): toggle autocast — on = the AI auto-fires spells each tick. Rejected in transit.
-  | { SetAutocast: { enabled: boolean } };
+  | { SetAutocast: { enabled: boolean } }
+  // TTD L2: build a station's platform berths (k clamped to [1, MAX_PLATFORMS] in the core). k berths ⇒ k
+  // parallel dwells, so followers stop piling up behind a dwelling train.
+  | { BuildPlatforms: { station: number; k: number } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }
@@ -61,6 +64,7 @@ export type Event =
   | { TechUnlocked: { tech: number; balance_left: number } }
   | { SpellCast: { kind: number; balance_left: number } }
   | { AutocastSet: { enabled: boolean } }
+  | { PlatformsBuilt: { station: number; k: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {

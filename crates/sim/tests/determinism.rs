@@ -66,7 +66,12 @@ fn replay_equality() {
 //                           transit — no raiders ⇒ no raid ⇒ no cut lines; the re-pin is the length-0 byte)
 //   0xd753_a804_17cc_9163 — war-batch saboteur targeting (the `raider_tx_mm`+`raider_ty_mm` slices appended,
 //                           EMPTY for transit — no reservoir ⇒ no raiders; the re-pin is two length-0 bytes)
-const GOLDEN_TRANSIT_HASH: u64 = 0xd753_a804_17cc_9163;
+//   0x2f16_02bb_65d4_68ca — TTD L2 multi-platform (the `Station.platform_count: u8` field appended, = 1 for
+//                           every station; behaviour-byte-identical — default K=1 has one berth, the
+//                           follow-clamp relaxation never fires, dispatch untouched; the re-pin is one byte
+//                           per station). If a behaviour-PRESERVING refactor changes this, STOP — a real
+//                           drift is a determinism bug, not a re-pin.
+const GOLDEN_TRANSIT_HASH: u64 = 0x2f16_02bb_65d4_68ca;
 
 #[test]
 fn golden_transit_hash_pinned() {

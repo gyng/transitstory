@@ -239,7 +239,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // reservoir ⇒ no raiders ⇒ no cut lines; the re-pin is the appended length-0 byte). Prior: 0xbdd6_84be_e6be_b78a.
 // War-batch saboteur targeting: `raider_tx_mm`+`raider_ty_mm` join Canonical (EMPTY — no reservoir ⇒ no
 // raiders to target; the re-pin is two appended length-0 bytes). Prior: 0x523b_1a62_1611_df7e.
-const GOLDEN_ARCADIA_HASH: u64 = 0x8626_936b_2105_852e;
+// TTD L2 multi-platform: `Station.platform_count: u8` joins Canonical (= 1 for every station — the fixture
+// issues no BuildPlatforms, so K=1 everywhere; behaviour-byte-identical, the re-pin is one byte per station).
+// Prior: 0x8626_936b_2105_852e.
+const GOLDEN_ARCADIA_HASH: u64 = 0xddb2_bee9_22ac_67fc;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

@@ -1498,6 +1498,18 @@ impl World {
                 self.autocast = *enabled;
                 vec![Event::AutocastSet { enabled: *enabled }]
             }
+            Command::BuildPlatforms { station, k } => {
+                // TTD L2: set the station's berth count (clamped in the CORE, never the UI). K berths ⇒ K
+                // parallel dwells. K=1 is the default/no-op (byte-identical to pre-L2). Validate-then-mutate.
+                let s = station.index();
+                if s >= self.stations.len() || self.stations[s].removed {
+                    vec![Event::Rejected { reason: "BuildPlatforms: unknown station".into() }]
+                } else {
+                    let kk = (*k).clamp(1, crate::station::MAX_PLATFORMS as u16) as u8;
+                    self.stations[s].platform_count = kk;
+                    vec![Event::PlatformsBuilt { station: *station, k: kk as u16 }]
+                }
+            }
             Command::CreateLine { color, name, loop_line, mode, literal } => {
                 let id = LineId(self.lines.len() as u32);
                 let mut l = Line::new(*color, DEFAULT_HEADWAY_MS);
@@ -1869,8 +1881,12 @@ impl World {
                 vec![Event::DemandModeSet { agents: *agents }]
             }
         };
-        // Any change to lines / trainsets / headway / running invalidates dispatch.
-        if !matches!(cmd, Command::PlaceStation { .. }) {
+        // Any change to lines / trainsets / headway / running invalidates dispatch. `PlaceStation` and
+        // `BuildPlatforms` are exempt: they don't change line topology / dispatch cadence / SoA sizing
+        // (berths are parallel DWELL slots, not extra vehicles), and a needless re-dispatch would reset
+        // every train to spawn (a gameplay bug) AND perturb the golden — so building a platform must not
+        // invalidate dispatch.
+        if !matches!(cmd, Command::PlaceStation { .. } | Command::BuildPlatforms { .. }) {
             self.dispatch_dirty = true;
         }
         self.cmd_log.push(cmd.clone());

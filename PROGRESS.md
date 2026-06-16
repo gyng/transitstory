@@ -3019,6 +3019,32 @@ map routes lines along a hex lattice (`grid_walk`) → a crisp OCTILINEAR polyli
   exactly on the smoothed curve (0 m), and a running train tracks it (13 m off the nearest vertex = on the
   line). Native goldens UNCHANGED (transit + arcadia), full sim suite green, vitest 27/27, tsc clean.
 
+### TTD track-objects rework — the full model, in layers (owner-directed, 2026-06-16)
+
+Owner chose the FULL track-objects model + multi-platform berths (docs/ttd-track-model.md): build track →
+create lines → assign/customise trainsets, and parallel platform berths to kill the single-cell dwell jam.
+Built green-at-every-commit, one reusable block-reservation primitive (only the key graduates per layer).
+
+- **L1 — derived TrackGraph (`1665ad8`/`f37c545`).** Promoted what `derive_cross_blocks` computes into a
+  first-class DERIVED, never-hashed `TrackGraph` (nodes = stations stopped-at + lattice junctions/termini;
+  segments = maximal grid-edge runs contracted through degree-2 cells; co-located lines collapse to ONE
+  shared segment). Pure fn of the polylines, empty for non-grid ⇒ ZERO re-pins. 8 native tests + a clean
+  adversarial review. A render copy-out (`trackGraph`) exposes it; the infra ribbon LAYER is deferred to
+  where it earns its place (multi-line / L3). Blueprint + review via Workflow (4 readers → synth → 3-lens
+  review).
+- **Cell-derived train scale (`f37c545`, owner: "~4 cabins a hex").** Cabin = cell_step ÷ 4, derived from
+  `grid_cell_mm` (was a hardcoded 150 m) — frontend mesh + sim car-pitch in step; ~108 m on the 250 m
+  fantasy cell, sets up L2's platform-length-vs-train-length constraint (logged in the plan doc).
+- **L2a — the BuildPlatforms Command + state + re-pin (this commit).** `Station.platform_count: u8`
+  (default 1, hashed); `BuildPlatforms{station,k}` Command + `PlatformsBuilt` Event, clamped to
+  `[1, MAX_PLATFORMS=4]` in the CORE and **exempt from `dispatch_dirty`** (building a platform must not
+  re-dispatch / reset trains). TS mirror + codec. 4 native tests (apply/clamp/reject, no-re-dispatch,
+  replay-determinism, K=1 runtime no-op). **Deliberate behaviour-neutral DOUBLE golden re-pin** — the
+  appended `platform_count` byte (= 1 everywhere, no fixture issues BuildPlatforms) shifts both:
+  GOLDEN_TRANSIT `0xd753…9163 → 0x2f16_02bb_65d4_68ca`, GOLDEN_ARCADIA `0x8626…852e → 0xddb2_bee9_22ac_67fc`
+  (same class as the prior fixed-width-field re-pins). The berth BEHAVIOUR (parallel dwell + the follow-clamp
+  relaxation + never-freeze liveness) is L2b; render lateral-offset L2c; UI L2d. Blueprint via Workflow.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

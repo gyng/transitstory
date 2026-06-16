@@ -169,6 +169,14 @@ pub enum Command {
     SetAutocast {
         enabled: bool,
     },
+    /// Build a station's platform berths (TTD L2, docs/ttd-track-model.md): set its platform count to `k`
+    /// (clamped to `[1, MAX_PLATFORMS]` in the core). Up to `k` consists then dwell here in PARALLEL — a
+    /// follower pulls into a free berth instead of piling up behind a dwelling train. `k = 1` is the
+    /// default (every station ships with one platform); higher `k` is the buildable jam-relief lever.
+    BuildPlatforms {
+        station: StationId,
+        k: u16,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -195,5 +203,8 @@ pub enum Event {
     TechUnlocked { tech: u8, balance_left: i64 },
     SpellCast { kind: u8, balance_left: i64 },
     AutocastSet { enabled: bool },
+    /// A station's platform count was set to the clamped `k` (TTD L2). The UI reads the clamped value back
+    /// from here (never re-clamps), per the dispatch-clamp discipline.
+    PlatformsBuilt { station: StationId, k: u16 },
     Rejected { reason: String },
 }
