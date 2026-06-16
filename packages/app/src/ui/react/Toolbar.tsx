@@ -360,7 +360,8 @@ export function Toolbar() {
         <Button
           label="🕐 Reach"
           testid="layer-reach"
-          title="Reach: pin a station, then shade every other by how fast transit gets there. Faster reach pulls more demand — extend it to unlock trips."
+          disabled={ui.selectedStation === null}
+          title={ui.selectedStation === null ? "Reach needs a pinned station — click one first, then shade every other by how fast transit reaches it." : "Reach: shade every station by how fast transit gets there from the pinned one. Faster reach pulls more demand — extend it to unlock trips."}
           onClick={() => game.setShowReach(!ui.showReach)}
           style={{
             background: ui.showReach ? "#0072b2" : "#fff",
