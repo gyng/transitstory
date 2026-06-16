@@ -2829,6 +2829,37 @@ append-only; the timer just gates dispatch/advance).
   front-aware AI (war-batch S6). A natural-trigger e2e is deferred (forcing a corridor-crossing chord + a
   sustained swarm is too brittle for the minimal harness; the mechanic is the native gate).
 
+## War-batch S6 — saboteur raiders: the rival SEEKS your rail (owner-directed, 2026-06-16)
+
+Owner ask (war batch, items 3-4): *"more legions/armies … stable-ish fronts … smarter AI/enemy player."*
+S3 gave raiders the ABILITY to cut rail, but capital-bound raiders rarely reached an over-extended line —
+the mechanic was inert in practice. Now the rival is **target-smart**: every `SABOTEUR_EVERY`-th raider is
+a SABOTEUR that aims at a player supply line's most vulnerable SEAM (its longest span's midpoint) instead
+of the capital, so the swarm actively SEEKS rail to cut. The rest keep the capital-breach threat, so the
+lose pressure (and winnability) is preserved.
+
+- **Core (`raider.rs`):** raiders gained a march TARGET (`tx_mm`/`ty_mm`, hashed). `spawn` picks it by
+  cursor parity (deterministic, no rng): a saboteur → `nearest_seam` (the nearest operational line's longest
+  span midpoint), else the capital; a saboteur with no line to seek falls back to the capital (never stalls).
+  `march` heads for the target; `resolve` re-aims a saboteur at the capital if it reaches a now-cut seam
+  (the no-livelock fallback — an at-most-once one-way switch).
+- **Self-balancing by geometry:** a saboteur aimed at a SHORT line's seam is intercepted by that line's own
+  station cordon before it arrives (the seam is < cordon range from an endpoint) — so dense/bootstrap supply
+  stays safe; only LONG, over-extended spans (the seam beyond the cordon) actually get cut. The connectivity
+  gate (S1) forces long hauls to the arc, so over-extended lines now genuinely get raided — the felt payoff.
+- **Canonical re-pin (2nd of the war batch):** `raider_tx_mm`+`raider_ty_mm` appended LAST, EMPTY for
+  transit + both goldens (no reservoir ⇒ no raiders), so the re-pin is two length-0 bytes:
+  GOLDEN_TRANSIT `0x28b0…` → `0xd753_a804_17cc_9163`, GOLDEN_ARCADIA `0x523b…` → `0x8626_936b_2105_852e`.
+- **Tests (`raider.rs` +1, 1 generalised):** `a_saboteur_raider_seeks_and_cuts_a_long_line` (the NATURAL
+  swarm — no manual placement — marches a saboteur to a long line's seam and severs it);
+  `each_raider_marches_monotonically_at_its_target` (the no-livelock guarantee, now per-target, surviving the
+  saboteur re-aim). Native 52/52, both goldens re-pinned green, the winnability e2e (conquest / victory /
+  rival / arcadia) all still pass with saboteurs LIVE — the rival cuts long supply lines but the realm holds.
+- **Deferred:** full TERRITORY fronts (the enemy RE-TAKING captured towns, oscillating the boundary) is the
+  deepest piece — high winnability risk (the player would have to defend holdings, not just rack up captures)
+  — and is left as a noted follow-up rather than half-built (guard the finished loop). The supply-corridor
+  contest (saboteurs vs. the player's rail defence) is the front that landed.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

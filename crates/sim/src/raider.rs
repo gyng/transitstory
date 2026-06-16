@@ -56,6 +56,11 @@ const ARRIVE_MM: i64 = 2_000_000;
 const SPAWN_BASE_MS: i64 = 90_000;
 const SPAWN_DECADENCE_SCALE: i64 = 4_000;
 const SPAWN_MIN_MS: i64 = 12_000;
+/// Rail-attack targeting (#war): every Nth raider is a SABOTEUR — it aims at a player supply line's most
+/// vulnerable SEAM (its longest span's midpoint) instead of the capital, so the swarm actively SEEKS rail
+/// to cut (the felt rail-attack + a supply-defence front). The rest keep the capital-breach threat, so the
+/// realm's lose pressure (and winnability) is preserved. Tunable: 2 ⇒ half saboteurs, half breachers.
+const SABOTEUR_EVERY: u32 = 2;
 
 /// Separate Structure-of-Arrays for raiders. Authoritative (hashed) FREE 2-D position (they march off-rail,
 /// so the position IS the state — unlike legions, whose `s_mm` is the authority and x/y are render-only).
@@ -64,6 +69,11 @@ pub struct RaiderSoA {
     pub x_mm: Vec<i64>,
     pub y_mm: Vec<i64>,
     pub state: Vec<u8>,
+    /// March TARGET (mm) — most raiders aim at the capital (the breach threat); SABOTEURS (#war) aim at a
+    /// player supply line's midpoint to CUT it (rail-attack, made FELT). Authoritative (hashed) — the march
+    /// pace + the no-livelock guarantee are measured against it. Default = capital, set at spawn.
+    pub tx_mm: Vec<i64>,
+    pub ty_mm: Vec<i64>,
 }
 
 impl RaiderSoA {
@@ -77,18 +87,22 @@ impl RaiderSoA {
     pub fn live(&self) -> usize {
         self.state.iter().filter(|&&s| s == MARCHING).count()
     }
-    /// Spawn a raider at `(x, y)`, RECYCLING the lowest-index DONE slot if one exists, else pushing a new
-    /// slot (only up to `MAX_RAIDERS`). Recycling is what bounds the SoA system-wide. Returns false if the
-    /// cap is hit (no DONE slot + already full ⇒ the spawn is skipped).
-    fn spawn_at(&mut self, x: i64, y: i64) -> bool {
+    /// Spawn a raider at `(x, y)` marching at TARGET `(tx, ty)`, RECYCLING the lowest-index DONE slot if one
+    /// exists, else pushing a new slot (only up to `MAX_RAIDERS`). Recycling is what bounds the SoA
+    /// system-wide. Returns false if the cap is hit (no DONE slot + already full ⇒ the spawn is skipped).
+    fn spawn_at(&mut self, x: i64, y: i64, tx: i64, ty: i64) -> bool {
         if let Some(i) = self.state.iter().position(|&s| s == DONE) {
             self.x_mm[i] = x;
             self.y_mm[i] = y;
+            self.tx_mm[i] = tx;
+            self.ty_mm[i] = ty;
             self.state[i] = MARCHING;
             true
         } else if self.len() < MAX_RAIDERS {
             self.x_mm.push(x);
             self.y_mm.push(y);
+            self.tx_mm.push(tx);
+            self.ty_mm.push(ty);
             self.state.push(MARCHING);
             true
         } else {
@@ -139,27 +153,77 @@ fn spawn(world: &mut World, dt_ms: i64) {
     world.raider_spawn_accum_ms = 0;
     let size = world.city.grid_cell_mm.max(1);
     let cell = world.decadence_field.reservoir[(world.raider_cursor as usize) % reservoir_len];
+    let cursor = world.raider_cursor;
     world.raider_cursor = world.raider_cursor.wrapping_add(1);
     let axial = world.decadence_field.cells[cell as usize];
     let p = crate::hexgrid::center_of(axial, size);
-    world.raiders.spawn_at(p.x_mm, p.y_mm); // skipped silently if the cap is hit (bounded)
+    // Targeting (#war): every SABOTEUR_EVERY-th raider aims at the nearest supply line's SEAM (to cut it);
+    // the rest aim at the capital (breach). A saboteur with no line to seek falls back to the capital, so it
+    // never stalls. Cursor-parity selection ⇒ deterministic, no rng.
+    let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
+    let target = if cursor % SABOTEUR_EVERY == SABOTEUR_EVERY - 1 {
+        nearest_seam(world, p.x_mm, p.y_mm).unwrap_or((cx, cy))
+    } else {
+        (cx, cy)
+    };
+    world.raiders.spawn_at(p.x_mm, p.y_mm, target.0, target.1); // skipped silently if the cap is hit (bounded)
 }
 
-/// MARCH: advance each MARCHING raider STRAIGHT at the capital by `step` mm (integer-exact via `isqrt`).
-/// Distance-to-capital is monotone non-increasing — the no-livelock guarantee.
+/// Rail-attack targeting (#war): the most vulnerable SEAM nearest `(x, y)` — the midpoint of the longest
+/// span (consecutive stop pair) of the nearest OPERATIONAL line. A saboteur aims here; a span long enough
+/// puts the seam beyond the station cordon (cuttable), a short one keeps it defended (the saboteur dies at
+/// the line, like a breacher at the capital). Index-ordered, lowest-index tiebreak ⇒ deterministic. `None`
+/// if there is no operational line to seek.
+fn nearest_seam(world: &World, x: i64, y: i64) -> Option<(i64, i64)> {
+    let mut best: Option<(i128, i64, i64)> = None; // (dist² to seam, seam x, seam y)
+    for line in world.lines.iter() {
+        if line.removed || line.stops.len() < 2 {
+            continue;
+        }
+        // The line's LONGEST span = its most exposed seam.
+        let mut seam: Option<(i128, i64, i64)> = None; // (span len², midx, midy)
+        for w in line.stops.windows(2) {
+            let (Some(a), Some(b)) = (world.stations.get(w[0].index()), world.stations.get(w[1].index()))
+            else {
+                continue;
+            };
+            if a.removed || b.removed {
+                continue;
+            }
+            let (dx, dy) = ((b.pos.x_mm - a.pos.x_mm) as i128, (b.pos.y_mm - a.pos.y_mm) as i128);
+            let len2 = dx * dx + dy * dy;
+            if seam.map_or(true, |(l, _, _)| len2 > l) {
+                seam = Some((len2, (a.pos.x_mm + b.pos.x_mm) / 2, (a.pos.y_mm + b.pos.y_mm) / 2));
+            }
+        }
+        if let Some((_, sx, sy)) = seam {
+            let (ddx, ddy) = ((sx - x) as i128, (sy - y) as i128);
+            let d2 = ddx * ddx + ddy * ddy;
+            if best.map_or(true, |(bd, _, _)| d2 < bd) {
+                best = Some((d2, sx, sy));
+            }
+        }
+    }
+    best.map(|(_, sx, sy)| (sx, sy))
+}
+
+/// MARCH: advance each MARCHING raider STRAIGHT at its TARGET (#war — the capital for a breacher, a supply
+/// line's seam for a saboteur) by `step` mm (integer-exact via `isqrt`). Distance-to-TARGET is monotone
+/// non-increasing within an episode — the no-livelock guarantee (a saboteur re-aims at the capital at most
+/// once in `resolve`, so it converges).
 fn march(world: &mut World, dt_ms: i64) {
-    let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
     let step = RAIDER_SPEED_MM_S.saturating_mul(dt_ms.max(0)) / 1000;
     for i in 0..world.raiders.len() {
         if world.raiders.state[i] != MARCHING {
             continue;
         }
         let (x, y) = (world.raiders.x_mm[i], world.raiders.y_mm[i]);
-        let (dx, dy) = (cx - x, cy - y);
+        let (tx, ty) = (world.raiders.tx_mm[i], world.raiders.ty_mm[i]);
+        let (dx, dy) = (tx - x, ty - y);
         let dist = (dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))).isqrt();
         if dist <= step || dist == 0 {
-            world.raiders.x_mm[i] = cx; // close enough — snap to the capital (resolve handles arrival)
-            world.raiders.y_mm[i] = cy;
+            world.raiders.x_mm[i] = tx; // close enough — snap to the target (resolve handles arrival)
+            world.raiders.y_mm[i] = ty;
         } else {
             world.raiders.x_mm[i] = x + dx.saturating_mul(step) / dist;
             world.raiders.y_mm[i] = y + dy.saturating_mul(step) / dist;
@@ -208,6 +272,18 @@ fn resolve(world: &mut World) {
             world.raider_breach =
                 world.raider_breach.saturating_add(RAIDER_DAMAGE).min(crate::decadence::CAPITAL_THRESHOLD);
             world.raiders.state[i] = DONE;
+            continue;
+        }
+        // Targeting (#war): a SABOTEUR reached its seam but found no line to cut (another raider beat it, or
+        // the line moved/was bulldozed) — RE-AIM it at the capital so it converges (the no-livelock fallback;
+        // a breacher's target already IS the capital, so this is a one-way, at-most-once switch).
+        let (tx, ty) = (world.raiders.tx_mm[i], world.raiders.ty_mm[i]);
+        if (tx, ty) != (cx, cy) {
+            let (sdx, sdy) = (tx - x, ty - y);
+            if sdx.saturating_mul(sdx).saturating_add(sdy.saturating_mul(sdy)) <= arr2 {
+                world.raiders.tx_mm[i] = cx;
+                world.raiders.ty_mm[i] = cy;
+            }
         }
     }
 }

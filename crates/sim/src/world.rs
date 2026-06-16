@@ -454,6 +454,12 @@ struct Canonical<'a> {
     /// raiders ⇒ no raid ⇒ the lazy Vec never grows), so the re-pin is the appended length-0 byte ONCE then
     /// behaviour-byte-identical forever. Hashed: a raided line freezes its trains (replay-causal).
     line_disabled_until_ms: &'a [i64],
+    /// Raider march TARGETS (#war): the point each raider heads for — the capital (a breacher) or a supply
+    /// line's seam (a SABOTEUR). Authoritative (the march + no-livelock are measured against it) ⇒ hashed.
+    /// Appended LAST — EMPTY for transit + both goldens (no reservoir ⇒ no raiders), so the re-pin is the
+    /// appended length-0 bytes, behaviour byte-identical.
+    raider_tx_mm: &'a [i64],
+    raider_ty_mm: &'a [i64],
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -1912,6 +1918,8 @@ impl World {
             raider_breach_heal_accum: self.raider_breach_heal_accum,
             spells_cast: self.spells_cast,
             line_disabled_until_ms: &self.line_disabled_until_ms,
+            raider_tx_mm: &self.raiders.tx_mm,
+            raider_ty_mm: &self.raiders.ty_mm,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

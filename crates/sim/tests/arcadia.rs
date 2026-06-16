@@ -237,7 +237,9 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // spell arm never casts; appended zero only). Prior: 0xbb8a_7ea7_9311_814e.
 // War-batch rail-attack: the `line_disabled_until_ms` slice joins Canonical (EMPTY — the fixture has no
 // reservoir ⇒ no raiders ⇒ no cut lines; the re-pin is the appended length-0 byte). Prior: 0xbdd6_84be_e6be_b78a.
-const GOLDEN_ARCADIA_HASH: u64 = 0x523b_1a62_1611_df7e;
+// War-batch saboteur targeting: `raider_tx_mm`+`raider_ty_mm` join Canonical (EMPTY — no reservoir ⇒ no
+// raiders to target; the re-pin is two appended length-0 bytes). Prior: 0x523b_1a62_1611_df7e.
+const GOLDEN_ARCADIA_HASH: u64 = 0x8626_936b_2105_852e;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

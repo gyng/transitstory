@@ -43,8 +43,10 @@ fn running_world() -> World {
     w
 }
 
-fn dist_to_capital(w: &World, i: usize) -> i64 {
-    let (dx, dy) = (w.city.capital_x_mm - w.raiders.x_mm[i], w.city.capital_y_mm - w.raiders.y_mm[i]);
+fn dist_to_target(w: &World, i: usize) -> i64 {
+    // #war: each raider marches at its OWN target (the capital for a breacher, a line seam for a saboteur),
+    // so monotonicity is measured against `(tx_mm, ty_mm)`, not the capital.
+    let (dx, dy) = (w.raiders.tx_mm[i] - w.raiders.x_mm[i], w.raiders.ty_mm[i] - w.raiders.y_mm[i]);
     // Saturating — mirror the production march/resolve discipline (so re-pointing this test at a
     // large-coordinate world can never debug-overflow).
     dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy)).isqrt()
@@ -82,26 +84,31 @@ fn the_raider_population_is_bounded_no_sawtooth() {
 }
 
 #[test]
-fn each_raider_marches_monotonically_at_the_capital_no_livelock() {
-    // GATE-BLIND: every MARCHING raider's distance-to-capital is non-increasing tick-over-tick — it can't
+fn each_raider_marches_monotonically_at_its_target_no_livelock() {
+    // GATE-BLIND: every MARCHING raider's distance-to-TARGET is non-increasing tick-over-tick — it can't
     // oscillate or stall (the no-livelock guarantee). Recycled slots (DONE→MARCHING) reset the spawn point,
-    // so the check applies only within a continuous MARCHING episode (prev AND cur both MARCHING).
+    // AND a saboteur RE-AIMS once (seam → capital), so the check applies only within a continuous MARCHING
+    // episode with an UNCHANGED target (prev AND cur both MARCHING, same `(tx, ty)`).
     let mut w = running_world();
     let mut prev_state: Vec<u8> = Vec::new();
+    let mut prev_tgt: Vec<(i64, i64)> = Vec::new();
     let mut prev_dist: Vec<i64> = Vec::new();
     for _ in 0..40_000 {
         w.tick(50);
         for i in 0..w.raiders.len() {
             let st = w.raiders.state[i];
-            let d = if st == MARCHING { dist_to_capital(&w, i) } else { i64::MAX };
-            if i < prev_state.len() && prev_state[i] == MARCHING && st == MARCHING {
-                assert!(d <= prev_dist[i], "raider {i} moved AWAY from the capital ({} > {}) — a livelock", d, prev_dist[i]);
+            let tgt = (w.raiders.tx_mm[i], w.raiders.ty_mm[i]);
+            let d = if st == MARCHING { dist_to_target(&w, i) } else { i64::MAX };
+            if i < prev_state.len() && prev_state[i] == MARCHING && st == MARCHING && prev_tgt[i] == tgt {
+                assert!(d <= prev_dist[i], "raider {i} moved AWAY from its target ({} > {}) — a livelock", d, prev_dist[i]);
             }
             if i < prev_state.len() {
                 prev_state[i] = st;
+                prev_tgt[i] = tgt;
                 prev_dist[i] = d;
             } else {
                 prev_state.push(st);
+                prev_tgt.push(tgt);
                 prev_dist.push(d);
             }
         }
@@ -284,17 +291,46 @@ fn a_raider_at_the_track_cuts_the_line() {
     w.apply(&Command::SetRunning { running: true });
     assert!(!w.line_disabled(0), "the line starts operational");
 
-    // Place a raider at the span midpoint (a placement bypassing the reservoir spawn — the 3 SoA vecs are the
-    // whole state). One tick: march nudges it (~4.5 km) but it stays in range, then resolve CUTS the line.
+    // Place a raider at the span midpoint (a placement bypassing the reservoir spawn — the SoA vecs are the
+    // whole state). Aim it at the capital; one tick nudges it (~4.5 km) but it stays in range, then resolve
+    // CUTS the line. (The cut is position-driven, so the target only sets the march heading.)
     let (mx, my) = ((a.x_mm + b.x_mm) / 2, (a.y_mm + b.y_mm) / 2);
     w.raiders.x_mm.push(mx);
     w.raiders.y_mm.push(my);
+    w.raiders.tx_mm.push(w.city.capital_x_mm);
+    w.raiders.ty_mm.push(w.city.capital_y_mm);
     w.raiders.state.push(MARCHING);
     let raider = w.raiders.len() - 1;
     w.tick(50);
 
     assert!(w.line_disabled(0), "a raider at the track CUTS the line (it's now raided)");
     assert_eq!(w.raiders.state[raider], DONE, "the raider spent itself in the raid");
+}
+
+#[test]
+fn a_saboteur_raider_seeks_and_cuts_a_long_line() {
+    // #war targeting: a SABOTEUR raider AIMS at a player line's SEAM and cuts it — the swarm actively SEEKS
+    // rail (the felt rail-attack), not just grazes it. A long sparse line (its longest-span midpoint beyond
+    // the 4 km cordon) in a world with a reservoir: within a deterministic run, a saboteur marches to the
+    // seam and severs the line — NO manual placement, the natural spawn does it.
+    let mut w = World::new(12, hex_world(40, 40, (0, 0)));
+    let a = hexgrid::center_of((2, 38), SIZE);
+    let b = hexgrid::center_of((38, 2), SIZE);
+    w.apply(&Command::PlaceStation { x_mm: a.x_mm, y_mm: a.y_mm, name: None }); // 0
+    w.apply(&Command::PlaceStation { x_mm: b.x_mm, y_mm: b.y_mm, name: None }); // 1
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::SetRunning { running: true });
+    let mut cut = false;
+    for _ in 0..30_000 {
+        w.tick(50);
+        if w.line_disabled(0) {
+            cut = true;
+            break;
+        }
+    }
+    assert!(cut, "a saboteur sought the long line's seam and cut it (the swarm seeks rail, not just the capital)");
 }
 
 #[test]

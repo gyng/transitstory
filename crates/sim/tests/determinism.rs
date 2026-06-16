@@ -64,7 +64,9 @@ fn replay_equality() {
 //   0x8453_c57f_e54e_5829 — S11 spell arm (the `spells_cast` u32 appended, 0 for transit — no SPELLCRAFT)
 //   0x28b0_c152_a41f_cdab — war-batch rail-attack (the `line_disabled_until_ms` slice appended, EMPTY for
 //                           transit — no raiders ⇒ no raid ⇒ no cut lines; the re-pin is the length-0 byte)
-const GOLDEN_TRANSIT_HASH: u64 = 0x28b0_c152_a41f_cdab;
+//   0xd753_a804_17cc_9163 — war-batch saboteur targeting (the `raider_tx_mm`+`raider_ty_mm` slices appended,
+//                           EMPTY for transit — no reservoir ⇒ no raiders; the re-pin is two length-0 bytes)
+const GOLDEN_TRANSIT_HASH: u64 = 0xd753_a804_17cc_9163;
 
 #[test]
 fn golden_transit_hash_pinned() {
