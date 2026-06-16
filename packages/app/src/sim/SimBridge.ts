@@ -177,6 +177,12 @@ export class SimBridge {
     return this.sim.decadenceTide();
   }
 
+  /** Derived TrackGraph segments (TTD L1) as flat polylines: per segment `[n_pts, shared, x0,y0, ...]`
+   *  (metres) — the shared-infrastructure render layer. Empty for continuous / non-grid networks. */
+  trackGraph(): Float32Array {
+    return this.sim.trackGraph();
+  }
+
   /** Interleaved `[onboard0,cap0, onboard1,cap1, ...]` per vehicle — the train inspector's load. */
   vehicleLoads(): Uint16Array {
     return this.sim.vehicleLoads();

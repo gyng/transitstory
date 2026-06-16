@@ -177,6 +177,14 @@ impl Sim {
         sim::render_buf::decadence_tide_m(&self.world)
     }
 
+    /// Derived TrackGraph segments (TTD L1) as flat polylines: per segment `[n_pts, shared, x0,y0, …]` in
+    /// metres — the shared-INFRASTRUCTURE render layer (a co-located corridor draws as one rail). Empty for
+    /// continuous / non-grid networks. Render-only (the graph is never hashed).
+    #[wasm_bindgen(js_name = trackGraph)]
+    pub fn track_graph(&self) -> Vec<f32> {
+        sim::render_buf::track_graph_m(&self.world)
+    }
+
     /// Render-only "peep" dots (individual riders). One sweep at interpolation `alpha` (0..1) with
     /// the render `tick_ms` (for smooth walk motion) returns interleaved `[x0,y0,...]` metres and
     /// CACHES the paired RGBA, fetched by `peepColors()`. Determinism-free (no hashed state read or

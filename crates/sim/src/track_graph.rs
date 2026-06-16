@@ -119,14 +119,18 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
     while g < uses.len() {
         let edge = uses[g].0;
         let mut h = g;
-        let mut lines_seen: Vec<u32> = Vec::new();
+        // `uses` is sorted by (edge, line) ⇒ within an edge group the line ids ascend; a distinct line is
+        // one that differs from the previous (O(run) not O(run²), and shared = ≥2 distinct lines).
+        let mut distinct = 0u32;
+        let mut prev_line = u32::MAX;
         while h < uses.len() && uses[h].0 == edge {
-            if !lines_seen.contains(&uses[h].1) {
-                lines_seen.push(uses[h].1);
+            if uses[h].1 != prev_line {
+                distinct += 1;
+                prev_line = uses[h].1;
             }
             h += 1;
         }
-        edges.push((edge, lines_seen.len() >= 2));
+        edges.push((edge, distinct >= 2));
         g = h;
     }
 

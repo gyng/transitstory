@@ -430,7 +430,7 @@ pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
         let load = (v.onboard[i] as f32 / cap as f32).clamp(0.0, 1.0);
         let line_id = v.line[i].0 as f32;
         for k in 1..=cars {
-            let back = CAR_PITCH_MM * k as i64;
+            let back = car_pitch_mm(cell) * k as i64;
             let s = (v.s_mm[i] - dir * back).clamp(0, len);
             let (cx, cy, mut ang) = car_point(path, sm.as_ref(), s);
             if dir < 0 {
@@ -481,7 +481,7 @@ pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
         let sm = if cell > 0 { Some(smooth_grid_path(path, cell)) } else { None };
         let dir = v.dir[i] as i64;
         for k in 1..=cars {
-            let back = CAR_PITCH_MM * k as i64;
+            let back = car_pitch_mm(cell) * k as i64;
             let s = (v.prev_s_mm[i] - dir * back).clamp(0, len);
             let (px, py, _) = car_point(path, sm.as_ref(), s);
             out.push(mm_to_m(px));
@@ -491,13 +491,22 @@ pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
     out
 }
 
-/// Centre-to-centre spacing (mm) between consecutive units of a consist (loco→car, car→car). This is a
-/// RENDER pitch, deliberately the VISUAL car length — the frontend draws each unit at `VEHICLE_SCALE`
-/// (≈150 m on the map, a "diorama" scale far larger than the real ~20 m wagon), so the cars must be
-/// spaced by that visual length to sit nose-to-tail; spacing by the real spec consist length packs
-/// 150 m meshes ~47 m apart and they overlap into one stubby blob. Kept just under the loco's visual
-/// length so couplers read as a thin gap. Tied to render.ts VEHICLE_SCALE (keep them in step).
-const CAR_PITCH_MM: i64 = 150_000;
+/// Centre-to-centre spacing (mm) between consecutive consist units (loco→car, car→car) — the VISUAL cabin
+/// length the frontend draws each unit at (`VEHICLE_SCALE`), so cars sit nose-to-tail (spacing by the real
+/// spec consist length packs big meshes ~47 m apart into one stubby blob). On a GRID map this is DERIVED
+/// from the cell so a cabin is a fixed fraction of a hex (≈4 cabins per cell-step = `center_of((1,0)).x`),
+/// keeping trains proportionate to the map (the platform-length-vs-train-length coherence, #curved-track →
+/// ttd-track-model.md); render.ts derives `VEHICLE_SCALE` the SAME way (keep them in step). Non-grid
+/// (transit, real OSM track) keeps the fixed diorama pitch.
+#[inline]
+fn car_pitch_mm(cell: i64) -> i64 {
+    if cell <= 0 {
+        150_000
+    } else {
+        // cell_step (adjacent cell-centre distance) ÷ 4 ⇒ ~4 cabins per hex.
+        (crate::hexgrid::center_of((1, 0), cell).x_mm / 4).max(1)
+    }
+}
 
 /// Cargo-car COUNT a train pulls, derived from its capacity (#multi-car): only RAIL + HEAVY-rail trains
 /// pull cars (bus/ferry/air are a single body → 0). A fatter train pulls more cars, clamped 2..=6 so
@@ -688,6 +697,27 @@ pub fn decadence_tide_m(w: &World) -> Vec<f32> {
         out.push(mm_to_m(p.x_mm));
         out.push(mm_to_m(p.y_mm));
         out.push(v as f32 / crate::decadence_field::DECAD_MAX as f32);
+    }
+    out
+}
+
+/// Copy-out the derived [`crate::track_graph::TrackGraph`] (TTD L1) as flat segment polylines for the
+/// shared-INFRASTRUCTURE render layer. Per segment: `[n_pts, shared, x0,y0, x1,y1, …]` — a leading point
+/// count + a `shared` flag (1.0 if ≥2 lines ride this rail) followed by `n_pts` cell-centre points in
+/// metres. The frontend draws each as one ribbon UNDER the line PathLayers, so a co-located corridor reads
+/// as one physical rail. Render-only (the graph is never hashed); empty for continuous / non-grid networks.
+pub fn track_graph_m(w: &World) -> Vec<f32> {
+    let cell = w.city.grid_cell_mm;
+    let g = &w.track_graph;
+    let mut out = Vec::new();
+    for seg in &g.segments {
+        out.push(seg.cells.len() as f32);
+        out.push(if seg.shared { 1.0 } else { 0.0 });
+        for &c in &seg.cells {
+            let p = crate::hexgrid::center_of(c, cell);
+            out.push(mm_to_m(p.x_mm));
+            out.push(mm_to_m(p.y_mm));
+        }
     }
     out
 }

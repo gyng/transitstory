@@ -2604,7 +2604,11 @@ export class Game {
     // the bus/ferry cargo block (all micro-detail that's sub-pixel when zoomed out). The 3D locomotive bodies
     // stay so you still read the live network in motion (a train collapses to its loco at overview).
     const CARGO_LOD = new Set(["vehicle-cargo", "vehicle-wagons", "vehicle-wagon-cargo"]);
-    const vlayers = detail ? vehicleLayers(vehicles, cars) : vehicleLayers(vehicles, cars).filter((l) => !CARGO_LOD.has(l.id as string));
+    // Cabin scale derived from the map's hex cell (≈4 cabins per cell-step, the sim's car-pitch matches) so
+    // trains stay proportionate to the lattice + L2's platform-length constraint; a real-OSM map (no hex,
+    // terrainCellM 0) keeps the diorama default. cell_step = √3 · circumradius (terrainCellM).
+    const vehScale = this.terrainCellM > 0 ? (this.terrainCellM * Math.sqrt(3)) / 4 : 150;
+    const vlayers = detail ? vehicleLayers(vehicles, cars, vehScale) : vehicleLayers(vehicles, cars, vehScale).filter((l) => !CARGO_LOD.has(l.id as string));
     // Exactly one waiting layer shows per frame: the full per-station halos when zoomed in, the
     // starved-only subset at overview (a starved platform must be findable at ANY zoom).
     const above = detail

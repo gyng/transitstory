@@ -83,6 +83,26 @@ follower takes another berth instead of holding the block gap. RED-first never-f
 "K berths ⇒ K parallel dwells, no follow-queue" property test. (Parallel-berth *routing* for one line's
 trains arrives with L4 routing; L2 already unblocks multi-line and terminus berthing.)
 
+**Length coherence + exit direction (owner, 2026-06-16).** Platform length and train length live in the
+SAME units so the fit is legible:
+- **Cabin = cell-step ÷ 4** (≈ 4 cabins per hex), *derived from `grid_cell_mm`* — so a cabin/car is a fixed
+  fraction of a cell on any map, never a hardcoded metre count (the render pre-rescale shipped this: see
+  the render note below). `cell_step_mm = center_of((1,0), cell).x_mm` (√3·size).
+- **Train length = (1 loco + N cars) · cabin**; `train_cells = train_len / cell_step`. Standard (loco+3) ≈
+  1 cell; Heavy (loco+5) ≈ 1.5 cells; so a model's consist maps to a platform-length requirement.
+- **Platform length is in CELLS** and the buildable constraint is **`platform_cells ≥ ceil(train_cells)`** —
+  a train longer than its platform OVERHANGS: it can't fully berth (won't release the approach block / loads
+  slowly), the informative pressure to lengthen the platform (a real TTD lever, sits alongside K berths).
+- **Exit direction = the platform segment's orientation.** A berth is a *directed* slot along its track
+  segment: a through-platform admits from one end and releases at the other (the consist clears forward); a
+  terminus platform reverses in place. L4 routing picks a berth whose geometry matches the train's heading.
+
+### Render rescale (pre-L2, shipped 2026-06-16): trains derived from the cell
+The 3D train scale stopped being a hardcoded `VEHICLE_SCALE = 150` (≈3 big cabins/hex on the 250 m fantasy
+cell, absurd on the 100 m test cells) and is now **derived from the map's cell** (`cabin = cell_step ÷ 4`),
+both the frontend mesh scale (`render.ts`) and the sim car-pitch (`render_buf.rs CAR_PITCH`) in step, so a
+consist reads as ~4 small cabins per hex on any map — the proportions L2's platform-length constraint needs.
+
 ### L3 — `TrackSegment` becomes *authoritative* geometry (the model change)
 Flip ownership: segments own geometry; `Line` references `Vec<TrackSegmentId>` (+ berth per call).
 `AddStop`/waypoint edits are re-expressed as "lay/extend segments + bind the line to them." The importer +

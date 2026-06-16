@@ -1301,10 +1301,10 @@ export function treeLayer(trees: TreeInstance[]): Layer {
 
 // 3D-vehicle world scale (metres) — calibrated to the tree/diorama scale (~120-230) so a vehicle reads as a
 // chunky little cart on the continent. The mesh is ~1 unit long (X = forward), so this ≈ the body length.
-const VEHICLE_SCALE = 150;
-const VEHICLE_BED_M = 0.46 * VEHICLE_SCALE; // cargo sits on the cabin top (mesh z 0.46) → raise it this many metres
-const WAGON_BED_M = 0.14 * VEHICLE_SCALE; // a wagon's flatbed top (mesh z 0.14) → the load lump sits here
-const WAGON_LUMP_SCALE = VEHICLE_SCALE * 0.9; // the load lump is inset to sit between the wagon end-walls
+// Default cabin scale (metres ≈ the mesh's ~1-unit body length) for non-grid maps (real OSM track). On a
+// GRID/fantasy map the caller derives it from the cell (`cabin = cell_step ÷ 4` ≈ 4 cabins per hex) so
+// trains stay proportionate to the lattice + the L2 platform-length constraint (docs/ttd-track-model.md).
+const VEHICLE_SCALE_DEFAULT = 150;
 
 /** Heading (CCW radians from +x = east) → deck SimpleMeshLayer orientation so the +X-forward mesh faces its
  *  travel direction. The angle is the path TANGENT (heading_at), updated each tick, so the model turns
@@ -1315,13 +1315,17 @@ function yawOf(angle: number): [number, number, number] {
   return [0, (angle * 180) / Math.PI, 0];
 }
 
-export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[] {
+export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = [], scale: number = VEHICLE_SCALE_DEFAULT): Layer[] {
   // #3d-vehicles + #multi-car: real instanced 3D models on the world. A rail train is a LOCOMOTIVE (the
   // boxy cab, line-coloured) PULLING a string of cargo WAGONS that curve behind it along the track — each
   // wagon a line-tinted flatcar with a commodity-coloured load lump whose HEIGHT reads the load (goods you
   // SEE, not a ring). Bus/ferry/air pull nothing, so THEY carry the cargo block on their own bed (the
   // `vehicle-cargo` layer below, gated to non-train dots). Object-array + per-frame rebuild like the old
-  // dots (bounded visible count); the three shared meshes upload once.
+  // dots (bounded visible count); the three shared meshes upload once. `scale` (≈ cabin length in metres)
+  // is cell-derived on a grid map so a consist reads as ~4 cabins per hex (the sim's car-pitch matches it).
+  const bedM = 0.46 * scale; // cargo sits on the cabin top (mesh z 0.46) → raise it this many metres
+  const wagonBedM = 0.14 * scale; // a wagon's flatbed top (mesh z 0.14) → the load lump sits here
+  const lumpScale = 0.9 * scale; // the load lump is inset to sit between the wagon end-walls
   const bodyCargo = dots.filter((d) => !d.pullsCars && d.load > 0.05); // bus/ferry/air carry their own load
   const lumps = cars.filter((c) => c.load > 0.05);
   return [
@@ -1332,7 +1336,7 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[
       getPosition: (d) => [d.lng, d.lat],
       getColor: (d) => d.color,
       getOrientation: (d) => yawOf(d.angle),
-      getScale: [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE],
+      getScale: [scale, scale, scale],
       sizeScale: 1,
       pickable: true, // id "vehicles" so the train inspector (getTooltip dispatch on layer.id) still fires
       material: { ambient: 0.62, diffuse: 0.72, shininess: 24, specularColor: [70, 70, 80] },
@@ -1347,7 +1351,7 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[
       getPosition: (d) => [d.lng, d.lat],
       getColor: (d) => d.color,
       getOrientation: (d) => yawOf(d.angle),
-      getScale: [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE],
+      getScale: [scale, scale, scale],
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.62, diffuse: 0.72, shininess: 24, specularColor: [70, 70, 80] },
@@ -1361,8 +1365,8 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[
       getPosition: (d) => [d.lng, d.lat],
       getColor: (d) => cargoColor(d.cargo),
       getOrientation: (d) => yawOf(d.angle),
-      getScale: (d) => [WAGON_LUMP_SCALE, WAGON_LUMP_SCALE, VEHICLE_SCALE * (0.07 + d.load * 0.5)],
-      getTranslation: [0, 0, WAGON_BED_M],
+      getScale: (d) => [lumpScale, lumpScale, scale * (0.07 + d.load * 0.5)],
+      getTranslation: [0, 0, wagonBedM],
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
@@ -1381,8 +1385,8 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = []): Layer[
       getPosition: (d) => [d.lng, d.lat],
       getColor: (d) => cargoColor(d.cargo),
       getOrientation: (d) => yawOf(d.angle),
-      getScale: (d) => [VEHICLE_SCALE, VEHICLE_SCALE, VEHICLE_SCALE * (0.07 + d.load * 0.5)],
-      getTranslation: [0, 0, VEHICLE_BED_M],
+      getScale: (d) => [scale, scale, scale * (0.07 + d.load * 0.5)],
+      getTranslation: [0, 0, bedM],
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
