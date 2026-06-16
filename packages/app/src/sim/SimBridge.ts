@@ -132,6 +132,16 @@ export class SimBridge {
     return this.sim.raiderTargets();
   }
 
+  /** Raider ROLE per raider `[role0,...]` (#war), aligned with raiderPositions: 0 breacher/1 saboteur/2 reclaimer. */
+  raiderRoles(): Float32Array {
+    return this.sim.raiderRoles();
+  }
+
+  /** Legion STATE per legion `[state0,...]` (#war), aligned with armyPositions: 0 marching/1 besieging/2 done. */
+  armyStates(): Float32Array {
+    return this.sim.armyStates();
+  }
+
   /** Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy/arcadia, S11 — the spell arm). */
   spellFlashes(): Float32Array {
     return this.sim.spellFlashes();

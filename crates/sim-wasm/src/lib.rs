@@ -113,6 +113,20 @@ impl Sim {
         sim::render_buf::raider_targets_m(&self.world)
     }
 
+    /// RAIDER ROLE per raider `[role0, ...]` (#war), aligned with `raiderPositions`: 0 breacher / 1 saboteur
+    /// / 2 reclaimer. Lets the UI badge the three rival roles apart. Empty for transit.
+    #[wasm_bindgen(js_name = raiderRoles)]
+    pub fn raider_roles(&self) -> Vec<f32> {
+        sim::render_buf::raider_roles_m(&self.world)
+    }
+
+    /// LEGION STATE per legion `[state0, ...]` (#war), aligned with `armyPositions`: 0 marching / 1 besieging
+    /// / 2 done. Lets the UI dim inert garrisons. Empty for transit.
+    #[wasm_bindgen(js_name = armyStates)]
+    pub fn army_states(&self) -> Vec<f32> {
+        sim::render_buf::army_states_m(&self.world)
+    }
+
     /// Interleaved spell flashes `[x,y,kind,alpha,...]` in metres (fantasy, S11 — the spell arm). Empty
     /// otherwise. Read each frame like positions; tiny (a handful of brief flashes).
     #[wasm_bindgen(js_name = spellFlashes)]

@@ -21,6 +21,20 @@ pub const PURGE_FRONT: u8 = 0;
 pub const SMITE: u8 = 1;
 pub const WARPATH: u8 = 2;
 
+/// Render-only FX-BURST kinds (#war legibility) — NOT spells. They ride the same `spell_flashes` buffer
+/// (a brief decaying burst at a point, render-only, never hashed) so the whole age/retain/copy-out pipeline
+/// is reused; the frontend styles each kind. These echo AI actions that otherwise vanish silently:
+pub const FX_KILL: u8 = 3; // the rail cordon cut a raider down — a green burst at the defending point
+pub const FX_BREACH: u8 = 4; // a raider reached + struck the capital — a red burst at the seat
+pub const FX_LAUNCH: u8 = 5; // a legion was fielded from a barracks — a crimson burst at the base
+
+/// Push a render-only FX burst at `(x, y)` of `kind` — no mana, no spell count (unlike `fire`). The
+/// existing `step` aging + `spell_flashes_m` copy-out carry it; golden-neutral (the buffer is excluded
+/// from `Canonical`, and transit/the goldens field no raiders/legions to burst).
+pub(crate) fn fx_burst(world: &mut World, kind: u8, x: i64, y: i64) {
+    world.spell_flashes.push(SpellFlash { x_mm: x, y_mm: y, kind, age_ms: 0 });
+}
+
 pub const PURGE_COST: i64 = 14;
 pub const SMITE_COST: i64 = 10;
 pub const WARPATH_COST: i64 = 18;

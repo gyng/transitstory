@@ -79,6 +79,11 @@ export interface PerStation {
   /** Remaining siege resistance — a town's frontier garrison (S11), grinding down under siege; 0 once
    *  captured or for a non-town. The HUD shows it for sink (town) stations in arcadia. */
   townResistance: number;
+  /** Full frontier garrison (#war) — the town's siege HP at full strength, so the HUD can draw a
+   *  siege-PROGRESS ring (1 − townResistance/garrisonMax). 0 for a non-town / the capital. */
+  garrisonMax?: number;
+  /** This station is a BARRACKS (#war) — the legion-fielding node; the HUD marks it ⚔. false for transit. */
+  isBarracks?: boolean;
   /** Forge-Line buffer fill 0..1 (fantasy #8) — the fullest of this node's commodity buffers. Backed-up
    *  source ~1 (ship it), starved sink ~0. Drives the node buffer pips; 0 for transit. */
   bufferFill: number;
@@ -161,10 +166,17 @@ export interface Stats {
   decadencePct: number;
   /** Towns conquered (the conquest score). */
   townsCaptured: number;
-  /** Legions currently fielded. */
+  /** Legions currently fielded — ALL SoA slots incl. inert garrisons. */
   armyCount: number;
+  /** Legions AFIELD (#war) — marching or besieging (not done/garrisoned); the honest active-force count. */
+  armyAfield?: number;
   /** Decadence raiders marching (the rival, S11) — the mobile enemy your rail network must cut down. */
   raiderCount: number;
+  /** Raider BREACH pressure (#war) — the lose-meter floor raiders shoved on by reaching the capital,
+   *  distinct from tide creep; lets the HUD split the decadence gauge + diagnose the threat. */
+  raiderBreach?: number;
+  /** raiderBreach as a 0–100 fraction of the capital threshold — its slice of the decadence gauge. */
+  raiderBreachPct?: number;
   /** True once decadence has overrun the capital — the realm has fallen. */
   realmLost: boolean;
   /** Unlocked-tech bitset (S11) — bit `TECH[id].bit` set ⇒ that upgrade is active. The HUD reads it

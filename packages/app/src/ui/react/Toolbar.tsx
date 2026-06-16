@@ -18,7 +18,7 @@ const TOOL_HINT: Record<Tool, string> = {
   select: "[V] Click — or right-click anything — to inspect it",
   bulldozer: "[X] Click a station or line to demolish it · Esc to stop · right-click to inspect",
   barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc when done",
-  bounty: "[Y] Click a town to post a bounty — baits AI legions to attack it · Esc when done",
+  bounty: "[Y] Click a town to post a bounty — steers the NEXT legions fielded toward it (already-marching legions keep their target) · Esc when done",
 };
 
 const TOOLS: [Tool, string][] = [

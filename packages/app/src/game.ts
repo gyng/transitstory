@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -77,13 +77,16 @@ export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "b
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "army-badges", "raiders", "raider-badges", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "army-badges", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
   decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges", "ambient-traders"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
 const BOUNTY_AMOUNT = 1000;
+/** Manpower a legion costs to field (mirrors the core's `army::LAUNCH_COST`) — for the barracks ready/starved
+ *  tint + the "−manpower → ⚔" launch hint. The core is authoritative; this is a display approximation. */
+const LAUNCH_COST_MANPOWER = 8;
 
 /** Shared card style for every inspector hover tooltip (station / train / line). */
 const TOOLTIP_STYLE: Record<string, string> = {
@@ -1790,6 +1793,29 @@ export class Game {
       }
     }
 
+    // #war legibility: SIEGE-progress rings (a town being ground down by a besieging legion — its garrison
+    // shrinking) + BARRACKS badges (the ⚔ legion-spawn nodes). Both off the ~3 Hz snapshot. A town is under
+    // active contest when its garrison sits between 0 and full; progress = how ground down it is (the red
+    // pressure builds as capture nears). Barracks tint by global readiness (manpower ≥ a legion's cost).
+    const siegeRings: SiegeRing[] = [];
+    const barracksBadges: BarracksBadge[] = [];
+    if (this.ruleset === "arcadia") {
+      const ready = (this.lastStats.manpower ?? 0) >= LAUNCH_COST_MANPOWER;
+      for (const ps of this.lastStats.perStation) {
+        const s = stationsV[ps.stationId];
+        if (!s || s.removed) continue;
+        const gmax = ps.garrisonMax ?? 0;
+        if (gmax > 0 && ps.townResistance > 0 && ps.townResistance < gmax) {
+          const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+          siegeRings.push({ lng, lat, progress: 1 - ps.townResistance / gmax }); // 0 just-engaged → 1 about to fall
+        }
+        if (ps.isBarracks) {
+          const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+          barracksBadges.push({ lng, lat, ready });
+        }
+      }
+    }
+
     // Pinned-station label (deck TextLayer): name, plus the live queue once it has data.
     let pinnedLabel: RenderView["pinnedLabel"];
     if (this.selectedStation !== null) {
@@ -1863,6 +1889,8 @@ export class Game {
       bufferPips,
       frontier, // #infrastructure rail-frontier node-halos (where rail may extend); empty unless the gate is on
       raidLabels, // #war: "⚔ RAIDED" badges + countdown on cut lines; empty unless a raider severed one
+      siegeRings, // #war: siege-progress rings on towns being ground down; empty unless a siege is live
+      barracksBadges, // #war: ⚔ markers on legion-spawn nodes; empty for transit
       hazards,
       demand,
       desire,
@@ -2436,11 +2464,20 @@ export class Game {
     const xy = this.bridge.armyPositions();
     const count = xy.length >> 1;
     if (count === 0) return [];
+    const states = this.bridge.armyStates(); // #war: 0 marching / 1 besieging / 2 done (aligned with xy)
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
-    // #10: a ⚔ badge over each legion so it reads as an army, not just a crimson dot.
+    // Only AFIELD legions (marching/besieging) render — a DONE legion is inert and its holding already reads
+    // from the captured-town state, so dropping it de-litters the map + stops inflating the visible force.
+    const flat: number[] = [];
     const pos: [number, number][] = [];
-    for (let i = 0; i < count; i++) pos.push([xy[i * 2], xy[i * 2 + 1]]);
-    return [armyLayer(xy, count), entityBadgeLayer("army-badges", pos, "⚔", [255, 236, 200, 240])];
+    for (let i = 0; i < count; i++) {
+      if ((states[i] | 0) === 2) continue; // DONE / garrisoned — skip
+      flat.push(xy[i * 2], xy[i * 2 + 1]);
+      pos.push([xy[i * 2], xy[i * 2 + 1]]);
+    }
+    if (pos.length === 0) return [];
+    // #10: a ⚔ badge over each legion so it reads as an army, not just a crimson dot.
+    return [armyLayer(new Float32Array(flat), pos.length), entityBadgeLayer("army-badges", pos, "⚔", [255, 236, 200, 240])];
   }
 
   /** Legion INTENT arcs (fantasy, S11 — the AI general's "why" made spatial): a faint crimson arc from
@@ -2460,7 +2497,8 @@ export class Game {
       const [tlng, tlat] = metersToLngLat([tx, ty]);
       arcs.push({ from: [flng, flat], to: [tlng, tlat] });
     }
-    return arcs.length > 0 ? armyIntentLayer(arcs) : null;
+    // #war clutter: fade arcs as their count climbs (a cluster reads as a gradient, not a crimson smear).
+    return arcs.length > 0 ? armyIntentLayer(arcs, Math.max(0.4, Math.min(1, 7 / arcs.length))) : null;
   }
 
   /** Rail-attack intent (#war): toxic-green arcs from each SMART raider (a saboteur heading for your rail, a
@@ -2481,7 +2519,8 @@ export class Game {
       const [flng, flat] = metersToLngLat([pos[i * 2], pos[i * 2 + 1]]);
       arcs.push({ from: [flng, flat], to: [tlng, tlat] });
     }
-    return arcs.length > 0 ? raiderIntentLayer(arcs) : null;
+    // #war clutter: fade arcs as their count climbs (a cluster reads as a gradient, not a green smear).
+    return arcs.length > 0 ? raiderIntentLayer(arcs, Math.max(0.4, Math.min(1, 7 / arcs.length))) : null;
   }
 
   /** Decadence-raider dots (fantasy, S11 — the rival). Same metres→lng/lat-in-place path as legions.
@@ -2490,11 +2529,18 @@ export class Game {
     const xy = this.bridge.raiderPositions();
     const count = xy.length >> 1;
     if (count === 0) return [];
+    const roles = this.bridge.raiderRoles(); // #war: 0 breacher / 1 saboteur / 2 reclaimer (aligned with xy)
     for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
-    // #10: a ☣ badge over each raider so the rival's marauders read as a threat at a glance.
-    const pos: [number, number][] = [];
-    for (let i = 0; i < count; i++) pos.push([xy[i * 2], xy[i * 2 + 1]]);
-    return [raiderLayer(xy, count), entityBadgeLayer("raider-badges", pos, "☣", [40, 50, 30, 235])];
+    // Per-ROLE badge so the three rival roles read APART (otherwise identical green dots): ☣ breacher (marching
+    // your seat) · ✂ saboteur (cutting your rail) · ⚑ reclaimer (re-taking your unheld towns). #war legibility.
+    const RGLYPH = ["☣", "✂", "⚑"];
+    const byRole: [number, number][][] = [[], [], []];
+    for (let i = 0; i < count; i++) (byRole[roles[i] | 0] ?? byRole[0]).push([xy[i * 2], xy[i * 2 + 1]]);
+    const layers: Layer[] = [raiderLayer(xy, count)];
+    byRole.forEach((pos, r) => {
+      if (pos.length) layers.push(entityBadgeLayer(`raider-badges-${r}`, pos, RGLYPH[r], [40, 50, 30, 235]));
+    });
+    return layers;
   }
 
   /** Spell-flash bursts (fantasy, S11 — the spell arm). `[x_m,y_m,kind,alpha,...]` → lng/lat objects.
@@ -2552,12 +2598,14 @@ export class Game {
     const above = detail
       ? this.above.filter((l) => l.id !== "waiting-overview")
       : this.above.filter((l) => l.id !== "waiting" && l.id !== "station-label" && l.id !== "node-plates");
-    // Arcadia LOD: at overview, drop the dense resource-POI swarm (~30 dots) + the tide-frontier beads so
-    // the continent reads as terrain + towns + the tide WASH (the strategic picture); they return on zoom-in.
-    // Same cheap id-filter, no rebuild. (Town fills + tide fill stay at all zooms — they're the strategy.)
+    // Arcadia LOD: at overview, drop the dense resource-POI swarm (~30 dots) + trees so the continent reads
+    // as terrain + towns + the strategic picture; they return on zoom-in. The tide-front EDGE now STAYS at
+    // overview (#war legibility) — it's the single best "where will the rot hit next" telegraph, a strategic
+    // intent channel like the army/raider intent arcs (which are LOD-exempt), not detail clutter. (Town fills
+    // + the tide WASH always stay too.) Same cheap id-filter, no rebuild.
     const below =
       this.ruleset === "arcadia" && !detail
-        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "tide-front" && l.id !== "trees")
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "trees")
         : this.below;
     // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
     // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only, and only

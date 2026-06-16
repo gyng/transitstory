@@ -102,7 +102,7 @@ pub(crate) fn maybe_launch(world: &mut World) {
     // this base's line, so a tight manpower pool is shared FAIRLY (the neediest base fields first) instead
     // of the lowest-index barracks monopolising it. No new state — recomputed from the live SoA each tick;
     // one barracks ⇒ the single candidate, identical to before.
-    let mut launches: Vec<(usize, usize, i64, u32)> = world
+    let mut launches = world
         .lines
         .iter()
         .enumerate()
@@ -115,6 +115,8 @@ pub(crate) fn maybe_launch(world: &mut World) {
             // A barracks stop anchors the launch.
             let b_idx = l.stops.iter().position(|s| world.is_barracks.get(s.index()).copied().unwrap_or(false))?;
             let b_arc = path.stop_arclen_mm.get(b_idx).copied().unwrap_or(0);
+            // The barracks station's position (#war legibility: the LAUNCH burst fires here).
+            let b_pos = world.stations.get(l.stops[b_idx].index()).map(|s| (s.pos.x_mm, s.pos.y_mm)).unwrap_or((0, 0));
             // TARGET (Majesty steering): the highest-bounty UNCAPTURED town on this route, excluding the
             // barracks itself (tiebreak: lowest StationId, deterministic). No bounty anywhere ⇒ the route's
             // far-end town (the default conquest direction).
@@ -128,18 +130,19 @@ pub(crate) fn maybe_launch(world: &mut World) {
                 .map(|s| s.0)
                 .or_else(|| l.stops.last().map(|s| s.0))?;
             let load = world.armies.line.iter().filter(|&&l| l == LineId(li as u32)).count();
-            Some((load, li, b_arc, target))
+            Some((load, li, b_arc, target, b_pos))
         })
-        .collect();
+        .collect::<Vec<(usize, usize, i64, u32, (i64, i64))>>();
     // Fewest-legions base first (tiebreak: lowest line index) ⇒ deterministic load-balancing.
-    launches.sort_by_key(|&(load, li, _, _)| (load, li));
-    for (_load, li, b_arc, target) in launches {
+    launches.sort_by_key(|&(load, li, _, _, _)| (load, li));
+    for (_load, li, b_arc, target, b_pos) in launches {
         if world.manpower < launch_cost || world.armies.len() >= MAX_ARMIES {
             break; // out of manpower / at the SoA cap — the rest of the barracks wait for the next tick
         }
         world.manpower -= launch_cost; // V3: legions drawn from manpower
         // Strength stays the nominal LAUNCH_COST (a CONSCRIPTION legion is cheaper, not weaker).
         world.armies.push(LineId(li as u32), 0, b_arc, 1, LAUNCH_COST, target);
+        crate::spell::fx_burst(world, crate::spell::FX_LAUNCH, b_pos.0, b_pos.1); // #war: echo the field (was silent)
     }
 }
 

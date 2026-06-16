@@ -277,6 +277,7 @@ fn resolve(world: &mut World) {
         let (x, y) = (world.raiders.x_mm[i], world.raiders.y_mm[i]);
         if intercepted(world, x, y, def2) {
             world.raiders.state[i] = DONE; // the rail network cuts it down
+            crate::spell::fx_burst(world, crate::spell::FX_KILL, x, y); // #war: echo the cordon's kill (was silent)
             continue;
         }
         // Rail-attack (#war): the cordon missed it, but it has reached an OPERATIONAL line's TRACK — CUT
@@ -297,6 +298,7 @@ fn resolve(world: &mut World) {
             world.raider_breach =
                 world.raider_breach.saturating_add(RAIDER_DAMAGE).min(crate::decadence::CAPITAL_THRESHOLD);
             world.raiders.state[i] = DONE;
+            crate::spell::fx_burst(world, crate::spell::FX_BREACH, cx, cy); // #war: echo the capital strike (was silent)
             continue;
         }
         // A raider reached its NON-capital target (a saboteur's seam or a reclaimer's town):

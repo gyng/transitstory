@@ -36,6 +36,19 @@ export interface RaidLabel {
   lat: number;
   text: string;
 }
+/** Siege progress (#war): a town being ground down by a besieging legion. `progress` 0 (just engaged) → 1
+ *  (about to fall) — the red pressure builds as capture nears, so a sieging legion reads as "winning". */
+export interface SiegeRing {
+  lng: number;
+  lat: number;
+  progress: number;
+}
+/** Barracks marker (#war): the ⚔ legion-spawn node. `ready` = the realm has manpower to field a legion. */
+export interface BarracksBadge {
+  lng: number;
+  lat: number;
+  ready: boolean;
+}
 export interface CatchmentCircle {
   lng: number;
   lat: number;
@@ -329,6 +342,8 @@ export interface RenderView {
   bufferPips: BufferPip[]; // fantasy #8: node Forge-Line buffer-fill gauges (empty for transit)
   frontier: FrontierNode[]; // fantasy #infrastructure: rail-frontier node-halos (where rail may extend) — empty for transit
   raidLabels: RaidLabel[]; // fantasy #war: "⚔ RAIDED" badge + countdown on cut lines — empty unless a raider severed one
+  siegeRings: SiegeRing[]; // fantasy #war: siege-progress rings on towns being ground down — empty unless a siege is live
+  barracksBadges: BarracksBadge[]; // fantasy #war: ⚔ markers on the legion-spawn nodes — empty for transit
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
@@ -543,6 +558,29 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getFillColor: view.frontier.length,
         getLineColor: view.frontier.length,
         getLineWidth: view.frontier.length,
+      },
+    }),
+    // SIEGE-PROGRESS rings (#war): a red ring on a town being ground down by a besieging legion — its
+    // intensity + width BUILD as capture nears (progress 0→1), so a sieging legion reads as "winning" and
+    // you can see how close + compare two sieges (was a hover-only number). A genuine spatial fact (a town
+    // under contest), drawn over the network, under the station dots so it never hides the clickable node.
+    new ScatterplotLayer({
+      id: "siege-rings",
+      data: view.siegeRings,
+      getPosition: (d: SiegeRing) => [d.lng, d.lat],
+      getRadius: 13,
+      radiusUnits: "pixels",
+      radiusMinPixels: 10,
+      radiusMaxPixels: 16,
+      stroked: true,
+      filled: false,
+      getLineColor: (d: SiegeRing) => [220, 48, 48, Math.round(70 + 150 * Math.max(0, Math.min(1, d.progress)))],
+      lineWidthUnits: "pixels",
+      getLineWidth: (d: SiegeRing) => 1.5 + 3 * Math.max(0, Math.min(1, d.progress)),
+      lineWidthMinPixels: 1.2,
+      updateTriggers: {
+        getLineColor: view.siegeRings.map((r) => Math.round(r.progress * 20)).join(","),
+        getLineWidth: view.siegeRings.map((r) => Math.round(r.progress * 20)).join(","),
       },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
@@ -899,13 +937,15 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "bounty-markers",
       data: view.stations.filter((s) => (s.bounty ?? 0) > 0),
       getPosition: (d: StationDot) => [d.lng, d.lat],
-      getRadius: 11,
+      getRadius: 12,
       radiusUnits: "pixels",
-      radiusMinPixels: 9,
+      radiusMinPixels: 10,
       stroked: true,
       filled: false,
-      getLineColor: [214, 158, 0, 255], // gold bounty halo
-      lineWidthMinPixels: 2,
+      // Warm ORANGE (not yellow-gold) + thicker, so the actionable bounty halo separates from the pale-gold
+      // frontier root halo it co-locates with on a town (#war clutter: the gold-overload near the capital).
+      getLineColor: [232, 120, 16, 255],
+      lineWidthMinPixels: 2.6,
       updateTriggers: { getLineColor: view.stations.map((s) => ((s.bounty ?? 0) > 0 ? 1 : 0)).join(",") },
     }),
     // Waiting-passenger halo: a ring that grows with the queue (top, so a starved station is always
@@ -1027,6 +1067,25 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getTextAnchor: "middle",
       getAlignmentBaseline: "center",
       updateTriggers: { getText: view.raidLabels.map((r) => r.text).join("|") },
+    }),
+    // BARRACKS badge (#war): a ⚔ over each legion-spawn node, GOLD when the realm can field a legion
+    // (manpower ready) / GREY when starved — so the player can SEE where legions muster + whether the base
+    // is fed (it was an unmarked generic station). Pixel-offset above the dot so it doesn't hide it.
+    new TextLayer<BarracksBadge>({
+      id: "barracks-badges",
+      data: view.barracksBadges,
+      getPosition: (d) => [d.lng, d.lat],
+      getText: () => "⚔",
+      characterSet: "⚔",
+      getSize: 13,
+      sizeUnits: "pixels",
+      getColor: (d) => (d.ready ? [236, 188, 92, 255] : [150, 150, 156, 220]),
+      getPixelOffset: [0, -14],
+      fontWeight: 700,
+      fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+      getTextAnchor: "middle",
+      getAlignmentBaseline: "center",
+      updateTriggers: { getColor: view.barracksBadges.map((b) => b.ready).join(",") },
     }),
   ];
 
@@ -1292,18 +1351,22 @@ export interface IntentArc {
  *  reads WHERE the AI is sending its legions (you steer by rail + bounty, the legions execute). Under the
  *  legion dots (the dot stays on top of its own line), over the network. Few + short-lived, so a plain
  *  per-compose ArcLayer is cheap (mirrors the army/raider dot layers). */
-export function armyIntentLayer(arcs: IntentArc[]): Layer {
+export function armyIntentLayer(arcs: IntentArc[], alpha = 1): Layer {
+  // #war legibility: scale alpha DOWN as the arc count rises so a cluster of same-hue arcs reads as a
+  // gradient rather than a solid crimson smear (clutter fix). updateTriggers keyed on the alpha so deck
+  // re-evaluates the colour accessors when density changes.
   return new ArcLayer({
     id: "army-intent",
     data: arcs,
     getSourcePosition: (d: IntentArc) => d.from,
     getTargetPosition: (d: IntentArc) => d.to,
-    getSourceColor: [150, 24, 24, 50], // faint at the legion
-    getTargetColor: [150, 24, 24, 165], // stronger at the destination (where the intent points)
+    getSourceColor: [150, 24, 24, Math.round(50 * alpha)], // faint at the legion
+    getTargetColor: [150, 24, 24, Math.round(165 * alpha)], // stronger at the destination (where the intent points)
     getWidth: 2,
     widthUnits: "pixels",
     widthMinPixels: 1.5,
     getHeight: 0.5,
+    updateTriggers: { getSourceColor: alpha, getTargetColor: alpha },
   });
 }
 
@@ -1311,18 +1374,20 @@ export function armyIntentLayer(arcs: IntentArc[]): Layer {
  *  (a saboteur heading for your rail, a reclaimer heading for an unheld town) to its target, so you see the
  *  smart enemy coming and can rail-to / defend it. Toxic green = the raiders' own rot hue (distinct from the
  *  player's red legion intent). Breachers (capital-bound) are filtered out upstream so the map stays legible. */
-export function raiderIntentLayer(arcs: IntentArc[]): Layer {
+export function raiderIntentLayer(arcs: IntentArc[], alpha = 1): Layer {
+  // #war legibility: alpha scales down with density (clutter fix) — see armyIntentLayer.
   return new ArcLayer({
     id: "raider-intent",
     data: arcs,
     getSourcePosition: (d: IntentArc) => d.from,
     getTargetPosition: (d: IntentArc) => d.to,
-    getSourceColor: [120, 170, 70, 40], // faint at the raider
-    getTargetColor: [150, 200, 90, 175], // stronger at what it's coming for (your rail / unheld town)
+    getSourceColor: [120, 170, 70, Math.round(40 * alpha)], // faint at the raider
+    getTargetColor: [150, 200, 90, Math.round(175 * alpha)], // stronger at what it's coming for (your rail / unheld town)
     getWidth: 1.5,
     widthUnits: "pixels",
     widthMinPixels: 1,
     getHeight: 0.3,
+    updateTriggers: { getSourceColor: alpha, getTargetColor: alpha },
   });
 }
 
@@ -1364,7 +1429,7 @@ export function raiderLayer(positionsLngLat: Float32Array, count: number): Layer
  *  marauders (☣) read as what they are at a glance, not just coloured dots. `positions` are lng/lat (tiny
  *  counts → a plain array). characterSet seeds the atlas. Trains already carry their load ring; peeps stay
  *  plain dots (cosmetic). */
-const ENTITY_CHARSET = "⚔☣";
+const ENTITY_CHARSET = "⚔☣✂⚑";
 export function entityBadgeLayer(
   id: string,
   positions: [number, number][],
@@ -1390,11 +1455,18 @@ export function entityBadgeLayer(
  *  `data` is interleaved [lng,lat,kind,alpha,...] (caller converts metres→lng/lat). kind picks the hue
  *  (0 Purge teal · 1 Smite gold · 2 Warpath crimson); alpha fades it out. Few + brief, so a plain
  *  per-compose ScatterplotLayer with accessors is cheap. Drawn on top (the magic reads over everything). */
+// FX-burst hues by kind — spells (0-2) + render-only #war event bursts (3-5) that echo AI actions which
+// otherwise vanished silently. All ride the one spell-flash buffer/layer (a brief growing-fading pop).
 const SPELL_HUE: [number, number, number][] = [
-  [68, 170, 153], // Purge — teal (matches the tide-purge theme)
-  [240, 200, 70], // Smite — gold bolt
-  [200, 60, 60], // Warpath — crimson
+  [68, 170, 153], // 0 Purge — teal (matches the tide-purge theme)
+  [240, 200, 70], // 1 Smite — gold bolt
+  [200, 60, 60], // 2 Warpath — crimson
+  [150, 230, 140], // 3 KILL — clean bright green: the rail cordon cut a raider down (network defended)
+  [235, 60, 50], // 4 BREACH — alarm red: a raider struck the capital (the lose-driver)
+  [230, 150, 70], // 5 LAUNCH — warm orange: a legion mustered from a barracks
 ];
+// Per-kind base radius (px) — a BREACH reads as a bigger alarm than a routine kill/launch pop.
+const FX_BURST_SIZE: number[] = [8, 8, 8, 9, 16, 11];
 export function spellFlashLayer(flashes: { lng: number; lat: number; kind: number; alpha: number }[]): Layer {
   return new ScatterplotLayer({
     id: "spell-flashes",
@@ -1404,8 +1476,8 @@ export function spellFlashLayer(flashes: { lng: number; lat: number; kind: numbe
       const [r, g, b] = SPELL_HUE[d.kind] ?? [255, 255, 255];
       return [r, g, b, Math.round(200 * d.alpha)];
     },
-    // Grow as it fades (a pop), pixel radius.
-    getRadius: (d: { alpha: number }) => 8 + (1 - d.alpha) * 18,
+    // Grow as it fades (a pop), pixel radius; base size per kind (a breach alarm is bigger than a kill pop).
+    getRadius: (d: { kind: number; alpha: number }) => (FX_BURST_SIZE[d.kind] ?? 8) + (1 - d.alpha) * 18,
     radiusUnits: "pixels",
     radiusMinPixels: 6,
     stroked: false,

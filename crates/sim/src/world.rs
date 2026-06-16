@@ -1168,6 +1168,15 @@ impl World {
                 denied: *self.denied_at.get(s).unwrap_or(&0) as f64,
                 abandoned: *self.abandoned_at.get(s).unwrap_or(&0) as f64,
                 town_resistance: *self.town_value.get(s).unwrap_or(&0) as f64,
+                // #war legibility: the FULL garrison (for the siege-progress ring) + the barracks flag (for
+                // the ⚔ spawn-node badge). garrison_resistance is the depth-scaled full HP; only meaningful
+                // for towns (a sink with resistance), 0 elsewhere; both are pure render readouts.
+                garrison_max: if self.captured_dest.get(s).copied().unwrap_or(0.0) > self.captured_origin.get(s).copied().unwrap_or(0.0) {
+                    crate::army::garrison_resistance(self, s) as f64
+                } else {
+                    0.0
+                },
+                is_barracks: self.is_barracks.get(s).copied().unwrap_or(false),
                 buffer_fill: {
                     // The fullest of this node's commodity buffers, normalised by BUFFER_CAP (snapshot of
                     // the hashed forge_stock; render-only). 0 for transit (forge_stock empty).
@@ -1272,7 +1281,13 @@ impl World {
             decadence_pct: crate::decadence::pct(self),
             towns_captured: self.towns_captured as f64,
             army_count: self.armies.len() as u32,
+            // #war legibility: AFIELD = not DONE (the honest active-force count; army_count inflates with
+            // permanent inert garrisons). DONE = crate::army::DONE.
+            army_afield: self.armies.state.iter().filter(|&&s| s != crate::army::DONE).count() as u32,
             raider_count: self.raiders.live() as u32,
+            // #war legibility: the raider-breach pressure surfaced on its own (distinct from tide creep).
+            raider_breach: self.raider_breach as f64,
+            raider_breach_pct: (self.raider_breach as f64 / crate::decadence::CAPITAL_THRESHOLD as f64 * 100.0).clamp(0.0, 100.0),
             realm_lost: crate::decadence::is_lost(self),
             tech_unlocked: self.tech_unlocked,
             spells_cast: self.spells_cast,

@@ -44,6 +44,9 @@ const BAR_STYLE: CSSProperties = {
   color: "#1c2024",
 };
 
+/** Manpower a legion costs to field (mirrors the core `army::LAUNCH_COST`) — for the "starved" hint. */
+const LEGION_COST = 8;
+
 /** Fantasy (arcadia) HUD: the supply→conquest→decadence readout — tribute, the lose-meter gauge,
  *  towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
 /** A per-minute flow-rate pill (▲ earning / ▼ draining) for an economy channel — the "am I net-positive?"
@@ -67,8 +70,12 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   // Per-minute flow rates (velocity), from the rolling history — pairs each stock with its trend.
   const rates = channelRates();
   const towns = Math.round(s.townsCaptured);
-  const armies = Math.round(s.armyCount);
+  // AFIELD count (#war): marching+besieging, not the inflated all-slots army_count (which counts dead garrisons).
+  const armies = Math.round(s.armyAfield ?? s.armyCount);
   const d = Math.round(s.decadencePct);
+  // #war: the slice of the rot the RAIDERS pushed on by reaching the capital (vs. the tide creep) — surfaced
+  // as a toxic-green tip on the gauge so the player can tell raider pressure from front advance (opposite fixes).
+  const breachPct = Math.round(s.raiderBreachPct ?? 0);
   // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
   const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "#e69f00" : "#7a93ad";
   // Threat projection: how fast the rot is rising + a sim-minute ETA to a fallen realm (only while it's
@@ -97,9 +104,15 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
           <RatePill rate={rates?.mana} color="#7a4ed2" />
         </div>
       )}
-      {manpower > 0 && (
-        <div data-testid="manpower" title="Manpower — minted by grain/arms supply chains; raises the AI's legions." style={{ color: "#b5651d" }}>
-          ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower
+      {/* #war: show manpower even when STARVED (0) once the realm is warring — the player must see "can't
+          field a legion" exactly when it bites (it used to hide at 0). ~8 manpower = one legion. */}
+      {(manpower > 0 || armies > 0) && (
+        <div
+          data-testid="manpower"
+          title={`Manpower — minted by grain/arms supply chains; each legion costs ~${LEGION_COST} to field from a barracks.${manpower < LEGION_COST ? " STARVED: too little to field a legion — supply more grain/arms." : ""}`}
+          style={{ color: manpower < LEGION_COST ? "var(--ot-gauge-bad)" : "#b5651d", fontWeight: manpower < LEGION_COST ? 700 : undefined }}
+        >
+          ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower{manpower < LEGION_COST ? " ⚠" : ""}
           <RatePill rate={rates?.manpower} color="#b5651d" />
         </div>
       )}
@@ -122,9 +135,10 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         className={critical ? "ot-pulse" : undefined}
         style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help", padding: "2px 6px", borderRadius: 7 }}
         title={
-          eta !== null
+          (eta !== null
             ? `The Decadence — spreading corruption rising ${dt!.perMin.toFixed(1)}/min. At this rate the realm falls in ~${Math.max(1, Math.round(eta))} min. Conquer towns and Purge to hold it back.`
-            : "The Decadence — spreading corruption. If it overruns your capital, the realm falls. Conquest and Purge hold it back."
+            : "The Decadence — spreading corruption. If it overruns your capital, the realm falls. Conquest and Purge hold it back.") +
+          (breachPct > 0 ? ` The green tip (${breachPct}) is RAIDER BREACH — rot from raiders reaching your capital; cover the approaches to heal it (the rest is the tide front — Purge/conquer that).` : "")
         }
       >
         ☠ Decadence
@@ -133,6 +147,13 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
             data-testid="decadence-bar"
             style={{ position: "absolute", inset: "0 auto 0 0", width: `${d}%`, background: dColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
           />
+          {breachPct > 0 && (
+            <div
+              data-testid="decadence-breach"
+              title="Raider breach"
+              style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, d - breachPct)}%`, width: `${Math.min(breachPct, d)}%`, background: "repeating-linear-gradient(45deg, #6aa83c, #6aa83c 2px, #8fc95f 2px, #8fc95f 4px)", transition: "left .5s var(--ot-ease), width .5s var(--ot-ease)" }}
+            />
+          )}
         </div>
         <b style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d}</b>
         {eta !== null && (
@@ -150,7 +171,7 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         </div>
       )}
       {Math.round(s.raiderCount) > 0 && (
-        <div data-testid="raiders" style={{ color: "#5c7a2e", fontWeight: 600 }} title="Decadence raiders marching on your capital. Your rail network cuts them down — cover the approaches, or they deepen the rot.">
+        <div data-testid="raiders" style={{ color: "#5c7a2e", fontWeight: 600 }} title="Decadence raiders, in three roles (watch their badge): ☣ breachers march your capital (deepen the rot), ✂ saboteurs cut your over-extended rail, ⚑ reclaimers re-take towns you haven't railed to. Your station cordon cuts them down — cover the approaches + hold your ground.">
           ☣ {Math.round(s.raiderCount)} raider{Math.round(s.raiderCount) === 1 ? "" : "s"}
         </div>
       )}

@@ -2916,6 +2916,36 @@ target, so you see the threat coming and can rail-to / defend it. BREACHERS (cap
   the raider dots, and hidden in the Supply lens. Native goldens unchanged, the rival/arcadia e2e pass with
   the new layer live (the render path renders cleanly with raiders afield).
 
+## War-batch legibility — telegraph/echo the AI's actions (audit-driven, 2026-06-16)
+
+A 4-agent legibility audit found the war's TARGETING + CONQUEST/LOSS bookends read well, but the MIDDLE of
+every causal chain was dark — several AI actions had no on-map echo ("an action with no visible echo isn't a
+legible lever"). This pass closes them, ALL render-only (no sim Commands, golden-neutral): FX-burst echoes
+ride the existing `spell_flashes` buffer (render-only/not hashed) with new kinds, and new readouts are
+`render_buf`/`stats` out-ports.
+
+- **Enemy echoes:** the rail-cordon KILL (was silent — the core defensive win) now fires a green FX burst at
+  the intercept; the capital BREACH (the only direct lose-driver, was folded invisibly into the decadence
+  bar) fires a red burst at the seat AND `raider_breach` is surfaced as a toxic-green tip on the decadence
+  gauge (so "raiders reach my seat" reads apart from "the tide advanced" — opposite fixes). The three raider
+  ROLES now badge apart (☣ breacher / ✂ saboteur / ⚑ reclaimer) off a render-derived role byte, and the
+  raiders tooltip is corrected (it mis-described 2 of 3 roles).
+- **Friendly echoes:** the LAUNCH fires an orange burst at the barracks; the SIEGE GRIND draws a red
+  progress ring on the besieged town (intensifying as capture nears — was a hover-only number); DONE
+  garrisons are dropped from the map (were full-strength dots inflating the force) and the count shows
+  `army_afield`; BARRACKS get a persistent ⚔ badge (gold ready / grey starved); the manpower readout stays
+  visible when STARVED (was hidden at 0) with the ~8/legion cost; the bounty tooltip states the
+  next-launch-only steering rule.
+- **Clutter/LOD:** the tide-front EDGE now persists at the overview zoom (the "where will the rot hit"
+  telegraph, a strategic channel like the intent arcs); intent arcs FADE with density (a cluster reads as a
+  gradient, not a smear); the bounty halo is recoloured warm-orange to separate from the pale-gold frontier.
+- **Core readouts added (render-only / out-port → no re-pin):** `spell::fx_burst` + KILL/BREACH/LAUNCH kinds;
+  `render_buf::raider_roles_m` + `army_states_m`; `Stats.army_afield`/`raider_breach`/`raider_breach_pct`;
+  `StationStat.garrison_max`/`is_barracks`; wasm `raiderRoles`/`armyStates`. Native 52/52 + both goldens
+  UNCHANGED, vitest 27/27, the war e2e (rival/conquest/victory/arcadia) all green with every layer live.
+- **Deferred (minor):** a gold-tinted "baited!" arc when a launched legion takes a bounty (the tooltip + the
+  visible bounty halo + the intent arc to it already convey it).
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

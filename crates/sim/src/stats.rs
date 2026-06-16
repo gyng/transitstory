@@ -64,11 +64,21 @@ pub struct StatsSnapshot {
     pub decadence_pct: f64,
     /// Towns conquered this game (the conquest score).
     pub towns_captured: f64,
-    /// Legions currently fielded (the war machine's mobile force).
+    /// Legions currently fielded (the war machine's mobile force) — ALL SoA slots incl. inert/garrisoned.
     pub army_count: u32,
+    /// Legions AFIELD — MARCHING or BESIEGING (not DONE/garrisoned). The honest "active force" count, so the
+    /// HUD can split it from `army_count` (which inflates with permanent inert garrisons). 0 for transit.
+    pub army_afield: u32,
     /// Decadence RAIDERS marching (the rival, S11) — the mobile enemy your network must cut down. 0 for
     /// transit + a realm with no decadence field.
     pub raider_count: u32,
+    /// Raider BREACH pressure (#war): the floor raiders have shoved onto the lose meter by REACHING the
+    /// capital, distinct from the tide creep. The decadence gauge blends both; surfaced separately so the
+    /// player can tell "raiders are reaching my seat" (cover approaches) from "the front advanced" (Purge/
+    /// conquer). Decays as the network holds. 0 for transit / a realm with no rival.
+    pub raider_breach: f64,
+    /// `raider_breach` as a 0–100 fraction of the capital threshold — its slice of the decadence gauge.
+    pub raider_breach_pct: f64,
     /// True once decadence has overrun the capital — the realm has fallen.
     pub realm_lost: bool,
     /// Unlocked-tech bitset (S11) — bit `TECHS[id].bit` set ⇒ that upgrade is active. The HUD reads it
@@ -112,6 +122,13 @@ pub struct StationStat {
     /// Remaining siege resistance — a town's FRONTIER garrison (S11), grinding down under siege; 0 once
     /// captured (or for a non-town / before the war ticks). The HUD shows it for sink (town) stations.
     pub town_resistance: f64,
+    /// FULL frontier garrison (#war) — the town's siege HP at full strength (base + depth bonus), so the HUD
+    /// can draw a siege-PROGRESS ring (1 − `town_resistance`/`garrison_max` = how ground down a besieged town
+    /// is). 0 for a non-town / the capital. A render readout (NOT hashed).
+    pub garrison_max: f64,
+    /// This station is a BARRACKS (#war) — the legion-fielding node (fantasy). The HUD marks it with a ⚔
+    /// badge so the player can see WHERE legions spawn. A render readout (NOT hashed); false for transit.
+    pub is_barracks: bool,
     /// Forge-Line BUFFER fill 0..1 (fantasy #8): the fullest of this node's commodity buffers / BUFFER_CAP.
     /// A backed-up SOURCE reads ~1 (ship it!), a starved SINK ~0. 0 for transit / non-forge. Derived from
     /// the hashed `forge_stock` for the HUD's node buffer pips — NOT hashed itself (it's a snapshot readout).

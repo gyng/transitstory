@@ -290,6 +290,44 @@ pub fn raider_targets_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// RAIDER ROLE per marching raider (#war), aligned 1:1 with `raider_positions_m` — 0 BREACHER (capital),
+/// 1 SABOTEUR (rail seam), 2 RECLAIMER (captured town). DERIVED from the raider's exact target position (a
+/// render-only classification, so it needs no hashed role byte / re-pin): target == the capital ⇒ breacher
+/// (incl. a re-aimed fallback, correctly now a breacher); target == a captured town's exact position ⇒
+/// reclaimer; else ⇒ saboteur. Lets the UI badge the three roles apart (they're otherwise identical dots).
+pub fn raider_roles_m(w: &World) -> Vec<f32> {
+    let (cx, cy) = (w.city.capital_x_mm, w.city.capital_y_mm);
+    let r = &w.raiders;
+    let mut out = Vec::with_capacity(r.live());
+    for i in 0..r.len() {
+        if r.state[i] != crate::raider::MARCHING {
+            continue;
+        }
+        let (tx, ty) = (r.tx_mm[i], r.ty_mm[i]);
+        let role: u8 = if tx == cx && ty == cy {
+            0 // breacher — aimed at the seat
+        } else if (0..w.stations.len()).any(|s| {
+            w.town_value.get(s).copied() == Some(0)
+                && !w.stations[s].removed
+                && w.stations[s].pos.x_mm == tx
+                && w.stations[s].pos.y_mm == ty
+        }) {
+            2 // reclaimer — aimed at a captured town's exact position
+        } else {
+            1 // saboteur — aimed at a rail seam
+        };
+        out.push(role as f32);
+    }
+    out
+}
+
+/// LEGION STATE per legion (#war), aligned 1:1 with `army_positions_m` — 0 MARCHING, 1 BESIEGING, 2 DONE
+/// (captured/garrisoned/inert). Lets the UI dim the permanent DONE garrisons (which otherwise render as
+/// full-strength live dots that litter the map + inflate the apparent army strength). Render-only copy-out.
+pub fn army_states_m(w: &World) -> Vec<f32> {
+    w.armies.state.iter().map(|&s| s as f32).collect()
+}
+
 /// Interleaved SPELL FLASHES `[x0_m, y0_m, kind0, alpha0, ...]` (fantasy S11 — the spell arm). A brief
 /// burst at each auto-cast site; `kind` (0 purge / 1 smite / 2 warpath) picks the colour, `alpha` (1→0
 /// over the flash's life) the fade. Render-only (the flashes are not hashed). Empty otherwise.
