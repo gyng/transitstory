@@ -2,11 +2,186 @@
 //! local metres (render-only floats — never fed back into state-affecting math). The
 //! frontend copies these into a reused typed array each frame (PLAN §0.5: copy, not a
 //! long-lived zero-copy view). Empty until T14 dispatches vehicles.
+use crate::geo_local::PointMm;
+use crate::line::Path;
 use crate::world::World;
 
 #[inline]
 fn mm_to_m(v: i64) -> f32 {
     v as f32 / 1000.0
+}
+
+// --- Render-only corner-rounding for GRID (octilinear) track (#curved-track) ---------------------
+// The fantasy/arcadia map routes lines along a hex lattice (`grid_walk`): a crisp OCTILINEAR polyline
+// whose vertices are cell CENTRES — the byte-exact foundation the cross-line shared-rail mutex keys on
+// (`dispatch::node_of` recovers each cell from its centre vertex). That geometry is HASHED and MUST NOT
+// move. So the visible track read as abrupt 45°/90° corners. This module produces a SMOOTHED copy used
+// ONLY by the render copy-outs (the line polyline `lines_view` ships + the train/cargo positions here),
+// so the track AND the trains curve through the hex corners *together* (no corner-cutting). It is pure
+// render-side: never fed back into state, never hashed, so it needs no golden re-pin. STOPS are PINNED
+// (per-span rounding keeps every station an exact on-curve point), so trains still berth on-platform and
+// the catchment/station dots stay glued to the rail. Transit (non-grid) lines are already Catmull-smooth
+// → identity pass-through (byte-identical, zero cost on the big networks).
+
+/// Chaikin iterations — 3 rounds the ~one-cell octilinear steps into a gentle, large-radius rail curve.
+const CHAIKIN_ITERS: usize = 3;
+
+/// A render-only smoothed path: the rounded polyline + its arc-length table + the arc-length at each STOP
+/// (so a sim arc-length on the crisp path maps span-for-span onto this one, pinning stations).
+struct SmoothPath {
+    poly: Vec<PointMm>,
+    arclen: Vec<i64>,
+    stop_arclen: Vec<i64>,
+}
+
+/// Chaikin corner-cutting that KEEPS the two endpoints (the open-curve variant) — rounds every interior
+/// corner of `run` while leaving `run[0]` / `run[last]` exactly in place (so a span's two stops are fixed).
+fn chaikin_keep_ends(run: &[PointMm], iters: usize) -> Vec<PointMm> {
+    let mut cur = run.to_vec();
+    for _ in 0..iters {
+        if cur.len() < 3 {
+            break;
+        }
+        let mut next = Vec::with_capacity(cur.len() * 2);
+        next.push(cur[0]);
+        for i in 0..cur.len() - 1 {
+            let (a, b) = (cur[i], cur[i + 1]);
+            next.push(PointMm { x_mm: (a.x_mm * 3 + b.x_mm) / 4, y_mm: (a.y_mm * 3 + b.y_mm) / 4 });
+            next.push(PointMm { x_mm: (a.x_mm + b.x_mm * 3) / 4, y_mm: (a.y_mm + b.y_mm * 3) / 4 });
+        }
+        next.push(cur[cur.len() - 1]);
+        cur = next;
+    }
+    cur
+}
+
+/// Polyline vertex index of each stop (the first vertex whose cumulative arc-length reaches the stop's) —
+/// monotone scan; stops are exact vertices so the match is precise.
+fn stop_vertex_indices(path: &Path) -> Vec<usize> {
+    let mut out = Vec::with_capacity(path.stop_arclen_mm.len());
+    let mut j = 0usize;
+    for &sa in &path.stop_arclen_mm {
+        while j + 1 < path.arclen_mm.len() && path.arclen_mm[j] < sa {
+            j += 1;
+        }
+        out.push(j.min(path.polyline.len().saturating_sub(1)));
+    }
+    out
+}
+
+/// Build the render-only smoothed copy of `path`. GRID (cell_mm > 0, non-loop) only — otherwise an
+/// identity clone of the path's own (already-smooth) polyline. Rounds each inter-stop span independently
+/// with stops pinned, then rebuilds the arc-length + per-stop arc-length tables.
+fn smooth_grid_path(path: &Path, cell_mm: i64) -> SmoothPath {
+    let identity = || SmoothPath { poly: path.polyline.clone(), arclen: path.arclen_mm.clone(), stop_arclen: path.stop_arclen_mm.clone() };
+    if cell_mm <= 0 || path.loop_line || path.polyline.len() < 3 || path.stop_arclen_mm.len() < 2 {
+        return identity();
+    }
+    let stops = stop_vertex_indices(path);
+    let mut poly: Vec<PointMm> = Vec::new();
+    let mut stop_poly_idx: Vec<usize> = Vec::with_capacity(stops.len());
+    for w in stops.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if b <= a || b >= path.polyline.len() {
+            return identity();
+        }
+        let sm = chaikin_keep_ends(&path.polyline[a..=b], CHAIKIN_ITERS);
+        if poly.is_empty() {
+            stop_poly_idx.push(0);
+            poly.extend_from_slice(&sm);
+        } else {
+            poly.extend_from_slice(&sm[1..]); // the shared stop endpoint is already in `poly`
+        }
+        stop_poly_idx.push(poly.len() - 1);
+    }
+    if poly.len() < 2 {
+        return identity();
+    }
+    let mut arclen = Vec::with_capacity(poly.len());
+    arclen.push(0);
+    let mut acc = 0i64;
+    for i in 1..poly.len() {
+        acc += poly[i - 1].dist_mm(&poly[i]);
+        arclen.push(acc);
+    }
+    let stop_arclen = stop_poly_idx.iter().map(|&si| arclen[si.min(arclen.len() - 1)]).collect();
+    SmoothPath { poly, arclen, stop_arclen }
+}
+
+/// Cartesian point (mm) at arc-length `s` on an arbitrary polyline + its arc-length table.
+fn poly_point_at(poly: &[PointMm], arclen: &[i64], s: i64) -> (i64, i64) {
+    match poly.len() {
+        0 => return (0, 0),
+        1 => return (poly[0].x_mm, poly[0].y_mm),
+        _ => {}
+    }
+    let total = *arclen.last().unwrap_or(&0);
+    let s = s.clamp(0, total);
+    for i in 1..arclen.len() {
+        if s <= arclen[i] {
+            let seg = arclen[i] - arclen[i - 1];
+            let (a, b) = (poly[i - 1], poly[i]);
+            if seg <= 0 {
+                return (a.x_mm, a.y_mm);
+            }
+            let t = s - arclen[i - 1];
+            return (a.x_mm + (b.x_mm - a.x_mm) * t / seg, a.y_mm + (b.y_mm - a.y_mm) * t / seg);
+        }
+    }
+    let l = poly[poly.len() - 1];
+    (l.x_mm, l.y_mm)
+}
+
+/// Heading (radians) of the segment at arc-length `s` on an arbitrary polyline + arc-length table.
+fn poly_heading_at(poly: &[PointMm], arclen: &[i64], s: i64) -> f32 {
+    if poly.len() < 2 {
+        return 0.0;
+    }
+    let total = *arclen.last().unwrap_or(&0);
+    let s = s.clamp(0, total);
+    for i in 1..arclen.len() {
+        if s <= arclen[i] {
+            let (a, b) = (poly[i - 1], poly[i]);
+            return ((b.y_mm - a.y_mm) as f32).atan2((b.x_mm - a.x_mm) as f32);
+        }
+    }
+    0.0
+}
+
+/// Map a sim arc-length `s` on the crisp `sharp` path to the equivalent arc-length on its smoothed copy —
+/// span-for-span (same fraction within the same inter-stop span), so stops map exactly (frac 0/1 → a stop).
+fn map_s(sharp: &Path, sm: &SmoothPath, s: i64) -> i64 {
+    let span = sharp.span_of(s);
+    let lo = sharp.stop_arclen_mm.get(span).copied().unwrap_or(0);
+    let hi = sharp.stop_arclen_mm.get(span + 1).copied().unwrap_or(lo);
+    let slo = sm.stop_arclen.get(span).copied().unwrap_or(0);
+    let shi = sm.stop_arclen.get(span + 1).copied().unwrap_or(slo);
+    if hi > lo {
+        slo + ((shi - slo) as i128 * (s - lo) as i128 / (hi - lo) as i128) as i64
+    } else {
+        slo
+    }
+}
+
+/// Render-only smoothed polyline (mm, `[x,y]` pairs) for a path — what `lines_view` ships so the DRAWN
+/// track curves through the hex corners. GRID lines are rounded (stops pinned); transit lines pass through
+/// unchanged (identity), so the big real-world networks are byte-identical and pay nothing.
+pub fn smooth_polyline_mm(path: &Path, cell_mm: i64) -> Vec<[f64; 2]> {
+    smooth_grid_path(path, cell_mm).poly.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect()
+}
+
+/// Render position (mm) of vehicle `i` at arc-length `s`: the smoothed-track point in GRID mode, else the
+/// supplied `raw` SoA cartesian (already on the crisp/transit path). Falls back to `raw` if the path is gone.
+fn veh_xy(w: &World, cell: i64, i: usize, s: i64, raw: (i64, i64)) -> (i64, i64) {
+    if cell <= 0 {
+        return raw;
+    }
+    let v = &w.vehicles;
+    let Some(line) = w.lines.get(v.line[i].index()) else { return raw };
+    let Some(path) = line.paths.get(v.path[i] as usize) else { return raw };
+    let sm = smooth_grid_path(path, cell);
+    let ss = map_s(path, &sm, s);
+    poly_point_at(&sm.poly, &sm.arclen, ss)
 }
 
 // --- "peeps": individual rider dots (Cities:Skylines-style), purely RENDER-DERIVED ---------------
@@ -197,13 +372,17 @@ fn peep_seed(pax: &crate::pax::Pax) -> u32 {
     }
 }
 
-/// Interleaved current positions `[x0,y0, x1,y1, ...]` in metres.
+/// Interleaved current positions `[x0,y0, x1,y1, ...]` in metres. On a GRID map (#curved-track) the train
+/// rides the SMOOTHED track (same rounding `lines_view` ships), so it curves with the rail instead of
+/// cutting the rounded corners; transit keeps the raw SoA position (byte-identical, no smoothing cost).
 pub fn vehicle_positions_m(w: &World) -> Vec<f32> {
+    let cell = w.city.grid_cell_mm;
     let v = &w.vehicles;
     let mut out = Vec::with_capacity(v.len() * 2);
     for i in 0..v.len() {
-        out.push(mm_to_m(v.x_mm[i]));
-        out.push(mm_to_m(v.y_mm[i]));
+        let (x, y) = veh_xy(w, cell, i, v.s_mm[i], (v.x_mm[i], v.y_mm[i]));
+        out.push(mm_to_m(x));
+        out.push(mm_to_m(y));
     }
     out
 }
@@ -231,6 +410,7 @@ pub fn vehicle_cargo_m(w: &World) -> Vec<f32> {
 /// colour while the load lump takes the commodity colour. Cars are derived from capacity (a fatter train
 /// pulls more), so they're a pure copy-out (no hashed state) — bus/ferry/air emit none (single body).
 pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
+    let cell = w.city.grid_cell_mm;
     let v = &w.vehicles;
     let mut out: Vec<f32> = Vec::new();
     for i in 0..v.len() {
@@ -241,6 +421,9 @@ pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
         }
         let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
         let len = path.length_mm();
+        // On a GRID map the cars ride the smoothed track too (built once per train); transit uses the
+        // path's own already-smooth geometry (no clone, byte-identical to the old point_at render).
+        let sm = if cell > 0 { Some(smooth_grid_path(path, cell)) } else { None };
         let dir = v.dir[i] as i64;
         let commodity = v.onboard_pax.get(i).and_then(|q| q.first()).map(|p| p.commodity).unwrap_or(255);
         let cap = line.vehicle_spec().capacity.max(1);
@@ -249,8 +432,7 @@ pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
         for k in 1..=cars {
             let back = CAR_PITCH_MM * k as i64;
             let s = (v.s_mm[i] - dir * back).clamp(0, len);
-            let (cx, cy) = path.point_at(s);
-            let mut ang = path.heading_at(s);
+            let (cx, cy, mut ang) = car_point(path, sm.as_ref(), s);
             if dir < 0 {
                 ang += std::f32::consts::PI;
             }
@@ -265,10 +447,27 @@ pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Cargo-car point + heading at arc-length `s`: on the smoothed `sm` (GRID) or the path's own geometry
+/// (transit). Shared by the current + previous car buffers so they map identically.
+fn car_point(path: &Path, sm: Option<&SmoothPath>, s: i64) -> (i64, i64, f32) {
+    match sm {
+        Some(sm) => {
+            let ss = map_s(path, sm, s);
+            let (x, y) = poly_point_at(&sm.poly, &sm.arclen, ss);
+            (x, y, poly_heading_at(&sm.poly, &sm.arclen, ss))
+        }
+        None => {
+            let (x, y) = path.point_at(s);
+            (x, y, path.heading_at(s))
+        }
+    }
+}
+
 /// Previous-tick positions of the trailing cargo cars `[x0,y0, ...]` in metres, aligned 1:1 (per car)
 /// with [`vehicle_cars_m`] — the alpha-interpolation companion (same `k · car_len` standoff applied to
 /// the loco's PREVIOUS arc-length). Order/length match exactly so the frontend lerps each car cur↔prev.
 pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
+    let cell = w.city.grid_cell_mm;
     let v = &w.vehicles;
     let mut out: Vec<f32> = Vec::new();
     for i in 0..v.len() {
@@ -279,11 +478,12 @@ pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
         }
         let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
         let len = path.length_mm();
+        let sm = if cell > 0 { Some(smooth_grid_path(path, cell)) } else { None };
         let dir = v.dir[i] as i64;
         for k in 1..=cars {
             let back = CAR_PITCH_MM * k as i64;
             let s = (v.prev_s_mm[i] - dir * back).clamp(0, len);
-            let (px, py) = path.point_at(s);
+            let (px, py, _) = car_point(path, sm.as_ref(), s);
             out.push(mm_to_m(px));
             out.push(mm_to_m(py));
         }
@@ -492,19 +692,43 @@ pub fn decadence_tide_m(w: &World) -> Vec<f32> {
     out
 }
 
-/// Interleaved previous-tick positions `[x0,y0, ...]` in metres (for alpha interpolation).
+/// Interleaved previous-tick positions `[x0,y0, ...]` in metres (for alpha interpolation) — smoothed-track
+/// on GRID, raw on transit, matching [`vehicle_positions_m`] so the cur↔prev lerp stays on the curve.
 pub fn vehicle_prev_positions_m(w: &World) -> Vec<f32> {
+    let cell = w.city.grid_cell_mm;
     let v = &w.vehicles;
     let mut out = Vec::with_capacity(v.len() * 2);
     for i in 0..v.len() {
-        out.push(mm_to_m(v.prev_x_mm[i]));
-        out.push(mm_to_m(v.prev_y_mm[i]));
+        let (x, y) = veh_xy(w, cell, i, v.prev_s_mm[i], (v.prev_x_mm[i], v.prev_y_mm[i]));
+        out.push(mm_to_m(x));
+        out.push(mm_to_m(y));
     }
     out
 }
 
+/// Per-vehicle heading (radians). On a GRID map it's the SMOOTHED-track tangent (so the model faces along
+/// the curve it now rides, not the crisp octilinear step); transit keeps the sim's stored heading.
 pub fn vehicle_angles(w: &World) -> Vec<f32> {
-    w.vehicles.angle.clone()
+    let cell = w.city.grid_cell_mm;
+    let v = &w.vehicles;
+    if cell <= 0 {
+        return v.angle.clone();
+    }
+    (0..v.len())
+        .map(|i| {
+            let raw = v.angle[i];
+            let Some(line) = w.lines.get(v.line[i].index()) else { return raw };
+            let Some(path) = line.paths.get(v.path[i] as usize) else { return raw };
+            let sm = smooth_grid_path(path, cell);
+            let ss = map_s(path, &sm, v.s_mm[i]);
+            let h = poly_heading_at(&sm.poly, &sm.arclen, ss);
+            if v.dir[i] < 0 {
+                h + std::f32::consts::PI
+            } else {
+                h
+            }
+        })
+        .collect()
 }
 
 pub fn vehicle_line_ids(w: &World) -> Vec<u32> {

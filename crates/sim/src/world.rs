@@ -2055,17 +2055,20 @@ impl World {
                 color: l.color,
                 stops: l.stops.iter().map(|s| s.0).collect(),
                 // Trunk geometry only for now; branch-track rendering is Stage C (needs a LineView
-                // contract change to carry per-branch polylines).
+                // contract change to carry per-branch polylines). #curved-track: GRID lines ship the
+                // render-only SMOOTHED polyline (rounded hex corners, stops pinned) so the drawn track
+                // curves; transit lines pass through unchanged (identity). The trains ride the SAME
+                // smoothing (render_buf), so they stay on the rail.
                 polyline_mm: l
                     .paths
                     .first()
-                    .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
+                    .map(|p| crate::render_buf::smooth_polyline_mm(p, self.city.grid_cell_mm))
                     .unwrap_or_default(),
                 branch_polylines_mm: l
                     .paths
                     .iter()
                     .skip(1)
-                    .map(|p| p.polyline.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect())
+                    .map(|p| crate::render_buf::smooth_polyline_mm(p, self.city.grid_cell_mm))
                     .collect(),
                 branch_modes: l
                     .branches

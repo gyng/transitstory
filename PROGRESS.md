@@ -2998,6 +2998,27 @@ of cargo WAGONS that curve behind it along the track, replacing the single block
   smoothly (627 m / 2 s measured). No code change.
 - Render-only / golden-neutral: native goldens UNCHANGED (transit + arcadia), vitest 27/27, tsc clean.
 
+### Curved tracks on the hex map — round the octilinear corners (owner-directed, #curved-track)
+
+"Visible tracks that curve realistically on the hex map, not just abruptly change direction." The arcadia
+map routes lines along a hex lattice (`grid_walk`) → a crisp OCTILINEAR polyline with abrupt 45°/90° corners.
+
+- **The constraint:** that grid polyline's vertices ARE hex cell-centres — the byte-exact foundation the
+  cross-line shared-rail mutex keys on (`dispatch::derive_cross_blocks` → `node_of` recovers each cell from
+  its centre vertex). It's HASHED and cannot move. So smoothing had to be RENDER-ONLY, and the trains had to
+  ride the same smoothed curve or they'd cut the rounded corners off the visible track.
+- **The fix (render-only, zero re-pin):** `render_buf::smooth_grid_path` rounds each inter-stop span with
+  Chaikin (3 iters) while PINNING the stop vertices (per-span open-curve Chaikin keeps endpoints), so the
+  curve passes through every station exactly. `lines_view` ships the smoothed polyline (the drawn track);
+  the vehicle/cargo copy-outs (`vehicle_positions_m`/`_prev`/`_angles`/`_cars`/`_cars_prev`) map each train's
+  sim arc-length span-for-span onto the smoothed path (`map_s`), so loco + wagons ride the curve and still
+  berth on-platform. All of it lives in `render_buf` (+ the one `lines_view` call) — never hashed, so both
+  goldens are untouched. Transit (non-grid) lines are identity pass-through (byte-identical, no cost on the
+  big real-world networks).
+- Verified in Playwright (arcadia): the trunk polyline went 18 → 158 vertices (rounded), every station sits
+  exactly on the smoothed curve (0 m), and a running train tracks it (13 m off the nearest vertex = on the
+  line). Native goldens UNCHANGED (transit + arcadia), full sim suite green, vitest 27/27, tsc clean.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
