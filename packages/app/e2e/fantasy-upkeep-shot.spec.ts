@@ -15,7 +15,8 @@ test("fantasy upkeep: a running network drains gold each day", async ({ page }) 
     const nt = sg.towns.length;
     const KIND: Record<string, number> = { ore: 0, grain: 1, aether: 2, fuel: 3 };
     const hex = (a: any, b: any) => (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
-    const cap = sg.towns[sg.towns.findIndex((t: any) => t.kind === "capital")];
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
+    const cap = sg.towns[capitalIdx];
     const bread = sg.towns.map((t: any, i: number) => ({ t, i }))
       .filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2 && x.t.recipe.every((c: number) => c < 4))
       .sort((a: any, b: any) => hex(cap, a.t) - hex(cap, b.t))[0];
@@ -25,7 +26,7 @@ test("fantasy upkeep: a running network drains gold each day", async ({ page }) 
       return bi < 0 ? -1 : nt + bi;
     };
     const tt = (window as any).__ot_test;
-    tt.drawLine([nearestSrc(bread.t.recipe[0]), bread.i, nearestSrc(bread.t.recipe[1])]);
+    tt.drawLine([capitalIdx, nearestSrc(bread.t.recipe[0]), bread.i, nearestSrc(bread.t.recipe[1])]); // #infrastructure: root at the capital
     tt.assignTrainset(0, 4);
     tt.setHeadwayMs(0, 120000);
     const upkeepDaily = tt.stats().goldUpkeepDaily;

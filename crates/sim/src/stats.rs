@@ -116,13 +116,20 @@ pub struct StationStat {
     /// A backed-up SOURCE reads ~1 (ship it!), a starved SINK ~0. 0 for transit / non-forge. Derived from
     /// the hashed `forge_stock` for the HUD's node buffer pips — NOT hashed itself (it's a snapshot readout).
     pub buffer_fill: f64,
-    /// Fantasy (arcadia) #9: this station is a CAPTURED HOLDING — a town conquest flipped (its garrison
-    /// ground to 0). The EXACT mirror of `World::buildable_at`'s per-town test (`town_value == Some(0)`),
-    /// so the realm-border overlay matches the gate: **false** before the war ticks (resistance not yet
-    /// initialised) and for still-neutral towns / player stations; true only once a town actually falls.
-    /// A snapshot readout (NOT hashed); false for transit. The capital is a holding via the baked seat, not
+    /// Fantasy (arcadia) #infrastructure: this station is a CAPTURED HOLDING — a town conquest flipped (its
+    /// garrison ground to 0). The EXACT mirror of the captured-town root in `World::compute_rail_reachable`
+    /// (`town_value == Some(0)`), so the realm-frontier overlay matches the gate: **false** before the war
+    /// ticks (resistance not yet initialised) and for still-neutral towns / player stations; true only once
+    /// a town actually falls — at which point it becomes a new rail root the player may extend from.
+    /// A snapshot readout (NOT hashed); false for transit. The capital is a root via the baked seat, not
     /// this flag (its garrison never reaches 0), so the overlay adds it separately — no double-count.
     pub captured: bool,
+    /// Fantasy (arcadia) #infrastructure: this station is RAIL-REACHABLE from the capital — the player may
+    /// extend rail FROM it (it's a root, or wired to one through a line). The authoritative output of
+    /// `World::compute_rail_reachable`, surfaced so the frontier overlay + the pre-commit ghost match the
+    /// connected-rail gate with zero drift. A snapshot readout (NOT hashed); **false** for transit and for
+    /// every station in an ungated realm (`influence_hops <= 0` ⇒ the overlay isn't drawn anyway).
+    pub reachable: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

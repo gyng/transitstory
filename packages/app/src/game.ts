@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type HazardDot, type InfluenceDisc, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type DecadenceAnchor, type DemandPoint, type DesireArc, type FrontierNode, type HazardDot, type IntentArc, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -154,10 +154,11 @@ export class Game {
   /** Baked flow-accumulation rivers (lng/lat segments) — render-only cold water. Set once at load from the
    *  manifest's additive `rivers` field (fantasy only; empty for transit). Stable identity across frames. */
   rivers: RiverSeg[] = [];
-  /** Fantasy (arcadia) #9: AREA-OF-INFLUENCE radius in grid-hexes — you may only lay rail within this
-   *  many hexes of a holding (the capital + any captured town). Baked into the manifest; mirrors
-   *  `CityData.influence_hops`. 0 ⇒ no gate (transit + un-gated cities). Drives the realm-border overlay
-   *  AND the pre-commit reach check; the authoritative gate lives in the core (`World::buildable_at`). */
+  /** Fantasy (arcadia) #infrastructure: >0 ARMS the connected-rail gate — rail extends only from a
+   *  station already wired to the capital network (or a captured town). Baked into the manifest; mirrors
+   *  `CityData.influence_hops` (the value no longer sets a radius, just on/off). 0 ⇒ no gate (transit +
+   *  un-gated cities). Drives the rail-frontier halos; the authoritative gate lives in the core
+   *  (`World::connected_can_add`), and the per-station `reachable` flag in the snapshot feeds the overlay. */
   influenceHops = 0;
   /** Living-world (#living): ambient ox-cart trade routes between the baked nodes (capital↔towns,
    *  town↔town, resource→town) + the carts trundling them — purely DECORATIVE (wall-clock animated,
@@ -1759,24 +1760,22 @@ export class Game {
       }
     }
 
-    // Area-of-influence (#9): the realm border — one disc per HOLDING (the capital + every captured town),
-    // each of radius √3·hops·cellM. Mirrors the core's `buildable_at` so the player SEES where rail can go;
-    // conquest (a town flipping to townResistance 0) grows the union outward. Empty unless the gate is on.
-    const influence: InfluenceDisc[] = [];
+    // Connected-rail frontier (#infrastructure): the realm's network must be ONE graph rooted at the capital
+    // — rail extends only from a station already wired to your seat (or a captured town). So the affordance is
+    // per-NODE, not a radius: a gold halo rings every RAIL-REACHABLE station ("grow rail from here"). The
+    // `reachable` flag is the core's own gate output (zero drift); before any line it is just the capital,
+    // spreading as you build + conquer. Roots (the capital + captured towns) read brighter — a fresh line may
+    // always seed there. Empty unless the gate is on.
+    const frontier: FrontierNode[] = [];
     if (this.ruleset === "arcadia" && this.influenceHops > 0) {
-      const radiusM = this.influenceHops * this.terrainCellM * 1.7320508; // √3 — euclidean cover of the hex reach
-      const cap = this.towns.find((t) => t.kind === "capital");
-      if (cap) influence.push({ lng: cap.lng, lat: cap.lat, radiusM });
-      // Each CAPTURED town extends the frontier. `captured` is the core's own gate signal (town_value == 0),
-      // so the overlay never shows a disc the gate wouldn't honour — and shows none before conquest begins.
+      const capTown = this.towns.find((t) => t.kind === "capital");
       for (const ps of this.lastStats.perStation) {
-        if (ps.captured) {
-          const s = stationsV[ps.stationId];
-          if (s && !s.removed) {
-            const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
-            influence.push({ lng, lat, radiusM });
-          }
-        }
+        if (!ps.reachable) continue;
+        const s = stationsV[ps.stationId];
+        if (!s || s.removed) continue;
+        const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
+        const atCapital = !!capTown && Math.abs(lng - capTown.lng) < 1e-6 && Math.abs(lat - capTown.lat) < 1e-6;
+        frontier.push({ lng, lat, root: ps.captured || atCapital });
       }
     }
 
@@ -1851,7 +1850,7 @@ export class Game {
       vehicles: [],
       waiting,
       bufferPips,
-      influence, // #9 realm-border discs (capital + captured towns); empty unless the influence gate is on
+      frontier, // #infrastructure rail-frontier node-halos (where rail may extend); empty unless the gate is on
       hazards,
       demand,
       desire,

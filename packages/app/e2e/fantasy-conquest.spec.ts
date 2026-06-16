@@ -32,9 +32,11 @@ test("fantasy baked world is winnable: supply → legions → conquest, realm ho
     // fantasy-multistage.spec.ts. Tribute from BREAD funds the legions all the same.
     const breadSinks = sinks.filter((x: any) => x.t.recipe.every((c: number) => c < 4));
     let line = 0;
-    // Supply: connect two BREAD towns' full chains (src1→town→src2) so the two-chain Liebig tribute flows.
+    // Supply: connect two BREAD towns' chains ROOTED AT THE CAPITAL (#infrastructure connected-rail gate:
+    // every line must tie to the capital network). capital → src1 → town → src2 — Liebig tribute flows, and
+    // the network is one graph. The nearest bread town is the starter in the capital's carved bootstrap valley.
     for (const { t, i } of breadSinks.slice(0, 2)) {
-      tt.drawLine([nearestSrc(t, t.recipe[0]), i, nearestSrc(t, t.recipe[1])]);
+      tt.drawLine([capitalIdx, nearestSrc(t, t.recipe[0]), i, nearestSrc(t, t.recipe[1])]);
       tt.assignTrainset(line, 4);
       tt.setHeadwayMs(line, 120000);
       line++;

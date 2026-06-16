@@ -2763,6 +2763,41 @@ chain useless.
 > (tech + spells), with a 12-tech tree, three auto-cast spells, rail-gated construction, and Heavy Rail as
 > a tech unlock.
 
+## War-batch S1 — the CONNECTED-RAIL gate replaces influence (owner-directed, 2026-06-16)
+
+Owner ask (war batch, item 1 of 4): *"modify the 'influence' mechanic, instead have rail network in fantasy
+must be all connected."* The old area-of-influence disc (build anywhere within `√3·hops·cell` of a holding)
+was, on the real seed, a near-no-op — `influence_hops` baked to **100**, a disc that covered the whole map.
+Replaced it with a real constraint: **the realm's rail must be ONE connected graph rooted at the capital.**
+
+- **Core (`world.rs`, golden-neutral):** `buildable_at` (the euclidean disc) → `compute_rail_reachable()` —
+  a fixpoint BFS seeding the capital's co-located station (1-cell tolerance) + every captured town
+  (`town_value == 0`) as roots, then welding all stops of any line that touches the reachable set (a line is
+  one component; trunk + branches). `connected_can_add(line, station)` gates `AddStop`/`AddBranchStop`: a
+  fresh line must START at a root; once anchored it extends to ANY distance (connectivity, not a radius).
+  `FxHashSet` insert/contains only (never iterated) → no float/no map-iteration in the determinism heart;
+  `influence_hops <= 0` early-returns `true`, so transit + both golden fixtures are byte-identical (re-verified
+  GOLDEN_TRANSIT + GOLDEN_ARCADIA unchanged).
+- **Frontier overlay (frontend):** the influence DISCS → per-node **gold rail-frontier halos** on every
+  RAIL-REACHABLE station ("grow rail from here"); roots (capital + captured) read brighter. Driven by a new
+  `reachable: bool` snapshot readout on `StationStat` (the core's own gate output → zero drift), mirrored in
+  `types.ts`. Before any line the halo is just the capital; it spreads as you build + conquer.
+- **`influence.rs` rewritten** for connectivity: `fresh_line_must_start_at_a_holding`,
+  `an_anchored_line_extends_to_any_distance`, `a_new_line_may_branch_off_the_existing_network`,
+  `conquest_mints_a_new_rail_root`.
+- **Design consequence (logged, intended):** supply lines now physically connect to the capital, so deep
+  arc-towns (the seed has a tight bootstrap cluster at d≈8 then a gap to d≥75) cost a long rail haul + sit
+  behind the gold afford-gate — a real "build out your empire" progression, and the hook the coming
+  rail-attack step needs (severing the capital link will matter). The world is still winnable from the
+  bootstrap-cluster economy (capital→grain→starter) — the conquest e2e still closes (townsCaptured≥1, realm holds).
+- **e2e migrated (14 specs):** every fantasy supply line now roots at the capital; deep arms/aether chains
+  draw the long ore→forge→arms haul once (proven affordable) then branch the aether leg off the on-network
+  arms town. The connected-rail e2e asserts: frontier=1 (capital only) pre-build, an isolated first stop is
+  rejected, a capital-rooted line commits + grows the frontier.
+- Tiers: native sim **52/52** binaries green (both goldens pinned) · vitest **27/27** · the full fantasy e2e
+  set green · tsc clean. Steps 1+2 of the war batch land together (core gate + frontier overlay) so the
+  deployed UI stays consistent.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.

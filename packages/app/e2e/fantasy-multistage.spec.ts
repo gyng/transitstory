@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
 
-// S7e-2 — the 3-STAGE Forge-Line chain on the BAKED world, NOW behind the #9 area-of-influence gate. The
-// baked continent carries FORGE nodes (processors) and ARMS towns whose recipe is [INGOT=4, AETHER=2].
-// INGOT has NO source — it must be FORGED from ore at a forge node. The arms town, its forge, and the ore
-// sit within the capital's starting reach, but AETHER is baked far + scarce (the arcane resource) — BEYOND
-// the cold-start frontier. So the full chain can ONLY close AFTER conquest extends the realm to the aether:
-// bootstrap a reachable BREAD chain → fund a legion → capture the arms town → its captured-holding disc
-// brings the aether into reach → wire the aether leg → ore→forge→INGOT + aether → Liebig → tribute. This
-// proves, end-to-end on the real bundle, BOTH the forge/commodity-routing mechanic AND that #9's
-// progression (conquer to unlock the deeper chain) actually works. Deterministic via tickMs (no rAF).
+// S7e-2 — the 3-STAGE Forge-Line chain on the BAKED world, NOW behind the #infrastructure connected-rail
+// gate. The baked continent carries FORGE nodes (processors) and ARMS towns whose recipe is [INGOT=4,
+// AETHER=2]. INGOT has NO source — it must be FORGED from ore at a forge node. The ore, its forge, and the
+// arms town can be wired into ONE capital-rooted network, but AETHER is baked far + scarce (the arcane
+// resource) — an ISLAND off that network until conquest plants a root nearer it. So the full chain can
+// ONLY close AFTER conquest captures the arms town (minting a new rail root there): bootstrap a
+// capital-rooted BREAD chain → fund a legion → capture the arms town → extend rail FROM the captured root
+// to the aether → ore→forge→INGOT + aether → Liebig → tribute. This proves, end-to-end on the real bundle,
+// BOTH the forge/commodity-routing mechanic AND that the conquest progression (conquer to unlock the deeper
+// chain) works under the connected-rail rule. Deterministic via tickMs (no rAF).
 test("fantasy baked world: conquest unlocks the 3-stage Forge-Line (ore → forge → arms town) for tribute", async ({ page }) => {
   test.setTimeout(90_000); // conquest ramp + the 3-stage forge ramp, both deterministic tick-steps
   await page.goto("/?city=fantasy");
@@ -47,14 +48,17 @@ test("fantasy baked world: conquest unlocks the 3-stage Forge-Line (ore → forg
       .sort((a: any, b: any) => hex(cap, a.t) - hex(cap, b.t))[0];
     const tt = (window as any).__ot_test;
     let line = 0;
-    // Bootstrap: a reachable BREAD chain (src → town → src) so two-input Liebig tribute funds the war.
-    tt.drawLine([nearestSrc(bread.t, bread.t.recipe[0]), bread.i, nearestSrc(bread.t, bread.t.recipe[1])]);
+    // CONNECTED-RAIL gate (#infrastructure): every line must root at the capital network. Bootstrap a
+    // BREAD chain ANCHORED at the capital (capital → src → town → src) — a two-input Liebig tribute that
+    // funds the war (this is the intended capital→grain→starter bootstrap).
+    tt.drawLine([capitalIdx, nearestSrc(bread.t, bread.t.recipe[0]), bread.i, nearestSrc(bread.t, bread.t.recipe[1])]);
     tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
-    // The reachable two legs of the ARMS chain (ore → forge → arms town); the aether leg waits on conquest.
-    const oreForgeArms = tt.drawLine([oreSid, forgeSid, armsTi]);
+    // The reachable two legs of the ARMS chain, ALSO rooted at the capital (capital → ore → forge → arms
+    // town); the aether leg waits on conquest (the aether sits off the connected network until then).
+    const oreForgeArms = tt.drawLine([capitalIdx, oreSid, forgeSid, armsTi]);
     tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
     // Conquest: capital-barracks → the arms town, with a bounty to steer the legion onto it. Capturing the
-    // arms town flips it to a HOLDING whose influence disc reaches its (otherwise out-of-reach) aether.
+    // arms town flips it to a HOLDING — a new rail ROOT you may extend the (otherwise unreachable) aether from.
     tt.drawLine([capitalIdx, armsTi]);
     tt.assignTrainset(line, 2); tt.setHeadwayMs(line, 120000);
     tt.postBounty(armsTi, 3000);
@@ -76,11 +80,12 @@ test("fantasy baked world: conquest unlocks the 3-stage Forge-Line (ore → forg
   }
   expect(captured).toBeGreaterThanOrEqual(1); // the legion conquered the arms town — the frontier moved
 
-  // Phase 2 — the aether is NOW within reach (the captured arms town's disc covers it): wire the final leg.
+  // Phase 2 — the captured arms town is now a rail ROOT: extend rail FROM it to the aether (draw outward
+  // from the holding — the first stop must be on-network, so the captured town leads, the aether follows).
   const aetherLeg = await page.evaluate((aetherSid: number) => {
     const tt = (window as any).__ot_test;
     const armsTi = (tt.stats().perStation.find((p: any) => p.captured) || {}).stationId;
-    const ln = tt.drawLine([aetherSid, armsTi ?? 0]); // aether → arms town (the second Liebig input)
+    const ln = tt.drawLine([armsTi ?? 0, aetherSid]); // arms town (captured root) → aether (the 2nd Liebig input)
     if (ln >= 0) { tt.assignTrainset(ln, 4); tt.setHeadwayMs(ln, 120000); }
     return ln;
   }, start.aetherSid);

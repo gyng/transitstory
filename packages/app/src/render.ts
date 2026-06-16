@@ -97,12 +97,14 @@ export interface BufferPip {
   lat: number;
   fill: number;
 }
-/** Fantasy (arcadia) #9: one AREA-OF-INFLUENCE disc — a holding (the capital or a captured town) and
- *  the build reach around it (metres). Their union is the realm border; you may only lay rail inside it. */
-export interface InfluenceDisc {
+/** Fantasy (arcadia) #infrastructure: one RAIL-FRONTIER node — a station the player may extend rail FROM
+ *  (it's rail-reachable from the capital). The set is the realm's connected network: before any line it is
+ *  just the capital; it spreads as you build + conquer. A gold node-halo, not a disc — connectivity, not a
+ *  radius. `root` = a holding (capital / captured town): a fresh line may always seed there. */
+export interface FrontierNode {
   lng: number;
   lat: number;
-  radiusM: number;
+  root: boolean;
 }
 export interface HazardDot {
   lng: number;
@@ -318,7 +320,7 @@ export interface RenderView {
   vehicles: VehicleDot[]; // moving trains (T15)
   waiting: WaitingDot[]; // accumulating waiting-passenger halos (T17)
   bufferPips: BufferPip[]; // fantasy #8: node Forge-Line buffer-fill gauges (empty for transit)
-  influence: InfluenceDisc[]; // fantasy #9: realm-border discs (capital + captured towns) — empty for transit
+  frontier: FrontierNode[]; // fantasy #infrastructure: rail-frontier node-halos (where rail may extend) — empty for transit
   hazards: HazardDot[]; // live built/water conflict dots along the blueprint (G2)
   demand: DemandPoint[]; // travel-demand heat overlay (toggleable map layer)
   roads: RoadCell[]; // ROAD-class corridors (where buses are cheap+fast) — toggle/auto in bus mode
@@ -506,25 +508,34 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       jointRounded: true,
       updateTriggers: { getColor: view.rivers.length, getWidth: view.rivers.length },
     }),
-    // AREA OF INFLUENCE (#9): the realm border — a faint warm wash + gold ring per HOLDING (the capital +
-    // each captured town), radius = the build reach in METRES (a true spatial fact, so it scales with zoom
-    // like the catchment). Their union is where rail may go; conquest grows it outward. Drawn over the
-    // terrain/water but UNDER the POIs + network so it never hides a clickable node. The low fill alpha
-    // keeps overlaps from muddying (a slightly warmer heartland reads as a feature). Empty for transit.
+    // RAIL FRONTIER (#infrastructure): the realm's network must be ONE graph rooted at the capital — rail
+    // extends only from a station already wired to your seat (or a captured town). So the affordance is
+    // per-NODE, not a radius: a soft gold halo rings every RAIL-REACHABLE station ("grow rail from here").
+    // A ROOT (capital / captured town) reads brighter + larger — a fresh line may always seed there. Pixel
+    // radius (a UI affordance, not a spatial fact), drawn UNDER the POIs + network so it never hides a
+    // clickable node. Before any line it is just the capital; it spreads as you build + conquer. Empty for
+    // transit. updateTriggers keyed on the set's size+roots so the halos only rebuild when the frontier moves.
     new ScatterplotLayer({
-      id: "influence",
-      data: view.influence,
-      getPosition: (d: InfluenceDisc) => [d.lng, d.lat],
-      getRadius: (d: InfluenceDisc) => d.radiusM,
-      radiusUnits: "meters",
-      getFillColor: [208, 162, 72, 18], // faint warm gold — the empire's reach (warmth vs the cold frontier)
-      getLineColor: [232, 192, 102, 150], // a soft gold ring marks the buildable border (a load-bearing affordance)
+      id: "frontier",
+      data: view.frontier,
+      getPosition: (d: FrontierNode) => [d.lng, d.lat],
+      getRadius: (d: FrontierNode) => (d.root ? 16 : 13),
+      radiusUnits: "pixels",
+      radiusMinPixels: 11,
+      radiusMaxPixels: 18,
+      getFillColor: (d: FrontierNode) => (d.root ? [208, 162, 72, 30] : [208, 162, 72, 14]),
+      getLineColor: (d: FrontierNode) => (d.root ? [240, 205, 120, 210] : [232, 192, 102, 130]),
       stroked: true,
       filled: true,
       lineWidthUnits: "pixels",
-      getLineWidth: 2,
-      lineWidthMinPixels: 1.5,
-      updateTriggers: { getRadius: view.influence.length, getFillColor: view.influence.length },
+      getLineWidth: (d: FrontierNode) => (d.root ? 2.4 : 1.6),
+      lineWidthMinPixels: 1.4,
+      updateTriggers: {
+        getRadius: view.frontier.length,
+        getFillColor: view.frontier.length,
+        getLineColor: view.frontier.length,
+        getLineWidth: view.frontier.length,
+      },
     }),
     // FANTASY RESOURCE NODES (over terrain, under the network): the supply-chain sources that gate the
     // two chains. Pixel-radius (clamped) so they stay tappable at any zoom (Fitts); white stroke so the

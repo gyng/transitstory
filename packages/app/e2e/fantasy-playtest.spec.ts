@@ -30,21 +30,23 @@ test("fantasy baked-world balance playtest (telemetry)", async ({ page }) => {
     const sinks = sg.towns.map((t: any, i: number) => ({ t, i })).filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2);
     const bread = sinks.filter((x: any) => x.t.recipe.every((c: number) => c < 4));
     let line = 0;
-    // Two BREAD chains → gold + manpower.
+    // #infrastructure connected-rail gate: every line roots at the capital network. Two BREAD chains
+    // (capital → src → town → src) → gold + manpower.
     for (const { t, i } of bread.slice(0, 2)) {
-      tt.drawLine([nearestRes(t, t.recipe[0]), i, nearestRes(t, t.recipe[1])]);
+      tt.drawLine([capitalIdx, nearestRes(t, t.recipe[0]), i, nearestRes(t, t.recipe[1])]);
       tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
     }
-    // The 3-stage arms chain → mana (+ manpower) — ore→forge, forge→arms-town, aether→arms-town.
+    // The 3-stage arms chain → mana (+ manpower), also capital-rooted — ore→forge, forge→arms-town, aether→arms-town.
     const armsTi = sg.towns.findIndex((t: any) => Array.isArray(t.recipe) && t.recipe.includes(4));
     if (armsTi >= 0) {
       const armsTown = sg.towns[armsTi];
       const forge = nearestForge(armsTown);
       const ore = nearestRes(sg.resources[forge - nt], 0);
       const aeth = nearestRes(armsTown, 2);
-      tt.drawLine([ore, forge]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
-      tt.drawLine([forge, armsTi]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
-      tt.drawLine([aeth, armsTi]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
+      // Capital-rooted ore→forge→arms (one affordable line), then the aether leg FROM the on-network arms
+      // town (armsTi→aether is a short local span; a direct capital→aether line would be cost-gated).
+      tt.drawLine([capitalIdx, ore, forge, armsTi]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
+      tt.drawLine([armsTi, aeth]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
     }
     // Conquest line: capital-barracks → nearest town.
     const cap = sg.towns[capitalIdx];

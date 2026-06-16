@@ -38,8 +38,9 @@ test("fantasy campaign: the victory objective tracks conquest", async ({ page })
     const sinks = sg.towns.map((t: any, i: number) => ({ t, i })).filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2);
     const breadSinks = sinks.filter((x: any) => x.t.recipe.every((c: number) => c < 4));
     let line = 0;
+    // #infrastructure connected-rail gate: root each bread chain at the capital network (capital → src → town → src).
     for (const { t, i } of breadSinks.slice(0, 2)) {
-      tt.drawLine([nearestSrc(t, t.recipe[0]), i, nearestSrc(t, t.recipe[1])]);
+      tt.drawLine([capitalIdx, nearestSrc(t, t.recipe[0]), i, nearestSrc(t, t.recipe[1])]);
       tt.assignTrainset(line, 4);
       tt.setHeadwayMs(line, 120000);
       line++;

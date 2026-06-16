@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // SPELL BAR appears (bottom-right) — 3 auto-targeted, player-cast spells + an autocast checkbox. Builds the
 // economy, teches the whole tree, then captures the spell bar + tech panel together. Deterministic via tickMs.
 test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000); // the connected-rail arms haul ramps mana slower → a longer deterministic run
   await page.goto("/?city=fantasy");
   await page.waitForFunction(() => (window as any).__APP_READY && (window as any).__MAP_READY, undefined, { timeout: 30_000 });
 
@@ -26,11 +26,13 @@ test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ pag
       return bi < 0 ? -1 : nt + bi;
     };
     const tt = (window as any).__ot_test;
+    // #infrastructure connected-rail gate: every line roots at the capital network.
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
     const sinks = sg.towns.map((t: any, i: number) => ({ t, i })).filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2);
     const bread = sinks.filter((x: any) => x.t.recipe.every((c: number) => c < 4));
     let line = 0;
     for (const { t, i } of bread.slice(0, 2)) {
-      tt.drawLine([nearestRes(t, t.recipe[0]), i, nearestRes(t, t.recipe[1])]);
+      tt.drawLine([capitalIdx, nearestRes(t, t.recipe[0]), i, nearestRes(t, t.recipe[1])]);
       tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
     }
     const armsTi = sg.towns.findIndex((t: any) => Array.isArray(t.recipe) && t.recipe.includes(4));
@@ -39,9 +41,14 @@ test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ pag
       const forge = nearestForge(armsTown);
       const ore = nearestRes(sg.resources[forge - nt], 0);
       const aeth = nearestRes(armsTown, 2);
-      tt.drawLine([ore, forge]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
-      tt.drawLine([forge, armsTi]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
-      tt.drawLine([aeth, armsTi]); tt.assignTrainset(line, 4); tt.setHeadwayMs(line, 120000); line++;
+      // Capital-rooted ore→forge→arms (one line, affordable — the long capital→ore haul is the only one),
+      // then the aether leg drawn FROM the on-network arms town (armsTi is reachable via the line above;
+      // armsTi→aether is a short local span, so it stays inside the gold budget — a direct capital→aether
+      // line would be cost-gated). Mirrors fantasy-multistage's proven shape.
+      // 8 trains on the long capital-rooted ore→forge→arms leg (the connectivity gate routes the arms supply
+      // the long way from the capital now, so pack the haul to keep mana ramping inside the run budget).
+      tt.drawLine([capitalIdx, ore, forge, armsTi]); tt.assignTrainset(line, 8); tt.setHeadwayMs(line, 90000); line++;
+      tt.drawLine([armsTi, aeth]); tt.assignTrainset(line, 6); tt.setHeadwayMs(line, 90000); line++;
     }
   });
 
@@ -49,8 +56,10 @@ test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ pag
   // the spell buttons read as affordable in the shot.
   await page.evaluate(() => {
     const tt = (window as any).__ot_test;
-    for (let i = 0; i < 26; i++) {
-      tt.tickMs(60000);
+    // Longer sim-time per step (150 sim-sec) so the long-haul arms chain accrues enough mana to climb the
+    // whole tree to Arcane Awakening (the connected-rail route is slower than the old local arms lines).
+    for (let i = 0; i < 30; i++) {
+      tt.tickMs(150000);
       for (const id of [2, 0, 9, 1, 3, 10, 6, 8, 7, 4, 5, 11]) tt.unlockTech(id);
     }
   });

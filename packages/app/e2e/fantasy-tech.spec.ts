@@ -24,8 +24,9 @@ test("fantasy baked world: rail-only gate + the tech panel", async ({ page }) =>
     const m = await (await fetch("/data/fantasy_world.json")).json();
     const sg = m.supplyGraph;
     const nt = sg.towns.length;
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
     const tt = (window as any).__ot_test;
-    tt.drawLine([nt + 0, nt + 1]); // a rail line between the first two resources
+    tt.drawLine([capitalIdx, nt + 0, nt + 1]); // #infrastructure: a rail line from the capital through two resources
     return tt.stats().lineCount;
   });
   expect(built).toBeGreaterThan(0); // rail is buildable in the realm

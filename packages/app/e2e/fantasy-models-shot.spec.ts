@@ -14,7 +14,8 @@ test("fantasy train models: picking Heavy raises the line's cost", async ({ page
     const nt = sg.towns.length;
     const KIND: Record<string, number> = { ore: 0, grain: 1, aether: 2, fuel: 3 };
     const hex = (a: any, b: any) => (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
-    const cap = sg.towns[sg.towns.findIndex((t: any) => t.kind === "capital")];
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
+    const cap = sg.towns[capitalIdx];
     const bread = sg.towns.map((t: any, i: number) => ({ t, i }))
       .filter((x: any) => x.t.kind !== "capital" && x.t.recipe?.length === 2 && x.t.recipe.every((c: number) => c < 4))
       .sort((a: any, b: any) => hex(cap, a.t) - hex(cap, b.t))[0];
@@ -25,7 +26,7 @@ test("fantasy train models: picking Heavy raises the line's cost", async ({ page
     };
     const tt = (window as any).__ot_test;
     const g = (window as any).__ot.game;
-    const line = tt.drawLine([nearestSrc(bread.t.recipe[0]), bread.i, nearestSrc(bread.t.recipe[1])]);
+    const line = tt.drawLine([capitalIdx, nearestSrc(bread.t.recipe[0]), bread.i, nearestSrc(bread.t.recipe[1])]); // #infrastructure: root at the capital
     tt.assignTrainset(line, 3); // 3 trains, default (Standard) model
     const before = tt.stats().perLine.find((l: any) => l.lineId === line);
     g.setAircraft(line, 1); // switch to Heavy (spec 1)

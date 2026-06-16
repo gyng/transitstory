@@ -82,9 +82,13 @@ export interface PerStation {
   /** Forge-Line buffer fill 0..1 (fantasy #8) — the fullest of this node's commodity buffers. Backed-up
    *  source ~1 (ship it), starved sink ~0. Drives the node buffer pips; 0 for transit. */
   bufferFill: number;
-  /** Captured-holding flag (fantasy #9) — true once conquest flips a town (its garrison hits 0). The exact
-   *  mirror of the core's build gate; drives the realm-border overlay's per-town disc. false for transit. */
+  /** Captured-holding flag (fantasy #infrastructure) — true once conquest flips a town (its garrison hits
+   *  0), making it a new rail root. Mirrors the core's root test; false for transit. */
   captured: boolean;
+  /** Rail-reachable from the capital (fantasy #infrastructure) — true ⇒ the player may extend rail FROM
+   *  this station (it's a root, or wired to one). The authoritative output of the connected-rail gate;
+   *  drives the frontier overlay + the pre-commit ghost. false for transit / an ungated realm. */
+  reachable: boolean;
 }
 
 export interface PerLine {

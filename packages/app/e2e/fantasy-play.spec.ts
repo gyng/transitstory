@@ -38,6 +38,7 @@ test("fantasy baked world is playable: supply flows to tribute", async ({ page }
     // EACH required commodity, and run a line src1→town→src2 so both chains reach it (one input alone yields
     // no tribute). The 3-stage ARMS towns (recipe includes INGOT=4, which has no source — it's forged) are
     // proven separately by fantasy-multistage.spec.ts. Station ids: towns 0..nt-1, then resources.
+    const capitalIdx = sg.towns.findIndex((t: any) => t.kind === "capital");
     const ti = sg.towns.findIndex((t: any) => t.kind !== "capital" && t.recipe?.length === 2 && t.recipe.every((c: number) => c < 4));
     const town = sg.towns[ti];
     const nearestSrc = (comm: number) => {
@@ -50,7 +51,10 @@ test("fantasy baked world is playable: supply flows to tribute", async ({ page }
     const s1 = nearestSrc(town.recipe[0]);
     const s2 = nearestSrc(town.recipe[1]);
     const tt = (window as any).__ot_test;
-    tt.drawLine([s1, ti, s2]); // both chain inputs route to the town (the sink between them) → Liebig
+    // CONNECTED-RAIL gate (#infrastructure): root the chain at the capital (the starter bread town + its
+    // grain/fuel sources sit in the capital's carved bootstrap valley). capital → src1 → town → src2: both
+    // chain inputs route to the town (the sink between them) → Liebig, and the whole line ties to the seat.
+    tt.drawLine([capitalIdx, s1, ti, s2]);
     tt.assignTrainset(0, 4);
     tt.setHeadwayMs(0, 120000);
     // advance the sim SYNCHRONOUSLY (deterministic, no rAF) so the result is load-independent.
