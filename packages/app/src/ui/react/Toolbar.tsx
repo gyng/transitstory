@@ -58,18 +58,21 @@ function Button({
   onClick,
   style,
   title,
+  disabled,
 }: {
   label: string;
   testid: string;
   onClick: () => void;
   style?: CSSProperties;
   title?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       data-testid={testid}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       title={title}
+      disabled={disabled}
       style={{
         border: "1px solid #d7dade",
         background: "#fff",
@@ -77,8 +80,9 @@ function Button({
         borderRadius: 7,
         padding: "6px 10px",
         font: "600 13px system-ui,sans-serif",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
         ...style,
+        ...(disabled ? { opacity: 0.4, background: "#eef0f2", color: "#9aa3ad" } : null),
       }}
     >
       {label}
@@ -344,7 +348,8 @@ export function Toolbar() {
         <Button
           label="🌡 Demand"
           testid="layer-demand"
-          title="Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."
+          disabled={game.lensHides("demand")}
+          title={game.lensHides("demand") ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.` : "Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."}
           onClick={() => game.setShowDemand(!ui.showDemand)}
           style={{
             background: ui.showDemand ? "#0072b2" : "#fff",
@@ -399,18 +404,20 @@ export function Toolbar() {
           />
         )}
 
-        {/* Map LENSES (#5): a compact arcadia-only view-mode selector — emphasise one reading of the busy
-            map by dimming the others (filtering in Game.composeAndSet). Lives with the other view controls. */}
+        {/* Map LENSES (#5): an EXCLUSIVE arcadia-only view-mode selector — pick ONE reading; the others dim
+            (filtered in Game.composeAndSet). Styled as a SEGMENTED control (joined buttons, radio-like) so it
+            reads as one-of-N — visually distinct from the additive layer-toggle pills above. */}
         {ui.ruleset === "arcadia" && (
           <>
             <span style={SEP_STYLE} />
-            <div data-testid="lens-bar" style={{ display: "flex", gap: 2 }}>
+            <span style={{ font: "700 10px system-ui", letterSpacing: ".06em", color: "#8a93a3", alignSelf: "center" }}>LENS</span>
+            <div data-testid="lens-bar" style={{ display: "flex" }}>
               {([
-                ["realm", "◉", "everything"],
-                ["supply", "⛏", "sources, towns, rivers — your economy"],
-                ["military", "⚔", "legions, raiders, conquest targets"],
-                ["decadence", "☠", "the creeping rot — the tide + its front"],
-              ] as const).map(([id, icon, title]) => (
+                ["realm", "◉", "All", "everything"],
+                ["supply", "⛏", "Supply", "sources, towns, rivers — your economy"],
+                ["military", "⚔", "War", "legions, raiders, conquest targets"],
+                ["decadence", "☠", "Rot", "the creeping rot — the tide + its front"],
+              ] as const).map(([id, icon, lbl, title], i, arr) => (
                 <button
                   key={id}
                   data-testid={`lens-${id}`}
@@ -418,15 +425,19 @@ export function Toolbar() {
                   onClick={() => game.setLens(id)}
                   style={{
                     border: "1px solid #d7dade",
-                    borderRadius: 6,
-                    padding: "6px 9px",
+                    borderLeft: i === 0 ? "1px solid #d7dade" : "none",
+                    borderTopLeftRadius: i === 0 ? 6 : 0,
+                    borderBottomLeftRadius: i === 0 ? 6 : 0,
+                    borderTopRightRadius: i === arr.length - 1 ? 6 : 0,
+                    borderBottomRightRadius: i === arr.length - 1 ? 6 : 0,
+                    padding: "6px 8px",
                     cursor: "pointer",
-                    font: "600 14px system-ui,sans-serif",
+                    font: "600 12px system-ui,sans-serif",
                     background: ui.lens === id ? "#1c2024" : "#fff",
                     color: ui.lens === id ? "#fff" : "#1c2024",
                   }}
                 >
-                  {icon}
+                  {icon} {lbl}
                 </button>
               ))}
             </div>

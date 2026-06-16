@@ -859,6 +859,13 @@ export class Game {
     this.refresh();
   }
 
+  /** Does the ACTIVE map lens already hide `layerId`? Drives disabling a layer-toggle whose layer the lens
+   *  overrides — so the player never sees a toggle reading ON while its layer is invisible. */
+  lensHides(layerId: string): boolean {
+    if (this.ruleset !== "arcadia" || this.lens === "realm") return false;
+    return LENS_HIDE[this.lens]?.has(layerId) ?? false;
+  }
+
   /** Toggle the accessibility "Reach" overlay (shades reachable stations by travel time from the
    *  selected one). Opt-in so it never piles onto the default selection overlay. */
   setShowReach(on: boolean): void {
