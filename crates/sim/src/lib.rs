@@ -33,6 +33,7 @@ pub mod stats;
 pub mod tech;
 mod tick;
 pub mod tod;
+pub mod track_graph;
 pub mod trainset;
 pub mod vehicle;
 pub mod walkshed;

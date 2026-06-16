@@ -222,6 +222,11 @@ pub struct World {
     /// on `dispatch_dirty` for GRID lines only; **never hashed** (transient, like `junctions`). Empty
     /// for a continuous / non-grid / non-shared network ⇒ the cross-line mutex is inert (zero re-pins).
     pub cross_blocks: Vec<CrossBlock>,
+    /// Derived shared-infrastructure TrackGraph (TTD L1, docs/ttd-track-model.md): the per-line polylines
+    /// abstracted into nodes (stations/junctions/termini) + segments (maximal grid-edge runs). Re-derived
+    /// in `dispatch` for GRID lines only; **never hashed** (transient, a pure fn of `lines`/`stations`,
+    /// like `cross_blocks`). Empty for continuous / non-grid networks ⇒ zero re-pins. The spine L2+ key off.
+    pub track_graph: crate::track_graph::TrackGraph,
     /// Inter-station footpaths: per station, the nearby stations reachable on foot within
     /// `FOOTPATH_MM`, each with its integer walk time (ms). Derived from positions, rebuilt with
     /// the catchment when stations change. Lets RAPTOR transfer between unconnected lines whose
@@ -581,6 +586,7 @@ impl World {
             serving: Vec::new(),
             junctions: Vec::new(),
             cross_blocks: Vec::new(),
+            track_graph: crate::track_graph::TrackGraph::default(),
             footpaths: Vec::new(),
             route_cache: rustc_hash::FxHashMap::default(),
             access_cache: rustc_hash::FxHashMap::default(),

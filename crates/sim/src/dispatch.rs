@@ -194,6 +194,11 @@ pub(crate) fn dispatch(world: &mut World) {
     // (empty) for continuous / non-grid / non-shared networks ⇒ zero re-pins.
     world.cross_blocks = derive_cross_blocks(world);
 
+    // TTD L1 (docs/ttd-track-model.md): the derived shared-INFRASTRUCTURE graph — same grid edges,
+    // promoted into nodes + segments. Pure fn of the polylines, NEVER hashed (a non-`Canonical` field),
+    // empty for non-grid ⇒ zero re-pins. Observational in L1; L2+ key berths/segments off it.
+    world.track_graph = crate::track_graph::derive_track_graph(world);
+
     // CROSS-LINE dispatch cap (shared-rail.md): the COMBINED fleet across all lines sharing a block is
     // bounded by the block's single-track capacity — (passing places + the 2 boundary ends) for an
     // acyclic block, or 1 for a CYCLIC ring (the depth-1-forest argument fails on a ring). Distributed
