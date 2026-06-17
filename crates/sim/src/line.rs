@@ -66,6 +66,15 @@ pub struct Path {
     /// the polyline. Player-drawn lines stay smoothed (literal = false).
     #[serde(default)]
     pub literal: bool,
+    /// TTD L3 A2 (DERIVED, NOT YET AUTHORITATIVE, NOT HASHED): the ordered list of `TrackGraph`
+    /// segments this path covers, each with a `bool` = traversed in REVERSE (cells[last] → cells[0]).
+    /// Bound POST-DISPATCH by `dispatch::bind_path_segments` right after `derive_track_graph` (a
+    /// segment boundary is a junction whose degree depends on OTHER lines, so a path can't decompose
+    /// itself without the whole graph). `#[serde(skip)]` keeps it OUT of serialization ⇒ out of
+    /// `state_hash` — derived scratch like `World::track_graph` itself, not authoritative until C1.
+    /// EMPTY for continuous / non-grid networks (no graph) and for any path bound to no segment.
+    #[serde(skip)]
+    pub segments: Vec<(crate::ids::TrackSegmentId, bool)>,
 }
 
 impl Path {

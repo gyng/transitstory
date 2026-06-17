@@ -199,6 +199,12 @@ pub(crate) fn dispatch(world: &mut World) {
     // empty for non-grid ⇒ zero re-pins. Observational in L1; L2+ key berths/segments off it.
     world.track_graph = crate::track_graph::derive_track_graph(world);
 
+    // TTD L3 A2 (docs/ttd-l3-plan.md): now that the graph exists, bind each path's ordered covered
+    // segments (`Path.segments`, `#[serde(skip)]` ⇒ NOT hashed) by matching each path's polyline cells
+    // against the just-derived segments' cell chains. DERIVED post-dispatch, like the graph itself; at
+    // C1 this binding moves into the apply-time write-path. ADDITIVE: nothing consumes it yet.
+    bind_path_segments(world);
+
     // CROSS-LINE dispatch cap (shared-rail.md): the COMBINED fleet across all lines sharing a block is
     // bounded by the block's single-track capacity — (passing places + the 2 boundary ends) for an
     // acyclic block, or 1 for a CYCLIC ring (the depth-1-forest argument fails on a ring). Distributed
@@ -450,6 +456,116 @@ pub(crate) fn dispatch(world: &mut World) {
                 v.onboard_pax.push(Vec::new());
                 v.at_station.push(-1);
                 v.berth_idx.push(-1);
+            }
+        }
+    }
+}
+
+/// TTD L3 A2 (docs/ttd-l3-plan.md): bind each non-removed line's each path to the ordered list of
+/// `TrackGraph` segments it covers, recording each segment's `TrackSegmentId` + a REVERSE flag (the
+/// path traverses the segment's canonical `cells[0]→cells[last]` chain backwards). DERIVED scratch on
+/// `Path.segments` (`#[serde(skip)]` ⇒ NOT hashed); re-filled here every dispatch, like the graph it
+/// reads. Must run AFTER `derive_track_graph`. Pure integer, sorted-Vec lookup (no HashMap iteration),
+/// command-order-independent (a pure fn of the already-derived graph + the hashed polylines).
+///
+/// A segment is a maximal grid-edge run between two graph nodes through degree-2 interior cells, so the
+/// segments tile every path: walking a path's cell chain from the start, the first segment covers a
+/// contiguous prefix, the next continues from the shared boundary node cell, and so on. We index every
+/// segment by its two ORIENTED leading cells (both directions), then walk each path's deduped cell list
+/// matching the segment that starts at the cursor (forward or reverse). Empty graph (continuous / non-
+/// grid) ⇒ nothing matches ⇒ every `segments` stays empty (cleared first ⇒ no stale carry-over).
+fn bind_path_segments(world: &mut World) {
+    let cell = world.city.grid_cell_mm;
+
+    // Snapshot the graph's segment cell-chains (and build the leading-edge index) BEFORE the mutable line
+    // walk, so the immutable `track_graph` borrow is released and doesn't conflict with `lines.iter_mut`.
+    // `seg_cells[si]` is segment si's cell chain; `starts` keys each oriented leading edge → (si, reverse).
+    let nseg = world.track_graph.segments.len();
+    let seg_cells: Vec<Vec<crate::hexgrid::Axial>> =
+        world.track_graph.segments.iter().map(|s| s.cells.clone()).collect();
+
+    // Clear first so a path that no longer maps to any segment (graph went empty / line edited) carries
+    // no stale binding — derived scratch must be a pure function of the CURRENT graph.
+    for line in world.lines.iter_mut() {
+        for path in line.paths.iter_mut() {
+            path.segments.clear();
+        }
+    }
+    if cell <= 0 || nseg == 0 {
+        return; // no grid graph ⇒ no bindings (continuous / non-grid network)
+    }
+
+    // Index: each segment's two ORIENTED leading-cell pairs → (seg_idx, reverse). `reverse` is true when
+    // the path traverses the segment's `cells` chain from cells[last] toward cells[0]. Sorted by the
+    // (first, second) cell key so the cursor lookup is a deterministic binary search (no HashMap iter).
+    // (key0, key1, seg_idx, reverse)
+    let mut starts: Vec<(crate::hexgrid::Axial, crate::hexgrid::Axial, u32, bool)> =
+        Vec::with_capacity(nseg * 2);
+    for (si, chain) in seg_cells.iter().enumerate() {
+        if chain.len() < 2 {
+            continue; // a segment needs ≥2 cells to have a leading edge to key on
+        }
+        let first = chain[0];
+        let last = chain[chain.len() - 1];
+        let second_fwd = chain[1];
+        let second_rev = chain[chain.len() - 2];
+        starts.push((first, second_fwd, si as u32, false));
+        starts.push((last, second_rev, si as u32, true));
+    }
+    // Sort by the two-cell key; a given (cell,next-cell) edge belongs to at most ONE segment orientation
+    // (segments partition the grid edges), so the key is unique and a stable sort keeps it deterministic.
+    starts.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+
+    for line in world.lines.iter_mut() {
+        if line.removed || line.stops.len() < 2 || line.crosses_water_surface {
+            continue; // same liveness filter as the graph's edge collection
+        }
+        for path in line.paths.iter_mut() {
+            // Deduped cell chain of the path's polyline (a grid-walk vertex is a cell centre ⇒ axial_of
+            // recovers it; zero-length steps that map to the same cell collapse, matching seg.cells's
+            // no-consecutive-duplicate shape — the exact convention source_segment_geometry relies on).
+            let mut vcells: Vec<crate::hexgrid::Axial> = Vec::with_capacity(path.polyline.len());
+            for &p in &path.polyline {
+                let c = crate::hexgrid::axial_of(p, cell);
+                if vcells.last() != Some(&c) {
+                    vcells.push(c);
+                }
+            }
+            if vcells.len() < 2 {
+                continue; // a single-cell (or empty) path covers no segment
+            }
+            // Walk the cell chain, consuming one matching segment at a time. A segment's chain is a
+            // contiguous sub-range and consecutive segments share the boundary node cell, so the cursor
+            // advances by (seg cell count − 1) and the next segment begins exactly there.
+            let mut cursor = 0usize;
+            let mut guard = 0usize;
+            while cursor + 1 < vcells.len() && guard <= nseg + 1 {
+                let key = (vcells[cursor], vcells[cursor + 1]);
+                let found = starts
+                    .binary_search_by(|&(k0, k1, _, _)| (k0, k1).cmp(&key))
+                    .ok()
+                    .map(|i| (starts[i].2, starts[i].3));
+                let Some((si, reverse)) = found else { break };
+                // Confirm the full chain matches at the cursor (forward or reversed) before consuming —
+                // the two-cell key is unique per edge, so this always holds, but verifying keeps the
+                // walk robust against a degenerate chain rather than silently mis-binding.
+                let chain = &seg_cells[si as usize];
+                let end = cursor + chain.len();
+                if end > vcells.len() {
+                    break;
+                }
+                let window = &vcells[cursor..end];
+                let matches = if reverse {
+                    window.iter().rev().eq(chain.iter())
+                } else {
+                    window.iter().eq(chain.iter())
+                };
+                if !matches {
+                    break;
+                }
+                path.segments.push((crate::ids::TrackSegmentId(si), reverse));
+                cursor = end - 1; // segments share the boundary node cell
+                guard += 1;
             }
         }
     }

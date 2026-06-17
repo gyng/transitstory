@@ -312,6 +312,57 @@ fn segment_geometry_matches_owning_path_subrange() {
     assert_eq!(concat, path.polyline, "segments concatenate back to the full path polyline");
 }
 
+/// TTD L3 A2: each `Path` gains a DERIVED, NON-HASHED `segments: Vec<(TrackSegmentId, bool)>` — the
+/// ordered `TrackGraph` segments it covers (bool = traversed in REVERSE). Bound post-dispatch by
+/// `dispatch::bind_path_segments` (right after `derive_track_graph`), so a TICK fills it. For a single
+/// straight grid line (single-line, unshared segments ⇒ the curvature representative IS this line), the
+/// binding must (a) be non-empty + resolve into `world.track_graph.segments`, and (b) concatenate back
+/// to the path's full `polyline` bit-for-bit (honouring the reverse flag, deduping the shared endpoint
+/// vertex between consecutive segments). Shared segments are NOT asserted here (their geometry is the
+/// lowest-index representative's curve — the documented A1/C1 subtlety).
+#[test]
+fn path_segments_bind_and_concatenate() {
+    let mut w = grid_world(CELL);
+    // A single straight line on the x-axis through 4 stations ⇒ 3 single-line, unshared segments.
+    let s0 = place(&mut w, xcell(0).0, xcell(0).1);
+    let s1 = place(&mut w, xcell(3).0, xcell(3).1);
+    let s2 = place(&mut w, xcell(7).0, xcell(7).1);
+    let s3 = place(&mut w, xcell(12).0, xcell(12).1);
+    make_line(&mut w, &[s0, s1, s2, s3]);
+    // Trigger dispatch (which derives the graph THEN binds the path segments): assign a trainset, run,
+    // tick once. `dispatch` runs at the start of a tick on `dispatch_dirty`, filling `Path.segments`.
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    w.tick(50);
+
+    let g = derive_track_graph(&w);
+    assert_eq!(g.segments.len(), 3, "4 stops in a row ⇒ 3 single-line segments");
+
+    let path = &w.lines[0].paths[0];
+    // (a) non-empty + every bound seg id resolves into the derived graph's segments.
+    assert!(!path.segments.is_empty(), "the path binds at least one segment after dispatch");
+    assert_eq!(path.segments.len(), g.segments.len(), "the straight path covers every segment, once each");
+    for &(sid, _rev) in &path.segments {
+        assert!((sid.0 as usize) < g.segments.len(), "bound seg id resolves into track_graph.segments");
+        assert_eq!(g.segments[sid.0 as usize].seg_id, sid.0, "seg_id == its index (canonical)");
+    }
+
+    // (b) concatenating the bound segments' polylines IN PATH ORDER (honouring the reverse flag, deduping
+    // the shared boundary vertex between consecutive segments) reproduces the path's full polyline.
+    let mut concat: Vec<sim::geo_local::PointMm> = Vec::new();
+    for (i, &(sid, reverse)) in path.segments.iter().enumerate() {
+        let seg = &g.segments[sid.0 as usize];
+        // Orient the segment polyline along the direction this path traverses it.
+        let mut poly = seg.polyline.clone();
+        if reverse {
+            poly.reverse();
+        }
+        let skip = if i == 0 { 0 } else { 1 }; // dedup the shared endpoint vertex
+        concat.extend_from_slice(&poly[skip..]);
+    }
+    assert_eq!(concat, path.polyline, "bound segments concatenate back to the full path polyline bit-for-bit");
+}
+
 #[test]
 fn degenerate_inputs_do_not_panic() {
     let mut w = grid_world(CELL);
