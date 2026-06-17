@@ -34,24 +34,48 @@ const GARRISON_MAX: i64 = 500;
 /// per-tick bench gate is S10). Launches past this are skipped (logged-by-omission).
 const MAX_ARMIES: usize = 256;
 
-/// Army state.
-pub const MARCHING: u8 = 0;
+/// Army state. The TRAVEL sub-states (#legion-ride-trains) replace the old free-ride MARCHING with a
+/// real decide → walk/wait → ride machine; BESIEGING/DONE are unchanged terminal states. New discriminants
+/// are APPENDED (3/4/5) so a legion-free golden's 0/1/2 bytes are untouched.
+pub const AT_STATION: u8 = 0; // (was MARCHING) at a station/barracks — decide walk-vs-wait this tick
 pub const BESIEGING: u8 = 1;
 pub const DONE: u8 = 2; // captured/garrisoned/disbanded — inert, kept index-stable (never removed)
+pub const WALKING: u8 = 3; // advancing overland on a straight foot-leg toward the target
+pub const WAITING: u8 = 4; // parked at a station, holding for a train on its chosen line+direction
+pub const RIDING: u8 = 5; // aboard a real vehicle — position slaved to it (no free arc-length integration)
+/// Back-compat alias — launch still enters at AT_STATION (the old MARCHING discriminant 0).
+pub const MARCHING: u8 = AT_STATION;
 
 /// Separate Structure-of-Arrays for legions. Authoritative (hashed) fields + render-only cartesian.
 #[derive(Clone, Default)]
 pub struct ArmySoA {
     pub line: Vec<LineId>,
     pub path: Vec<u8>,
-    /// Arc-length position along the route (mm) — the army OWNS this (never rebuilt by dispatch).
+    /// Arc-length position along the route (mm) — the army OWNS this (never rebuilt by dispatch). While
+    /// RIDING it is MIRRORED from the carrying vehicle (the legion no longer slides for free).
     pub s_mm: Vec<i64>,
     pub dir: Vec<i8>,
     pub strength: Vec<i64>,
     /// Target town (StationId) for the siege (S8b); carried now so the SoA layout is stable.
     pub target: Vec<u32>,
     pub state: Vec<u8>,
-    /// Render-only cartesian (derived from `s_mm`); NOT hashed.
+    // --- travel sub-state (#legion-ride-trains), all hashed ---
+    /// Line chosen while WAITING/RIDING (the legion boards/rides this line), -1 otherwise.
+    pub wait_line: Vec<i32>,
+    /// Travel direction chosen while WAITING/RIDING, 0 otherwise.
+    pub wait_dir: Vec<i8>,
+    /// Carrying vehicle slab index while RIDING, -1 otherwise.
+    pub riding_veh: Vec<i32>,
+    /// Clock (ms) at which a WALKING foot-leg completes (the legion then arrives/re-decides); 0 otherwise.
+    pub walk_done_ms: Vec<i64>,
+    /// Patience deadline (ms) while WAITING — if no train comes by then, re-decide (usually → WALK); 0 else.
+    pub wait_until_ms: Vec<i64>,
+    /// Straight foot-leg endpoints (mm) so the WALKING position is integer-interpolated + hashable.
+    pub walk_ox_mm: Vec<i64>,
+    pub walk_oy_mm: Vec<i64>,
+    pub walk_tx_mm: Vec<i64>,
+    pub walk_ty_mm: Vec<i64>,
+    /// Render-only cartesian (derived from `s_mm` / the walk interpolation); NOT hashed.
     pub x_mm: Vec<i64>,
     pub y_mm: Vec<i64>,
 }
@@ -71,7 +95,16 @@ impl ArmySoA {
         self.dir.push(dir);
         self.strength.push(strength);
         self.target.push(target);
-        self.state.push(MARCHING);
+        self.state.push(AT_STATION);
+        self.wait_line.push(-1);
+        self.wait_dir.push(0);
+        self.riding_veh.push(-1);
+        self.walk_done_ms.push(0);
+        self.wait_until_ms.push(0);
+        self.walk_ox_mm.push(0);
+        self.walk_oy_mm.push(0);
+        self.walk_tx_mm.push(0);
+        self.walk_ty_mm.push(0);
         self.x_mm.push(0);
         self.y_mm.push(0);
     }
