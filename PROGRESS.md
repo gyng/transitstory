@@ -3140,6 +3140,32 @@ decision at each station and ride real, capacity-contended vehicles.
   can't seat a strength-8 legion, so demo/arcadia legions WALK; riding wants the **Heavy** stock (cap 15) — a
   legible "to move your army by rail, run bigger trains" lever, in keeping with TTD.
 
+## #28 — the diegetic control-console UI theme (owner-directed, 2026-06-17)
+
+Owner chose (AskUserQuestion) **"sleek + diegetic + skeuomorphic"** for the "less webapp" restyle: the chrome
+should read as the transit operator's physical control desk. Pure FRONTEND styling ⇒ goldens byte-identical;
+tsc + vitest 27/27 green throughout.
+
+- **Design language (`styles.css`).** Reusable, token-driven console primitives: `.ot-console` (brushed-graphite
+  panel face, beveled + elevated), `.ot-key` + `.on`/`.on-good`/`.on-danger` (raised physical keys, lit when
+  active), `.ot-readout` (recessed mono digital-display well), `.ot-led`; tokens for graphite surfaces, etched-ink
+  text (`--ot-con-ink`/`-dim`), accents (cyan/amber/green/red), an instrument mono font, and bevel/seam/elevation
+  shadows. (Also bumped `--ot-shadow` to a layered "elevated card" earlier in the same arc.)
+- **Flagship — the bottom toolbar (`e684adc`).** Transport-bar + build popover become graphite consoles; `Button`
+  refactored to `.ot-key` (`on`/`tone` props); the mode buttons are backlit selector keys (the mode's identity
+  colour glows when active) with mono key-caps; the lens bar is a recessed segmented selector; header reads
+  "RAIL · CONSTRUCTION" in instrument type.
+- **Every HUD panel (`76d70d7`).** Extended via a Workflow (15 panels in parallel) + a dedicated agent for
+  Panels.tsx: shared `PANEL_STYLE` → console face (roster + editor); StatsBar gauges → recessed readout wells;
+  the editor's pickers/toggles → keys; StatsDashboard/Fleet/Objectives/TechPanel/SpellBar/BuildHud/DraftControls/
+  Settings/ContextMenu/FollowCard/CommuterCard/ServiceReport/StationConfirmBar/Beats all cohere. Every `data-testid`
+  preserved; per-line/resource identity hues + semantic good/bad/amber state colours kept (brightened only where a
+  dark identity tint was unreadable on the dark face).
+- **Verified live** on both Dublin (transit) + Arcadia (fantasy): the whole HUD reads as one dark control desk, the
+  light map pops against it, no dark-on-dark readability issues.
+- **Deferred:** the start MENU + onboarding coach (a different, branded context) are intentionally left light for
+  now; a few modals (Charts) can follow if wanted.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
