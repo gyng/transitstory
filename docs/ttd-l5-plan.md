@@ -114,8 +114,13 @@ unchanged — only the KEY graduates, exactly as it did per layer
   production `placeSignalLngLat` hook, asserting the `signal-<line>-<span>-<atMm>` store contract + a
   screenshot (post renders on the rail, on land). Test hooks added: `placeSignalLngLat`, `placedSignalIds`,
   `selectLine`, `setLineTrack`. Frontend-only; the goldens/fingerprints are untouched.
-- **L5d — single-track capacity/cost balance** (a placed signal raises the line's effective single-track
-  throughput; small capital cost per signal). Tunable, behind the existing economy.
+- **L5d — single-track capacity/cost balance. [DEFERRED — tunable knob]** The throughput gain already
+  landed in L5b. The remaining piece is a small capital cost PER signal (so signals are an economic
+  tradeoff in the fantasy economy). Deferred as a tunable follow-up: `Line.capital_cost` is HASHED, so
+  it requires a targeted cost-recompute on `PlaceSignal`/`RemoveSignal` (which are dispatch-exempt) + a
+  new with-signals fingerprint — more than trivial, for a BOUNDED concern (the signal benefit is capped
+  by the unchanged `doubles+1` dispatch cap, so free signals can't be spammed for unbounded throughput).
+  Golden-neutral when added (goldens place no signals). Not blocking L5's completeness.
 
 ## Gates + discipline (carried from L3/L4)
 - Two orthogonal gates: the **state-hash goldens** move ONLY at L5b's earned re-pin (a new Canonical
