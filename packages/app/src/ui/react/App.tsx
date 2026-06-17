@@ -19,6 +19,7 @@ import { installTestHooks } from "../../testhooks";
 import { GameProvider, useGame, useGameUI } from "./GameContext";
 import { AppShell } from "./AppShell";
 import { TimeCluster } from "./TimeCluster";
+import { LensRail } from "./LensRail";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
@@ -331,9 +332,14 @@ export function App() {
         }
         left={<Panels />}
         right={
-          <>
+          // Right edge: the objective card floats as before (position:fixed). The LensRail is the new
+          // flow-anchored vertical rail, pinned to the far edge and VERTICALLY CENTRED so it clears the
+          // top-anchored EditorPanel (still position:fixed until the stage-7 inspector consolidation);
+          // a raised z keeps the rail clickable if the editor ever overlaps it.
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", padding: "0 14px", pointerEvents: "none", position: "relative", zIndex: 12 }}>
             {scenario && <ObjectivePanel scenario={scenario} />}
-          </>
+            <LensRail />
+          </div>
         }
         bottom={<Toolbar />}
       />
