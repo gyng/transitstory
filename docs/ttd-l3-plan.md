@@ -46,8 +46,17 @@ Migration (b) (`s_mm → (seg,offset)`) is deferred to L4 where routing needs th
     hash couples to *command order* and breaks the "same network ⇒ same hash" property (today's
     `derive_track_graph` guarantees order-independence). Decide this in A1, not at C1.
 - **A2 — `Path` gains `segments: Vec<(TrackSegmentId, bool)>`** via **`#[serde(skip)]`** (NOT
-  `serde(default)`) so it's not serialized/hashed yet. Dual-carry: `Path` keeps full geometry. Test:
-  `path.segments` concatenates to `path.polyline` after every edit.
+  `serde(default)`) so it's not serialized/hashed yet. Dual-carry: `Path` keeps full geometry.
+  - **RESOLVED WRINKLE (2026-06-17):** the binding is NOT computable at `apply`/`rebuild_line_geometry`
+    time — a segment boundary is a junction whose degree depends on *other* lines, so a path can't
+    decompose itself into segments without the whole graph. Therefore A2's binding is a **DERIVED
+    post-dispatch computation** (filled in right after `derive_track_graph`, like the graph itself), stored
+    on `Path.segments` as `#[serde(skip)]` (non-hashed). At C1 this binding moves into the authoritative
+    apply-time write-path. Resolve each path's ordered covered-segment refs by walking its polyline→cells
+    and matching the derived segments' cell chains (forward/reverse), same machinery A1 uses.
+  - **Test:** `path.segments` concatenates to `path.polyline` **for single-line (unshared) paths only** —
+    a shared segment carries the lowest-index representative's curve, so the invariant is "concatenates to
+    the representative," not "to this path" (the documented curvature subtlety; full reconciliation at C1).
 - **B1 — Migrate RENDER to read segments** (`render_buf::track_graph_m` + per-segment track_type).
   NEUTRAL (render never hashed).
 - **B2 — Re-key P2 single-track meet to `TrackSegmentId`.** ⚠ **NOT a neutral reader-flip as first
