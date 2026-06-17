@@ -43,7 +43,7 @@ pub use city::{BuildCell, BuildabilityGrid, CityData, DemandCell, DemandGrid};
 pub use decadence_field::DecadenceField;
 pub use command::{Command, Event};
 pub use geo_local::PointMm;
-pub use ids::{LineId, PaxId, StationId, TrainsetId, VehicleId};
+pub use ids::{LineId, PaxId, StationId, TrackSegmentId, TrainsetId, VehicleId};
 pub use line::{Branch, Line, Path};
 pub use pax::Pax;
 pub use routing::{plan_route, BfsRouter, Leg, RaptorRouter, Router, DEFAULT_MAX_LEGS};

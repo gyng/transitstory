@@ -472,6 +472,45 @@ struct Canonical<'a> {
     /// appended length-0 bytes, behaviour byte-identical.
     raider_tx_mm: &'a [i64],
     raider_ty_mm: &'a [i64],
+    /// TTD L3 C1 — the AUTHORITATIVE, HASHED track-segment slab (the earned geometry-ownership flip). Each
+    /// grid line's polyline is abstracted into topology-keyed segments that now OWN the geometry; a BOUND
+    /// `Path` omits its geometry from the hash (above) and references segments by id, and the geometry lives
+    /// HERE. Appended LAST. EMPTY (length-0 slice) for continuous / non-grid networks (transit + the demo
+    /// arcadia fixture is single-line GRID, so arcadia DOES populate it ⇒ its golden moves; transit stays a
+    /// pure empty-slice shift). Topology-pure: the projection hashes endpoint CELLS (not the index/seg_id)
+    /// in canonical seg-order, so the hash is command-order-independent (same network ⇒ same hash).
+    track_segments: CanonSegments<'a>,
+}
+
+/// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
+/// hash is a TOPOLOGY-PURE function of the segments (endpoint cells + owned geometry + track), never the
+/// allocation/command order: `seg_id` (= the canonical index) and `shared` (a derived render hint) are
+/// EXCLUDED. Empty slab ⇒ a length-0 sequence (the transit/continuous clean re-pin).
+struct CanonSegments<'a>(&'a crate::track_graph::TrackGraph);
+
+impl serde::Serialize for CanonSegments<'_> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let g = self.0;
+        let mut seq = s.serialize_seq(Some(g.segments.len()))?;
+        for seg in &g.segments {
+            // Topology-pure identity = the two endpoint node CELLS (canonical, a<=b); plus the owned
+            // authoritative geometry + track. No seg_id / shared (index/derived). `cell` is `Axial`
+            // (serde-serializable), polyline is `Vec<PointMm>`, the rest are integers — no float here.
+            let a_cell = g.nodes.get(seg.a as usize).map(|n| n.cell);
+            let b_cell = g.nodes.get(seg.b as usize).map(|n| n.cell);
+            seq.serialize_element(&(
+                a_cell,
+                b_cell,
+                &seg.cells,
+                &seg.polyline,
+                &seg.arclen_mm,
+                seg.track_type,
+                seg.span_mode,
+            ))?;
+        }
+        seq.end()
+    }
 }
 
 /// Save artifact: a seed plus the ordered command log. Replaying it reconstructs state
@@ -1403,6 +1442,18 @@ impl World {
         self.lines[idx].paths = new_paths;
     }
 
+    /// TTD L3 C1 — rebuild the AUTHORITATIVE, HASHED segment slab from the current lines, in the apply
+    /// write-path (so `state_hash` reflects it even before a tick). Derives the `track_graph` (its
+    /// `segments` ARE the hashed slab), binds each path's ordered `segments`, and — for grid (bound) paths
+    /// — re-derives the runtime polyline FROM those segments (so geometry genuinely lives in the slab, not
+    /// on `Path`). A pure function of `lines`/`stations` (no rng, no clock, integer + the pre-existing
+    /// circumradius float in the geometry build), so replaying the same log rebuilds it bit-for-bit. Empty
+    /// for continuous / non-grid networks ⇒ the hashed slab is a length-0 slice (transit's clean re-pin).
+    pub(crate) fn rebuild_track_segments(&mut self) {
+        self.track_graph = crate::track_graph::derive_track_graph(self);
+        crate::dispatch::bind_path_segments(self);
+    }
+
     /// Apply one command. Total + infallible: invalid commands return a `Rejected` event
     /// rather than panicking. Always records the command in the log.
     pub fn apply(&mut self, cmd: &Command) -> Vec<Event> {
@@ -1752,14 +1803,19 @@ impl World {
                     vec![Event::Rejected { reason: "SetSegmentMode: unknown line".into() }]
                 }
             }
-            Command::SetSegmentTrack { line, span, track } => {
+            Command::SetSegmentTrack { line, seg, track } => {
                 let li = line.index();
                 if li < self.lines.len() && !self.lines[li].paths.is_empty() {
                     let old_capital = self.capital_total();
                     let saved: Vec<Vec<u8>> =
                         self.lines[li].paths.iter().map(|p| p.track_type.clone()).collect();
                     let t = (*track).min(crate::line::track::SINGLE);
-                    if *span == u32::MAX {
+                    // TTD L3 C1: the edit targets a `TrackSegmentId`. The whole-line sentinel
+                    // `TrackSegmentId(u32::MAX)` (G6) fans out to every span of every path; otherwise the id's
+                    // value is the TRUNK SPAN it covers (per-branch editing deferred). The write lands on the
+                    // per-path `track_type` (the edit + persistence store); the segment slab then re-authors
+                    // its `track_type` from this span when `rebuild_track_segments` runs at the end of apply.
+                    if seg.0 == u32::MAX {
                         // WHOLE LINE = every span of every path (trunk + branches).
                         for p in self.lines[li].paths.iter_mut() {
                             for s in p.track_type.iter_mut() {
@@ -1767,10 +1823,9 @@ impl World {
                             }
                         }
                     } else {
-                        // A specific span targets the trunk (per-branch track editing is deferred).
                         let p = &mut self.lines[li].paths[0];
-                        if (*span as usize) < p.track_type.len() {
-                            p.track_type[*span as usize] = t;
+                        if (seg.0 as usize) < p.track_type.len() {
+                            p.track_type[seg.0 as usize] = t;
                         }
                     }
                     // Track type changes cost (single is cheaper) + the meet authority; it does NOT
@@ -1786,7 +1841,7 @@ impl World {
                             reason: "Not enough funds to double-track this line".into(),
                         }]
                     } else {
-                        vec![Event::SegmentTrackSet { line: *line, span: *span, track: t }]
+                        vec![Event::SegmentTrackSet { line: *line, seg: *seg, track: t }]
                     }
                 } else {
                     vec![Event::Rejected { reason: "SetSegmentTrack: unknown line".into() }]
@@ -1898,6 +1953,12 @@ impl World {
         // invalidate dispatch.
         if !matches!(cmd, Command::PlaceStation { .. } | Command::BuildPlatforms { .. }) {
             self.dispatch_dirty = true;
+            // TTD L3 C1: refresh the authoritative HASHED segment slab + each path's segment binding + the
+            // segment-derived runtime geometry in the WRITE-PATH, so `state_hash` (which may be taken before
+            // any tick) reflects the geometry that genuinely lives in the slab. Gated to the same line/
+            // geometry-changing commands that dirty dispatch (PlaceStation/BuildPlatforms don't touch
+            // geometry). Idempotent vs the dispatch-time rebuild (a pure fn of the lines).
+            self.rebuild_track_segments();
         }
         self.cmd_log.push(cmd.clone());
         // Refresh catchment capture eagerly after the edit so per-station captured demand
@@ -1971,6 +2032,7 @@ impl World {
             line_disabled_until_ms: &self.line_disabled_until_ms,
             raider_tx_mm: &self.raiders.tx_mm,
             raider_ty_mm: &self.raiders.ty_mm,
+            track_segments: CanonSegments(&self.track_graph),
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

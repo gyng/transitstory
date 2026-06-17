@@ -73,8 +73,8 @@ fn no_head_on_with_multiple_trains_on_single_sections() {
     // sections. SAFETY: never two opposing trains inside one single span (head-on). LIVENESS: every
     // train keeps making progress (no deadlock). RED until P2: trains pass through each other.
     let mut w = line_n(6, 3);
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 1, track: SINGLE });
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 3, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(1), track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(3), track: SINGLE });
     w.tick(50); // dispatch
     let nveh = w.vehicles.len();
     assert!(nveh >= 2, "need ≥2 trains to meet (got {nveh})");
@@ -100,7 +100,7 @@ fn no_head_on_with_multiple_trains_on_single_sections() {
 /// snapshot, then watch a long window — if no vehicle ever moves, the network is gridlocked.
 fn freezes(stations: u32, trains: u16) -> bool {
     let mut w = line_n(stations, trains);
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: WHOLE, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(WHOLE), track: SINGLE });
     w.tick(50);
     for _ in 0..4000 {
         w.tick(50);
@@ -130,8 +130,8 @@ fn single_track_replays_bit_for_bit() {
     // The meet protocol is deterministic, incl. a whole-line + a per-span SetSegmentTrack in the log.
     let build = || {
         let mut w = line_n(4, 3);
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 1, track: SINGLE });
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: WHOLE, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(1), track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(WHOLE), track: SINGLE });
         w
     };
     let mut a = build();
@@ -151,7 +151,7 @@ fn single_track_is_cheaper_to_build() {
     let cost = |single: bool| -> i64 {
         let mut w = line_n(3, 1);
         if single {
-            w.apply(&Command::SetSegmentTrack { line: LineId(0), span: WHOLE, track: SINGLE });
+            w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(WHOLE), track: SINGLE });
         }
         w.lines[0].capital_cost
     };
@@ -166,7 +166,7 @@ fn opposing_trains_meet_at_a_middle_single_span() {
     // there — assert NEVER a head-on, and both trains keep completing round trips (reversals): a
     // clean single-track section between passing places resolves the meet without deadlock.
     let mut w = line_n(5, 2);
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 2, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(2), track: SINGLE });
     w.tick(50);
     let nveh = w.vehicles.len();
     let mut reversals = vec![0u32; nveh];
@@ -198,7 +198,7 @@ fn single_track_loop_does_not_bind() {
             w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
         }
         if single {
-            w.apply(&Command::SetSegmentTrack { line: LineId(0), span: WHOLE, track: SINGLE });
+            w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(WHOLE), track: SINGLE });
         }
         w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
         w.apply(&Command::SetRunning { running: true });

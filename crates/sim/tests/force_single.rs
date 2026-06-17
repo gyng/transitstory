@@ -37,7 +37,7 @@ fn force_single_track_makes_every_span_single() {
 fn forced_single_overrides_a_set_segment_double() {
     // Even an explicit SetSegmentTrack(Double) is overridden back to SINGLE — you cannot double-track.
     let mut w = build_line(true);
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 0, track: track::DOUBLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(0), track: track::DOUBLE });
     let tt = w.lines_view()[0].track_types.clone();
     assert!(tt.iter().all(|&t| t == track::SINGLE), "the flag wins over a Double command: {tt:?}");
 }

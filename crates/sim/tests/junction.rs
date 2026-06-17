@@ -478,7 +478,7 @@ fn shared_single_trunk(trains: u16) -> World {
     }
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 2, station: StationId(4) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 2, station: StationId(5) });
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: u32::MAX, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(u32::MAX), track: SINGLE });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: trains });
     w.apply(&Command::SetRunning { running: true });
     w
@@ -540,7 +540,7 @@ fn s2_single_in_double(single_spans: &[u32], trains: u16) -> World {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 3, station: StationId(4) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 3, station: StationId(5) });
     for &k in single_spans {
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(k), track: SINGLE });
     }
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: trains });
     w.apply(&Command::SetRunning { running: true });
@@ -649,7 +649,7 @@ fn bunched_passing_places_long_single_run_never_freezes() {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 6, station: StationId(7) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 6, station: StationId(8) });
     for k in [2u32, 3, 4, 5] {
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(k), track: SINGLE });
     }
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 24 });
     w.apply(&Command::SetRunning { running: true });
@@ -680,7 +680,7 @@ fn staggered_single_span_never_freezes() {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 1, station: StationId(8) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 1, diverge_at: 6, station: StationId(9) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 1, diverge_at: 6, station: StationId(10) });
-    w.apply(&Command::SetSegmentTrack { line: LineId(0), span: 3, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(3), track: SINGLE });
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 16 });
     w.apply(&Command::SetRunning { running: true });
     let total = w.lines[0].length_mm();
@@ -708,7 +708,7 @@ fn multi_span_single_run_with_intermediate_station_never_freezes() {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 5, station: StationId(6) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 5, station: StationId(7) });
     for k in [2u32, 3] {
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(k), track: SINGLE });
     }
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 24 });
     w.apply(&Command::SetRunning { running: true });
@@ -738,7 +738,7 @@ fn multi_span_block_does_not_starve_the_branch() {
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 4, station: StationId(5) });
     w.apply(&Command::AddBranchStop { line: LineId(0), branch: 0, diverge_at: 4, station: StationId(6) });
     for k in [1u32, 2] {
-        w.apply(&Command::SetSegmentTrack { line: LineId(0), span: k, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(k), track: SINGLE });
     }
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 6 });
     w.apply(&Command::SetRunning { running: true });

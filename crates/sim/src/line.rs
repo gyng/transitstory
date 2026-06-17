@@ -38,7 +38,14 @@ pub mod track {
 /// One materialised service path of a line: a root-to-leaf stop sequence (the trunk, or a trunk
 /// prefix continued onto a branch) with its own smoothed geometry. All vehicle motion / routing /
 /// rendering runs on a `Path`, so a path behaves exactly like the old single-polyline line.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+///
+/// `Serialize` is HAND-WRITTEN (TTD L3 C1, see the impl) so the determinism hash reflects the
+/// geometry-ownership flip: a path BOUND to track segments (grid) omits its derived `polyline`/`arclen`/
+/// track tables from the hash — they live authoritatively in the hashed segment slab — while an UNBOUND
+/// (continuous / non-grid) path still hashes its own geometry exactly as before. `Deserialize` stays
+/// derived (it is never used to reconstruct hashed state — saves are command logs — but `Line`'s derive
+/// needs it to compile).
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Path {
     /// Ordered stops along this path.
     pub stops: Vec<StationId>,
@@ -66,15 +73,56 @@ pub struct Path {
     /// the polyline. Player-drawn lines stay smoothed (literal = false).
     #[serde(default)]
     pub literal: bool,
-    /// TTD L3 A2 (DERIVED, NOT YET AUTHORITATIVE, NOT HASHED): the ordered list of `TrackGraph`
-    /// segments this path covers, each with a `bool` = traversed in REVERSE (cells[last] → cells[0]).
-    /// Bound POST-DISPATCH by `dispatch::bind_path_segments` right after `derive_track_graph` (a
-    /// segment boundary is a junction whose degree depends on OTHER lines, so a path can't decompose
-    /// itself without the whole graph). `#[serde(skip)]` keeps it OUT of serialization ⇒ out of
-    /// `state_hash` — derived scratch like `World::track_graph` itself, not authoritative until C1.
-    /// EMPTY for continuous / non-grid networks (no graph) and for any path bound to no segment.
-    #[serde(skip)]
+    /// TTD L3 C1 (HASHED via the hand-written `Serialize`): the ordered list of `TrackGraph` segments this
+    /// path covers, each with a `bool` = traversed in REVERSE (cells[last] → cells[0]). Bound in the
+    /// apply/dispatch write-path by `dispatch::bind_path_segments` right after `derive_track_graph` (a
+    /// segment boundary is a junction whose degree depends on OTHER lines, so a path can't decompose itself
+    /// without the whole graph). For a BOUND (grid) path this binding IS the path's geometry in the hash —
+    /// the polyline/arclen/track tables are reconstructed from the (hashed) segment slab. EMPTY for
+    /// continuous / non-grid networks (no graph), where the path hashes its own self-authored geometry.
+    /// (`Deserialize`-skipped: never deserialized for hashed state — rebuilt from the command log.)
+    #[serde(skip_deserializing)]
     pub segments: Vec<(crate::ids::TrackSegmentId, bool)>,
+}
+
+// TTD L3 C1 — hand-written canonical `Serialize` for the determinism hash (the geometry-ownership flip).
+// Field order matches the struct declaration so an UNBOUND path is byte-identical to the old derive PLUS the
+// (now-hashed) `segments` binding appended last — i.e. the continuous transit golden's re-pin is a clean
+// empty-slice shift. A BOUND (grid) path serializes ONLY `stops`/`loop_line`/`literal`/`segments`: its
+// geometry (polyline/arclen/track_type/span_mode/min_radius/speed_cap) is OMITTED here because it lives
+// authoritatively in the hashed segment slab (`Canonical.track_segments`) — so geometry genuinely LEAVES
+// `Path` in the hash. The unbound branch reproduces the EXACT prior field set (all 10 derived fields) so the
+// only transit-hash delta is the appended (empty) `segments` binding — a clean empty-slice re-pin.
+impl serde::Serialize for Path {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        if self.segments.is_empty() {
+            // UNBOUND (continuous / non-grid / nothing to bind): hash geometry exactly as the old derive,
+            // then the `segments` binding (empty) appended last. (postcard ignores struct name/len/field
+            // names — only the field byte sequence matters.)
+            let mut st = s.serialize_struct("Path", 11)?;
+            st.serialize_field("stops", &self.stops)?;
+            st.serialize_field("loop_line", &self.loop_line)?;
+            st.serialize_field("polyline", &self.polyline)?;
+            st.serialize_field("arclen_mm", &self.arclen_mm)?;
+            st.serialize_field("stop_arclen_mm", &self.stop_arclen_mm)?;
+            st.serialize_field("speed_cap_mm_s", &self.speed_cap_mm_s)?;
+            st.serialize_field("min_radius_mm", &self.min_radius_mm)?;
+            st.serialize_field("span_mode", &self.span_mode)?;
+            st.serialize_field("track_type", &self.track_type)?;
+            st.serialize_field("literal", &self.literal)?;
+            st.serialize_field("segments", &self.segments)?;
+            st.end()
+        } else {
+            // BOUND (grid): geometry lives in the segment slab — hash only the service identity + binding.
+            let mut st = s.serialize_struct("Path", 4)?;
+            st.serialize_field("stops", &self.stops)?;
+            st.serialize_field("loop_line", &self.loop_line)?;
+            st.serialize_field("literal", &self.literal)?;
+            st.serialize_field("segments", &self.segments)?;
+            st.end()
+        }
+    }
 }
 
 impl Path {
@@ -287,6 +335,39 @@ impl Path {
         if self.track_type.len() != nspans {
             self.track_type.resize(nspans, track::DOUBLE);
         }
+    }
+
+    /// TTD L3 C1: recompute the arc-length + curve tables from the CURRENT `self.polyline` (which the
+    /// segment-concatenation just authored). `stop_arclen_mm` is unchanged — the concatenated polyline is
+    /// byte-identical to the grid-walk one, so each stop sits at the same arc-length. Re-accumulates
+    /// `arclen_mm` and re-derives `speed_cap_mm_s`/`min_radius_mm` over the polyline exactly as `rebuild`
+    /// does (the circumradius float pattern is the pre-existing accepted one), so the runtime geometry the
+    /// integrator reads is identical whether built by `rebuild` or derived from the segments.
+    pub fn recompute_tables_from_polyline(&mut self) {
+        self.arclen_mm.clear();
+        let mut acc = 0i64;
+        for i in 0..self.polyline.len() {
+            if i == 0 {
+                self.arclen_mm.push(0);
+            } else {
+                acc += self.polyline[i - 1].dist_mm(&self.polyline[i]);
+                self.arclen_mm.push(acc);
+            }
+        }
+        let n = self.polyline.len();
+        self.speed_cap_mm_s = vec![i64::MAX; n];
+        let mut minr = f64::INFINITY;
+        for i in 1..n.saturating_sub(1) {
+            let a = (self.polyline[i - 1].x_mm as f64, self.polyline[i - 1].y_mm as f64);
+            let b = (self.polyline[i].x_mm as f64, self.polyline[i].y_mm as f64);
+            let c = (self.polyline[i + 1].x_mm as f64, self.polyline[i + 1].y_mm as f64);
+            let r = circumradius(a, b, c);
+            self.speed_cap_mm_s[i] = cap_from_radius(r);
+            if r < minr {
+                minr = r;
+            }
+        }
+        self.min_radius_mm = if minr.is_finite() { minr as i64 } else { i64::MAX };
     }
 }
 

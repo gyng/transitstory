@@ -91,12 +91,16 @@ pub enum Command {
         span: u32,
         mode: u8,
     },
-    /// Track type for one inter-stop span (0=Double,1=Single; P2); span=u32::MAX sets every span of
-    /// the line. Mirrors SetSegmentMode — affects capacity (single-track meets) + capital cost, NOT
-    /// the build mode. Single track is cheaper to build but serialises opposing traffic (meets).
+    /// Track type (0=Double,1=Single; P2) for one TRACK SEGMENT. TTD L3 C1: now that the segment is the
+    /// authoritative owner of geometry + track, the edit TARGETS a `TrackSegmentId` instead of a raw span
+    /// index — the player edits the physical rail, not a per-path span. `seg == TrackSegmentId(u32::MAX)`
+    /// is the WHOLE-LINE sentinel (G6 — preserves the old `span==u32::MAX` affordance). For a GRID line the
+    /// id resolves through the segment slab to the trunk span(s) it covers; for a CONTINUOUS / non-grid line
+    /// (no segments) the id's `u32` is the trunk SPAN index directly (the segment graph is inert there).
+    /// Mirrors SetSegmentMode — affects capacity (single-track meets) + capital cost, NOT the build mode.
     SetSegmentTrack {
         line: LineId,
-        span: u32,
+        seg: crate::ids::TrackSegmentId,
         track: u8,
     },
     SetRunning {
@@ -191,7 +195,7 @@ pub enum Event {
     TrainsetAssigned { line: LineId, count: u16 },
     HeadwaySet { line: LineId, headway_ms: i64 },
     SegmentModeSet { line: LineId, span: u32, mode: u8 },
-    SegmentTrackSet { line: LineId, span: u32, track: u8 },
+    SegmentTrackSet { line: LineId, seg: crate::ids::TrackSegmentId, track: u8 },
     RunningSet { running: bool },
     EconomySet { enabled: bool },
     StationRemoved { station: StationId },

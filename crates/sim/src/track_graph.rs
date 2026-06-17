@@ -65,6 +65,17 @@ pub struct TrackSegment {
     /// path's arclen sub-range (integer mm). Parallel to `polyline`.
     #[serde(default)]
     pub arclen_mm: Vec<i64>,
+    /// TTD L3 C1 (AUTHORITATIVE, HASHED): the track type of this physical run — `track::DOUBLE` (0) or
+    /// `track::SINGLE` (1). A segment lies WITHIN a single inter-stop span (stations are always nodes, so a
+    /// segment never crosses one), so one value per segment is exact. Sourced (and persisted on edit) from the
+    /// lowest-index covering line+path's `track_type[span]`; the segment is the hashed AUTHORITY (the per-path
+    /// `Path.track_type` is excluded from a bound path's hash — geometry/track ownership genuinely lives here).
+    #[serde(default)]
+    pub track_type: u8,
+    /// TTD L3 C1 (AUTHORITATIVE, HASHED): the build mode of this physical run — `mode::SURFACE`/`ELEVATED`/
+    /// `TUNNEL`. Same per-segment-exactness + lowest-index sourcing as `track_type`.
+    #[serde(default)]
+    pub span_mode: u8,
 }
 
 impl TrackSegment {
@@ -313,7 +324,17 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
             if cells.first() != Some(&nodes[a as usize].cell) {
                 cells.reverse();
             }
-            TrackSegment { seg_id: 0, a, b, cells, shared, polyline: Vec::new(), arclen_mm: Vec::new() }
+            TrackSegment {
+                seg_id: 0,
+                a,
+                b,
+                cells,
+                shared,
+                polyline: Vec::new(),
+                arclen_mm: Vec::new(),
+                track_type: crate::line::track::DOUBLE,
+                span_mode: crate::line::mode::SURFACE,
+            }
         })
         .collect();
     segments.sort_by(|s, t| {
@@ -337,9 +358,11 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
     //    recovers the cell; consecutive vertices map to distinct adjacent cells (zero-length steps emit no
     //    vertex), matching `seg.cells`'s no-consecutive-duplicate shape.
     for seg in &mut segments {
-        if let Some((poly, arclen)) = source_segment_geometry(world, cell, &seg.cells) {
+        if let Some((poly, arclen, track_type, span_mode)) = source_segment_geometry(world, cell, &seg.cells) {
             seg.polyline = poly;
             seg.arclen_mm = arclen;
+            seg.track_type = track_type;
+            seg.span_mode = span_mode;
         }
     }
 
@@ -348,8 +371,10 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
 
 /// Locate the smoothed polyline sub-range for a segment's `cells` chain in the LOWEST-index line+path whose
 /// polyline traverses exactly those cells in order (forward or reversed). Returns the vertex sub-range
-/// oriented `cells[0] → cells[last]` plus a 0-rebased copy of that range's cumulative arc-lengths.
-fn source_segment_geometry(world: &World, cell: i64, cells: &[Axial]) -> Option<(Vec<PointMm>, Vec<i64>)> {
+/// oriented `cells[0] → cells[last]`, a 0-rebased copy of that range's cumulative arc-lengths, and the
+/// `track_type`/`span_mode` of the source path's span at the segment's midpoint — the authoritative track
+/// values this segment owns (a segment lies within ONE inter-stop span, so the midpoint span is exact).
+fn source_segment_geometry(world: &World, cell: i64, cells: &[Axial]) -> Option<(Vec<PointMm>, Vec<i64>, u8, u8)> {
     if cells.len() < 2 {
         return None;
     }
@@ -378,6 +403,12 @@ fn source_segment_geometry(world: &World, cell: i64, cells: &[Axial]) -> Option<
                 // Rebase the path's own arclen sub-range to start at 0 (integer mm, no float).
                 let base = path.arclen_mm.get(start).copied().unwrap_or(0);
                 let mut arclen: Vec<i64> = path.arclen_mm[start..end].iter().map(|&a| a - base).collect();
+                // Authoritative track values from the source path's span at this segment's midpoint
+                // arc-length (a segment is within ONE inter-stop span, so the midpoint span is exact).
+                let mid_arc = (path.arclen_mm[start] + path.arclen_mm[end - 1]) / 2;
+                let span = path.span_of(mid_arc);
+                let track_type = path.track_type.get(span).copied().unwrap_or(crate::line::track::DOUBLE);
+                let span_mode = path.span_mode.get(span).copied().unwrap_or(crate::line::mode::SURFACE);
                 if reverse {
                     // Orient `cells[0] → cells[last]`: reverse the vertices and re-accumulate arc-length
                     // from the (now-first) far endpoint so `arclen_mm[0] == 0` and lengths stay monotonic.
@@ -385,9 +416,9 @@ fn source_segment_geometry(world: &World, cell: i64, cells: &[Axial]) -> Option<
                     rev_poly.reverse();
                     let total = *arclen.last().unwrap_or(&0);
                     arclen = arclen.iter().rev().map(|&a| total - a).collect();
-                    return Some((rev_poly, arclen));
+                    return Some((rev_poly, arclen, track_type, span_mode));
                 }
-                return Some((sub_poly, arclen));
+                return Some((sub_poly, arclen, track_type, span_mode));
             }
         }
     }

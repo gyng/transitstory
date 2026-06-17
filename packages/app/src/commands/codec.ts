@@ -37,9 +37,11 @@ export const cmd = {
   setSegmentMode: (line: number, span: number, mode: number): Command => ({
     SetSegmentMode: { line, span, mode },
   }),
-  /** Track type (P2): span = WHOLE_LINE sets every span; track 0=Double,1=Single. */
-  setSegmentTrack: (line: number, span: number, track: number): Command => ({
-    SetSegmentTrack: { line, span, track },
+  /** Track type (P2): TTD L3 C1 targets a TrackSegmentId (`seg`); seg = WHOLE_LINE is the whole-line
+   * sentinel. track 0=Double,1=Single. (The `seg` arg keeps the prior `span` call sites working —
+   * the frontend only ever passes WHOLE_LINE.) */
+  setSegmentTrack: (line: number, seg: number, track: number): Command => ({
+    SetSegmentTrack: { line, seg, track },
   }),
   setRunning: (running: boolean): Command => ({ SetRunning: { running } }),
   setEconomy: (enabled: boolean): Command => ({ SetEconomy: { enabled } }),

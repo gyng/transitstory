@@ -65,8 +65,8 @@ fn two_lines_shared_single(trains: u16) -> World {
     let l1 = make_line(&mut w, &[s1, a, b, e1]);
     let l2 = make_line(&mut w, &[s2, a, b, e2]);
     // A–B is span index 1 on each line ([s,a,b,e]); single-track it on BOTH ⇒ a shared single edge run.
-    w.apply(&Command::SetSegmentTrack { line: l1, span: 1, track: SINGLE });
-    w.apply(&Command::SetSegmentTrack { line: l2, span: 1, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: l1, seg: TrackSegmentId(1), track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: l2, seg: TrackSegmentId(1), track: SINGLE });
     w.apply(&Command::AssignTrainset { line: l1, spec: 0, count: trains });
     w.apply(&Command::AssignTrainset { line: l2, spec: 0, count: trains });
     w.apply(&Command::SetRunning { running: true });
@@ -120,8 +120,8 @@ fn cross_blocks_are_command_order_independent() {
     let e2 = place(&mut b, 9 * cell + 50_000, 3 * cell + 50_000);
     let l2 = make_line(&mut b, &[s2, sa, sb, e2]); // line 2 FIRST
     let l1 = make_line(&mut b, &[s1, sa, sb, e1]);
-    b.apply(&Command::SetSegmentTrack { line: l1, span: 1, track: SINGLE });
-    b.apply(&Command::SetSegmentTrack { line: l2, span: 1, track: SINGLE });
+    b.apply(&Command::SetSegmentTrack { line: l1, seg: TrackSegmentId(1), track: SINGLE });
+    b.apply(&Command::SetSegmentTrack { line: l2, seg: TrackSegmentId(1), track: SINGLE });
     b.apply(&Command::AssignTrainset { line: l1, spec: 0, count: 2 });
     b.apply(&Command::AssignTrainset { line: l2, spec: 0, count: 2 });
     b.apply(&Command::SetRunning { running: true });
@@ -194,8 +194,8 @@ fn cross_line_short_passing_place_coalesces_no_deadlock() {
     let l1 = make_line(&mut w, &[a0, c0, c1, c2, c3, a1]);
     let l2 = make_line(&mut w, &[b0, c0, c1, c2, c3, b1]);
     for l in [l1, l2] {
-        w.apply(&Command::SetSegmentTrack { line: l, span: 1, track: SINGLE });
-        w.apply(&Command::SetSegmentTrack { line: l, span: 3, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: l, seg: TrackSegmentId(1), track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: l, seg: TrackSegmentId(3), track: SINGLE });
         w.apply(&Command::AssignTrainset { line: l, spec: 0, count: 6 });
     }
     w.apply(&Command::SetRunning { running: true });
@@ -222,7 +222,7 @@ fn cross_line_single_block_with_passing_place_no_overadmit() {
     let l1 = make_line(&mut w, &[s0, p, d, a, e0]);
     let l2 = make_line(&mut w, &[s1, p, d, a, e1]);
     for l in [l1, l2] {
-        w.apply(&Command::SetSegmentTrack { line: l, span: 2, track: SINGLE }); // D–A single (the block)
+        w.apply(&Command::SetSegmentTrack { line: l, seg: TrackSegmentId(2), track: SINGLE }); // D–A single (the block)
         w.apply(&Command::AssignTrainset { line: l, spec: 0, count: 4 });
     }
     w.apply(&Command::SetRunning { running: true });
@@ -277,7 +277,7 @@ fn cross_line_ring_never_deadlocks() {
         for &s in &[p0, p1, p2, p3] {
             w.apply(&Command::AddStop { line: li, station: s, after: None });
         }
-        w.apply(&Command::SetSegmentTrack { line: li, span: u32::MAX, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: li, seg: TrackSegmentId(u32::MAX), track: SINGLE });
         w.apply(&Command::AssignTrainset { line: li, spec: 0, count: 3 });
         li
     };

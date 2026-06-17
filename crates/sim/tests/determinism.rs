@@ -77,7 +77,17 @@ fn replay_equality() {
 //                           its line's `s_mm` (WALKING trudges the corridor, RIDING mirrors a boarded train), so
 //                           no off-rail endpoint fields are needed. Behaviour byte-identical; the re-pin is the
 //                           appended-bytes shift. (Supersedes the over-broad 9-field step-1 pin 0x8775…e2fe.)
-const GOLDEN_TRANSIT_HASH: u64 = 0x0ac9_996a_3815_b26a;
+//   0xea39_755c_339d_ab9e — TTD L3 C1, the EARNED geometry-ownership flip: geometry now lives authoritatively
+//                           on the (hashed) TrackSegment slab + each Path's hashed `segments` binding, and a
+//                           bound (grid) Path omits its geometry from the hash. The transit golden is a
+//                           CONTINUOUS network (grid_cell_mm == 0) ⇒ NO segments ⇒ the appended slab is a
+//                           length-0 slice and every Path stays UNBOUND, so it still hashes its own geometry
+//                           exactly as before — plus the new (empty) per-path `segments` binding. So this is a
+//                           PURE EMPTY-SLICE SHIFT: the position fingerprint (tests/position_fingerprint.rs)
+//                           is UNCHANGED, proving only serialization moved, not positions. The shared-corridor
+//                           single-curve behaviour change (#36 "one track, many services") is invisible to this
+//                           non-sharing continuous golden. If a behaviour-PRESERVING refactor changes this, STOP.
+const GOLDEN_TRANSIT_HASH: u64 = 0xea39_755c_339d_ab9e;
 
 #[test]
 fn golden_transit_hash_pinned() {

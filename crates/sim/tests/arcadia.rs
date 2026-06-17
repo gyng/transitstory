@@ -246,7 +246,16 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // riding_veh/wait_until_ms) join Canonical, EMPTY here (the demo fixture has no barracks ⇒ no legion afield ⇒
 // appended length-0 slices only). Behaviour byte-identical. (Supersedes the over-broad 9-field step-1 pin
 // 0xf6ff_edf4_0d41_3774.) Prior: 0xddb2_bee9_22ac_67fc.
-const GOLDEN_ARCADIA_HASH: u64 = 0x98c9_2af6_50fd_babc;
+// TTD L3 C1 — the EARNED geometry-ownership flip: geometry now lives authoritatively on the (hashed)
+// TrackSegment slab + each Path's hashed `segments` binding. The arcadia fixture is a single GRID line
+// (grid_cell_mm == 100_000), so its Path is BOUND to segments: its geometry (polyline/arclen/track_type/
+// span_mode/min_radius/speed_cap) is OMITTED from the Path hash and the authoritative geometry is hashed in
+// the segment slab instead — an earned re-pin (Path genuinely STOPS authoring the hashed geometry; the runtime
+// polyline is reconstructed from the slab by `bind_path_segments`). The position fingerprint
+// (tests/position_fingerprint.rs) is UNCHANGED — only SERIALIZATION moved, not the integrator's positions or
+// ridership. The shared-corridor single-canonical-curve change (#36 "one track, many services") is invisible
+// to this single-line, non-sharing golden. Prior: 0x98c9_2af6_50fd_babc.
+const GOLDEN_ARCADIA_HASH: u64 = 0xbc3c_87c3_28ba_0d70;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

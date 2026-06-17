@@ -27,6 +27,7 @@ fn command_variant_tags_match_the_frontend_mirror() {
         Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 },
         Command::SetHeadway { line: LineId(0), headway_ms: 0 },
         Command::SetSegmentMode { line: LineId(0), span: 0, mode: 0 },
+        Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(0), track: 0 },
         Command::SetRunning { running: false },
         Command::SetEconomy { enabled: false },
         Command::SetLineWaypoints { line: LineId(0), waypoints: vec![] },
@@ -40,6 +41,7 @@ fn command_variant_tags_match_the_frontend_mirror() {
     let expected = sorted(vec![
         "AddStop", "AssignTrainset", "CreateLine", "PlaceStation", "RemoveLine", "RemoveStation",
         "SetDemandMode", "SetEconomy", "SetHeadway", "SetLineWaypoints", "SetRunning", "SetSegmentMode",
+        "SetSegmentTrack",
     ]);
     assert_eq!(tags, expected, "Command vocabulary drifted from the frontend mirror");
 }
@@ -53,6 +55,7 @@ fn event_variant_tags_match_the_frontend_mirror() {
         Event::TrainsetAssigned { line: LineId(0), count: 0 },
         Event::HeadwaySet { line: LineId(0), headway_ms: 0 },
         Event::SegmentModeSet { line: LineId(0), span: 0, mode: 0 },
+        Event::SegmentTrackSet { line: LineId(0), seg: TrackSegmentId(0), track: 0 },
         Event::RunningSet { running: false },
         Event::EconomySet { enabled: false },
         Event::WaypointsSet { line: LineId(0) },
@@ -66,7 +69,8 @@ fn event_variant_tags_match_the_frontend_mirror() {
     // Mirror: packages/app/src/types.ts `Event`.
     let expected = sorted(vec![
         "DemandModeSet", "EconomySet", "HeadwaySet", "LineCreated", "LineRemoved", "Rejected", "RunningSet",
-        "SegmentModeSet", "StationPlaced", "StationRemoved", "StopAdded", "TrainsetAssigned", "WaypointsSet",
+        "SegmentModeSet", "SegmentTrackSet", "StationPlaced", "StationRemoved", "StopAdded", "TrainsetAssigned",
+        "WaypointsSet",
     ]);
     assert_eq!(tags, expected, "Event vocabulary drifted from the frontend mirror");
 }

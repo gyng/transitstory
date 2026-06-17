@@ -17,8 +17,9 @@ export type Command =
   | { AssignTrainset: { line: number; spec: number; count: number } }
   | { SetHeadway: { line: number; headway_ms: number } }
   | { SetSegmentMode: { line: number; span: number; mode: number } }
-  // track type (P2): 0=Double,1=Single; span=WHOLE_LINE sets the whole line. Affects capacity + cost.
-  | { SetSegmentTrack: { line: number; span: number; track: number } }
+  // track type (P2): 0=Double,1=Single. TTD L3 C1: targets a TrackSegmentId (`seg`, a bare number);
+  // seg=WHOLE_LINE (u32::MAX) is the whole-line sentinel. Affects capacity + cost.
+  | { SetSegmentTrack: { line: number; seg: number; track: number } }
   | { SetRunning: { running: boolean } }
   | { SetEconomy: { enabled: boolean } }
   | { RemoveStation: { station: number } }
@@ -52,7 +53,7 @@ export type Event =
   | { TrainsetAssigned: { line: number; count: number } }
   | { HeadwaySet: { line: number; headway_ms: number } }
   | { SegmentModeSet: { line: number; span: number; mode: number } }
-  | { SegmentTrackSet: { line: number; span: number; track: number } }
+  | { SegmentTrackSet: { line: number; seg: number; track: number } }
   | { RunningSet: { running: boolean } }
   | { EconomySet: { enabled: boolean } }
   | { StationRemoved: { station: number } }

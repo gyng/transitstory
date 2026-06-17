@@ -151,8 +151,8 @@ fn two_lines_shared_single(trains: u16) -> World {
     let l1 = make_line(&mut w, &[s1, a, b, e1]);
     let l2 = make_line(&mut w, &[s2, a, b, e2]);
     // A–B is span index 1 ([s,a,b,e]); single-track it on BOTH ⇒ ONE shared single physical segment.
-    w.apply(&Command::SetSegmentTrack { line: l1, span: 1, track: SINGLE });
-    w.apply(&Command::SetSegmentTrack { line: l2, span: 1, track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: l1, seg: TrackSegmentId(1), track: SINGLE });
+    w.apply(&Command::SetSegmentTrack { line: l2, seg: TrackSegmentId(1), track: SINGLE });
     w.apply(&Command::AssignTrainset { line: l1, spec: 0, count: trains });
     w.apply(&Command::AssignTrainset { line: l2, spec: 0, count: trains });
     w.apply(&Command::SetRunning { running: true });
@@ -213,7 +213,7 @@ fn two_loops_shared_ring(trains: u16) -> World {
         for &s in &[p0, p1, p2, p3] {
             w.apply(&Command::AddStop { line: li, station: s, after: None });
         }
-        w.apply(&Command::SetSegmentTrack { line: li, span: u32::MAX, track: SINGLE });
+        w.apply(&Command::SetSegmentTrack { line: li, seg: TrackSegmentId(u32::MAX), track: SINGLE });
         w.apply(&Command::AssignTrainset { line: li, spec: 0, count: trains });
         li
     };
@@ -279,7 +279,7 @@ fn two_lines_shared_multi_segment(trains: u16) -> World {
     // Spans 1,2,3 ([s,c0,c1,c2,c3,e]) are the shared trunk: single-track ALL of them on BOTH lines.
     for l in [l1, l2] {
         for span in [1u32, 2, 3] {
-            w.apply(&Command::SetSegmentTrack { line: l, span, track: SINGLE });
+            w.apply(&Command::SetSegmentTrack { line: l, seg: TrackSegmentId(span), track: SINGLE });
         }
         w.apply(&Command::AssignTrainset { line: l, spec: 0, count: trains });
     }
@@ -406,8 +406,8 @@ fn identity_seedlog() -> SeedLog {
     for s in [4u32, 0, 1, 5] {
         log.push(Command::AddStop { line: LineId(1), station: StationId(s), after: None });
     }
-    log.push(Command::SetSegmentTrack { line: LineId(0), span: 1, track: SINGLE });
-    log.push(Command::SetSegmentTrack { line: LineId(1), span: 1, track: SINGLE });
+    log.push(Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(1), track: SINGLE });
+    log.push(Command::SetSegmentTrack { line: LineId(1), seg: TrackSegmentId(1), track: SINGLE });
     log.push(Command::AssignTrainset { line: LineId(0), spec: 0, count: 3 });
     log.push(Command::AssignTrainset { line: LineId(1), spec: 0, count: 3 });
     log.push(Command::SetRunning { running: true });

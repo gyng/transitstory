@@ -474,7 +474,7 @@ pub(crate) fn dispatch(world: &mut World) {
 /// segment by its two ORIENTED leading cells (both directions), then walk each path's deduped cell list
 /// matching the segment that starts at the cursor (forward or reverse). Empty graph (continuous / non-
 /// grid) ⇒ nothing matches ⇒ every `segments` stays empty (cleared first ⇒ no stale carry-over).
-fn bind_path_segments(world: &mut World) {
+pub(crate) fn bind_path_segments(world: &mut World) {
     let cell = world.city.grid_cell_mm;
 
     // Snapshot the graph's segment cell-chains (and build the leading-edge index) BEFORE the mutable line
@@ -566,6 +566,48 @@ fn bind_path_segments(world: &mut World) {
                 path.segments.push((crate::ids::TrackSegmentId(si), reverse));
                 cursor = end - 1; // segments share the boundary node cell
                 guard += 1;
+            }
+        }
+    }
+
+    // TTD L3 C1 (the EARNED ownership flip): now that each grid path is bound to its ordered segments,
+    // DERIVE its runtime geometry FROM those segments — the polyline is the concatenation of the bound
+    // segments' authoritative polylines (honouring the reverse flag, deduping the shared boundary vertex),
+    // exactly the concatenation `path_segments_bind_and_concatenate` pins. `arclen_mm`/`speed_cap_mm_s`/
+    // `min_radius_mm` are then re-derived from that polyline. `stop_arclen_mm`/`track_type`/`span_mode`
+    // are unchanged — the concatenation is byte-identical to the grid-walk polyline (so every stop sits at
+    // the same arc-length), and the segment's track values were SOURCED from these very spans. This makes
+    // geometry GENUINELY come from the (hashed) segment slab: delete the slab and a bound path loses its
+    // polyline. A path bound to NO segments (continuous / non-grid) keeps its own `rebuild` geometry.
+    let seg_polys: Vec<Vec<crate::geo_local::PointMm>> =
+        world.track_graph.segments.iter().map(|s| s.polyline.clone()).collect();
+    for line in world.lines.iter_mut() {
+        if line.removed {
+            continue;
+        }
+        for path in line.paths.iter_mut() {
+            if path.segments.is_empty() {
+                continue; // continuous / non-grid / unbound — geometry stays self-authored
+            }
+            let mut poly: Vec<crate::geo_local::PointMm> = Vec::new();
+            let mut ok = true;
+            for (i, &(sid, reverse)) in path.segments.iter().enumerate() {
+                let Some(sp) = seg_polys.get(sid.0 as usize) else {
+                    ok = false;
+                    break;
+                };
+                let skip = if i == 0 { 0 } else { 1 }; // dedup the shared boundary vertex
+                if reverse {
+                    poly.extend(sp.iter().rev().skip(skip).copied());
+                } else {
+                    poly.extend(sp.iter().skip(skip).copied());
+                }
+            }
+            // Only adopt the segment-derived polyline if it covers the path (same vertex count) — a partial
+            // bind (degenerate chain) leaves the self-authored geometry untouched rather than corrupting it.
+            if ok && poly.len() == path.polyline.len() {
+                path.polyline = poly;
+                path.recompute_tables_from_polyline();
             }
         }
     }
