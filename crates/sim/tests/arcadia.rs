@@ -242,9 +242,11 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // TTD L2 multi-platform: `Station.platform_count: u8` joins Canonical (= 1 for every station — the fixture
 // issues no BuildPlatforms, so K=1 everywhere; behaviour-byte-identical, the re-pin is one byte per station).
 // Prior: 0x8626_936b_2105_852e.
-// Legions-ride-trains step 1: the 9 ArmySoA travel fields join Canonical, EMPTY here (the demo fixture has
-// no barracks ⇒ no legion afield ⇒ appended length-0 slices only). Behaviour byte-identical. Prior: 0xddb2_bee9_22ac_67fc.
-const GOLDEN_ARCADIA_HASH: u64 = 0xf6ff_edf4_0d41_3774;
+// Legions-ride-trains travel fields: the ON-LINE model's 4 ArmySoA travel fields (wait_line/wait_dir/
+// riding_veh/wait_until_ms) join Canonical, EMPTY here (the demo fixture has no barracks ⇒ no legion afield ⇒
+// appended length-0 slices only). Behaviour byte-identical. (Supersedes the over-broad 9-field step-1 pin
+// 0xf6ff_edf4_0d41_3774.) Prior: 0xddb2_bee9_22ac_67fc.
+const GOLDEN_ARCADIA_HASH: u64 = 0x98c9_2af6_50fd_babc;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

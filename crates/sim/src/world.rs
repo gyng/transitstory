@@ -424,16 +424,13 @@ struct Canonical<'a> {
     army_strength: &'a [i64],
     army_target: &'a [u32],
     army_state: &'a [u8],
-    // #legion-ride-trains travel sub-state (all empty for a legion-free run ⇒ appended-bytes re-pin only).
+    // #legion-ride-trains travel sub-state (ON-LINE model: 4 fields, all empty for a legion-free run ⇒
+    // appended-bytes re-pin only). The legion always lives on its line's `s_mm` — WALKING advances it slow,
+    // RIDING mirrors a boarded vehicle's `s_mm`; no off-rail endpoint fields needed.
     army_wait_line: &'a [i32],
     army_wait_dir: &'a [i8],
     army_riding_veh: &'a [i32],
-    army_walk_done_ms: &'a [i64],
     army_wait_until_ms: &'a [i64],
-    army_walk_ox_mm: &'a [i64],
-    army_walk_oy_mm: &'a [i64],
-    army_walk_tx_mm: &'a [i64],
-    army_walk_ty_mm: &'a [i64],
     /// Town resistance + conquest count (fantasy, S8b). Empty/0 for transit.
     town_value: &'a [i64],
     towns_captured: i64,
@@ -1953,12 +1950,7 @@ impl World {
             army_wait_line: &self.armies.wait_line,
             army_wait_dir: &self.armies.wait_dir,
             army_riding_veh: &self.armies.riding_veh,
-            army_walk_done_ms: &self.armies.walk_done_ms,
             army_wait_until_ms: &self.armies.wait_until_ms,
-            army_walk_ox_mm: &self.armies.walk_ox_mm,
-            army_walk_oy_mm: &self.armies.walk_oy_mm,
-            army_walk_tx_mm: &self.armies.walk_tx_mm,
-            army_walk_ty_mm: &self.armies.walk_ty_mm,
             town_value: &self.town_value,
             towns_captured: self.towns_captured,
             is_barracks: &self.is_barracks,

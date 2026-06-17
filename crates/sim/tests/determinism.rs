@@ -71,11 +71,13 @@ fn replay_equality() {
 //                           follow-clamp relaxation never fires, dispatch untouched; the re-pin is one byte
 //                           per station). If a behaviour-PRESERVING refactor changes this, STOP — a real
 //                           drift is a determinism bug, not a re-pin.
-//   0x8775_7980_7cf9_e2fe — legions-ride-trains step 1 (the 9 ArmySoA travel fields — wait_line/wait_dir/
-//                           riding_veh/walk_done_ms/wait_until_ms/walk_o{x,y}_mm/walk_t{x,y}_mm — join
-//                           Canonical, all EMPTY for transit: no barracks ⇒ no legion ⇒ appended length-0
-//                           slices only. Behaviour byte-identical; the re-pin is the appended-bytes shift.
-const GOLDEN_TRANSIT_HASH: u64 = 0x8775_7980_7cf9_e2fe;
+//   0x0ac9_996a_3815_b26a — legions-ride-trains travel fields (the ON-LINE model's 4 ArmySoA travel fields —
+//                           wait_line/wait_dir/riding_veh/wait_until_ms — join Canonical, all EMPTY for transit:
+//                           no barracks ⇒ no legion ⇒ appended length-0 slices only. A legion always lives on
+//                           its line's `s_mm` (WALKING trudges the corridor, RIDING mirrors a boarded train), so
+//                           no off-rail endpoint fields are needed. Behaviour byte-identical; the re-pin is the
+//                           appended-bytes shift. (Supersedes the over-broad 9-field step-1 pin 0x8775…e2fe.)
+const GOLDEN_TRANSIT_HASH: u64 = 0x0ac9_996a_3815_b26a;
 
 #[test]
 fn golden_transit_hash_pinned() {

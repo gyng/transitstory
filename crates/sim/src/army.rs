@@ -59,23 +59,19 @@ pub struct ArmySoA {
     /// Target town (StationId) for the siege (S8b); carried now so the SoA layout is stable.
     pub target: Vec<u32>,
     pub state: Vec<u8>,
-    // --- travel sub-state (#legion-ride-trains), all hashed ---
-    /// Line chosen while WAITING/RIDING (the legion boards/rides this line), -1 otherwise.
+    // --- travel sub-state (#legion-ride-trains), all hashed. ON-LINE model: a legion always lives on its
+    // line's arc-length `s_mm` — WALKING advances it at WALK speed (trudging the corridor on foot), RIDING
+    // mirrors a boarded train's `s_mm` (a real, capacity-contended ride). So `point_at(s_mm)`, the siege, and
+    // the render need no off-rail special-casing. ---
+    /// Line chosen while WAITING/RIDING (the legion boards/rides this line; = its own line today), -1 else.
     pub wait_line: Vec<i32>,
-    /// Travel direction chosen while WAITING/RIDING, 0 otherwise.
+    /// Travel direction chosen while WAITING/RIDING (toward the target arc), 0 otherwise.
     pub wait_dir: Vec<i8>,
     /// Carrying vehicle slab index while RIDING, -1 otherwise.
     pub riding_veh: Vec<i32>,
-    /// Clock (ms) at which a WALKING foot-leg completes (the legion then arrives/re-decides); 0 otherwise.
-    pub walk_done_ms: Vec<i64>,
     /// Patience deadline (ms) while WAITING — if no train comes by then, re-decide (usually → WALK); 0 else.
     pub wait_until_ms: Vec<i64>,
-    /// Straight foot-leg endpoints (mm) so the WALKING position is integer-interpolated + hashable.
-    pub walk_ox_mm: Vec<i64>,
-    pub walk_oy_mm: Vec<i64>,
-    pub walk_tx_mm: Vec<i64>,
-    pub walk_ty_mm: Vec<i64>,
-    /// Render-only cartesian (derived from `s_mm` / the walk interpolation); NOT hashed.
+    /// Render-only cartesian (derived from `s_mm`); NOT hashed.
     pub x_mm: Vec<i64>,
     pub y_mm: Vec<i64>,
 }
@@ -99,12 +95,7 @@ impl ArmySoA {
         self.wait_line.push(-1);
         self.wait_dir.push(0);
         self.riding_veh.push(-1);
-        self.walk_done_ms.push(0);
         self.wait_until_ms.push(0);
-        self.walk_ox_mm.push(0);
-        self.walk_oy_mm.push(0);
-        self.walk_tx_mm.push(0);
-        self.walk_ty_mm.push(0);
         self.x_mm.push(0);
         self.y_mm.push(0);
     }
