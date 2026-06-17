@@ -5,39 +5,37 @@
 // emits ONE Command per cast/toggle via Game (the core gates on SPELLCRAFT + afford + a valid target and
 // rejects otherwise, surfaced as the Toast). Top-right; arcadia only; mounts once Arcane Awakening is owned.
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { useGame, useStats } from "./GameContext";
 import { SPELLS, techUnlocked } from "../../commands/codec";
 
 // The SPELLCRAFT tech id (Arcane Awakening) — mirrors tech.rs SPELLCRAFT; gates the whole arm.
 const SPELLCRAFT = 11;
 
-export function SpellBar() {
+export function SpellBar({ embedded = false }: { embedded?: boolean } = {}) {
   const s = useStats();
   const game = useGame();
   // Optimistic local mirror of the autocast toggle so the checkbox flips instantly, then resyncs from the
   // next ~3 Hz snapshot (the committed value) — the uncontrolled-resync pattern, for a checkbox.
   const [auto, setAuto] = useState(s.autocast);
   useEffect(() => setAuto(s.autocast), [s.autocast]);
+  // Embedded popover open state (the dock's roster-adjacent spell key).
+  const [spellOpen, setSpellOpen] = useState(false);
 
   if (s.ruleset !== "arcadia" || !techUnlocked(s.techUnlocked, SPELLCRAFT)) return null;
   const mana = Math.round(s.mana);
 
-  return (
+  // Embedded (stage 6): a roster-adjacent popover in the bottom Outliner — opens from a key, no fixed
+  // positioning. Standalone keeps the legacy bottom-right RTS ability slot.
+  const cardStyle: CSSProperties = embedded
+    ? { width: 200, padding: "10px 12px", font: "13px system-ui,sans-serif", position: "absolute", bottom: "100%", right: 0, marginBottom: 6, zIndex: 14 }
+    : { position: "fixed", bottom: 14, right: 14, zIndex: 10, width: 184, padding: "10px 12px", font: "13px system-ui,sans-serif" };
+
+  const body = (
     <div
       data-testid="spell-bar"
       className="ot-console"
-      style={{
-        // Bottom-right ability-bar slot (RTS convention). Clear of the EditorPanel (top-right, on
-        // selection), TechPanel (bottom-left), Toolbar (bottom-centre); CommuterCard (bottom-right) is
-        // transit-only, so it never co-occurs with the arcadia spell bar.
-        position: "fixed",
-        bottom: 14,
-        right: 14,
-        zIndex: 10,
-        width: 184,
-        padding: "10px 12px",
-        font: "13px system-ui,sans-serif",
-      }}
+      style={cardStyle}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
         {/* Arcane purple is the spell-arm's identity hue — kept as the diegetic magic accent on the dark console face. */}
@@ -91,6 +89,23 @@ export function SpellBar() {
         />
         Autocast at threats
       </label>
+    </div>
+  );
+
+  if (!embedded) return body;
+  // Embedded: a small "Spells" key that pops the bar above it (roster-adjacent in the dock header).
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        data-testid="spell-toggle"
+        className={`ot-key ${spellOpen ? "on" : ""}`}
+        onClick={() => setSpellOpen((o) => !o)}
+        title="Spells — cast mana-funded spells at the live threats"
+        style={{ padding: "3px 11px", font: "600 12px system-ui,sans-serif", cursor: "pointer", color: "#b388ff" }}
+      >
+        ✦ {mana}
+      </button>
+      {spellOpen && body}
     </div>
   );
 }

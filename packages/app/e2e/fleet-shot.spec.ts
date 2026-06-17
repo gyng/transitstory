@@ -25,7 +25,8 @@ test("fleet panel: view + edit trainsets directly", async ({ page }) => {
   });
   expect(line).toBeGreaterThanOrEqual(0);
 
-  await page.getByTestId("fleet-toggle").click();
+  // Fleet migrated into the bottom Outliner's Fleet tab (UI reorg stage 6) — open it from the tab.
+  await page.getByTestId("outliner-tab-fleet").click();
   await expect(page.getByTestId("fleet-panel")).toBeVisible();
   await expect(page.getByTestId(`fleet-row-${line}`)).toBeVisible();
   await expect(page.getByTestId(`fleet-count-${line}`)).toContainText("3");

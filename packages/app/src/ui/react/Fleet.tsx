@@ -101,6 +101,33 @@ const stepBtn: React.CSSProperties = {
   lineHeight: 1,
 };
 
+/** The Fleet rows + footer hint, with no panel chrome — embedded into the bottom Outliner's Fleet
+ *  tab (stage 6). The legacy floating `Fleet` toggle/panel is retired; the dock tab IS the fleet view. */
+export function FleetBody() {
+  const stats = useStats();
+  const ui = useGameUI();
+  const lines = stats.perLine.filter((l) => l.stops >= 2);
+  const running = stats.running;
+  return (
+    <div data-testid="fleet-panel" style={{ height: "100%", overflowY: "auto", font: "13px system-ui,sans-serif", color: "var(--ot-con-ink)" }}>
+      {lines.length === 0 ? (
+        <div style={{ padding: "8px 12px", color: "var(--ot-con-ink-dim)", fontSize: 12 }}>Draw a line (≥ 2 stops), then assign trains here.</div>
+      ) : (
+        <div style={{ paddingBottom: 6 }}>
+          {lines.map((l) => (
+            <FleetRow key={l.lineId} l={l} running={running} />
+          ))}
+        </div>
+      )}
+      <div style={{ padding: "6px 12px 8px", color: "var(--ot-con-ink-dim)", fontSize: 11, lineHeight: 1.35, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+        {ui.ruleset === "arcadia" ? "Heavier carts haul more; express carts run faster." : "± sets fleet size · pick a model · the bar shows live load."}
+      </div>
+    </div>
+  );
+}
+
+// Legacy floating Fleet panel — retired in stage 6 (migrated into the Outliner's Fleet tab). Kept
+// only for reference of the toggle/total chrome; no longer mounted by App.
 export function Fleet() {
   const stats = useStats();
   const ui = useGameUI();

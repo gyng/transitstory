@@ -72,7 +72,10 @@ test("fantasy spell bar renders once Arcane Awakening is unlocked", async ({ pag
     await page.waitForTimeout(450);
   }
 
-  // The spell bar is present (Arcane Awakening unlocked) with its three spells + the autocast toggle.
+  // The spell bar migrated into the bottom Outliner as a roster-adjacent popover (UI reorg stage 6):
+  // once Arcane Awakening is unlocked the spell-toggle key appears in the dock header — open it.
+  await expect(page.getByTestId("spell-toggle")).toBeVisible();
+  await page.getByTestId("spell-toggle").click();
   await expect(page.getByTestId("spell-bar")).toBeVisible();
   await expect(page.getByTestId("spell-0")).toBeVisible(); // Purge
   await expect(page.getByTestId("spell-1")).toBeVisible(); // Smite

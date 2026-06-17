@@ -67,12 +67,16 @@ function Divider() {
 }
 
 /** The fantasy (arcadia) realm panel — the supply→conquest→decadence ledger, replacing the transit
- *  service telemetry. Reuses the same CARD/Row chrome so the two modes read alike. */
-function FantasyServiceReport({ s }: { s: Stats }) {
+ *  service telemetry. Reuses the same CARD/Row chrome so the two modes read alike. `embedded` (stage 6)
+ *  drops the fixed card so it flows in the Outliner's Report tab. */
+function FantasyServiceReport({ s, embedded }: { s: Stats; embedded?: boolean }) {
   const decay = Math.round(s.decadencePct);
   const decayColor = decay >= 66 ? "var(--ot-gauge-bad,#d62828)" : decay >= 33 ? "#e69f00" : "var(--ot-con-ink-dim)";
+  const wrap: CSSProperties = embedded
+    ? { height: "100%", overflowY: "auto", font: "12px system-ui,sans-serif", color: "var(--ot-con-ink)" }
+    : CARD;
   return (
-    <div data-testid="service-report" className="ot-console" style={CARD}>
+    <div data-testid="service-report" className={embedded ? undefined : "ot-console"} style={wrap}>
       <div style={{ padding: "10px 12px 6px", fontWeight: 700, color: "var(--ot-con-ink)" }}>⚜ The Realm</div>
       <div style={{ padding: "0 12px 12px" }}>
         <Row label="Tribute" value={`${Math.round(s.tribute)}`} testid="svc-tribute" />
@@ -92,12 +96,13 @@ function FantasyServiceReport({ s }: { s: Stats }) {
   );
 }
 
-export function ServiceReport() {
+export function ServiceReport({ embedded = false }: { embedded?: boolean } = {}) {
   const s = useStats();
   const ui = useGameUI();
+  // Embedded in the dock tab → always open (the tab IS the disclosure); standalone keeps the toggle.
   const [open, setOpen] = useState(true);
   // Mode-aware: the fantasy campaign shows the realm ledger, not transit service telemetry.
-  if (ui.ruleset === "arcadia") return <FantasyServiceReport s={s} />;
+  if (ui.ruleset === "arcadia") return <FantasyServiceReport s={s} embedded={embedded} />;
 
   // Aggregate ridership by transport mode from the per-line snapshot (no new sim field needed).
   const byMode = new Map<number, number>();
@@ -113,29 +118,35 @@ export function ServiceReport() {
   const denied = Math.round(s.deniedBoardings);
   const gaveUp = Math.round(s.abandoned);
 
+  const showBody = embedded || open;
+  const wrap: CSSProperties = embedded
+    ? { height: "100%", overflowY: "auto", font: "12px system-ui,sans-serif", color: "var(--ot-con-ink)" }
+    : CARD;
   return (
-    <div data-testid="service-report" className="ot-console" style={CARD}>
-      <button
-        data-testid="service-toggle"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          all: "unset",
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          padding: "8px 12px",
-          cursor: "pointer",
-          font: "600 13px system-ui,sans-serif",
-          color: "var(--ot-con-ink)",
-        }}
-      >
-        <span>📊 Network</span>
-        <span style={{ color: "var(--ot-con-ink-dim)" }}>{open ? "▾" : "▸"}</span>
-      </button>
+    <div data-testid="service-report" className={embedded ? undefined : "ot-console"} style={wrap}>
+      {!embedded && (
+        <button
+          data-testid="service-toggle"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            all: "unset",
+            boxSizing: "border-box",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            width: "100%",
+            padding: "8px 12px",
+            cursor: "pointer",
+            font: "600 13px system-ui,sans-serif",
+            color: "var(--ot-con-ink)",
+          }}
+        >
+          <span>📊 Network</span>
+          <span style={{ color: "var(--ot-con-ink-dim)" }}>{open ? "▾" : "▸"}</span>
+        </button>
+      )}
 
-      {open && (
+      {showBody && (
         <div style={{ padding: "0 12px 12px" }}>
             {/* What demand IS — the conceptual key, so every served/pressure number below has meaning.
                 Homes (origins) generate trips, jobs (destinations) attract them; the rush flips AM↔PM.

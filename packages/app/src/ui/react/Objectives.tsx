@@ -3,11 +3,12 @@
 // is untouched. The card sits top-right (the EditorPanel's top-right space is empty until a
 // selection); the end banner is a centred dismissible overlay so the player can keep building.
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useStats } from "./GameContext";
 import { evalScenario, nextStatus, type Scenario, type Status } from "../../objectives";
 import { recordRealmSaved } from "../../sim/cities";
 
-export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
+export function ObjectivePanel({ scenario, embedded = false }: { scenario: Scenario; embedded?: boolean }) {
   const stats = useStats();
   const [status, setStatus] = useState<Status>("active");
   const [dismissedBanner, setDismissedBanner] = useState(false);
@@ -29,31 +30,28 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
 
   const showBanner = status !== "active" && !dismissedBanner;
 
-  // Publish this card's (data-derived, not DOM-measured) height so the transient EditorPanel
-  // can stack BELOW it via `top: calc(56px + var(--ot-objective-h))` — they share the top-right
-  // anchor and used to overlap. Reset to 0px on unmount (no scenario → editor returns to top).
+  // Embedded (stage 6): the goal card flows inside the bottom Outliner ticker (no fixed top-right
+  // anchor, no --ot-objective-h publish — the inspector no longer shares its column). Standalone keeps
+  // the legacy fixed card + the height publish for the old EditorPanel stacking.
   const goalCount = e.goals.length;
   const hasDeadline = scenario.deadlineMs !== undefined;
   useEffect(() => {
+    if (embedded) return; // the inspector docks inboard of the lens rail now — no shared-column stack
     const h = 78 + goalCount * 20 + (hasDeadline ? 22 : 0); // base + per-goal row + deadline, incl. gap
     document.documentElement.style.setProperty("--ot-objective-h", `${h}px`);
     return () => document.documentElement.style.setProperty("--ot-objective-h", "0px");
-  }, [goalCount, hasDeadline]);
+  }, [goalCount, hasDeadline, embedded]);
+
+  const cardStyle: CSSProperties = embedded
+    ? { padding: "2px 0", font: "13px system-ui,sans-serif", color: "var(--ot-con-ink)" }
+    : { position: "fixed", top: 56, right: 10, zIndex: 9, width: 220, padding: "10px 12px", font: "13px system-ui,sans-serif" };
 
   return (
     <>
       <div
         data-testid="objectives"
-        className="ot-console"
-        style={{
-          position: "fixed",
-          top: 56,
-          right: 10,
-          zIndex: 9,
-          width: 220,
-          padding: "10px 12px",
-          font: "13px system-ui,sans-serif",
-        }}
+        className={embedded ? undefined : "ot-console"}
+        style={cardStyle}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <b>🎯 {scenario.title}</b>

@@ -29,11 +29,8 @@ import { BuildHud } from "./BuildHud";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
+import { Outliner } from "./Outliner";
 import { OnboardingCoach } from "./Onboarding";
-import { ObjectivePanel } from "./Objectives";
-import { SpellBar } from "./SpellBar";
-import { ServiceReport } from "./ServiceReport";
-import { Fleet } from "./Fleet";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
@@ -356,37 +353,35 @@ export function App() {
           </div>
         }
         right={
-          // Right edge: the objective card floats as before (position:fixed). The LensRail is the new
-          // flow-anchored vertical rail, pinned to the far edge and VERTICALLY CENTRED so it clears the
-          // top-anchored EditorPanel (still position:fixed until the stage-7 inspector consolidation);
-          // a raised z keeps the rail clickable if the editor ever overlaps it.
+          // Right edge: the LensRail, flow-anchored to the far edge and VERTICALLY CENTRED so it clears
+          // the top-anchored EditorPanel (still position:fixed until the stage-7 inspector consolidation);
+          // a raised z keeps the rail clickable if the editor ever overlaps it. The objective card moved
+          // to the bottom Outliner ticker (stage 6).
           <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", padding: "0 14px", pointerEvents: "none", position: "relative", zIndex: 12 }}>
-            {scenario && <ObjectivePanel scenario={scenario} />}
             <LensRail />
           </div>
         }
         bottom={
-          // Bottom strip: the live build HUD floats bottom-centre (sub-100ms client-side route readout),
-          // freed from the deleted #transport-bar. Other dock contents (roster/ticker) land in stage 6.
-          <div style={{ height: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 14px", pointerEvents: "none" }}>
-            <BuildHud />
+          // Bottom dock: the Outliner (roster/fleet/report tabs ⅔ + event ticker ⅓) fills the row; the
+          // live BuildHud floats bottom-centre OVER it (sub-100ms client-side route readout), now that the
+          // dock no longer crams bottom-centre (the structural overflow fix — stage 6).
+          <div style={{ height: "100%", position: "relative", pointerEvents: "none" }}>
+            <Outliner scenario={scenario} />
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 8px", pointerEvents: "none" }}>
+              <BuildHud />
+            </div>
           </div>
         }
       />
       {/* Floating / transient overlays — kept outside the shell so they retain their own fixed
-          position + z-order (re-parented into regions in later stages where the spec calls for it). */}
+          position + z-order. The roster migrated to the bottom Outliner (stage 6); the editor
+          (Panels) stays position:fixed top-right until the stage-7 right-Inspector consolidation. */}
       <TopLeftBar>
         <Title name={world.cityName} />
       </TopLeftBar>
-      {/* Panels (roster LineList + EditorPanel) stay position:fixed for now — the roster moves to the
-          bottom Outliner (stage 6) and the editor to the right Inspector (stage 7). Mounted here so its
-          testids + behaviour are untouched this stage. */}
       <Panels />
       <NoticeAutoDismiss />
       <OnboardingCoach />
-      <SpellBar />
-      <Fleet />
-      <ServiceReport />
       <DraftControls />
       <CommuterCard />
       <FollowCard />

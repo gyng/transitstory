@@ -164,7 +164,9 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
   );
 }
 
-function LineList() {
+// The roster (LineList). `embedded` (stage 6) drops the position:fixed panel chrome so it can flow
+// inside the bottom Outliner's ROSTER tab; the standalone (legacy) form keeps the fixed top-left card.
+export function LineList({ embedded = false }: { embedded?: boolean } = {}) {
   const ui = useGameUI();
   const stats = useStats();
   const all = stats.perLine;
@@ -174,8 +176,12 @@ function LineList() {
   const lines = all.filter((l) => l.trains > 0 || l.lineId === ui.selectedLine);
   const services = all.filter((l) => l.trains > 0).length;
   const bareTrack = all.length - services;
+  // Embedded: fill the dock tab (no fixed corner card); standalone keeps the legacy LIST_STYLE.
+  const listStyle: CSSProperties = embedded
+    ? { height: "100%", overflow: "auto", padding: "2px 0", font: "13px system-ui,sans-serif", color: "var(--ot-con-ink)" }
+    : LIST_STYLE;
   return (
-    <div id="line-list" data-testid="line-list" style={LIST_STYLE}>
+    <div id="line-list" data-testid="line-list" style={listStyle}>
       <div style={{ display: "flex", alignItems: "baseline", padding: "0 8px 6px" }}>
         <span style={{ fontWeight: 700, color: "var(--ot-con-ink)" }}>Lines</span>
         {services > 0 && <span style={{ marginLeft: 6, color: "var(--ot-con-ink-dim)", fontSize: 11 }}>{services}</span>}
@@ -618,15 +624,13 @@ function StationEditor({ id }: { id: number }) {
   );
 }
 
+// The contextual editor (selected line → Editor, selected bare station → StationEditor), still
+// position:fixed top-right until the stage-7 right-Inspector consolidation. The roster (LineList)
+// migrated to the bottom Outliner in stage 6, so Panels now owns only the editor half.
 export function Panels() {
   const ui = useGameUI();
   const perLine = useStats().perLine;
   const id = ui.selectedLine;
   const l = id === null ? undefined : perLine.find((x) => x.lineId === id);
-  return (
-    <>
-      <LineList />
-      {l ? <Editor key={l.lineId} l={l} /> : ui.selectedStation !== null ? <StationEditor key={ui.selectedStation} id={ui.selectedStation} /> : null}
-    </>
-  );
+  return l ? <Editor key={l.lineId} l={l} /> : ui.selectedStation !== null ? <StationEditor key={ui.selectedStation} id={ui.selectedStation} /> : null;
 }
