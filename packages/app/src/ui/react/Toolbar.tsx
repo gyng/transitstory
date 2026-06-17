@@ -49,14 +49,18 @@ const SPEEDS: [number, string][] = [
   [100, "max"],
 ];
 
+// A cut seam between key groups on the console face (a dark groove with a faint top-light).
 const SEP_STYLE: CSSProperties = {
-  width: 1,
+  width: 2,
   alignSelf: "stretch",
-  background: "#e2e5e9",
-  margin: "0 4px",
+  background: "linear-gradient(180deg, rgba(0,0,0,.45), rgba(255,255,255,.05))",
+  borderRadius: 1,
+  margin: "2px 5px",
 };
 
-// Plain pill button (the bar's Run/Build, speeds, Demand, gear, and the popover tools).
+// A console KEY (the bar's Run/Build, speeds, Demand, gear, and the popover tools) — a raised physical
+// button on the operator's desk (#28 diegetic theme). `on` lights it; `tone` picks the glow (accent /
+// good=Run / danger=Bulldoze). Layout (flex/padding/width) still comes via `style`; the look is `.ot-key`.
 function Button({
   label,
   testid,
@@ -64,6 +68,8 @@ function Button({
   style,
   title,
   disabled,
+  on,
+  tone = "accent",
 }: {
   label: string;
   testid: string;
@@ -71,23 +77,22 @@ function Button({
   style?: CSSProperties;
   title?: string;
   disabled?: boolean;
+  on?: boolean;
+  tone?: "accent" | "good" | "danger";
 }) {
+  const onClass = on ? (tone === "good" ? "on-good" : tone === "danger" ? "on-danger" : "on") : "";
   return (
     <button
       data-testid={testid}
+      className={`ot-key ${onClass}`}
       onClick={disabled ? undefined : onClick}
       title={title}
       disabled={disabled}
       style={{
-        border: "1px solid #d7dade",
-        background: "#fff",
-        color: "#1c2024",
-        borderRadius: 7,
         padding: "6px 10px",
-        font: "600 13px system-ui,sans-serif",
         cursor: disabled ? "default" : "pointer",
+        ...(disabled ? { opacity: 0.45, filter: "saturate(0.4)" } : null),
         ...style,
-        ...(disabled ? { opacity: 0.4, background: "#eef0f2", color: "#9aa3ad" } : null),
       }}
     >
       {label}
@@ -107,9 +112,12 @@ function BigModeButton({
   onClick: () => void;
 }) {
   const on = active && enabled;
+  // A big mode KEY on the console: raised graphite, the mode's identity COLOUR as a lit edge + glow when
+  // selected (diegetic — a backlit selector key), the icon/name etched in light. The kbd is its key-cap.
   return (
     <button
       data-testid={`mode-transport-${m.id}`}
+      className="ot-key"
       disabled={!enabled}
       onClick={onClick}
       style={{
@@ -119,23 +127,27 @@ function BigModeButton({
         gap: 3,
         minWidth: 64,
         padding: "8px 10px",
-        border: `2px solid ${on ? m.color : "#d7dade"}`,
-        background: on ? m.color : "#fff",
-        color: on ? "#fff" : "#1c2024",
         borderRadius: 10,
         cursor: enabled ? "pointer" : "not-allowed",
-        opacity: enabled ? 1 : 0.35,
+        opacity: enabled ? 1 : 0.4,
+        ...(on
+          ? {
+              color: "#fff",
+              boxShadow: `var(--ot-well), 0 0 0 1.5px ${m.color}, 0 0 14px ${m.color}66`,
+            }
+          : null),
       }}
     >
-      <span style={{ fontSize: 20, lineHeight: 1 }}>{m.icon}</span>
-      <span style={{ font: "600 13px system-ui,sans-serif" }}>{m.name}</span>
+      <span style={{ fontSize: 20, lineHeight: 1, filter: on ? "none" : "saturate(.85)" }}>{m.icon}</span>
+      <span style={{ font: "600 13px system-ui,sans-serif", color: on ? m.color : "var(--ot-con-ink)" }}>{m.name}</span>
       <kbd
         style={{
-          font: "600 10px system-ui",
+          font: `600 10px ${"var(--ot-readout-font)"}`,
           borderRadius: 4,
           padding: "0 4px",
-          border: `1px solid ${on ? "rgba(255,255,255,.5)" : "#d7dade"}`,
-          color: on ? "#fff" : "#9aa3ad",
+          background: "rgba(0,0,0,.35)",
+          border: "1px solid rgba(0,0,0,.5)",
+          color: on ? m.color : "var(--ot-con-ink-dim)",
         }}
       >
         {m.key}
@@ -242,45 +254,36 @@ export function Toolbar() {
         <div
           id="mode-controls"
           data-testid="mode-controls"
+          className="ot-console"
           style={{
             display: ui.mode === "build" ? "flex" : "none",
             flexDirection: "column",
             gap: 8,
             padding: "12px 14px",
             width: "min(440px,92vw)",
-            background: "rgba(252,253,255,.94)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            border: "1px solid rgba(255,255,255,.7)",
-            borderRadius: 14,
-            boxShadow: "var(--ot-shadow)",
             pointerEvents: "auto",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 18 }}>{activeMode.icon}</span>
-            <b style={{ font: "600 14px system-ui", color: activeMode.color }}>{activeMode.name}</b>
-            <span style={{ color: "#9aa3ad", font: "12px system-ui" }}>construction</span>
+            <b style={{ font: "700 14px system-ui", color: activeMode.color, textShadow: "0 1px 2px rgba(0,0,0,.5)", letterSpacing: ".01em" }}>{activeMode.name}</b>
+            <span style={{ color: "var(--ot-con-ink-dim)", font: "11px var(--ot-readout-font)", letterSpacing: ".06em", textTransform: "uppercase" }}>construction</span>
           </div>
-          <div style={{ color: "#7a818a", font: "12px system-ui,sans-serif", lineHeight: 1.35 }}>
+          <div style={{ color: "#aab3bf", font: "12px system-ui,sans-serif", lineHeight: 1.35 }}>
             {activeMode.hint}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             {[...TOOLS, ...(ui.ruleset === "arcadia" ? FANTASY_TOOLS : [])].map(([t, label]) => {
               const on = ui.tool === t;
-              const activeBg = t === "bulldozer" ? "#d62828" : "#1c2024"; // bulldozer reads destructive
               return (
                 <Button
                   key={t}
                   label={label}
                   testid={`tool-${t}`}
                   onClick={() => game.setTool(t)}
-                  style={{
-                    flex: 1,
-                    background: on ? activeBg : "#fff",
-                    color: on ? "#fff" : "#1c2024",
-                    borderColor: on ? activeBg : "#d7dade",
-                  }}
+                  on={on}
+                  tone={t === "bulldozer" ? "danger" : "accent"}
+                  style={{ flex: 1 }}
                 />
               );
             })}
@@ -291,6 +294,7 @@ export function Toolbar() {
         {/* the chord bar (wraps on narrow viewports rather than overflowing) */}
         <div
           id="transport-bar"
+          className="ot-console"
           style={{
             display: "flex",
             alignItems: "center",
@@ -299,14 +303,6 @@ export function Toolbar() {
             gap: 6,
             padding: 7,
             maxWidth: "96vw",
-            // Frosted-glass game HUD: a near-opaque surface over a blurred map (crafted, not a flat webapp
-            // box). High opacity keeps the controls fully legible; the layered --ot-shadow does the lift.
-            background: "rgba(252,253,255,.9)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            border: "1px solid rgba(255,255,255,.7)",
-            borderRadius: 14,
-            boxShadow: "var(--ot-shadow)",
             pointerEvents: "auto",
           }}
         >
@@ -326,10 +322,8 @@ export function Toolbar() {
           label={running ? "⏸ Build" : "▶ Run"}
           testid="mode-toggle"
           onClick={() => game.setMode(running ? "build" : "run")}
-          style={{
-            background: running ? "#009e73" : "#fff",
-            color: running ? "#fff" : "#1c2024",
-          }}
+          on={running}
+          tone="good"
         />
 
         <span style={SEP_STYLE} />
@@ -345,10 +339,7 @@ export function Toolbar() {
                 setSpeed(mult);
                 loop.setSpeed(mult);
               }}
-              style={{
-                background: on ? "#1c2024" : "#fff",
-                color: on ? "#fff" : "#1c2024",
-              }}
+              on={on}
             />
           );
         })}
@@ -361,10 +352,7 @@ export function Toolbar() {
           disabled={game.lensHides("demand")}
           title={game.lensHides("demand") ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.` : "Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."}
           onClick={() => game.setShowDemand(!ui.showDemand)}
-          style={{
-            background: ui.showDemand ? "#0072b2" : "#fff",
-            color: ui.showDemand ? "#fff" : "#1c2024",
-          }}
+          on={ui.showDemand}
         />
 
         <Button
@@ -373,10 +361,7 @@ export function Toolbar() {
           disabled={ui.selectedStation === null}
           title={ui.selectedStation === null ? "Reach needs a pinned station — click one first, then shade every other by how fast transit reaches it." : "Reach: shade every station by how fast transit gets there from the pinned one. Faster reach pulls more demand — extend it to unlock trips."}
           onClick={() => game.setShowReach(!ui.showReach)}
-          style={{
-            background: ui.showReach ? "#0072b2" : "#fff",
-            color: ui.showReach ? "#fff" : "#1c2024",
-          }}
+          on={ui.showReach}
         />
 
         <Button
@@ -384,10 +369,7 @@ export function Toolbar() {
           testid="layer-roads"
           title="Road corridors where buses run cheap + fast. Turn on when planning a bus line — route along roads to cut cost and speed service."
           onClick={() => game.setShowRoads(!ui.showRoads)}
-          style={{
-            background: ui.showRoads ? "#0072b2" : "#fff",
-            color: ui.showRoads ? "#fff" : "#1c2024",
-          }}
+          on={ui.showRoads}
         />
 
         <Button
@@ -395,10 +377,7 @@ export function Toolbar() {
           testid="layer-peeps"
           title="Show individual riders: walking to the platform, waiting, riding the train, and heading out at their stop. Purely visual — no effect on the sim."
           onClick={() => game.setShowPeeps(!ui.showPeeps)}
-          style={{
-            background: ui.showPeeps ? "#0072b2" : "#fff",
-            color: ui.showPeeps ? "#fff" : "#1c2024",
-          }}
+          on={ui.showPeeps}
         />
 
         {/* TTD signals (fantasy single-track): show each block's state so meets read at a glance. */}
@@ -408,10 +387,7 @@ export function Toolbar() {
             testid="layer-signals"
             title="Signal view: single-track block state — 🟢 clear · 🔴 occupied · 🟠 a cart held, waiting for the block ahead. Purely visual — shows WHY carts meet and wait on single track."
             onClick={() => game.setShowSignals(!ui.showSignals)}
-            style={{
-              background: ui.showSignals ? "#0072b2" : "#fff",
-              color: ui.showSignals ? "#fff" : "#1c2024",
-            }}
+            on={ui.showSignals}
           />
         )}
 
@@ -421,36 +397,37 @@ export function Toolbar() {
         {ui.ruleset === "arcadia" && (
           <>
             <span style={SEP_STYLE} />
-            <span style={{ font: "700 10px system-ui", letterSpacing: ".06em", color: "#8a93a3", alignSelf: "center" }}>LENS</span>
-            <div data-testid="lens-bar" style={{ display: "flex" }}>
+            <span style={{ font: "700 10px var(--ot-readout-font)", letterSpacing: ".1em", color: "var(--ot-con-ink-dim)", alignSelf: "center" }}>LENS</span>
+            <div data-testid="lens-bar" style={{ display: "flex", borderRadius: 7, overflow: "hidden", boxShadow: "var(--ot-well)" }}>
               {([
                 ["realm", "◉", "All", "everything"],
                 ["supply", "⛏", "Supply", "sources, towns, rivers — your economy"],
                 ["military", "⚔", "War", "legions, raiders, conquest targets"],
                 ["decadence", "☠", "Rot", "the creeping rot — the tide + its front"],
-              ] as const).map(([id, icon, lbl, title], i, arr) => (
-                <button
-                  key={id}
-                  data-testid={`lens-${id}`}
-                  title={`Lens: ${title}`}
-                  onClick={() => game.setLens(id)}
-                  style={{
-                    border: "1px solid #d7dade",
-                    borderLeft: i === 0 ? "1px solid #d7dade" : "none",
-                    borderTopLeftRadius: i === 0 ? 6 : 0,
-                    borderBottomLeftRadius: i === 0 ? 6 : 0,
-                    borderTopRightRadius: i === arr.length - 1 ? 6 : 0,
-                    borderBottomRightRadius: i === arr.length - 1 ? 6 : 0,
-                    padding: "6px 8px",
-                    cursor: "pointer",
-                    font: "600 12px system-ui,sans-serif",
-                    background: ui.lens === id ? "#1c2024" : "#fff",
-                    color: ui.lens === id ? "#fff" : "#1c2024",
-                  }}
-                >
-                  {icon} {lbl}
-                </button>
-              ))}
+              ] as const).map(([id, icon, lbl, title]) => {
+                const sel = ui.lens === id;
+                return (
+                  <button
+                    key={id}
+                    data-testid={`lens-${id}`}
+                    title={`Lens: ${title}`}
+                    onClick={() => game.setLens(id)}
+                    style={{
+                      border: "none",
+                      borderRight: "1px solid rgba(0,0,0,.4)",
+                      padding: "6px 9px",
+                      cursor: "pointer",
+                      font: "600 12px system-ui,sans-serif",
+                      background: sel ? "linear-gradient(180deg,#2a3036,#20252b)" : "linear-gradient(180deg,#363c45,#2c323b)",
+                      color: sel ? "var(--ot-con-accent)" : "var(--ot-con-ink-dim)",
+                      textShadow: "0 1px 1px rgba(0,0,0,.5)",
+                      boxShadow: sel ? "inset 0 2px 5px rgba(0,0,0,.55), 0 0 9px rgba(56,198,220,.3)" : "inset 0 1px 0 rgba(255,255,255,.08)",
+                    }}
+                  >
+                    {icon} {lbl}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}

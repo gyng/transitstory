@@ -21,6 +21,29 @@
      ease-out — "subtle & satisfying", never bouncy. Used by CSS rules here + inline tween styles. */
   --ot-ease: cubic-bezier(0.22, 0.7, 0.25, 1);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+  /* ===== DIEGETIC CONTROL-CONSOLE theme (#28: sleek + skeuomorphic). The chrome reads as the transit
+     operator's physical control desk — brushed graphite panels, beveled edges, raised keys, recessed
+     digital readouts, etched labels, indicator LEDs. Tokens here; reusable classes below. ===== */
+  --ot-con-panel: linear-gradient(178deg, #313742 0%, #232830 62%, #1d2127 100%); /* brushed graphite face */
+  --ot-con-solid: #262b33;
+  --ot-con-edge: #0e1014; /* the dark cut bevel around a panel */
+  --ot-con-seam: rgba(255, 255, 255, 0.07); /* top highlight seam of a raised face */
+  --ot-con-ink: #d9dee7; /* etched label text */
+  --ot-con-ink-dim: #8a94a3;
+  --ot-con-accent: #38c6dc; /* cyan indicator/glow (active control) */
+  --ot-con-amber: #f1ad44;
+  --ot-con-green: #46d08c;
+  --ot-con-red: #ec5a5a;
+  --ot-readout-font: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace; /* instrument digits */
+  /* a raised physical KEY: inner top-light + inner bottom-bevel + outer drop */
+  --ot-key-raise: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1.5px 0 rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.55);
+  /* a recessed DISPLAY well (inset, the readout sinks into the panel) */
+  --ot-well: inset 0 1.5px 4px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  /* a console PANEL's full elevation: cut bevel + seam highlight + ambient lift off the map */
+  --ot-con-elev: inset 0 1px 0 var(--ot-con-seam), inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -114,6 +137,68 @@ body {
   50% {
     background: rgba(214, 40, 40, 0.16);
   }
+}
+
+/* ===== Console-theme building blocks (#28). Opt-in classes so a component becomes part of the
+   operator's control desk: a brushed PANEL, raised KEYs, recessed READOUT wells, indicator LEDs. ===== */
+
+/* A console PANEL face — brushed graphite, cut-beveled, lifted off the map. */
+.ot-console {
+  background: var(--ot-con-panel);
+  border: 1px solid var(--ot-con-edge);
+  border-radius: 13px;
+  box-shadow: var(--ot-con-elev);
+  color: var(--ot-con-ink);
+}
+
+/* A raised physical KEY (tool/speed/run buttons). Etched label; presses down (global :active handles motion). */
+.ot-key {
+  background: linear-gradient(180deg, #3a414c 0%, #2c323b 100%);
+  border: 1px solid var(--ot-con-edge);
+  border-radius: 8px;
+  color: var(--ot-con-ink);
+  box-shadow: var(--ot-key-raise);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  font: 600 13px system-ui, sans-serif;
+}
+.ot-key:hover {
+  background: linear-gradient(180deg, #424a56 0%, #333a44 100%);
+}
+/* A LIT key — the active control: the accent glows from within, label brightens. Tone variants for the
+   semantic keys (good = Run/active service, danger = Bulldoze). */
+.ot-key.on {
+  background: linear-gradient(180deg, #2a3036 0%, #20252b 100%);
+  color: #fff;
+  box-shadow: var(--ot-well), 0 0 0 1px rgba(56, 198, 220, 0.5), 0 0 12px rgba(56, 198, 220, 0.35);
+}
+.ot-key.on-good {
+  background: linear-gradient(180deg, #1f2a25 0%, #19211d 100%);
+  color: #fff;
+  box-shadow: var(--ot-well), 0 0 0 1px rgba(70, 208, 140, 0.55), 0 0 12px rgba(70, 208, 140, 0.4);
+}
+.ot-key.on-danger {
+  background: linear-gradient(180deg, #2c2020 0%, #221a1a 100%);
+  color: #fff;
+  box-shadow: var(--ot-well), 0 0 0 1px rgba(236, 90, 90, 0.55), 0 0 12px rgba(236, 90, 90, 0.4);
+}
+
+/* A recessed READOUT well — instrument digits sunk into the panel (counters, gauges). */
+.ot-readout {
+  background: #14171c;
+  border: 1px solid var(--ot-con-edge);
+  border-radius: 7px;
+  box-shadow: var(--ot-well);
+  color: var(--ot-con-accent);
+  font-family: var(--ot-readout-font);
+  letter-spacing: 0.02em;
+}
+
+/* An indicator LED dot (status: lit = on/healthy). */
+.ot-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 5px currentColor, inset 0 0 2px rgba(255, 255, 255, 0.6);
 }
 
 /* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */
