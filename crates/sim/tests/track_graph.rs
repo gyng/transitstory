@@ -211,6 +211,37 @@ fn canonical_orientation_invariant_holds() {
     }
 }
 
+/// TTD L3 A0: the graph structs are serde round-trippable (the wire/save contract for the future
+/// authoritative segment store). A derived graph must postcard-encode → decode back equal — pinning that
+/// the `Serialize`/`Deserialize` derives are coherent before L3 makes segments authoritative + hashed.
+#[test]
+fn track_graph_postcard_round_trips() {
+    let mut w = grid_world(CELL);
+    let a = place(&mut w, xcell(3).0, xcell(3).1);
+    let b = place(&mut w, xcell(6).0, xcell(6).1);
+    let s1 = place(&mut w, xcell(0).0, xcell(0).1);
+    let e1 = place(&mut w, xcell(9).0, xcell(9).1);
+    let s2 = place(&mut w, at_cell(0, 3).0, at_cell(0, 3).1);
+    let e2 = place(&mut w, at_cell(9, 3).0, at_cell(9, 3).1);
+    make_line(&mut w, &[s1, a, b, e1]);
+    make_line(&mut w, &[s2, a, b, e2]); // a shared a→b segment, junction nodes — a non-trivial graph
+    let g = derive_track_graph(&w);
+    assert!(!g.segments.is_empty() && !g.nodes.is_empty(), "non-trivial graph for a meaningful round-trip");
+    let bytes = postcard::to_allocvec(&g).expect("postcard encode the derived TrackGraph");
+    let back: sim::track_graph::TrackGraph = postcard::from_bytes(&bytes).expect("postcard decode");
+    // Structural equality (the structs aren't PartialEq): node + segment shape survives the round-trip.
+    assert_eq!(back.nodes.len(), g.nodes.len());
+    assert_eq!(back.segments.len(), g.segments.len());
+    for (x, y) in back.nodes.iter().zip(&g.nodes) {
+        assert_eq!((x.cell, x.station, x.degree), (y.cell, y.station, y.degree));
+        assert_eq!(x.kind, y.kind);
+    }
+    for (x, y) in back.segments.iter().zip(&g.segments) {
+        assert_eq!((x.seg_id, x.a, x.b, x.shared), (y.seg_id, y.a, y.b, y.shared));
+        assert_eq!(x.cells, y.cells, "the ordered cell chain survives the round-trip");
+    }
+}
+
 #[test]
 fn degenerate_inputs_do_not_panic() {
     let mut w = grid_world(CELL);

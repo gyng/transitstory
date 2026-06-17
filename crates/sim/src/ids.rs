@@ -22,3 +22,7 @@ id_type!(LineId);
 id_type!(TrainsetId);
 id_type!(VehicleId);
 id_type!(PaxId);
+// TTD L3 (docs/ttd-l3-plan.md): the stable identity of a first-class TrackSegment. Introduced additively in
+// A0 (a Line will reference `Vec<(TrackSegmentId, reverse)>` once segments own geometry); not hashed until
+// the L3 C1 ownership-flip, where the id MUST stay a pure function of topology (sorted endpoint cells).
+id_type!(TrackSegmentId);

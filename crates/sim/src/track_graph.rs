@@ -14,10 +14,11 @@
 //! L3 authoritative geometry, L4 routing) graduate this from observational to load-bearing.
 use crate::hexgrid::{self, Axial};
 use crate::world::World;
+use serde::{Deserialize, Serialize};
 
 /// Why a cell is a graph vertex. A station cell is always a `Station` node (even at degree 2 — a mid-line
 /// stop genuinely splits a run); otherwise degree ≥ 3 is a `Junction` and degree 1 a `Terminus`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeKind {
     Station,
     Junction,
@@ -25,7 +26,7 @@ pub enum NodeKind {
 }
 
 /// A graph node: one hex cell that is a station, a junction (degree ≥ 3), or a terminus (degree 1).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrackNode {
     /// The cell's axial identity `(q, r)` — the node's identity and sort key.
     pub cell: Axial,
@@ -40,7 +41,7 @@ pub struct TrackNode {
 
 /// A maximal run of grid edges between two graph nodes, passing only through degree-2 interior cells. The
 /// geometry is the ordered cell chain `cells[0] == nodes[a].cell ..= cells[last] == nodes[b].cell`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrackSegment {
     /// Index in the canonical (endpoint-cell-sorted) segment order.
     pub seg_id: u32,
@@ -55,7 +56,7 @@ pub struct TrackSegment {
 }
 
 /// The derived track graph: nodes sorted by `cell`, segments sorted canonically. Empty for non-grid.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TrackGraph {
     pub nodes: Vec<TrackNode>,
     pub segments: Vec<TrackSegment>,
