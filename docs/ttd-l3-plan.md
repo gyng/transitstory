@@ -169,6 +169,28 @@ of the transit + arcadia golden logs, pinned at the CURRENT values. The C1 flip 
 fingerprint byte-identical (proving "only serialization moved" — the golden *hash* legitimately changes,
 but the *positions* must not). That is the real, committed, mechanical proof the first attempt faked.
 
+## C1 scope finalized + the shared-corridor curvature consequence (2026-06-17)
+
+C1 (the earned geometry flip) is now fully gated and ready to execute:
+- **Gates in place (committed):** `position_fingerprint.rs` (the flip MUST keep TRANSIT `0xdccb…e54a` /
+  ARCADIA `0xbf4d…3236` byte-identical — proves positions unchanged for the golden scenarios while the
+  golden *hash* legitimately re-pins); `shared_segment_liveness.rs` (the flip must keep these green — keeps
+  the working cross-line cap); replay-equality; full suite.
+- **The one genuine behaviour change (document + accept):** making geometry segment-authoritative means a
+  SHARED segment carries ONE canonical curve, not each line's independent Catmull-Rom smoothing. For the
+  goldens this is invisible (transit = continuous/no segments; arcadia = single line/no sharing) ⇒ the
+  position fingerprint is UNCHANGED, "only serialization moved" holds. For a MULTI-LINE shared corridor the
+  rendered/integrator curve of the shared run changes to the canonical representative — which is the
+  CORRECT "one track, many services" behaviour (#36): two services on one corridor should ride ONE shared
+  rail with ONE curve, not two near-identical divergent ribbons. So this is an intended improvement, not a
+  regression — but it is a real geometry change on shared track that the (non-sharing) goldens don't
+  exercise; note it in the C1 commit so it isn't mistaken for a bug.
+- **C1 commit shape:** geometry fields leave `Path` (segments author them, in `Canonical`, hashed = earned
+  re-pin); `Path` derives a concatenated geometry from its `segments` so `advance()` is byte-unchanged for
+  NON-shared paths (migration-(a)); keep `derive_cross_blocks` (B3 deferred); `SetSegmentTrack` →
+  `TrackSegmentId` + whole-line sentinel, mirrored in types.ts/codec.ts/contract.rs same commit (G6).
+  Re-pin both goldens (justified); position fingerprint MUST stay byte-identical (the mechanical proof).
+
 ## Review verdict (must address before/while executing)
 
 The naive plan was **NOT safe as-is**: the hash moves at **B2** (G1) and order-independence breaks at
