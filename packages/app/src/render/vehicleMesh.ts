@@ -89,6 +89,36 @@ export function wagonMesh(): Geometry {
   return wagonCached;
 }
 
+let legionCached: Geometry | null = null;
+
+/** The shared LEGION geometry (built once) — a marching standard: a low base (the host's footprint), a
+ *  thin pole, and a banner streaming BEHIND the march (−X) so the army reads as a moving force, not a dot.
+ *  FORWARD is +X (the layer yaws it to the legion's march heading); Z up. Tinted crimson per-instance via
+ *  getColor. ~1 unit; the layer scales it to map-metres (#legion-3d). Flat-shaded, mirrors `vehicleMesh`. */
+export function legionMesh(): Geometry {
+  if (legionCached) return legionCached;
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  // Base slab — the host's footprint on the ground.
+  box(pos, nrm, -0.28, -0.26, 0.0, 0.28, 0.26, 0.12);
+  // Standard pole.
+  box(pos, nrm, -0.05, -0.05, 0.12, 0.05, 0.05, 1.0);
+  // Banner — a flat pennant in the X–Z plane streaming back from the pole top (both faces, so it reads
+  // from either side). Front edge at the pole (+x), trailing edge swept back (−x) and slightly down.
+  const tf: V3 = [0.05, 0, 1.0], tb: V3 = [-0.62, 0, 0.9];
+  const bf: V3 = [0.05, 0, 0.64], bb: V3 = [-0.56, 0, 0.58];
+  quad(pos, nrm, bf, tf, tb, bb); // one face
+  quad(pos, nrm, bb, tb, tf, bf); // the reverse face
+  legionCached = new Geometry({
+    topology: "triangle-list",
+    attributes: {
+      POSITION: { size: 3, value: new Float32Array(pos) },
+      NORMAL: { size: 3, value: new Float32Array(nrm) },
+    },
+  });
+  return legionCached;
+}
+
 let cargoCached: Geometry | null = null;
 
 /** The shared CARGO geometry (built once) — a unit box (footprint 0.7×0.36, height 1) sitting on the car

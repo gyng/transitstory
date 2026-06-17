@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, armyLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -77,13 +77,20 @@ export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "b
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "army-badges", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "legion-names", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
-  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "army-badges", "ambient-traders"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "legion-names", "ambient-traders"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
 const BOUNTY_AMOUNT = 1000;
+
+// Legion HOST names (#legion-3d nameplates) — a fixed CB-flavour roster cycled by legion slot index
+// (deterministic + render-only; a recycled slot reusing a name is fine, it's cosmetic identity).
+const LEGION_NAMES = [
+  "Iron Host", "Ash Legion", "Dawn Cohort", "Stone Vanguard", "Ember Host", "Grey Lances",
+  "Thornguard", "Oathsworn", "Wolf Cohort", "Hearth Legion", "Bronze Host", "Stormcall",
+];
 /** Manpower a legion costs to field (mirrors the core's `army::LAUNCH_COST`) — for the barracks ready/starved
  *  tint + the "−manpower → ⚔" launch hint. The core is authoritative; this is a display approximation. */
 const LAUNCH_COST_MANPOWER = 8;
@@ -2486,23 +2493,28 @@ export class Game {
   /** Marching-legion dots (fantasy). Read each compose like the vehicle layer; metres→lng/lat in place.
    *  Null when there are no legions (transit always; arcadia until the first launch). */
   armyLayerAt(): Layer[] {
-    const xy = this.bridge.armyPositions();
+    const xy = this.bridge.armyPositions(); // metres (kept in metres for the march-heading derivation)
     const count = xy.length >> 1;
     if (count === 0) return [];
-    const states = this.bridge.armyStates(); // #war: 0 marching / 1 besieging / 2 done (aligned with xy)
-    for (let i = 0; i < xy.length; i += 2) metersToLngLatInto(xy[i], xy[i + 1], xy, i);
-    // Only AFIELD legions (marching/besieging) render — a DONE legion is inert and its holding already reads
-    // from the captured-town state, so dropping it de-litters the map + stops inflating the visible force.
-    const flat: number[] = [];
-    const pos: [number, number][] = [];
+    const tg = this.bridge.armyTargets(); // #war: target position per legion (metres), aligned with xy
+    const states = this.bridge.armyStates(); // 0 marching / 1 besieging / 2 done
+    // #legion-3d: each AFIELD legion (marching/besieging) is a 3D crimson STANDARD yawed to its march
+    // direction + a NAMEPLATE. A DONE legion is inert (its holding reads from the captured-town state), so
+    // it's dropped to de-litter the map. Heading is the metre-space bearing to the target (yawOf calibrated
+    // for the same atan2 the vehicles use); a besieging/idle legion (target == own spot) faces north.
+    const legions: LegionDot[] = [];
     for (let i = 0; i < count; i++) {
       if ((states[i] | 0) === 2) continue; // DONE / garrisoned — skip
-      flat.push(xy[i * 2], xy[i * 2 + 1]);
-      pos.push([xy[i * 2], xy[i * 2 + 1]]);
+      const px = xy[i * 2];
+      const py = xy[i * 2 + 1];
+      const tx = tg[i * 2] ?? px;
+      const ty = tg[i * 2 + 1] ?? py;
+      const heading = tx === px && ty === py ? 0 : Math.atan2(ty - py, tx - px);
+      const [lng, lat] = metersToLngLat([px, py]);
+      legions.push({ lng, lat, heading, name: LEGION_NAMES[i % LEGION_NAMES.length], besieging: (states[i] | 0) === 1 });
     }
-    if (pos.length === 0) return [];
-    // #10: a ⚔ badge over each legion so it reads as an army, not just a crimson dot.
-    return [armyLayer(new Float32Array(flat), pos.length), entityBadgeLayer("army-badges", pos, "⚔", [255, 236, 200, 240])];
+    if (legions.length === 0) return [];
+    return [legionLayer(legions), legionNameLayer(legions)];
   }
 
   /** Legion INTENT arcs (fantasy, S11 — the AI general's "why" made spatial): a faint crimson arc from
@@ -2654,7 +2666,9 @@ export class Game {
     // TTD signals (opt-in lens): single-track block state UNDER the vehicles, so a cart rides on top of
     // the signal that gates it. Per-frame (occupancy shifts with the trains), like the other motion layers.
     const signals = this.showSignals ? [signalLayer(this.signalMarkers())] : [];
-    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...army, ...raider, ...spells, ...peep, ...above];
+    // Legion NAMEPLATES drop at the strategic overview (label clutter); the 3D hosts stay so the force reads.
+    const armyL = detail ? army : army.filter((l) => l.id !== "legion-names");
+    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

@@ -6,7 +6,7 @@ import { ArcLayer, ColumnLayer, PathLayer, ScatterplotLayer, TextLayer } from "@
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 import { pineGeometry } from "./render/treeMesh";
-import { vehicleMesh, cargoMesh, wagonMesh } from "./render/vehicleMesh";
+import { vehicleMesh, cargoMesh, wagonMesh, legionMesh } from "./render/vehicleMesh";
 import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
 export type Rgb = [number, number, number];
@@ -1466,6 +1466,61 @@ export function armyLayer(positionsLngLat: Float32Array, count: number): Layer {
     radiusUnits: "pixels",
     radiusMinPixels: 4,
     radiusMaxPixels: 9,
+  });
+}
+
+/** One legion as an in-world 3D standard (#legion-3d): a crimson banner yawed to its march heading, with a
+ *  nameplate. `heading` is the metre-space march direction (atan2(dy,dx)); `besieging` dims it to read as
+ *  "arrived, holding" vs an advancing host. */
+export interface LegionDot {
+  lng: number;
+  lat: number;
+  heading: number;
+  name: string;
+  besieging: boolean;
+}
+
+const LEGION_SCALE = 150; // diorama scale (a touch larger than a train — an army is a notable force)
+
+/** The legion HOST as a real 3D model (replaces the flat crimson dot): a banner standard yawed to its
+ *  march direction, crimson (besieging hosts a muted brick so "advancing" vs "holding" reads). */
+export function legionLayer(legions: LegionDot[]): Layer {
+  return new SimpleMeshLayer<LegionDot>({
+    id: "armies",
+    data: legions,
+    mesh: legionMesh(),
+    getPosition: (d) => [d.lng, d.lat],
+    getColor: (d) => (d.besieging ? [150, 70, 56] : [176, 26, 26]),
+    getOrientation: (d) => yawOf(d.heading),
+    getScale: [LEGION_SCALE, LEGION_SCALE, LEGION_SCALE],
+    sizeScale: 1,
+    pickable: false,
+    material: { ambient: 0.66, diffuse: 0.7, shininess: 20, specularColor: [80, 60, 60] },
+    updateTriggers: { getOrientation: legions.length, getColor: legions.map((d) => (d.besieging ? 1 : 0)).join("") },
+  });
+}
+
+/** Legion NAMEPLATES (#legion-3d): the host's name floating above its standard, so a player can name + track
+ *  their AI armies. A deck TextLayer with a dark plate for legibility over the busy map; pixel-offset up so
+ *  it clears the 3D banner; LOD-gated by the caller (drops at the strategic overview). */
+export function legionNameLayer(legions: LegionDot[]): Layer {
+  return new TextLayer<LegionDot>({
+    id: "legion-names",
+    data: legions,
+    getPosition: (d) => [d.lng, d.lat],
+    getText: (d) => `⚔ ${d.name}`,
+    getSize: 11,
+    sizeUnits: "pixels",
+    getColor: [255, 236, 210, 245],
+    getPixelOffset: [0, -26],
+    background: true,
+    getBackgroundColor: [28, 18, 18, 200],
+    backgroundPadding: [4, 2],
+    fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",system-ui,sans-serif',
+    characterSet: ENTITY_CHARSET + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789·'",
+    getTextAnchor: "middle",
+    getAlignmentBaseline: "center",
+    updateTriggers: { getText: legions.map((d) => d.name).join(",") },
   });
 }
 
