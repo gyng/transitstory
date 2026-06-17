@@ -148,6 +148,27 @@ the next attempt:
   the ownership flip must be real (Path loses geometry) for the re-pin to be earned, and the contract mirror
   lands same-commit. Throwing more one-shot Workflows at it reproduces overclaiming.
 
+## DE-SCOPING INSIGHT (2026-06-17) — B3 is deferrable; C1 shrinks to the earned geometry flip
+
+The "irreducible cliff" was partly self-imposed. **L4 (routing + berth choice) needs segment-AUTHORITATIVE
+GEOMETRY, not a rewritten cross-line cap.** The existing `derive_cross_blocks` union-find cap + the
+`vehicle.rs` cross-line mutex ALREADY provide cross-line liveness (proven by the goldens + the committed
+ridership never-freeze guards). So the real minimal L3-for-L4 is:
+- **C1 (do this):** move geometry ownership onto `TrackSegment` (authoritative + hashed — an EARNED re-pin,
+  because `Path` genuinely STOPS authoring `polyline`/`track_type`/etc.; `Path` derives a concatenated
+  geometry from its `segments` so `advance()`'s integrator is byte-unchanged, migration-(a)). KEEP the
+  working cross-line machinery untouched (the meet reads `track_type` via the segment, decision-identical).
+- **B3 (DEFER):** unifying the cross-line cap/mutex into a segment-keyed PBS reservation is a *separate,
+  optional* refinement — NOT a prerequisite for L4. It only matters if/when we want richer multi-line
+  routing than the current cap allows. The committed `shared_segment_liveness.rs` guards gate it whenever
+  it's attempted.
+
+**The earned-re-pin identity gate (fixes review D3's fabrication):** before the C1 flip, COMMIT a
+`position_fingerprint_pinned` test — an FNV of `(sorted vehicle s_mm + per-line ridership)` after N ticks
+of the transit + arcadia golden logs, pinned at the CURRENT values. The C1 flip then MUST keep that
+fingerprint byte-identical (proving "only serialization moved" — the golden *hash* legitimately changes,
+but the *positions* must not). That is the real, committed, mechanical proof the first attempt faked.
+
 ## Review verdict (must address before/while executing)
 
 The naive plan was **NOT safe as-is**: the hash moves at **B2** (G1) and order-independence breaks at
