@@ -7,19 +7,32 @@ import { useState } from "react";
 import { useGame, useStats } from "./GameContext";
 import { TECHS, techUnlocked } from "../../commands/codec";
 
-export function TechPanel() {
+// `open`/`onOpenChange` (stage 7): the TECH construction category key now CONTROLS the panel's open
+// state (the deviation fix) — arming TECH opens it, closing it disarms back to the rail. When the
+// props are omitted the panel falls back to its own launcher button (legacy/standalone use).
+export function TechPanel({ open: controlledOpen, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
   const s = useStats();
   const game = useGame();
-  // Collapsed by default — the tech tree opens from a launcher button instead of always occupying the
-  // bottom-left (trial feedback #2: "tech should be in a menu"). Arcadia only.
-  const [open, setOpen] = useState(false);
+  // Collapsed by default — the tech tree opens from the TECH category key (or its own launcher when
+  // uncontrolled) instead of always occupying the bottom-left (trial feedback #2). Arcadia only.
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = controlledOpen !== undefined;
+  const open = controlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = (v: boolean) => {
+    if (!controlled) setUncontrolledOpen(v);
+    onOpenChange?.(v);
+  };
   if (s.ruleset !== "arcadia") return null;
   const mana = Math.round(s.mana);
   const owned = (id: number) => techUnlocked(s.techUnlocked, id);
   const prereqMet = (prereq: number) => prereq < 0 || owned(prereq);
 
   if (!open) {
-    // How many techs are affordable right now → a subtle "you can spend" nudge on the launcher.
+    // CONTROLLED + closed: the TECH category key in the construction rail IS the launcher (the deviation
+    // fix) — render no floating launcher (that would double the affordance + clutter the bottom-left).
+    if (controlled) return null;
+    // UNCONTROLLED (standalone) fallback: the floating Forge launcher. How many techs are affordable right
+    // now → a subtle "you can spend" nudge on the launcher.
     const buyable = TECHS.filter((t) => !owned(t.id) && prereqMet(t.prereq) && mana >= t.cost).length;
     return (
       <button

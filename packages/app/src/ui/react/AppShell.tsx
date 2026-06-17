@@ -22,12 +22,12 @@ const SHELL_STYLE: CSSProperties = {
   gridTemplateRows: "44px 1fr 92px",
   gridTemplateColumns: "auto 1fr auto",
   pointerEvents: "none",
-  // The shell forms a stacking context (position:fixed). It sits ABOVE the legacy edge panels that are
-  // still position:fixed siblings at z:9 (LineList / EditorPanel / ServiceReport) so the new rails are
-  // CLICKABLE over them during the transition (those panels migrate into the shell's regions in stages
-  // 6-7). Genuinely-modal overlays (Settings z:11, Toast z:20, dashboard/context-menu, …) are rendered
-  // as shell SIBLINGS at higher z, so they still float above the shell.
-  zIndex: 10,
+  // The shell forms a stacking context (position:fixed). With every legacy position:fixed edge panel
+  // now migrated INTO the shell's regions (stages 6-7), the shell no longer needs to out-stack them, so
+  // its z dropped to 6 (just above the #ui z:5 content layer — deviation (c)). The genuinely-modal
+  // overlays (Settings z:11, dashboard/context-menu, day-report/milestone z:15, objective-banner z:30,
+  // onboarding z:12) are rendered as shell SIBLINGS at higher z, so they still float above the shell.
+  zIndex: 6,
 };
 
 /** Top strip — spans all three columns (row 1). Resources (L) · alerts (C) · time (R). */

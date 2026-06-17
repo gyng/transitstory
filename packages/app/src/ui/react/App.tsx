@@ -28,7 +28,7 @@ import { StatsDashboard } from "./StatsDashboard";
 import { BuildHud } from "./BuildHud";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
-import { Panels } from "./Panels";
+import { Inspector } from "./Inspector";
 import { Outliner } from "./Outliner";
 import { OnboardingCoach } from "./Onboarding";
 import { DraftControls } from "./DraftControls";
@@ -343,9 +343,9 @@ export function App() {
         left={
           // Left edge: the construction rail (categories + flyout) anchored top, and the corner
           // utility cluster (undo/redo · dashboard · settings) pinned to the bottom-left corner (Fitts).
-          // A raised z keeps the rail + corner CLICKABLE above the still-fixed Panels roster (z:9), which
-          // moves to the bottom Outliner in stage 6; the EditorPanel (top-right) consolidates in stage 7.
-          <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start", padding: "0 0 14px 14px", pointerEvents: "none", position: "relative", zIndex: 13 }}>
+          // No raised z needed any more — all the legacy fixed panels migrated into the shell (stages 6-7),
+          // so the rail/corner stack naturally within the shell's own context.
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start", padding: "0 0 14px 14px", pointerEvents: "none", position: "relative" }}>
             <div style={{ paddingTop: 0, pointerEvents: "none" }}>
               <ConstructionRail />
             </div>
@@ -353,11 +353,12 @@ export function App() {
           </div>
         }
         right={
-          // Right edge: the LensRail, flow-anchored to the far edge and VERTICALLY CENTRED so it clears
-          // the top-anchored EditorPanel (still position:fixed until the stage-7 inspector consolidation);
-          // a raised z keeps the rail clickable if the editor ever overlaps it. The objective card moved
-          // to the bottom Outliner ticker (stage 6).
-          <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", padding: "0 14px", pointerEvents: "none", position: "relative", zIndex: 12 }}>
+          // Right edge (stage 7): a flex ROW — the Inspector docked INBOARD (left) of the LensRail, so
+          // the two never share a column (resolves the stage 1-4 right:14 overlap). Both vertically
+          // centred. The Inspector is progressive (empty until selection). <1024px the inspector
+          // OVERLAYS the lens rail (modal) — handled by the .ot-right-edge responsive rules in styles.css.
+          <div className="ot-right-edge" style={{ height: "100%", display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "0 14px", pointerEvents: "none", position: "relative" }}>
+            <Inspector />
             <LensRail />
           </div>
         }
@@ -374,12 +375,11 @@ export function App() {
         }
       />
       {/* Floating / transient overlays — kept outside the shell so they retain their own fixed
-          position + z-order. The roster migrated to the bottom Outliner (stage 6); the editor
-          (Panels) stays position:fixed top-right until the stage-7 right-Inspector consolidation. */}
+          position + z-order (build HUD, draft, cards, beats). The roster migrated to the bottom
+          Outliner (stage 6) and the editor to the right Inspector (stage 7). */}
       <TopLeftBar>
         <Title name={world.cityName} />
       </TopLeftBar>
-      <Panels />
       <NoticeAutoDismiss />
       <OnboardingCoach />
       <DraftControls />

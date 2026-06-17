@@ -101,6 +101,9 @@ export function ConstructionRail() {
 
   // Armed category (radio). RAIL by default so the mode segment is visible on load.
   const [armed, setArmed] = useState<Category>("rail");
+  // TECH (stage 7): the TECH category key now CONTROLS the Forge panel's open state (the deviation fix).
+  // Arming TECH opens the Forge; closing it (its ✕) disarms back to RAIL.
+  const [techOpen, setTechOpen] = useState(false);
 
   // Build keyboard: Space toggles Build↔Run; 1-5 chord transport modes; T/R/N/V/X (+ arcadia B/Y) arm the
   // build tools (and their owning category). (',' / '.' speed-step live in TimeCluster; WASD/Q/E camera in
@@ -146,9 +149,11 @@ export function ConstructionRail() {
 
   const categories = CATEGORIES.filter((c) => !c.fantasyOnly || arcadia);
 
-  // Clicking a category: rail/tech open their flyout (no tool); the rest arm their tool (and flip to Build).
+  // Clicking a category: rail opens its flyout; TECH opens the Forge panel (controlled); the rest arm
+  // their tool (and flip to Build).
   const armCategory = (c: Category) => {
     setArmed(c);
+    if (c === "tech") setTechOpen(true); // arming TECH opens the Forge of Ages (deviation fix)
     const t = CATEGORY_TOOL[c];
     if (t) {
       if (game.mode === "run") game.setMode("build");
@@ -225,9 +230,18 @@ export function ConstructionRail() {
         </div>
       )}
 
-      {/* TECH: the Forge launcher/panel renders itself (position:fixed, arcadia-only). Mounted here so it's
-          conceptually part of construction; arming TECH is a no-op beyond highlighting the category key. */}
-      {arcadia && <TechPanel />}
+      {/* TECH (stage 7): the Forge panel is CONTROLLED by the TECH category key — arming TECH opens it,
+          its ✕ closes it AND disarms back to RAIL (so the category key reflects the panel state). The
+          panel positions itself (arcadia-only). */}
+      {arcadia && (
+        <TechPanel
+          open={techOpen}
+          onOpenChange={(o) => {
+            setTechOpen(o);
+            if (!o && armed === "tech") setArmed("rail"); // closing the Forge disarms TECH
+          }}
+        />
+      )}
     </div>
   );
 }

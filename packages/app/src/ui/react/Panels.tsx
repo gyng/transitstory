@@ -45,6 +45,17 @@ const EDITOR_STYLE: CSSProperties = {
   padding: "12px",
 };
 
+// EMBEDDED (stage 7): the editor flows inside the right Inspector cell (docked inboard of the lens
+// rail), so it drops the position:fixed top-right anchor entirely — no shared column with the rail.
+const EDITOR_EMBED_STYLE: CSSProperties = {
+  width: "230px",
+  maxHeight: "100%",
+  overflowY: "auto",
+  padding: "12px",
+  font: "13px system-ui,sans-serif",
+  color: "var(--ot-con-ink)",
+};
+
 // One roster row — a tight 2-line card (3 with the economy on). Scan order: a colour-coded line
 // BADGE (identity anchor, colour+code so it's never hue-alone) + shortened name on line 1, with
 // the ONE primary metric — ridership — right-aligned in a tabular-nums column the eye runs down.
@@ -205,10 +216,12 @@ export function LineList({ embedded = false }: { embedded?: boolean } = {}) {
   );
 }
 
-function Editor({ l }: { l: PerLine }) {
+function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
   const game = useGame();
   const stats = useStats();
   const id = l.lineId;
+  const panelStyle = embedded ? EDITOR_EMBED_STYLE : EDITOR_STYLE;
+  const panelClass = embedded ? "ot-console" : undefined;
   const mins = Math.max(2, Math.min(20, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN)));
   // Local preview of the headway slider — `input` updates only this label; `change` commits.
   const [previewMins, setPreviewMins] = useState<number | null>(null);
@@ -250,7 +263,7 @@ function Editor({ l }: { l: PerLine }) {
 
   if (l.trains === 0) {
     return (
-      <div id="editor-panel" data-testid="editor-panel" style={EDITOR_STYLE}>
+      <div id="editor-panel" data-testid="editor-panel" className={panelClass} style={panelStyle}>
         {header}
         <button
           data-testid="assign-trainset"
@@ -275,7 +288,7 @@ function Editor({ l }: { l: PerLine }) {
   const pip = loadPip(l.loadFactor);
 
   return (
-    <div id="editor-panel" data-testid="editor-panel" style={EDITOR_STYLE}>
+    <div id="editor-panel" data-testid="editor-panel" className={panelClass} style={panelStyle}>
       {header}
       <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
         Trains{" "}
@@ -583,7 +596,7 @@ function Editor({ l }: { l: PerLine }) {
 // K berths let K consists dwell in parallel, so followers stop piling up behind a dwelling train. One
 // undoable Command per committed value (clamped [1,4] in the core); local state gives the stepper instant
 // feedback and resyncs from the snapshot on reselect.
-function StationEditor({ id }: { id: number }) {
+function StationEditor({ id, embedded = false }: { id: number; embedded?: boolean }) {
   const game = useGame();
   const [, bump] = useState(0); // force a re-read of the snapshot after a commit
   const k = game.stationPlatforms(id); // always the committed value (so it can't go stale on reselect)
@@ -601,7 +614,7 @@ function StationEditor({ id }: { id: number }) {
     lineHeight: "1",
   };
   return (
-    <div data-testid="station-editor" style={EDITOR_STYLE}>
+    <div data-testid="station-editor" className={embedded ? "ot-console" : undefined} style={embedded ? EDITOR_EMBED_STYLE : EDITOR_STYLE}>
       <div style={{ fontWeight: 700, marginBottom: 8, color: "var(--ot-con-ink)" }}>{game.stationName(id)}</div>
       <div data-testid="platform-stepper" style={{ marginBottom: 4 }}>
         <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ot-con-ink)" }}>Platforms</div>
@@ -624,13 +637,18 @@ function StationEditor({ id }: { id: number }) {
   );
 }
 
-// The contextual editor (selected line → Editor, selected bare station → StationEditor), still
-// position:fixed top-right until the stage-7 right-Inspector consolidation. The roster (LineList)
-// migrated to the bottom Outliner in stage 6, so Panels now owns only the editor half.
-export function Panels() {
+// The contextual editor (selected line → Editor, selected bare station → StationEditor). `embedded`
+// (stage 7) flows it inside the right Inspector cell, docked inboard of the lens rail (no shared
+// column). Progressive disclosure: returns null until something is selected. The roster (LineList)
+// migrated to the bottom Outliner in stage 6, so this owns only the editor half.
+export function Panels({ embedded = false }: { embedded?: boolean } = {}) {
   const ui = useGameUI();
   const perLine = useStats().perLine;
   const id = ui.selectedLine;
   const l = id === null ? undefined : perLine.find((x) => x.lineId === id);
-  return l ? <Editor key={l.lineId} l={l} /> : ui.selectedStation !== null ? <StationEditor key={ui.selectedStation} id={ui.selectedStation} /> : null;
+  return l
+    ? <Editor key={l.lineId} l={l} embedded={embedded} />
+    : ui.selectedStation !== null
+      ? <StationEditor key={ui.selectedStation} id={ui.selectedStation} embedded={embedded} />
+      : null;
 }
