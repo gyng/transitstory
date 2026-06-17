@@ -310,7 +310,9 @@ export class Game {
       this.tipTarget = obj && typeof obj.id === "number" ? { kind: "station", id: obj.id, x: info.x, y: info.y } : null;
     } else if (info.layer.id === "vehicles") {
       this.tipTarget = info.index >= 0 ? { kind: "vehicle", id: info.index, x: info.x, y: info.y } : null;
-    } else if (info.layer.id === "lines") {
+    } else if (info.layer.id === "lines" || info.layer.id === "track-rails") {
+      // TTD L6: bare track (the grey `track-rails` layer) inspects like any line — so the player can hover
+      // unserved infrastructure to read it and click to select it for stock assignment.
       const obj = info.object as { id?: number } | undefined;
       this.tipTarget = obj && typeof obj.id === "number" ? { kind: "line", id: obj.id, x: info.x, y: info.y } : null;
     } else {
@@ -1729,6 +1731,10 @@ export class Game {
     // catchment ring above drops to a nominal-reach outline whenever this is non-empty.
     const shed = highlight === null ? [] : this.shedFor(highlight, stationsV[highlight]);
 
+    // TTD L6 (track + services): which lines carry stock. `LineStat.trains` is the ASSIGNED trainset count
+    // (not dispatched), so this is correct in Build mode too — a freshly-assigned line lights up at once. A
+    // line absent from perLine (or with 0) is bare TRACK ⇒ rendered as grey infrastructure, not a service.
+    const servicedLines = new Set(this.bridge.stats().perLine.filter((l) => l.trains > 0).map((l) => l.lineId));
     const lines = linesV
       .filter((l) => !l.removed)
       .flatMap((l) => {
@@ -1736,12 +1742,13 @@ export class Game {
         const color = l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color);
         const mode = l.mode; // heavy/high-speed rail (4) gets distinct mainline styling
         const raided = (l.raidedRemainingMs ?? 0) > 0; // #war: a raider has CUT this line (trains frozen)
+        const serviced = servicedLines.has(l.id); // false ⇒ bare track (grey infra), true ⇒ coloured service
         // The trunk, plus one path per branch (P3) — all the same id/colour so a Y-shaped line
         // (e.g. the Circle Line's Marina Bay spur) draws as one coloured service.
         const paths = [l.polylineMm, ...(l.branchPolylinesMm ?? [])];
         return paths
           .filter((p) => p.length >= 2)
-          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided }));
+          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided, serviced }));
       });
 
     // Rail-attack (#war): a "⚔ RAIDED" badge + recovery countdown at each cut line's midpoint, so the

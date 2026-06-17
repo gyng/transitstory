@@ -30,6 +30,10 @@ export interface LinePath {
   path: [number, number][];
   mode: number; // transport mode (trainset::tmode); 4 = heavy/high-speed rail (distinct styling)
   raided?: boolean; // #war: this line is CUT (a raider severed it) — its trains are frozen; renders red
+  // TTD L6 (track + services): a line with NO assigned stock is bare TRACK — drawn as muted grey
+  // infrastructure, not a coloured service. It lights up to its hue the moment it gets a trainset.
+  // Defaults to serviced (true) so non-L6 call sites are unchanged.
+  serviced?: boolean;
 }
 /** Rail-attack (#war): a "⚔ RAIDED" badge at a severed line's midpoint, with the live recovery countdown. */
 export interface RaidLabel {
@@ -789,9 +793,27 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getLineColor: view.catchments.map((c) => !!c.peek).join(",") + `:${view.shed.length > 0}`,
       },
     }),
+    // TTD L6 (track + services): BARE TRACK — a line with no assigned stock — draws as ONE muted grey
+    // rail at the bottom of the network band (the infrastructure layer, under every coloured service).
+    // Co-located bare tracks overlap into one grey corridor; the moment a service is routed + given stock
+    // it lights up to its hue OVER this rail. Pickable so the player can select bare track to assign stock.
+    new PathLayer({
+      id: "track-rails",
+      data: view.lines.filter((d) => d.serviced === false),
+      getPath: (d: LinePath) => d.path,
+      getColor: [122, 128, 136, 205],
+      getWidth: 8,
+      widthUnits: "pixels",
+      widthMinPixels: 5,
+      capRounded: true,
+      jointRounded: true,
+      pickable: true,
+      updateTriggers: { getColor: view.lines.filter((d) => d.serviced === false).length },
+    }),
     // Selected-line emphasis: a wide dark casing under the picked line so it pops on the muted
     // basemap regardless of hue (width + dark frame = colour-blind-safe, not a hue change). Wider
     // than the heavy-rail casing so it frames even mainline track. Bumps only on selection change.
+    // (Includes bare track — the casing is SELECTION feedback, so a selected unserved corridor frames too.)
     new PathLayer({
       id: "lines-selected-casing",
       data: view.selectedLine == null ? [] : view.lines.filter((d) => d.id === view.selectedLine),
@@ -809,7 +831,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     // heavy lines are in these two extra layers; metro/bus/ferry/air stay in the flat "lines".
     new PathLayer({
       id: "lines-heavy-casing",
-      data: view.lines.filter((d) => d.mode === HEAVY_RAIL),
+      data: view.lines.filter((d) => d.mode === HEAVY_RAIL && d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: [34, 34, 40, 255],
       getWidth: 13,
@@ -820,7 +842,8 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     }),
     new PathLayer({
       id: "lines",
-      data: view.lines,
+      // TTD L6: only SERVICED lines wear their colour; bare track is the grey `track-rails` layer above.
+      data: view.lines.filter((d) => d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: (d: LinePath) => d.color,
       getWidth: (d: LinePath) => (d.mode === HEAVY_RAIL ? 9 : 7),
@@ -833,10 +856,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // Pickable so hovering the track raises the line inspector (under stations + trains in
       // z-order, so it only fires on bare track). The pick hit-area widens with pickingRadius.
       pickable: true,
+      updateTriggers: { getColor: view.lines.filter((d) => d.serviced !== false).length },
     }),
     new PathLayer({
       id: "lines-heavy-centre",
-      data: view.lines.filter((d) => d.mode === HEAVY_RAIL),
+      data: view.lines.filter((d) => d.mode === HEAVY_RAIL && d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: [245, 245, 250, 220],
       getWidth: 2,
