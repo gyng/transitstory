@@ -24,17 +24,16 @@ export function TechPanel() {
     return (
       <button
         data-testid="tech-launcher"
+        className="ot-key"
         onClick={() => setOpen(true)}
         title="Forge of Ages — spend mana on permanent upgrades"
         style={{
           // Stacked ABOVE the bottom-left Realm ledger (ServiceReport) so they don't overlap/intercept.
-          position: "fixed", bottom: 215, left: 14, zIndex: 10, padding: "7px 12px", borderRadius: 10,
-          border: "1px solid #d7dade", background: "rgba(255,255,255,.95)",
-          boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
-          font: "600 13px system-ui,sans-serif", color: "#1c2024", cursor: "pointer",
+          position: "fixed", bottom: 215, left: 14, zIndex: 10, padding: "7px 12px",
+          font: "600 13px system-ui,sans-serif", cursor: "pointer",
         }}
       >
-        ⚒ Forge <span style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>✦ {mana}</span>
+        ⚒ Forge <span style={{ color: "#b794f6", fontVariantNumeric: "tabular-nums" }}>✦ {mana}</span>
         {buyable > 0 && (
           <span data-testid="tech-buyable" style={{ marginLeft: 6, background: "var(--ot-gauge-good,#009e73)", color: "#fff", borderRadius: 8, padding: "0 6px", fontSize: 11 }}>
             {buyable}
@@ -47,6 +46,7 @@ export function TechPanel() {
   return (
     <div
       data-testid="tech-panel"
+      className="ot-console"
       style={{
         position: "fixed",
         bottom: 215, // stacked above the Realm ledger (bottom-left), like the launcher
@@ -56,24 +56,20 @@ export function TechPanel() {
         maxHeight: "62vh",
         overflowY: "auto",
         padding: "10px 12px",
-        borderRadius: 10,
-        background: "rgba(255,255,255,.95)",
-        boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
         font: "13px system-ui,sans-serif",
-        color: "#1c2024",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <b>⚒ Forge of Ages</b>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span title="Mana — the tech resource, minted by aether" style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>
+          <span title="Mana — the tech resource, minted by aether" style={{ color: "#b794f6", fontVariantNumeric: "tabular-nums" }}>
             ✦ {mana}
           </span>
           <button
             data-testid="tech-close"
             onClick={() => setOpen(false)}
             title="Close"
-            style={{ border: 0, background: "transparent", color: "#8a909a", cursor: "pointer", font: "15px system-ui", lineHeight: 1, padding: 0 }}
+            style={{ border: 0, background: "transparent", color: "var(--ot-con-ink-dim)", cursor: "pointer", font: "15px system-ui", lineHeight: 1, padding: 0 }}
           >
             ✕
           </button>
@@ -100,10 +96,19 @@ export function TechPanel() {
               margin: "3px 0",
               marginLeft: t.tier > 1 ? 10 : 0,
               padding: "5px 8px",
-              border: own ? "1px solid var(--ot-gauge-good,#009e73)" : "1px solid #d7dade",
+              border: own
+                ? "1px solid var(--ot-gauge-good,#009e73)"
+                : affordable
+                ? "1px solid rgba(56,198,220,.45)"
+                : "1px solid rgba(255,255,255,.08)",
               borderRadius: 7,
-              background: own ? "rgba(0,158,115,.10)" : affordable ? "#fff" : "#f3f4f6",
-              color: own ? "#0a7d5c" : affordable ? "#1c2024" : dim ? "#b3b8bf" : "#9aa1a9",
+              background: own
+                ? "rgba(0,158,115,.16)"
+                : affordable
+                ? "rgba(56,198,220,.14)"
+                : "rgba(255,255,255,.04)",
+              color: own ? "var(--ot-gauge-good,#009e73)" : affordable ? "#fff" : dim ? "var(--ot-con-ink-dim)" : "var(--ot-con-ink-dim)",
+              opacity: dim ? 0.7 : 1,
               cursor: affordable ? "pointer" : "default",
               font: "inherit",
             }}
@@ -112,7 +117,7 @@ export function TechPanel() {
               <span>{t.tier > 1 ? "↳ " : ""}{t.name}</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>{own ? "✓" : dim && prereqName ? "🔒" : `✦ ${t.cost}`}</span>
             </div>
-            <div style={{ fontSize: 11, color: own ? "#3a9b7e" : "#8a909a" }}>{t.blurb}</div>
+            <div style={{ fontSize: 11, color: own ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-ink-dim)" }}>{t.blurb}</div>
           </button>
         );
       })}

@@ -45,7 +45,9 @@ function Toggle({
           cursor: "pointer",
           position: "relative",
           transition: "background .12s",
-          background: on ? "#009e73" : "#c4cad0",
+          // ON = lit go-green (semantic); OFF = a recessed dark well in the console face.
+          background: on ? "var(--ot-con-green)" : "#14171c",
+          boxShadow: on ? "0 0 8px var(--ot-con-green)" : "var(--ot-well)",
         }}
       >
         <span
@@ -55,9 +57,9 @@ function Toggle({
             width: 18,
             height: 18,
             borderRadius: "50%",
-            background: "#fff",
+            background: "#e6ebf2",
             transition: "left .12s",
-            boxShadow: "0 1px 2px rgba(0,0,0,.3)",
+            boxShadow: "0 1px 2px rgba(0,0,0,.5)",
             left: on ? 18 : 2,
           }}
         />
@@ -85,6 +87,7 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
     <div
       id="settings-panel"
       data-testid="settings-panel"
+      className="ot-console"
       style={{
         position: "fixed",
         bottom: 84,
@@ -92,16 +95,12 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         width: 240,
         padding: 14,
         display: "block",
-        background: "rgba(255,255,255,.98)",
-        borderRadius: 12,
-        boxShadow: "var(--ot-shadow)",
         zIndex: 11,
         font: "13px system-ui,sans-serif",
-        color: "#1c2024",
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>Settings</div>
-      <div style={{ color: "#7a818a", fontSize: 11, marginBottom: 6 }}>Transport modes</div>
+      <div style={{ fontWeight: 700, marginBottom: 6, color: "var(--ot-con-ink)" }}>Settings</div>
+      <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginBottom: 6 }}>Transport modes</div>
 
       {MODES.map((m) => (
         <Toggle
@@ -115,10 +114,10 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
 
       <div
         style={{
-          color: "#7a818a",
+          color: "var(--ot-con-ink-dim)",
           fontSize: 11,
           margin: "10px 0 4px",
-          borderTop: "1px solid #eceef1",
+          borderTop: "1px solid rgba(255,255,255,.08)",
           paddingTop: 10,
         }}
       >
@@ -132,7 +131,7 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         onToggle={() => game.setEconomy(!stats.economyEnabled)}
       />
 
-      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+      <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 10 }}>
         Demand model
       </div>
       <Toggle
@@ -145,11 +144,11 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
           game.setDemandMode(v);
         }}
       />
-      <div style={{ color: "#9aa3ad", fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
+      <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
         Trips come from a population with homes & jobs instead of gravity flow.
       </div>
 
-      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+      <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 10 }}>
         Display
       </div>
       <Toggle
@@ -164,7 +163,7 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         }}
       />
 
-      <div style={{ color: "#7a818a", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid #eceef1", paddingTop: 10 }}>
+      <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "10px 0 4px", borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 10 }}>
         Sound
       </div>
       <Toggle

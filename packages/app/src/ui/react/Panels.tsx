@@ -73,8 +73,8 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
       style={{
         padding: "7px 8px",
         cursor: "pointer",
-        borderTop: "1px solid #eef0f2",
-        background: selected ? "#eef4fb" : "transparent",
+        borderTop: "1px solid rgba(255,255,255,.08)",
+        background: selected ? "rgba(56,198,220,.14)" : "transparent",
         // selection reinforces identity with a left rail in the line's OWN colour (no new mark)
         boxShadow: selected ? `inset 3px 0 0 ${hex(l.color)}` : "none",
         opacity: hasTrains ? 1 : 0.92,
@@ -101,7 +101,7 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
           {code}
         </span>
         <span
-          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", font: "600 13px system-ui,sans-serif", color: "#1c2024" }}
+          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", font: "600 13px system-ui,sans-serif", color: selected ? "#fff" : "var(--ot-con-ink)" }}
           title={l.name || `Line ${l.lineId + 1}`}
         >
           {short}
@@ -113,9 +113,9 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
             flex: "0 0 auto",
             minWidth: 46,
             textAlign: "right",
-            font: "700 13px system-ui,sans-serif",
+            font: `700 13px ${"var(--ot-readout-font)"}`,
             fontVariantNumeric: "tabular-nums",
-            color: hasTrains ? "#1c2024" : "#9aa1a9",
+            color: hasTrains ? "var(--ot-con-accent)" : "var(--ot-con-ink-dim)",
           }}
         >
           {hasTrains ? fmtCount(l.ridership) : "—"}
@@ -126,7 +126,7 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
           or, with no trains, a quiet amber "connect me" nudge (never the old screaming red). */}
       <div
         data-testid={`line-meta-${l.lineId}`}
-        style={{ marginLeft: 33, marginTop: 3, font: "11px system-ui,sans-serif", color: "#9aa1a9", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+        style={{ marginLeft: 33, marginTop: 3, font: "11px system-ui,sans-serif", color: "var(--ot-con-ink-dim)", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
       >
         {pip ? (
           <>
@@ -139,11 +139,11 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
                 </span>
               )}
             </span>
-            <span style={{ color: "#cfd4da" }}>·</span>
+            <span style={{ color: "rgba(255,255,255,.2)" }}>·</span>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{freq}</span>
           </>
         ) : (
-          <span style={{ color: "#b88a00", fontWeight: 500 }}>{l.stops} stops · no trains yet</span>
+          <span style={{ color: "var(--ot-con-amber)", fontWeight: 500 }}>{l.stops} stops · no trains yet</span>
         )}
       </div>
 
@@ -177,17 +177,17 @@ function LineList() {
   return (
     <div id="line-list" data-testid="line-list" style={LIST_STYLE}>
       <div style={{ display: "flex", alignItems: "baseline", padding: "0 8px 6px" }}>
-        <span style={{ fontWeight: 700 }}>Lines</span>
-        {services > 0 && <span style={{ marginLeft: 6, color: "#9aa1a9", fontSize: 11 }}>{services}</span>}
+        <span style={{ fontWeight: 700, color: "var(--ot-con-ink)" }}>Lines</span>
+        {services > 0 && <span style={{ marginLeft: 6, color: "var(--ot-con-ink-dim)", fontSize: 11 }}>{services}</span>}
         {bareTrack > 0 && (
-          <span title="Bare track laid but unserved — click the grey track on the map and assign trains to run a service." style={{ marginLeft: 6, color: "#8a93a3", fontSize: 11 }}>
+          <span title="Bare track laid but unserved — click the grey track on the map and assign trains to run a service." style={{ marginLeft: 6, color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
             +{bareTrack} track
           </span>
         )}
-        <span style={{ marginLeft: "auto", color: "#b3b9c0", fontSize: 10, letterSpacing: 0.3 }}>riders</span>
+        <span style={{ marginLeft: "auto", color: "var(--ot-con-ink-dim)", fontSize: 10, letterSpacing: 0.3 }}>riders</span>
       </div>
       {lines.length === 0 ? (
-        <div style={{ color: "#7a818a", padding: "0 8px" }}>
+        <div style={{ color: "var(--ot-con-ink-dim)", padding: "0 8px" }}>
           {bareTrack > 0
             ? "Grey track is laid but unserved — click it on the map, then assign trains to run a coloured service."
             : "No lines yet — lay one with the ╱ Track tool."}
@@ -248,21 +248,18 @@ function Editor({ l }: { l: PerLine }) {
         {header}
         <button
           data-testid="assign-trainset"
+          className="ot-key on"
           onClick={() => game.assignTrainset(id, 2)}
           style={{
             width: "100%",
             padding: "8px",
-            border: 0,
-            borderRadius: "7px",
-            background: "#0072b2",
-            color: "#fff",
             font: "600 13px system-ui",
             cursor: "pointer",
           }}
         >
           ▶ Assign trainset
         </button>
-        <div style={{ color: "#7a818a", marginTop: "6px" }}>Adds trains and auto-suggests a headway.</div>
+        <div style={{ color: "var(--ot-con-ink-dim)", marginTop: "6px" }}>Adds trains and auto-suggests a headway.</div>
       </div>
     );
   }
@@ -284,7 +281,15 @@ function Editor({ l }: { l: PerLine }) {
           min="1"
           max="8"
           defaultValue={l.trains}
-          style={{ width: "56px", padding: "4px" }}
+          style={{
+            width: "56px",
+            padding: "4px",
+            background: "#14171c",
+            border: "1px solid rgba(255,255,255,.12)",
+            borderRadius: 6,
+            color: "var(--ot-con-accent)",
+            fontFamily: "var(--ot-readout-font)",
+          }}
         />
       </label>
       <label style={{ display: "block", marginTop: "10px" }}>
@@ -301,7 +306,7 @@ function Editor({ l }: { l: PerLine }) {
         defaultValue={mins}
         style={{ width: "100%" }}
       />
-      <div style={{ color: "#7a818a", margin: "4px 0 10px" }}>Capacity × frequency are your two levers.</div>
+      <div style={{ color: "var(--ot-con-ink-dim)", margin: "4px 0 10px" }}>Capacity × frequency are your two levers.</div>
 
       {/* Extend the line from either terminus: arms the line tool with a draft seeded at that
           end (the ghost takes the line's colour). Loop lines have no termini — no buttons. */}
@@ -313,28 +318,24 @@ function Editor({ l }: { l: PerLine }) {
         const endBtn: CSSProperties = {
           flex: 1,
           padding: "5px 4px",
-          border: "1px solid #d7dade",
-          borderRadius: 7,
-          background: "#fff",
           font: "600 11px system-ui",
           cursor: "pointer",
-          color: "#1c2024",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
         };
         return (
           <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontWeight: 600, marginBottom: "4px" }}>Extend line</div>
+            <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Extend line</div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button data-testid="extend-head" style={endBtn} title={`Extend from ${name(lv.stops[0])}`} onClick={() => game.startExtend(id, true)}>
+              <button className="ot-key" data-testid="extend-head" style={endBtn} title={`Extend from ${name(lv.stops[0])}`} onClick={() => game.startExtend(id, true)}>
                 ⇠ {name(lv.stops[0])}
               </button>
-              <button data-testid="extend-tail" style={endBtn} title={`Extend from ${name(lv.stops[lv.stops.length - 1])}`} onClick={() => game.startExtend(id, false)}>
+              <button className="ot-key" data-testid="extend-tail" style={endBtn} title={`Extend from ${name(lv.stops[lv.stops.length - 1])}`} onClick={() => game.startExtend(id, false)}>
                 {name(lv.stops[lv.stops.length - 1])} ⇢
               </button>
             </div>
-            <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 3 }}>
+            <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 3 }}>
               …or press a terminus with the ╱ Line tool. Right-click a station to add it mid-line.
             </div>
           </div>
@@ -346,7 +347,7 @@ function Editor({ l }: { l: PerLine }) {
           headway). Index = AssignTrainset.spec; the sim's clamp keeps anything sane. */}
       {l.mode === 3 && (
         <div data-testid="aircraft-picker" style={{ marginBottom: "10px" }}>
-          <div style={{ fontWeight: 600, marginBottom: "4px" }}>Aircraft</div>
+          <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Aircraft</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {AIR_ROSTER.map((a, i) => {
               const sel = (l.trainsetSpec ?? 0) === i;
@@ -361,16 +362,16 @@ function Editor({ l }: { l: PerLine }) {
                     justifyContent: "space-between",
                     gap: 8,
                     padding: "5px 8px",
-                    border: sel ? "1px solid #0072b2" : "1px solid #d7dade",
+                    border: sel ? "1px solid var(--ot-con-accent)" : "1px solid rgba(255,255,255,.08)",
                     borderRadius: 7,
-                    background: sel ? "#eef4fb" : "#fff",
+                    background: sel ? "rgba(56,198,220,.14)" : "rgba(255,255,255,.04)",
                     font: "600 12px system-ui",
-                    color: "#1c2024",
+                    color: sel ? "#fff" : "var(--ot-con-ink)",
                     cursor: "pointer",
                   }}
                 >
                   <span>{sel ? "✓ " : ""}{a.name}</span>
-                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{a.capacity} seats · {a.turnMin} min turn</span>
+                  <span style={{ color: "var(--ot-con-ink-dim)", fontWeight: 400 }}>{a.capacity} seats · {a.turnMin} min turn</span>
                 </button>
               );
             })}
@@ -383,7 +384,7 @@ function Editor({ l }: { l: PerLine }) {
           Express is fast + cheap but light. Index = AssignTrainset.spec; the sim clamps anything sane. */}
       {l.mode === 0 && (
         <div data-testid="model-picker" style={{ marginBottom: "10px" }}>
-          <div style={{ fontWeight: 600, marginBottom: "4px" }}>Train model</div>
+          <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Train model</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {RAIL_ROSTER.map((m, i) => {
               const sel = (l.trainsetSpec ?? 0) === i;
@@ -398,16 +399,16 @@ function Editor({ l }: { l: PerLine }) {
                     justifyContent: "space-between",
                     gap: 8,
                     padding: "5px 8px",
-                    border: sel ? "1px solid #0072b2" : "1px solid #d7dade",
+                    border: sel ? "1px solid var(--ot-con-accent)" : "1px solid rgba(255,255,255,.08)",
                     borderRadius: 7,
-                    background: sel ? "#eef4fb" : "#fff",
+                    background: sel ? "rgba(56,198,220,.14)" : "rgba(255,255,255,.04)",
                     font: "600 12px system-ui",
-                    color: "#1c2024",
+                    color: sel ? "#fff" : "var(--ot-con-ink)",
                     cursor: "pointer",
                   }}
                 >
                   <span>{sel ? "✓ " : ""}{m.name}</span>
-                  <span style={{ color: "#7a818a", fontWeight: 400 }}>{railCarCount(m.capacity)} cars · {m.capacity} cap · {m.kmh} km/h · ${m.costM}M</span>
+                  <span style={{ color: "var(--ot-con-ink-dim)", fontWeight: 400 }}>{railCarCount(m.capacity)} cars · {m.capacity} cap · {m.kmh} km/h · ${m.costM}M</span>
                 </button>
               );
             })}
@@ -416,9 +417,9 @@ function Editor({ l }: { l: PerLine }) {
       )}
 
       <div data-testid="line-performance" style={{ marginBottom: "10px" }}>
-        <div style={{ fontWeight: 600, marginBottom: "4px" }}>Performance</div>
+        <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Performance</div>
         <div data-testid="line-load" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ color: "#7a818a" }}>Load</span>
+          <span style={{ color: "var(--ot-con-ink-dim)" }}>Load</span>
           <b style={{ color: pip.color }}>
             {pip.glyph} {pip.pct}% · {pip.word}
           </b>
@@ -429,7 +430,7 @@ function Editor({ l }: { l: PerLine }) {
           const sat = lineSatisfaction(l, game.lineQueue(l.lineId));
           return sat ? (
             <div data-testid="line-satisfaction" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "3px" }}>
-              <span style={{ color: "#7a818a" }}>Satisfaction</span>
+              <span style={{ color: "var(--ot-con-ink-dim)" }}>Satisfaction</span>
               <b style={{ color: sat.color }}>
                 {sat.glyph} {sat.score}% · {sat.word}
               </b>
@@ -442,7 +443,7 @@ function Editor({ l }: { l: PerLine }) {
 
       {isRail && (
         <div>
-          <div style={{ fontWeight: 600, marginBottom: "4px" }}>Track</div>
+          <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Track</div>
           <div style={{ display: "flex", gap: "4px" }}>
             {(["Surface", "Elevated", "Tunnel"] as const).map((label, m) => {
               const on = allMode === m;
@@ -450,15 +451,13 @@ function Editor({ l }: { l: PerLine }) {
                 <button
                   key={m}
                   data-testid={`mode-${m}`}
+                  className={`ot-key ${on ? "on" : ""}`}
                   onClick={() => game.setLineMode(id, m)}
                   style={{
                     flex: 1,
                     padding: "5px",
-                    borderRadius: "6px",
-                    border: "1px solid #d7dade",
                     cursor: "pointer",
                     font: "600 12px system-ui",
-                    ...(on ? { background: "#0072b2", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
                   }}
                 >
                   {label}
@@ -477,16 +476,14 @@ function Editor({ l }: { l: PerLine }) {
                   <button
                     key={t}
                     data-testid={`track-${t}`}
+                    className={`ot-key ${on ? "on" : ""}`}
                     title={t === 1 ? "Single track: ~half the cost, lower capacity (trains meet at stations)" : "Double track: full capacity"}
                     onClick={() => game.setLineTrack(id, t)}
                     style={{
                       flex: 1,
                       padding: "5px",
-                      borderRadius: "6px",
-                      border: "1px solid #d7dade",
                       cursor: "pointer",
                       font: "600 12px system-ui",
-                      ...(on ? { background: "#5a3e85", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
                     }}
                   >
                     {t === 1 ? "Single track" : "Double track"}
@@ -495,7 +492,7 @@ function Editor({ l }: { l: PerLine }) {
               })}
             </div>
           ) : (
-            <div style={{ marginTop: "4px", color: "#7a818a", fontSize: 11 }}>⚊ Single track — opposing carts meet at stations.</div>
+            <div style={{ marginTop: "4px", color: "var(--ot-con-ink-dim)", fontSize: 11 }}>⚊ Single track — opposing carts meet at stations.</div>
           )}
         </div>
       )}
@@ -507,21 +504,18 @@ function Editor({ l }: { l: PerLine }) {
         if (!blv || blv.removed || !blv.branchTermini || blv.branchTermini.length === 0) return null;
         const bsv = game.bridge.stationsView();
         const bn = (sid: number) => bsv[sid]?.name || `Station ${sid + 1}`;
-        const sBtn = (on: boolean): CSSProperties => ({
+        const sBtn: CSSProperties = {
           width: 22,
           padding: "3px 0",
-          borderRadius: 5,
-          border: "1px solid #d7dade",
           cursor: "pointer",
           font: "600 11px system-ui",
-          ...(on ? { background: "#0072b2", color: "#fff" } : { background: "#fff", color: "#1c2024" }),
-        });
+        };
         return (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontWeight: 600, marginBottom: "4px" }}>Branches</div>
+            <div style={{ fontWeight: 600, marginBottom: "4px", color: "var(--ot-con-ink)" }}>Branches</div>
             {blv.branchTermini.map((term, bi) => (
               <div key={bi} data-testid={`branch-${bi}`} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`Branch to ${bn(term)}`}>
+                <span style={{ flex: 1, fontSize: 12, color: "var(--ot-con-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`Branch to ${bn(term)}`}>
                   ⑂ → {bn(term)}
                 </span>
                 {isRail &&
@@ -529,18 +523,20 @@ function Editor({ l }: { l: PerLine }) {
                     <button
                       key={m}
                       data-testid={`branch-${bi}-mode-${m}`}
+                      className={`ot-key ${blv.branchModes[bi] === m ? "on" : ""}`}
                       title={["Surface", "Elevated", "Tunnel"][m]}
                       onClick={() => game.setBranchMode(id, bi, m)}
-                      style={sBtn(blv.branchModes[bi] === m)}
+                      style={sBtn}
                     >
                       {lbl}
                     </button>
                   ))}
                 <button
                   data-testid={`branch-${bi}-remove`}
+                  className="ot-key"
                   title="Remove this branch"
                   onClick={() => game.removeBranch(id, bi)}
-                  style={{ width: 22, padding: "3px 0", borderRadius: 5, border: "1px solid #e3b7b7", background: "#fff", color: "#c0392b", cursor: "pointer", font: "600 12px system-ui" }}
+                  style={{ width: 22, padding: "3px 0", cursor: "pointer", font: "600 12px system-ui", border: "1px solid var(--ot-con-red)", color: "var(--ot-con-red)" }}
                 >
                   ×
                 </button>
@@ -552,12 +548,12 @@ function Editor({ l }: { l: PerLine }) {
 
       <div data-testid="line-impact" style={{ marginTop: "8px", fontSize: "12px" }}>
         {l.crossesWater && (
-          <div data-testid="water-warning" style={{ color: "#d62828", fontWeight: 600, marginBottom: "4px" }}>
+          <div data-testid="water-warning" style={{ color: "var(--ot-con-red)", fontWeight: 600, marginBottom: "4px" }}>
             ⚠ Surface track crosses water — the line is parked (no trains run) until you Elevate or Tunnel.
           </div>
         )}
-        {tight && <div style={{ color: "#e69f00" }}>⤳ Tight curves — trains slow here.</div>}
-        <div style={{ color: "#7a818a" }}>
+        {tight && <div style={{ color: "var(--ot-con-amber)" }}>⤳ Tight curves — trains slow here.</div>}
+        <div style={{ color: "var(--ot-con-ink-dim)" }}>
           Build impact: <b>{Math.round(l.disruption)}</b> · Cost:{" "}
           {stats.buildGoldDivisor > 0 ? (
             <b>{Math.round(l.capitalCost / stats.buildGoldDivisor)}⬢</b>
@@ -587,31 +583,27 @@ function StationEditor({ id }: { id: number }) {
   const btn: CSSProperties = {
     width: 26,
     height: 26,
-    border: "1px solid #d7dade",
-    borderRadius: 7,
-    background: "#fff",
     font: "700 15px system-ui",
-    color: "#1c2024",
     cursor: "pointer",
     lineHeight: "1",
   };
   return (
     <div data-testid="station-editor" style={EDITOR_STYLE}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>{game.stationName(id)}</div>
+      <div style={{ fontWeight: 700, marginBottom: 8, color: "var(--ot-con-ink)" }}>{game.stationName(id)}</div>
       <div data-testid="platform-stepper" style={{ marginBottom: 4 }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Platforms</div>
+        <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--ot-con-ink)" }}>Platforms</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button data-testid="platform-minus" style={{ ...btn, opacity: k <= 1 ? 0.4 : 1 }} disabled={k <= 1} onClick={() => step(k - 1)}>
+          <button data-testid="platform-minus" className="ot-key" style={{ ...btn, opacity: k <= 1 ? 0.4 : 1 }} disabled={k <= 1} onClick={() => step(k - 1)}>
             −
           </button>
-          <b data-testid="platform-count" style={{ minWidth: 16, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+          <b data-testid="platform-count" style={{ minWidth: 16, textAlign: "center", fontVariantNumeric: "tabular-nums", color: "var(--ot-con-accent)", fontFamily: "var(--ot-readout-font)" }}>
             {k}
           </b>
-          <button data-testid="platform-plus" style={{ ...btn, opacity: k >= 4 ? 0.4 : 1 }} disabled={k >= 4} onClick={() => step(k + 1)}>
+          <button data-testid="platform-plus" className="ot-key" style={{ ...btn, opacity: k >= 4 ? 0.4 : 1 }} disabled={k >= 4} onClick={() => step(k + 1)}>
             +
           </button>
         </div>
-        <div style={{ color: "#7a818a", fontSize: 11, marginTop: 5 }}>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 5 }}>
           {k} berth{k > 1 ? "s" : ""} — up to {k} train{k > 1 ? "s" : ""} dwell here at once, so followers don't queue behind a stopped one.
         </div>
       </div>

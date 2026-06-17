@@ -54,18 +54,25 @@ export function DraftControls() {
         pointerEvents: "none", // the card frame ignores clicks; only the buttons opt back in
       }}
     >
-      {/* Live summary pill — floats with the route head. */}
+      {/* Live summary pill — floats with the route head. Diegetic readout strip: brushed-graphite
+          well by default; lights danger-red only when the route is invalid / underfunded (semantic). */}
       <div
+        className={p.invalid || short ? undefined : "ot-console"}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 6,
           padding: "5px 10px",
           borderRadius: 999,
-          background: p.invalid || short ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
+          ...(p.invalid || short
+            ? {
+                background: "var(--ot-con-red)",
+                border: "1px solid var(--ot-con-edge)",
+                boxShadow: "var(--ot-con-elev)",
+              }
+            : null),
           color: "#fff",
           font: "600 12px system-ui,sans-serif",
-          boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.3))",
           whiteSpace: "nowrap",
         }}
       >
@@ -88,6 +95,7 @@ export function DraftControls() {
       <div style={{ display: "flex", gap: 6, pointerEvents: "auto" }}>
         <button
           data-testid="draft-confirm"
+          className={ready ? "ot-key on-good" : "ot-key"}
           onClick={() => game.commitDraft()}
           disabled={!ready}
           title={
@@ -104,31 +112,25 @@ export function DraftControls() {
                     : "Add at least 2 stops"
           }
           style={{
-            border: 0,
             borderRadius: 8,
             padding: "6px 12px",
             font: "700 13px system-ui,sans-serif",
             cursor: ready ? "pointer" : "not-allowed",
-            background: ready ? "linear-gradient(180deg,#1ab560,#0a9c4c)" : "rgba(120,124,130,.85)",
-            color: "#fff",
-            boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.3))",
+            ...(ready ? null : { opacity: 0.45, filter: "saturate(0.4)" }),
           }}
         >
           ✓ {extending ? "Extend" : "Place"}
         </button>
         <button
           data-testid="draft-cancel"
+          className="ot-key"
           onClick={() => game.stopBuilding()}
           title="Cancel (Esc)"
           style={{
-            border: 0,
             borderRadius: 8,
             padding: "6px 10px",
             font: "700 13px system-ui,sans-serif",
             cursor: "pointer",
-            background: "rgba(255,255,255,.92)",
-            color: "#1c2024",
-            boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.3))",
           }}
         >
           ✕

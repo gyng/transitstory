@@ -42,10 +42,10 @@ export function FollowCard() {
           <b data-testid="follow-name">{gaveUp ? "😞" : "🏁"} {prev?.name ?? "Commuter"}</b>
           <Stop onClick={() => game.clearFollowed()} />
         </div>
-        <div data-testid="follow-status" style={{ fontWeight: 600, marginTop: 3, color: gaveUp ? "var(--ot-gauge-bad,#d62828)" : "#009e73" }}>
+        <div data-testid="follow-status" style={{ fontWeight: 600, marginTop: 3, color: gaveUp ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-gauge-good,#009e73)" }}>
           {gaveUp ? `gave up waiting at ${prev?.at}` : `✅ arrived at ${prev?.dest ?? "their destination"}`}
         </div>
-        <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 3, lineHeight: 1.3 }}>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 3, lineHeight: 1.3 }}>
           {gaveUp
             ? "Service was too infrequent — a shorter headway or more capacity would keep them."
             : "They'll set off again on their next commute."}
@@ -77,11 +77,11 @@ export function FollowCard() {
           <Stop onClick={() => game.clearFollowed()} />
         </div>
         {(f.home || f.work) && (
-          <div style={{ color: "#5a626b", fontSize: 11, margin: "2px 0 5px" }}>
-            🏠 {f.home || "—"} <span style={{ color: "#9aa3ad" }}>→</span> 🏢 {f.work || "—"}
+          <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "2px 0 5px" }}>
+            🏠 {f.home || "—"} <span style={{ color: "var(--ot-con-ink-dim)" }}>→</span> 🏢 {f.work || "—"}
           </div>
         )}
-        <div data-testid="follow-status" style={{ fontWeight: 600, color: f.onboard ? "#0a8fcc" : "#e69f00" }}>
+        <div data-testid="follow-status" style={{ fontWeight: 600, color: f.onboard ? "var(--ot-con-accent)" : "var(--ot-con-amber)" }}>
           {status}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, margin: "5px 0" }}>
@@ -89,11 +89,11 @@ export function FollowCard() {
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, opacity: i < f.leg ? 0.4 : 1, fontSize: 11.5 }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, flex: "none", background: hex(leg.lineColor) }} />
               <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{leg.lineName}</span>
-              <span style={{ color: "#9aa3ad", whiteSpace: "nowrap" }}>{i === f.leg ? "● now" : `→ ${leg.alight}`}</span>
+              <span style={{ color: "var(--ot-con-ink-dim)", whiteSpace: "nowrap" }}>{i === f.leg ? "● now" : `→ ${leg.alight}`}</span>
             </div>
           ))}
         </div>
-        <div style={{ color: "#9aa3ad", fontSize: 11 }}>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
           → {f.dest} · trip so far {elapsed}
         </div>
       </Card>
@@ -127,6 +127,7 @@ function Card({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-testid="follow-card"
+      className="ot-console"
       style={{
         position: "fixed",
         top: 52,
@@ -135,11 +136,7 @@ function Card({ children }: { children: React.ReactNode }) {
         zIndex: 14,
         width: 280,
         padding: "10px 13px",
-        borderRadius: 11,
-        background: "rgba(255,255,255,.97)",
-        boxShadow: "0 4px 18px rgba(0,0,0,.22)",
         font: "12px system-ui,sans-serif",
-        color: "#1c2024",
       }}
     >
       {children}
@@ -151,9 +148,10 @@ function Stop({ onClick }: { onClick: () => void }) {
   return (
     <button
       data-testid="follow-stop"
+      className="ot-key"
       onClick={onClick}
       title="Stop following"
-      style={{ border: 0, background: "none", color: "#9aa3ad", cursor: "pointer", font: "700 12px system-ui" }}
+      style={{ cursor: "pointer", font: "700 12px system-ui", padding: "3px 8px" }}
     >
       ✕ stop
     </button>

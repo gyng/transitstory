@@ -44,6 +44,7 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
     <>
       <div
         data-testid="objectives"
+        className="ot-console"
         style={{
           position: "fixed",
           top: 56,
@@ -51,11 +52,7 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
           zIndex: 9,
           width: 220,
           padding: "10px 12px",
-          borderRadius: 10,
-          background: "rgba(255,255,255,.95)",
-          boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
           font: "13px system-ui,sans-serif",
-          color: "#1c2024",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -64,7 +61,7 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
             data-testid="objective-status"
             style={{
               fontSize: 11,
-              color: status === "won" ? "var(--ot-gauge-good,#009e73)" : status === "lost" ? "var(--ot-gauge-bad,#d62828)" : "#7a818a",
+              color: status === "won" ? "var(--ot-gauge-good,#009e73)" : status === "lost" ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink-dim)",
             }}
           >
             {status === "active" ? "in progress" : status}
@@ -75,35 +72,32 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
         {status !== "active" && (
           <button
             data-testid="objective-retry"
+            className="ot-key"
             onClick={() => window.location.reload()}
             style={{
               width: "100%",
               margin: "6px 0 2px",
               padding: "5px 0",
-              border: "1px solid #d7dade",
-              borderRadius: 7,
-              background: "#fff",
               font: "600 12px system-ui",
               cursor: "pointer",
-              color: "#1c2024",
             }}
           >
             ↻ {status === "won" ? "Play it again" : "Retry the challenge"}
           </button>
         )}
-        <div style={{ color: "#7a818a", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
         {e.goals.map((g, i) => (
           <div key={i} data-testid={`objective-goal-${g.goal.kind}`} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-            <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "#1c2024" }}>
+            <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-ink)" }}>
               {g.met ? "✓" : "○"} {g.goal.label}
             </span>
-            <span data-testid={`objective-goal-${g.goal.kind}-current`} style={{ color: "#7a818a", fontVariantNumeric: "tabular-nums" }}>
+            <span data-testid={`objective-goal-${g.goal.kind}-current`} style={{ color: "var(--ot-con-ink-dim)", fontVariantNumeric: "tabular-nums" }}>
               {Math.round(g.current)}/{g.goal.target}
             </span>
           </div>
         ))}
         {scenario.deadlineMs !== undefined && status === "active" && (
-          <div style={{ color: "#7a818a", fontSize: 11, marginTop: 6 }}>
+          <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 6 }}>
             {/* Deadlines are SESSION time (sim-ms ≈ wall-ms at 1×), not in-game clock minutes —
                 disambiguated since every other duration now reads in clock units. */}
             ⏳ {Math.max(0, Math.ceil((scenario.deadlineMs - stats.simClockMs) / 60_000))} min left (real time)
@@ -127,36 +121,31 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
           }}
         >
           <div
+            className="ot-console"
             style={{
               padding: "26px 34px",
-              borderRadius: 16,
-              background: "#fff",
               textAlign: "center",
-              boxShadow: "0 12px 40px rgba(0,0,0,.4)",
               maxWidth: 360,
             }}
           >
             <div style={{ fontSize: 40 }}>{status === "won" ? "🎉" : "⏱️"}</div>
-            <h2 style={{ margin: "8px 0 4px", color: status === "won" ? "#009e73" : "#d62828" }}>
+            <h2 style={{ margin: "8px 0 4px", color: status === "won" ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)" }}>
               {status === "won" ? `${scenario.title} complete!` : "Challenge failed"}
             </h2>
-            <p style={{ margin: "0 0 14px", color: "#5a626b", fontSize: 14 }}>
+            <p style={{ margin: "0 0 14px", color: "var(--ot-con-ink-dim)", fontSize: 14 }}>
               {status === "won" ? "Every objective met. Keep building, or start a fresh challenge." : e.failReason ?? "Better luck next time."}
             </p>
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
               <button
                 data-testid="banner-retry"
+                // On a loss the retry is the primary action (lit key); on a win it's the encore (plain key).
+                className={`ot-key ${status === "lost" ? "on" : ""}`}
                 onClick={(ev) => {
                   ev.stopPropagation();
                   window.location.reload();
                 }}
                 style={{
                   padding: "9px 22px",
-                  border: 0,
-                  borderRadius: 9,
-                  // On a loss the retry is the primary action; on a win it's the encore.
-                  background: status === "lost" ? "linear-gradient(180deg,#1ab6f0,#0a8fcc)" : "#eef1f4",
-                  color: status === "lost" ? "#fff" : "#1c2024",
                   font: "700 14px system-ui",
                   cursor: "pointer",
                 }}
@@ -164,12 +153,9 @@ export function ObjectivePanel({ scenario }: { scenario: Scenario }) {
                 ↻ {status === "won" ? "Play again" : "Retry"}
               </button>
               <button
+                className={`ot-key ${status === "won" ? "on" : ""}`}
                 style={{
                   padding: "9px 22px",
-                  border: 0,
-                  borderRadius: 9,
-                  background: status === "won" ? "linear-gradient(180deg,#1ab6f0,#0a8fcc)" : "#eef1f4",
-                  color: status === "won" ? "#fff" : "#1c2024",
                   font: "700 14px system-ui",
                   cursor: "pointer",
                 }}

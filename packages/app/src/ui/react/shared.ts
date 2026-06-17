@@ -291,6 +291,7 @@ export function fmtMoney(d: number): string {
 }
 
 // Shared inline-style fragments (token-driven; mirror the old vanilla chrome 1:1).
+// #28 diegetic console theme: panels are brushed-graphite console faces (see .ot-console in styles.css).
 export const PANEL_STYLE =
-  "position:fixed;background:rgba(255,255,255,.96);border-radius:10px;" +
-  "box-shadow:var(--ot-shadow);z-index:9;font:13px system-ui,sans-serif;color:#1c2024";
+  "position:fixed;background:var(--ot-con-panel);border:1px solid var(--ot-con-edge);border-radius:13px;" +
+  "box-shadow:var(--ot-con-elev);z-index:9;font:13px system-ui,sans-serif;color:var(--ot-con-ink)";

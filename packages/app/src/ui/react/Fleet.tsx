@@ -8,6 +8,7 @@ import { useGame, useGameUI, useStats } from "./GameContext";
 import { RAIL_ROSTER, hex, modeIcon } from "./shared";
 import type { PerLine } from "../../types";
 
+// The FLEET panel face — a brushed-graphite console (.ot-console owns bg/border/shadow/radius/text).
 const PANEL: React.CSSProperties = {
   position: "fixed",
   top: 56,
@@ -15,12 +16,8 @@ const PANEL: React.CSSProperties = {
   width: 280,
   maxHeight: "70vh",
   overflowY: "auto",
-  background: "rgba(255,255,255,.97)",
-  borderRadius: 10,
-  boxShadow: "var(--ot-shadow)",
   zIndex: 9,
   font: "13px system-ui,sans-serif",
-  color: "#1c2024",
 };
 
 function loadColor(lf: number): string {
@@ -37,7 +34,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
   const lf = l.loadFactor ?? 0;
   const setCount = (n: number) => game.assignTrainset(l.lineId, Math.max(1, Math.min(24, n)));
   return (
-    <div data-testid={`fleet-row-${l.lineId}`} style={{ padding: "8px 10px", borderTop: "1px solid #eef0f2" }}>
+    <div data-testid={`fleet-row-${l.lineId}`} style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <span style={{ width: 22, height: 16, borderRadius: 4, background: hex(l.color), flex: "0 0 auto" }} />
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }} title={l.name}>
@@ -46,23 +43,24 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
         {hasTrains ? (
           // Inline fleet-size editor — build/edit trainsets directly without opening the line.
           <span style={{ display: "flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}>
-            <button data-testid={`fleet-dec-${l.lineId}`} onClick={() => setCount(l.trains - 1)} style={stepBtn}>−</button>
+            <button data-testid={`fleet-dec-${l.lineId}`} className="ot-key" onClick={() => setCount(l.trains - 1)} style={stepBtn}>−</button>
             <span data-testid={`fleet-count-${l.lineId}`} style={{ minWidth: 28, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{l.trains}🚆</span>
-            <button data-testid={`fleet-inc-${l.lineId}`} onClick={() => setCount(l.trains + 1)} style={stepBtn}>+</button>
+            <button data-testid={`fleet-inc-${l.lineId}`} className="ot-key" onClick={() => setCount(l.trains + 1)} style={stepBtn}>+</button>
           </span>
         ) : (
-          <button data-testid={`fleet-assign-${l.lineId}`} onClick={() => setCount(2)} style={{ ...stepBtn, width: "auto", padding: "2px 8px" }}>+ trains</button>
+          <button data-testid={`fleet-assign-${l.lineId}`} className="ot-key" onClick={() => setCount(2)} style={{ ...stepBtn, width: "auto", padding: "2px 8px" }}>+ trains</button>
         )}
       </div>
-      <div style={{ marginLeft: 29, marginTop: 4, display: "flex", alignItems: "center", gap: 8, color: "#7a818a", fontSize: 11 }}>
+      <div style={{ marginLeft: 29, marginTop: 4, display: "flex", alignItems: "center", gap: 8, color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
         <span>{modelName}</span>
-        <span style={{ color: "#cfd4da" }}>·</span>
+        <span style={{ color: "rgba(255,255,255,.18)" }}>·</span>
         <span>{Math.max(1, Math.round(l.headwayMs / 60000))} min</span>
         {hasTrains && (
           <>
-            <span style={{ color: "#cfd4da" }}>·</span>
-            {/* Live load bar — fills + colours with the fleet's mean load while running (view-mode status). */}
-            <span style={{ flex: 1, height: 6, background: "#eceef1", borderRadius: 3, overflow: "hidden" }} title={`Load ${Math.round(lf * 100)}%`}>
+            <span style={{ color: "rgba(255,255,255,.18)" }}>·</span>
+            {/* Live load bar — fills + colours with the fleet's mean load while running (view-mode status).
+                Track is a recessed well; the fill keeps its semantic load colour. */}
+            <span style={{ flex: 1, height: 6, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 3, overflow: "hidden" }} title={`Load ${Math.round(lf * 100)}%`}>
               <span data-testid={`fleet-load-${l.lineId}`} style={{ display: "block", width: `${Math.min(100, Math.round(lf * 100))}%`, height: "100%", background: loadColor(lf), opacity: running ? 1 : 0.45 }} />
             </span>
           </>
@@ -75,16 +73,13 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
             <button
               key={m.name}
               data-testid={`fleet-model-${l.lineId}-${i}`}
+              className={`ot-key ${spec === i ? "on" : ""}`}
               title={`${m.name} — ${m.capacity} cap · ${m.kmh} km/h · $${m.costM}M`}
               onClick={() => game.setAircraft(l.lineId, i)}
               style={{
                 flex: 1,
                 padding: "3px 0",
-                borderRadius: 6,
-                border: spec === i ? "1px solid #0072b2" : "1px solid #d7dade",
-                background: spec === i ? "#eef4fb" : "#fff",
                 font: "600 11px system-ui",
-                color: "#1c2024",
                 cursor: "pointer",
               }}
             >
@@ -97,14 +92,11 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
   );
 }
 
+// Layout-only for the ± / "+ trains" KEYS; the raised-button look comes from .ot-key (size/font stay here).
 const stepBtn: React.CSSProperties = {
   width: 22,
   height: 22,
-  borderRadius: 6,
-  border: "1px solid #d7dade",
-  background: "#fff",
   font: "700 14px system-ui",
-  color: "#1c2024",
   cursor: "pointer",
   lineHeight: 1,
 };
@@ -121,6 +113,7 @@ export function Fleet() {
     <>
       <button
         data-testid="fleet-toggle"
+        className={`ot-key ${open ? "on" : ""}`}
         onClick={() => setOpen((o) => !o)}
         title="Fleet — view, build + edit every line's trainsets, with live status"
         style={{
@@ -129,25 +122,20 @@ export function Fleet() {
           right: 14,
           zIndex: 10,
           padding: "5px 11px",
-          borderRadius: 8,
-          border: "0",
-          background: open ? "#0072b2" : "#1c2024",
-          color: "#fff",
           font: "700 13px system-ui,sans-serif",
           cursor: "pointer",
-          boxShadow: "var(--ot-shadow)",
         }}
       >
         🚆 Fleet{totalTrains > 0 ? ` · ${totalTrains}` : ""}
       </button>
       {open && (
-        <div data-testid="fleet-panel" style={PANEL}>
-          <div style={{ padding: "10px 12px 6px", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div data-testid="fleet-panel" className="ot-console" style={PANEL}>
+          <div style={{ padding: "10px 12px 6px", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--ot-con-ink)" }}>
             <span>🚆 Fleet {running ? "· live" : ""}</span>
-            <button data-testid="fleet-close" onClick={() => setOpen(false)} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 16, color: "#9aa1a9" }}>×</button>
+            <button data-testid="fleet-close" onClick={() => setOpen(false)} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 16, color: "var(--ot-con-ink-dim)" }}>×</button>
           </div>
           {lines.length === 0 ? (
-            <div style={{ padding: "4px 12px 14px", color: "#9aa1a9", fontSize: 12 }}>Draw a line (≥ 2 stops), then assign trains here.</div>
+            <div style={{ padding: "4px 12px 14px", color: "var(--ot-con-ink-dim)", fontSize: 12 }}>Draw a line (≥ 2 stops), then assign trains here.</div>
           ) : (
             <div style={{ paddingBottom: 8 }}>
               {lines.map((l) => (
@@ -155,7 +143,7 @@ export function Fleet() {
               ))}
             </div>
           )}
-          <div style={{ padding: "6px 12px 12px", color: "#9aa3ad", fontSize: 11, lineHeight: 1.35, borderTop: "1px solid #eceef1" }}>
+          <div style={{ padding: "6px 12px 12px", color: "var(--ot-con-ink-dim)", fontSize: 11, lineHeight: 1.35, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             {ui.ruleset === "arcadia" ? "Heavier carts haul more; express carts run faster." : "± sets fleet size · pick a model · the bar shows live load."}
           </div>
         </div>

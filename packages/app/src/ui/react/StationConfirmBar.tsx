@@ -5,18 +5,17 @@
 import type { CSSProperties } from "react";
 import { useGame, useGameUI } from "./GameContext";
 
+// Layout-only for the .ot-key console buttons — the raised-key look (bg/border/shadow/colour) is
+// owned by the .ot-key class (#28 diegetic console theme); we only set sizing + flex here.
 const BTN: CSSProperties = {
   pointerEvents: "auto",
-  border: 0,
-  borderRadius: 9,
   padding: "8px 14px",
-  font: "700 13px system-ui",
   cursor: "pointer",
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
 };
-const KEY: CSSProperties = { font: "600 11px system-ui", opacity: 0.7 };
+const KEY: CSSProperties = { font: `600 11px var(--ot-readout-font)`, opacity: 0.75 };
 
 export function StationConfirmBar() {
   const game = useGame();
@@ -25,6 +24,7 @@ export function StationConfirmBar() {
   return (
     <div
       data-testid="station-confirm"
+      className="ot-console"
       style={{
         position: "fixed",
         left: "50%",
@@ -35,27 +35,24 @@ export function StationConfirmBar() {
         alignItems: "center",
         gap: 10,
         padding: "10px 12px 10px 16px",
-        background: "rgba(20,24,28,.97)",
-        color: "#eef1f4",
-        borderRadius: 12,
-        boxShadow: "var(--ot-shadow,0 10px 30px rgba(0,0,0,.45))",
-        border: "1px solid rgba(255,255,255,.08)",
         pointerEvents: "auto",
         font: "600 13px system-ui",
       }}
     >
-      <span>◉ Build a station on this hex?</span>
+      <span style={{ color: "var(--ot-con-ink)" }}>◉ Build a station on this hex?</span>
       <button
         data-testid="station-confirm-build"
+        className="ot-key on-good"
         onClick={() => game.confirmPendingStation()}
-        style={{ ...BTN, background: "linear-gradient(180deg,#1ab6f0,#0a8fcc)", color: "#fff" }}
+        style={BTN}
       >
         ✓ Build <span style={KEY}>Enter</span>
       </button>
       <button
         data-testid="station-confirm-cancel"
+        className="ot-key"
         onClick={() => game.cancelPendingStation()}
-        style={{ ...BTN, background: "#2a323b", color: "#eef1f4" }}
+        style={BTN}
       >
         ✗ Cancel <span style={KEY}>Esc</span>
       </button>

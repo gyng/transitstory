@@ -36,17 +36,15 @@ function Swatch({ rgb }: { rgb: string }) {
   );
 }
 
+// Layout only — the brushed-graphite face (bg / border / bevel / light ink) comes from the
+// `.ot-console` className on the panel containers (#28 diegetic theme).
 const CARD: CSSProperties = {
   position: "fixed",
   left: 14,
   bottom: 14,
   zIndex: 9,
   width: 248,
-  borderRadius: 10,
-  background: "rgba(255,255,255,.95)",
-  boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
   font: "12px system-ui,sans-serif",
-  color: "#1c2024",
   overflow: "hidden",
 };
 
@@ -56,8 +54,8 @@ const fmtMin = (ms: number): string => (ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).
 function Row({ label, value, tone, testid }: { label: string; value: string; tone?: string; testid?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-      <span style={{ color: "#7a818a" }}>{label}</span>
-      <b data-testid={testid} style={{ fontVariantNumeric: "tabular-nums", color: tone ?? "#1c2024" }}>
+      <span style={{ color: "var(--ot-con-ink-dim)" }}>{label}</span>
+      <b data-testid={testid} style={{ fontVariantNumeric: "tabular-nums", color: tone ?? "var(--ot-con-ink)" }}>
         {value}
       </b>
     </div>
@@ -65,28 +63,28 @@ function Row({ label, value, tone, testid }: { label: string; value: string; ton
 }
 
 function Divider() {
-  return <div style={{ height: 1, background: "#e7eaee", margin: "6px 0" }} />;
+  return <div style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "6px 0" }} />;
 }
 
 /** The fantasy (arcadia) realm panel — the supply→conquest→decadence ledger, replacing the transit
  *  service telemetry. Reuses the same CARD/Row chrome so the two modes read alike. */
 function FantasyServiceReport({ s }: { s: Stats }) {
   const decay = Math.round(s.decadencePct);
-  const decayColor = decay >= 66 ? "var(--ot-gauge-bad,#d62828)" : decay >= 33 ? "#e69f00" : "#7a818a";
+  const decayColor = decay >= 66 ? "var(--ot-gauge-bad,#d62828)" : decay >= 33 ? "#e69f00" : "var(--ot-con-ink-dim)";
   return (
-    <div data-testid="service-report" style={CARD}>
-      <div style={{ padding: "10px 12px 6px", fontWeight: 700 }}>⚜ The Realm</div>
+    <div data-testid="service-report" className="ot-console" style={CARD}>
+      <div style={{ padding: "10px 12px 6px", fontWeight: 700, color: "var(--ot-con-ink)" }}>⚜ The Realm</div>
       <div style={{ padding: "0 12px 12px" }}>
         <Row label="Tribute" value={`${Math.round(s.tribute)}`} testid="svc-tribute" />
         {s.goldUpkeepDaily > 0 && (
-          <Row label="Upkeep" value={`−${Math.round(s.goldUpkeepDaily)}⬢/day`} tone="#d4604f" testid="svc-upkeep" />
+          <Row label="Upkeep" value={`−${Math.round(s.goldUpkeepDaily)}⬢/day`} tone="var(--ot-con-red)" testid="svc-upkeep" />
         )}
         <Row label="Supply delivered" value={`${Math.round(s.ridershipTotal)}`} />
         <Divider />
         <Row label="🏰 Towns taken" value={`${Math.round(s.townsCaptured)}`} testid="svc-towns" />
         <Row label="⚔ Legions afield" value={`${Math.round(s.armyCount)}`} />
         <Row label="☠ Decadence" value={`${decay}%`} tone={decayColor} testid="svc-decadence" />
-        <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 8, lineHeight: 1.35 }}>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 8, lineHeight: 1.35 }}>
           Supply towns for tribute · field legions from a barracks · post bounties to steer them · hold back the decadence.
         </div>
       </div>
@@ -116,7 +114,7 @@ export function ServiceReport() {
   const gaveUp = Math.round(s.abandoned);
 
   return (
-    <div data-testid="service-report" style={CARD}>
+    <div data-testid="service-report" className="ot-console" style={CARD}>
       <button
         data-testid="service-toggle"
         onClick={() => setOpen((o) => !o)}
@@ -130,10 +128,11 @@ export function ServiceReport() {
           padding: "8px 12px",
           cursor: "pointer",
           font: "600 13px system-ui,sans-serif",
+          color: "var(--ot-con-ink)",
         }}
       >
         <span>📊 Network</span>
-        <span style={{ color: "#9aa3ad" }}>{open ? "▾" : "▸"}</span>
+        <span style={{ color: "var(--ot-con-ink-dim)" }}>{open ? "▾" : "▸"}</span>
       </button>
 
       {open && (
@@ -143,15 +142,15 @@ export function ServiceReport() {
                 This is the "what is demand / are trips directional pairs" answer, in the demand panel. */}
             <div data-testid="demand-explainer" style={{ marginBottom: 6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <b>Demand</b>
-                <span data-testid="demand-flow" style={{ color: "#7a818a", fontSize: 11 }}>{demandFlow(s.period)}</span>
+                <b style={{ color: "var(--ot-con-ink)" }}>Demand</b>
+                <span data-testid="demand-flow" style={{ color: "var(--ot-con-ink-dim)", fontSize: 11 }}>{demandFlow(s.period)}</span>
               </div>
-              <div style={{ color: "#7a818a", marginTop: 2 }}>🏠 homes start trips · 💼 jobs pull them in</div>
+              <div style={{ color: "var(--ot-con-ink-dim)", marginTop: 2 }}>🏠 homes start trips · 💼 jobs pull them in</div>
               {ui.showDemand && (
                 <div data-testid="demand-key" style={{ marginTop: 4, lineHeight: 1.55 }}>
                   <div><Swatch rgb="rgb(196,96,46)" />unserved — build here</div>
                   <div><Swatch rgb="rgb(90,130,170)" />covered by a station</div>
-                  <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 2 }}>
+                  <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 2 }}>
                     Pin a station → arcs show where its riders travel.
                   </div>
                 </div>
@@ -166,12 +165,12 @@ export function ServiceReport() {
 
             {/* Coverage (% of the whole city's demand served well) + the time-of-day rush level. */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
-              <span style={{ color: "#7a818a" }} title="How much of the whole city's demand your network serves well — grows as you expand">City coverage</span>
+              <span style={{ color: "var(--ot-con-ink-dim)" }} title="How much of the whole city's demand your network serves well — grows as you expand">City coverage</span>
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ position: "relative", width: 64, height: 7, background: "#e7eaee", borderRadius: 4, overflow: "hidden" }}>
+                <span style={{ position: "relative", width: 64, height: 7, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
                   <span style={{ position: "absolute", inset: `0 ${100 - cov}% 0 0`, background: covColor }} />
                 </span>
-                <b data-testid="svc-coverage" style={{ width: 24, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cov}</b>
+                <b data-testid="svc-coverage" className="ot-readout" style={{ minWidth: 24, padding: "0 5px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cov}</b>
               </span>
             </div>
             <Row label={s.period} value={`×${s.demandMultiplier.toFixed(1)} demand`} testid="svc-rush" />
@@ -186,21 +185,21 @@ export function ServiceReport() {
             {modeRows.length > 0 && (
               <>
                 <Divider />
-                <div style={{ color: "#7a818a", marginBottom: 4 }}>Riders by mode</div>
+                <div style={{ color: "var(--ot-con-ink-dim)", marginBottom: 4 }}>Riders by mode</div>
                 {modeRows.map((m) => (
                   <div key={m.id} data-testid={`svc-mode-${m.id}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0" }}>
                     <span style={{ width: 16, textAlign: "center" }}>{m.icon}</span>
-                    <span style={{ position: "relative", flex: 1, height: 8, background: "#eef1f4", borderRadius: 4, overflow: "hidden" }}>
+                    <span style={{ position: "relative", flex: 1, height: 8, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
                       <span style={{ position: "absolute", inset: 0, width: `${(m.riders / maxMode) * 100}%`, background: m.color, borderRadius: 4 }} />
                     </span>
-                    <b style={{ width: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{m.riders}</b>
+                    <b style={{ width: 38, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--ot-con-ink)" }}>{m.riders}</b>
                   </div>
                 ))}
               </>
             )}
 
             {/* The new accessibility loop: demand grows where the network reaches well. */}
-            <div style={{ color: "#9aa3ad", fontSize: 11, marginTop: 8, lineHeight: 1.3 }}>
+            <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 8, lineHeight: 1.3 }}>
               Trips favour destinations your network reaches fastest — extend reach to unlock demand.
             </div>
         </div>

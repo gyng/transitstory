@@ -24,7 +24,7 @@ function MenuItem({
   disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-  const color = disabled ? "#b3b9c0" : danger ? "var(--ot-gauge-bad,#d62828)" : "#1c2024";
+  const color = disabled ? "var(--ot-con-ink-dim)" : danger ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink)";
   return (
     <div
       data-testid={testid}
@@ -39,7 +39,7 @@ function MenuItem({
         padding: "6px 12px",
         cursor: disabled ? "default" : "pointer",
         color,
-        background: hover && !disabled ? "#f1f3f5" : "transparent",
+        background: hover && !disabled ? "rgba(56,198,220,.14)" : "transparent",
         whiteSpace: "nowrap",
       }}
     >
@@ -49,9 +49,9 @@ function MenuItem({
   );
 }
 
-const HEADER: CSSProperties = { padding: "7px 12px 5px", font: "600 12px system-ui", color: "#5a626b", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid #eceef1", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
-const SEP: CSSProperties = { height: 1, background: "#eceef1", margin: "3px 0" };
-const INFO: CSSProperties = { padding: "5px 12px", color: "#5a626b", fontSize: 12, lineHeight: 1.45 };
+const HEADER: CSSProperties = { padding: "7px 12px 5px", font: "600 12px system-ui", color: "var(--ot-con-ink-dim)", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid rgba(255,255,255,.08)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" };
+const SEP: CSSProperties = { height: 1, background: "rgba(255,255,255,.08)", margin: "3px 0" };
+const INFO: CSSProperties = { padding: "5px 12px", color: "var(--ot-con-ink-dim)", fontSize: 12, lineHeight: 1.45 };
 
 // Inspect labels for the baked fantasy POIs — mirror the on-map node glyphs (render.ts) so the menu
 // names match what you clicked.
@@ -111,6 +111,7 @@ export function ContextMenu() {
   return (
     <div
       data-testid="context-menu"
+      className="ot-console"
       onContextMenu={(e) => e.preventDefault()}
       style={{
         position: "fixed",
@@ -118,12 +119,8 @@ export function ContextMenu() {
         top: y,
         width: W,
         zIndex: 30,
-        background: "rgba(255,255,255,.98)",
-        borderRadius: 8,
-        boxShadow: "var(--ot-shadow)",
         padding: "4px 0",
         font: "13px system-ui,sans-serif",
-        color: "#1c2024",
         pointerEvents: "auto",
         userSelect: "none",
       }}

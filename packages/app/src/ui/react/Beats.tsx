@@ -41,16 +41,14 @@ interface DayReportData {
   economyOn: boolean;
 }
 
+// The day-report panel face — a brushed-graphite console card (#28 diegetic theme); the .ot-console
+// class owns its surface/border/shadow/ink, so only layout lives inline.
 const CARD: CSSProperties = {
   position: "fixed",
   top: 92,
   left: "50%",
   transform: "translateX(-50%)",
   zIndex: 15,
-  background: "rgba(255,255,255,.97)",
-  color: "#1c2024",
-  borderRadius: 12,
-  boxShadow: "0 6px 24px rgba(0,0,0,.25)",
   padding: "10px 14px",
   font: "13px system-ui,sans-serif",
   minWidth: 240,
@@ -59,8 +57,8 @@ const CARD: CSSProperties = {
 function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "1px 0" }}>
-      <span style={{ color: "#7a818a" }}>{label}</span>
-      <b style={{ color: tone ?? "#1c2024", fontVariantNumeric: "tabular-nums" }}>{value}</b>
+      <span style={{ color: "var(--ot-con-ink-dim)" }}>{label}</span>
+      <b style={{ color: tone ?? "var(--ot-con-ink)", fontVariantNumeric: "tabular-nums" }}>{value}</b>
     </div>
   );
 }
@@ -118,12 +116,12 @@ export function DayReport() {
   if (!report) return null;
   const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   return (
-    <div data-testid="day-report" style={CARD} onClick={() => setReport(null)}>
+    <div data-testid="day-report" className="ot-console" style={CARD} onClick={() => setReport(null)}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-        <b style={{ fontSize: 14 }}>🌅 Day {report.day} complete</b>
-        <span style={{ marginLeft: "auto", color: "#9aa1a9", fontSize: 11 }}>click to dismiss</span>
+        <b style={{ fontSize: 14, color: "var(--ot-con-ink)" }}>🌅 Day {report.day} complete</b>
+        <span style={{ marginLeft: "auto", color: "var(--ot-con-ink-dim)", fontSize: 11 }}>click to dismiss</span>
       </div>
-      <Row label="Riders carried" value={sign(Math.round(report.riders))} tone="#0072b2" />
+      <Row label="Riders carried" value={sign(Math.round(report.riders))} tone="var(--ot-con-accent)" />
       <Row label="Coverage" value={`${report.coverage}${report.coverageDelta !== 0 ? ` (${sign(report.coverageDelta)})` : ""}`} />
       {report.gaveUp > 0 && <Row label="Gave up waiting" value={sign(Math.round(report.gaveUp))} tone="var(--ot-gauge-bad,#d62828)" />}
       {report.grewPct >= 0.5 && (
@@ -199,11 +197,14 @@ export function Milestones() {
         transform: "translateX(-50%)",
         zIndex: 15,
         pointerEvents: "none",
-        background: "linear-gradient(180deg,#fff8e6,#ffefc2)",
-        border: "1px solid #e8c96a",
-        color: "#5a4a12",
+        // A celebratory amber beat on the operator's desk: graphite face, the achievement glowing in
+        // console-amber (kept its gold meaning, grounded dark so it reads light-on-dark like the chrome).
+        background: "var(--ot-con-panel)",
+        border: "1px solid var(--ot-con-edge)",
+        color: "var(--ot-con-amber)",
         borderRadius: 999,
-        boxShadow: "0 4px 16px rgba(0,0,0,.2)",
+        boxShadow: "var(--ot-con-elev), 0 0 14px rgba(241,173,68,.35)",
+        textShadow: "0 1px 2px rgba(0,0,0,.5)",
         padding: "7px 16px",
         font: "700 13px system-ui,sans-serif",
         whiteSpace: "nowrap",

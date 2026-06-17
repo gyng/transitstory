@@ -25,6 +25,7 @@ export function SpellBar() {
   return (
     <div
       data-testid="spell-bar"
+      className="ot-console"
       style={{
         // Bottom-right ability-bar slot (RTS convention). Clear of the EditorPanel (top-right, on
         // selection), TechPanel (bottom-left), Toolbar (bottom-centre); CommuterCard (bottom-right) is
@@ -35,16 +36,13 @@ export function SpellBar() {
         zIndex: 10,
         width: 184,
         padding: "10px 12px",
-        borderRadius: 10,
-        background: "rgba(255,255,255,.95)",
-        boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
         font: "13px system-ui,sans-serif",
-        color: "#1c2024",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-        <b style={{ color: "#7a4ed2" }}>✦ Spells</b>
-        <span title="Mana — the cast resource, shared with tech" style={{ color: "#7a4ed2", fontVariantNumeric: "tabular-nums" }}>
+        {/* Arcane purple is the spell-arm's identity hue — kept as the diegetic magic accent on the dark console face. */}
+        <b style={{ color: "#b388ff" }}>✦ Spells</b>
+        <span title="Mana — the cast resource, shared with tech" className="ot-readout" style={{ color: "#b388ff", fontVariantNumeric: "tabular-nums", padding: "1px 7px" }}>
           ✦ {mana}
         </span>
       </div>
@@ -55,6 +53,7 @@ export function SpellBar() {
           <button
             key={sp.kind}
             data-testid={`spell-${sp.kind}`}
+            className="ot-key"
             disabled={disabled}
             onClick={() => game.castSpell(sp.kind)}
             title={auto ? `${sp.blurb} — autocast is handling this` : sp.blurb}
@@ -64,26 +63,23 @@ export function SpellBar() {
               textAlign: "left",
               margin: "3px 0",
               padding: "5px 8px",
-              border: "1px solid #d7dade",
-              borderRadius: 7,
-              background: disabled ? "#f3f4f6" : "#fff",
-              color: disabled ? "#9aa1a9" : "#1c2024",
               cursor: disabled ? "default" : "pointer",
               font: "inherit",
+              ...(disabled ? { opacity: 0.5, filter: "saturate(0.4)" } : null),
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, color: "var(--ot-con-ink)" }}>
               <span>{sp.glyph} {sp.name}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums", color: affordable ? "#7a4ed2" : "#b3b8bf" }}>✦ {sp.cost}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums", color: affordable ? "#b388ff" : "var(--ot-con-ink-dim)" }}>✦ {sp.cost}</span>
             </div>
-            <div style={{ fontSize: 11, color: "#8a909a" }}>{sp.blurb}</div>
+            <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)" }}>{sp.blurb}</div>
           </button>
         );
       })}
       <label
         data-testid="autocast-toggle"
         title="Autocast — let your magi fire spells automatically at the biggest threat (hands-off). Off = you choose when, banking mana for tech."
-        style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, cursor: "pointer", color: "#6a7280", fontSize: 12 }}
+        style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, cursor: "pointer", color: "var(--ot-con-ink-dim)", fontSize: 12 }}
       >
         <input
           type="checkbox"

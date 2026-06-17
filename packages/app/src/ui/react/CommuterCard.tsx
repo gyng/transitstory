@@ -26,6 +26,7 @@ export function CommuterCard() {
   return (
     <div
       data-testid="commuter-card"
+      className="ot-console"
       style={{
         position: "fixed",
         right: 14,
@@ -33,21 +34,17 @@ export function CommuterCard() {
         zIndex: 11,
         width: 250,
         padding: "10px 12px",
-        borderRadius: 10,
-        background: "rgba(255,255,255,.96)",
-        boxShadow: "var(--ot-shadow, 0 2px 10px rgba(0,0,0,.12))",
         font: "12px system-ui,sans-serif",
-        color: "#1c2024",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <b data-testid="commuter-name">🧍 {who}</b>
+        <b data-testid="commuter-name" style={{ color: "var(--ot-con-ink)" }}>🧍 {who}</b>
         {j.queueLen > 1 && (
           <button
             data-testid="commuter-another"
             onClick={() => setNth((n) => n + 1)}
             title="Show another waiting rider"
-            style={{ border: 0, background: "none", color: "#0a8fcc", cursor: "pointer", font: "11px system-ui" }}
+            style={{ border: 0, background: "none", color: "var(--ot-con-accent)", cursor: "pointer", font: "11px system-ui" }}
           >
             {(nth % j.queueLen) + 1}/{j.queueLen} 🎲
           </button>
@@ -55,14 +52,14 @@ export function CommuterCard() {
       </div>
 
       {!j.anonymous && (j.home || j.work) && (
-        <div data-testid="commuter-homework" style={{ color: "#5a626b", margin: "3px 0 5px" }}>
-          🏠 {j.home || "—"} <span style={{ color: "#9aa3ad" }}>→</span> 🏢 {j.work || "—"}
+        <div data-testid="commuter-homework" style={{ color: "var(--ot-con-ink-dim)", margin: "3px 0 5px" }}>
+          🏠 {j.home || "—"} <span style={{ color: "var(--ot-con-ink-dim)" }}>→</span> 🏢 {j.work || "—"}
         </div>
       )}
 
       {/* The trip: where they are now → where they're going, with each leg's line. */}
-      <div style={{ color: "#7a818a", marginBottom: 4 }}>
-        at <b style={{ color: "#1c2024" }}>{j.here}</b> · waited {wait}
+      <div style={{ color: "var(--ot-con-ink-dim)", marginBottom: 4 }}>
+        at <b style={{ color: "var(--ot-con-ink)" }}>{j.here}</b> · waited {wait}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {j.legs.map((leg, i) => (
@@ -71,27 +68,24 @@ export function CommuterCard() {
             <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {leg.lineName}
             </span>
-            <span style={{ color: "#9aa3ad", fontSize: 11, whiteSpace: "nowrap" }}>→ {leg.alight}</span>
+            <span style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, whiteSpace: "nowrap" }}>→ {leg.alight}</span>
           </div>
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <span style={{ color: "#9aa3ad", fontSize: 11 }}>
-          → <b style={{ color: "#5a626b" }}>{j.dest}</b>
+        <span style={{ color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
+          → <b style={{ color: "var(--ot-con-ink)" }}>{j.dest}</b>
         </span>
         {!j.anonymous && j.citizenId !== 0xffffffff && (
           <button
             data-testid="commuter-follow"
+            className="ot-key on"
             onClick={() => game.setFollowed(j.citizenId)}
             title="Follow this commuter's whole journey"
             style={{
-              border: 0,
-              borderRadius: 7,
               padding: "4px 10px",
               font: "700 11px system-ui",
               cursor: "pointer",
-              background: "linear-gradient(180deg,#1ab6f0,#0a8fcc)",
-              color: "#fff",
             }}
           >
             👁 Follow

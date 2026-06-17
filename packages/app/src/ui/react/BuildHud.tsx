@@ -41,11 +41,18 @@ export function BuildHud() {
           alignItems: "center",
           gap: 8,
           padding: "6px 12px",
-          background: unaffordable ? "rgba(214,40,40,.95)" : "rgba(28,32,36,.92)",
-          color: "#fff",
+          // Floating console readout pill: graphite face + beveled edge. Unaffordable flips to the
+          // semantic danger tone (red wash) so the warning still reads at a glance.
+          background: unaffordable
+            ? "linear-gradient(180deg, rgba(214,40,40,.96), rgba(168,28,28,.96))"
+            : "linear-gradient(180deg, #2f343c, var(--ot-con-solid))",
+          color: unaffordable ? "#fff" : "var(--ot-con-ink)",
+          border: "1px solid var(--ot-con-edge)",
           borderRadius: 999,
           font: "600 13px system-ui,sans-serif",
-          boxShadow: "var(--ot-shadow)",
+          boxShadow: unaffordable
+            ? "var(--ot-con-elev), 0 0 12px rgba(214,40,40,.4)"
+            : "var(--ot-con-elev)",
           whiteSpace: "nowrap",
           maxWidth: "92vw",
           overflow: "hidden",
@@ -90,15 +97,18 @@ export function BuildHud() {
                 gap: 5,
                 padding: "3px 9px",
                 borderRadius: 999,
-                background: "rgba(20,24,28,.9)",
-                color: "#eef1f4",
+                // Console chip face: graphite solid + beveled edge, matching the readout pill above.
+                background: "var(--ot-con-solid)",
+                color: "var(--ot-con-ink)",
+                border: "1px solid var(--ot-con-edge)",
                 font: "600 11px system-ui,sans-serif",
-                boxShadow: "var(--ot-shadow)",
+                boxShadow: "var(--ot-con-elev)",
               }}
             >
+              {/* per-terrain identity tint — keep its hue */}
               <span style={{ width: 8, height: 8, borderRadius: 2, background: `rgb(${b.tint})`, flex: "0 0 auto" }} />
               {b.count}× {b.kind}
-              {b.cost > 0 && <span style={{ opacity: 0.7 }}>{b.cost}{unit}</span>}
+              {b.cost > 0 && <span style={{ color: "var(--ot-con-ink-dim)" }}>{b.cost}{unit}</span>}
             </span>
           ))}
         </div>

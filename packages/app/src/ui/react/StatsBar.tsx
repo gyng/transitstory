@@ -26,7 +26,9 @@ function todGlyph(hour: number): string {
   return "☀️";
 }
 
-/** The HUD shell — shared chrome (position/style) so transit + fantasy read the same. */
+/** The HUD shell — shared chrome (position/style) so transit + fantasy read the same. The console
+ *  face (dark gradient / bevel / elevation) is owned by the `.ot-console` class; this carries only
+ *  layout + the ink colour. */
 const BAR_STYLE: CSSProperties = {
   position: "fixed",
   top: "10px",
@@ -36,12 +38,9 @@ const BAR_STYLE: CSSProperties = {
   alignItems: "center",
   gap: "16px",
   padding: "8px 14px",
-  background: "rgba(255,255,255,.95)",
-  borderRadius: "10px",
-  boxShadow: "var(--ot-shadow)",
   zIndex: 9,
   font: "13px system-ui,sans-serif",
-  color: "#1c2024",
+  color: "var(--ot-con-ink)",
 };
 
 /** Manpower a legion costs to field (mirrors the core `army::LAUNCH_COST`) — for the "starved" hint. */
@@ -55,7 +54,7 @@ function RatePill({ rate, color }: { rate: number | undefined; color: string }) 
   if (rate === undefined || Math.abs(rate) < 1) return null;
   const up = rate > 0;
   return (
-    <span style={{ marginLeft: 4, fontSize: 11, color: up ? color : "#b07000", fontVariantNumeric: "tabular-nums" }}>
+    <span style={{ marginLeft: 4, fontSize: 11, color: up ? color : "var(--ot-con-amber)", fontVariantNumeric: "tabular-nums" }}>
       {up ? "▲" : "▼"}{Math.abs(Math.round(rate))}/min
     </span>
   );
@@ -77,7 +76,7 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   // as a toxic-green tip on the gauge so the player can tell raider pressure from front advance (opposite fixes).
   const breachPct = Math.round(s.raiderBreachPct ?? 0);
   // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
-  const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "#e69f00" : "#7a93ad";
+  const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "var(--ot-con-amber)" : "#7a93ad";
   // Threat projection: how fast the rot is rising + a sim-minute ETA to a fallen realm (only while it's
   // actually rising). The doom clock made legible — and the pulse below escalates as the ETA shortens.
   const dt = decadenceTrend(s.decadencePct);
@@ -86,22 +85,22 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   // Realm STANDING — the progress gauge (supply reach + conquest), the rising counterpart to the
   // decadence gauge ("two gauges, two jobs"): what you've built + hold, vs. the rot you're racing.
   const standing = Math.round(s.coverageScore);
-  const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "#e69f00" : "#7a93ad";
+  const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "var(--ot-con-amber)" : "#7a93ad";
   return (
-    <div id="stats-bar" data-testid="stats-bar" style={BAR_STYLE}>
+    <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
       <div>
         <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>{clock}</b>{" "}
-        <span data-testid="period" style={{ color: "#7a818a" }}>Arcadia</span>
+        <span data-testid="period" style={{ color: "var(--ot-con-ink-dim)" }}>Arcadia</span>
       </div>
-      <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }} />
+      <div style={{ width: "1px", alignSelf: "stretch", background: "rgba(255,255,255,.08)" }} />
       <div data-testid="tribute" title="Gold — every town you supply pays this; it funds bounties and building.">
         ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> gold
-        <RatePill rate={rates?.gold} color="#1c2024" />
+        <RatePill rate={rates?.gold} color="var(--ot-con-ink)" />
       </div>
       {mana > 0 && (
-        <div data-testid="mana" title="Mana — minted by aether/fuel supply chains; the sole tech resource AND your spell fuel." style={{ color: "#7a4ed2" }}>
+        <div data-testid="mana" title="Mana — minted by aether/fuel supply chains; the sole tech resource AND your spell fuel." style={{ color: "#b69bef" }}>
           ✦ <b style={{ fontVariantNumeric: "tabular-nums" }}>{mana}</b> mana
-          <RatePill rate={rates?.mana} color="#7a4ed2" />
+          <RatePill rate={rates?.mana} color="#b69bef" />
         </div>
       )}
       {/* #war: show manpower even when STARVED (0) once the realm is warring — the player must see "can't
@@ -110,10 +109,10 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         <div
           data-testid="manpower"
           title={`Manpower — minted by grain/arms supply chains; each legion costs ~${LEGION_COST} to field from a barracks.${manpower < LEGION_COST ? " STARVED: too little to field a legion — supply more grain/arms." : ""}`}
-          style={{ color: manpower < LEGION_COST ? "var(--ot-gauge-bad)" : "#b5651d", fontWeight: manpower < LEGION_COST ? 700 : undefined }}
+          style={{ color: manpower < LEGION_COST ? "var(--ot-gauge-bad)" : "#d39a5c", fontWeight: manpower < LEGION_COST ? 700 : undefined }}
         >
           ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower{manpower < LEGION_COST ? " ⚠" : ""}
-          <RatePill rate={rates?.manpower} color="#b5651d" />
+          <RatePill rate={rates?.manpower} color="#d39a5c" />
         </div>
       )}
       <div
@@ -122,7 +121,7 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         title="Realm standing — how much of the realm you supply and hold. Build rail to towns and conquer them to raise it (the rising counterpart to the decadence you're racing)."
       >
         🛡 Standing
-        <div style={{ position: "relative", width: "90px", height: "10px", background: "#e7eaee", borderRadius: "6px", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
           <div
             data-testid="standing-bar"
             style={{ position: "absolute", inset: "0 auto 0 0", width: `${standing}%`, background: sColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
@@ -142,7 +141,7 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         }
       >
         ☠ Decadence
-        <div style={{ position: "relative", width: "90px", height: "10px", background: "#e7eaee", borderRadius: "6px", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
           <div
             data-testid="decadence-bar"
             style={{ position: "absolute", inset: "0 auto 0 0", width: `${d}%`, background: dColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
@@ -157,26 +156,26 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
         </div>
         <b style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d}</b>
         {eta !== null && (
-          <span data-testid="decadence-eta" style={{ fontSize: 11, color: critical ? "var(--ot-gauge-bad)" : "#b07000", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          <span data-testid="decadence-eta" style={{ fontSize: 11, color: critical ? "var(--ot-gauge-bad)" : "var(--ot-con-amber)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
             ⏳~{Math.max(1, Math.round(eta))}m
           </span>
         )}
       </div>
-      <div data-testid="towns-captured" style={{ color: "#7a818a", cursor: "help" }} title="Towns conquered. Each captured town pushes the decadence back — your main brake on the doom clock.">
-        🏰 <b style={{ color: "#1c2024" }}>{towns}</b> taken
+      <div data-testid="towns-captured" style={{ color: "var(--ot-con-ink-dim)", cursor: "help" }} title="Towns conquered. Each captured town pushes the decadence back — your main brake on the doom clock.">
+        🏰 <b style={{ color: "var(--ot-con-ink)" }}>{towns}</b> taken
       </div>
       {armies > 0 && (
-        <div data-testid="armies" style={{ color: "#7a818a" }} title="Legions afield — AI-led, riding your rails, baited by bounties.">
+        <div data-testid="armies" style={{ color: "var(--ot-con-ink-dim)" }} title="Legions afield — AI-led, riding your rails, baited by bounties.">
           ⚔ {armies} legion{armies === 1 ? "" : "s"}
         </div>
       )}
       {Math.round(s.raiderCount) > 0 && (
-        <div data-testid="raiders" style={{ color: "#5c7a2e", fontWeight: 600 }} title="Decadence raiders, in three roles (watch their badge): ☣ breachers march your capital (deepen the rot), ✂ saboteurs cut your over-extended rail, ⚑ reclaimers re-take towns you haven't railed to. Your station cordon cuts them down — cover the approaches + hold your ground.">
+        <div data-testid="raiders" style={{ color: "#8fc95f", fontWeight: 600 }} title="Decadence raiders, in three roles (watch their badge): ☣ breachers march your capital (deepen the rot), ✂ saboteurs cut your over-extended rail, ⚑ reclaimers re-take towns you haven't railed to. Your station cordon cuts them down — cover the approaches + hold your ground.">
           ☣ {Math.round(s.raiderCount)} raider{Math.round(s.raiderCount) === 1 ? "" : "s"}
         </div>
       )}
       {Math.round(s.spellsCast) > 0 && (
-        <div data-testid="spells" style={{ color: "#7a4ed2", fontWeight: 600 }} title="Spells cast (Purge / Smite / Warpath), drawn from your mana — cast them from the spell bar, or toggle autocast.">
+        <div data-testid="spells" style={{ color: "#b69bef", fontWeight: 600 }} title="Spells cast (Purge / Smite / Warpath), drawn from your mana — cast them from the spell bar, or toggle autocast.">
           ✦ {Math.round(s.spellsCast)} cast
         </div>
       )}
@@ -218,7 +217,7 @@ export function StatsBar() {
 
   // Bar fills left→right. Coverage is a progression dial (it starts near 0 on a fresh map), so
   // the low band is neutral — not failure-red — and the hue only turns good once it's earned.
-  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "#e69f00" : "#7a93ad";
+  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "var(--ot-con-amber)" : "#7a93ad";
 
   // Network strain: the fleet's mean load (avgLoadFactor) as a loadPip, with the live train count
   // in its tooltip. Mounts only once trains run, so it's never dead chrome (like the money box).
@@ -230,6 +229,7 @@ export function StatsBar() {
     <div
       id="stats-bar"
       data-testid="stats-bar"
+      className="ot-console"
       style={{
         position: "fixed",
         top: "10px",
@@ -239,12 +239,9 @@ export function StatsBar() {
         alignItems: "center",
         gap: "16px",
         padding: "8px 14px",
-        background: "rgba(255,255,255,.95)",
-        borderRadius: "10px",
-        boxShadow: "var(--ot-shadow)",
         zIndex: 9,
         font: "13px system-ui,sans-serif",
-        color: "#1c2024",
+        color: "var(--ot-con-ink)",
       }}
     >
       <div>
@@ -254,11 +251,11 @@ export function StatsBar() {
         <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>
           {clock}
         </b>{" "}
-        <span data-testid="period" style={{ color: "#7a818a" }}>
+        <span data-testid="period" style={{ color: "var(--ot-con-ink-dim)" }}>
           {s.period}
         </span>
       </div>
-      <div style={{ width: "1px", alignSelf: "stretch", background: "#e2e5e9" }}></div>
+      <div style={{ width: "1px", alignSelf: "stretch", background: "rgba(255,255,255,.08)" }}></div>
       <div>
         🚇{" "}
         <b ref={ridershipRef} data-testid="ridership" style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }} />{" "}
@@ -274,7 +271,8 @@ export function StatsBar() {
             position: "relative",
             width: "90px",
             height: "10px",
-            background: "#e7eaee",
+            background: "#14171c",
+            boxShadow: "var(--ot-well)",
             borderRadius: "6px",
             overflow: "hidden",
           }}
@@ -296,7 +294,7 @@ export function StatsBar() {
         </div>
         <b ref={coverageRef} data-testid="coverage" style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
       </div>
-      <div style={{ color: "#7a818a", cursor: "help" }} title={waitTip}>
+      <div style={{ color: "var(--ot-con-ink-dim)", cursor: "help" }} title={waitTip}>
         <span data-testid="waiting">{w}</span> waiting
         {lost > 0 && (
           <span data-testid="left-behind" style={{ color: "var(--ot-gauge-bad)", marginLeft: "6px" }}>
@@ -310,7 +308,7 @@ export function StatsBar() {
       {trains > 0 && (
         <div
           data-testid="net-load"
-          style={{ color: "#7a818a", cursor: "help" }}
+          style={{ color: "var(--ot-con-ink-dim)", cursor: "help" }}
           title={`${trains} train${trains === 1 ? "" : "s"} running · mean load ${netPip.pct}% (${netPip.word})`}
         >
           <span style={{ color: netPip.color, fontWeight: 700 }}>
