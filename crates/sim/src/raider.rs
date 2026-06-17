@@ -238,17 +238,46 @@ fn nearest_captured_town(world: &World, x: i64, y: i64) -> Option<(usize, i64, i
 /// once in `resolve`, so it converges).
 fn march(world: &mut World, dt_ms: i64) {
     let step = RAIDER_SPEED_MM_S.saturating_mul(dt_ms.max(0)) / 1000;
+    let gcm = world.city.grid_cell_mm;
     for i in 0..world.raiders.len() {
         if world.raiders.state[i] != MARCHING {
             continue;
         }
         let (x, y) = (world.raiders.x_mm[i], world.raiders.y_mm[i]);
         let (tx, ty) = (world.raiders.tx_mm[i], world.raiders.ty_mm[i]);
-        let (dx, dy) = (tx - x, ty - y);
+        // #cost-routing: head for the NEXT cell on the terrain-cost hex path to the target — `line_costed`
+        // swings AROUND water/mountains (the SAME `World::terrain_cost` router the rails use) instead of
+        // cutting straight through everything (and off the continent). Re-routed each cell, so it tracks a
+        // moving seam target too. Off-grid (no lattice) ⇒ straight at the target (no raiders there anyway).
+        let (wx, wy) = if gcm > 0 {
+            let from = crate::hexgrid::axial_of(crate::geo_local::PointMm::new(x, y), gcm);
+            let to = crate::hexgrid::axial_of(crate::geo_local::PointMm::new(tx, ty), gcm);
+            if from == to {
+                (tx, ty) // already in the target's cell ⇒ home straight in
+            } else {
+                let cost = |c: crate::hexgrid::Axial| world.terrain_cost(c);
+                let path = crate::hexgrid::line_costed(from, to, &cost);
+                let next = path.get(1).copied().unwrap_or(to);
+                let c = crate::hexgrid::center_of(next, gcm);
+                (c.x_mm, c.y_mm)
+            }
+        } else {
+            (tx, ty)
+        };
+        // Snap to the FINAL target when within a step of it (resolve handles arrival), else step toward the
+        // routed waypoint; reaching the waypoint cell re-routes from there next tick.
+        let (dxt, dyt) = (tx - x, ty - y);
+        let dist_t = (dxt.saturating_mul(dxt).saturating_add(dyt.saturating_mul(dyt))).isqrt();
+        if dist_t <= step || dist_t == 0 {
+            world.raiders.x_mm[i] = tx;
+            world.raiders.y_mm[i] = ty;
+            continue;
+        }
+        let (dx, dy) = (wx - x, wy - y);
         let dist = (dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))).isqrt();
         if dist <= step || dist == 0 {
-            world.raiders.x_mm[i] = tx; // close enough — snap to the target (resolve handles arrival)
-            world.raiders.y_mm[i] = ty;
+            world.raiders.x_mm[i] = wx;
+            world.raiders.y_mm[i] = wy;
         } else {
             world.raiders.x_mm[i] = x + dx.saturating_mul(step) / dist;
             world.raiders.y_mm[i] = y + dy.saturating_mul(step) / dist;

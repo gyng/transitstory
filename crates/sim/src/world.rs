@@ -1310,6 +1310,28 @@ impl World {
             .unwrap_or(PointMm::new(0, 0))
     }
 
+    /// Terrain build/traverse cost for a hex `cell` (TTD #cost-routing): of two same-length one-bend hex
+    /// corners, `hexgrid::line_costed` takes the cheaper, swinging AROUND water/mountains toward plains.
+    /// Single source for BOTH the grid line router (`rebuild_line_geometry`) AND the free-marching raiders
+    /// (`raider.rs`), so a raider routes the same terrain a line does instead of cutting straight through.
+    /// Flat (100) with no raster (`build_cell_mm <= 0`) ⇒ the router falls back to the first corner.
+    pub(crate) fn terrain_cost(&self, cell: crate::hexgrid::Axial) -> i64 {
+        use crate::city::biome;
+        let bcm = self.build_cell_mm;
+        if bcm <= 0 {
+            return 100;
+        }
+        let pt = crate::hexgrid::center_of(cell, self.city.grid_cell_mm);
+        match self.build_lookup.get(&(pt.x_mm.div_euclid(bcm) as i32, pt.y_mm.div_euclid(bcm) as i32)).copied().unwrap_or(0u8) {
+            biome::WATER => 800,    // under-water tunnelling — very dear; route around it
+            biome::MOUNTAIN => 320, // blast/tunnel a ridge
+            biome::HILL => 190,
+            biome::FOREST => 140,
+            biome::LEY => 130,
+            _ => 100, // plain / open
+        }
+    }
+
     fn rebuild_line_geometry(&mut self, line: LineId) {
         // Build ONE smoothed Path per service route (trunk + each branch's trunk-prefix→leaf). Buses
         // follow the ROAD raster between stops and ferries follow WATER (auto-routed A*); other modes
@@ -1336,8 +1358,7 @@ impl World {
         // Terrain build-cost per hex cell, for the grid one-bend router (line.rs grid_walk): of the two
         // same-length one-bend corners, it lays track along the cheaper one — swinging around water and
         // mountains toward plains. Deterministic (the buildability grid is hashed CityData); flat (100)
-        // when there's no terrain raster, so the router falls back to the first corner.
-        let bcm = self.build_cell_mm;
+        // when there's no terrain raster, so the router falls back to the first corner (see `terrain_cost`).
         let gcm = self.city.grid_cell_mm;
         let mut new_paths: Vec<crate::line::Path> = Vec::with_capacity(specs.len());
         for (pi, (stops, loop_line)) in specs.into_iter().enumerate() {
@@ -1367,26 +1388,8 @@ impl World {
             if let Some(tt) = old_track_types.get(pi) {
                 p.track_type = tt.clone();
             }
-            let cost = |cell: crate::hexgrid::Axial| -> i64 {
-                use crate::city::biome;
-                if bcm <= 0 {
-                    return 100;
-                }
-                let pt = crate::hexgrid::center_of(cell, gcm);
-                let cls = self
-                    .build_lookup
-                    .get(&(pt.x_mm.div_euclid(bcm) as i32, pt.y_mm.div_euclid(bcm) as i32))
-                    .copied()
-                    .unwrap_or(0u8);
-                match cls {
-                    biome::WATER => 800,    // under-water tunnelling — very dear; route around it
-                    biome::MOUNTAIN => 320, // blast/tunnel a ridge
-                    biome::HILL => 190,
-                    biome::FOREST => 140,
-                    biome::LEY => 130,
-                    _ => 100, // plain / open
-                }
-            };
+            // The grid one-bend router's terrain cost (single source — same fn the raiders route with).
+            let cost = |cell: crate::hexgrid::Axial| -> i64 { self.terrain_cost(cell) };
             p.rebuild(&pts, &span_points, gcm, &cost);
             new_paths.push(p);
         }
