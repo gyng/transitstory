@@ -52,13 +52,16 @@ interface BootedWorld {
 async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlob): Promise<BootedWorld> {
   const city = await loadCity(manifestPath); // sets the session coordinate origin
 
-  const map = createMap("map", city.raw.center, city.raw.zoom);
+  // Pass the ruleset so the OSM AttributionControl mounts for real-OSM cities only (the ODbL release
+  // gate) — the baked fantasy/arcadia continent is non-OSM, so it carries no (false) OSM credit.
+  const ruleset = city.raw.ruleset ?? "transit";
+  const map = createMap("map", city.raw.center, city.raw.zoom, ruleset);
   const overlay = createOverlay();
   map.addControl(overlay);
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
   const game = new Game(bridge, map, overlay, new Buildability(city.buildability));
-  game.ruleset = city.raw.ruleset ?? "transit"; // mode-aware chrome (fantasy build tools etc.)
+  game.ruleset = ruleset; // mode-aware chrome (fantasy build tools etc.)
   // S11 rail-gate: arcadia builds RAIL only (+ Heavy Rail once teched). Enable rail + heavy here so the
   // chord/settings can't select bus/ferry/plane; the toolbar only SHOWS heavy once HEAVY_RAIL is unlocked,
   // and the sim rejects an un-teched heavy line regardless (the source of truth).

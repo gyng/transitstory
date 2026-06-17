@@ -16,6 +16,7 @@ export function createMap(
   container: string | HTMLElement,
   center: [number, number] = SG_CENTER,
   zoom: number = SG_ZOOM,
+  ruleset: string = "transit",
 ): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
@@ -31,7 +32,14 @@ export function createMap(
   // sources — adding a customAttribution on top rendered the same credit twice. The control
   // (the ODbL release gate) stays mounted; the text comes from the style. The demo fallback
   // style carries its own attribution too.
-  map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
+  //
+  // ODbL gate is REAL-OSM-ONLY: the fantasy/arcadia board is a BAKED non-OSM continent
+  // (applyArcadiaBasemap repaints the tiles into a dead void and the deck overlay draws the
+  // invented terrain), so attributing OSM there would be false. Mount the AttributionControl only
+  // for the OSM-derived basemap (ruleset "transit"); arcadia carries no OSM credit (none is owed).
+  if (ruleset !== "arcadia") {
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
+  }
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
   // Deterministic readiness signal for e2e (waits on this, not a sleep).
