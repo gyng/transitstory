@@ -2265,6 +2265,13 @@ impl World {
                     .collect(),
                 min_radius_mm: l.min_radius_mm() as f64,
                 span_modes: l.paths.first().map(|p| p.span_mode.clone()).unwrap_or_default(),
+                // TTD L5c: the trunk path's SIM-frame stop arc-lengths (mm as f64), so the UI can derive a
+                // PlaceSignal `at_mm` from an in-span fraction (stops pin span boundaries across smoothing).
+                stop_arclen_mm: l
+                    .paths
+                    .first()
+                    .map(|p| p.stop_arclen_mm.iter().map(|&v| v as f64).collect())
+                    .unwrap_or_default(),
                 track_types: l.paths.first().map(|p| p.track_type.clone()).unwrap_or_default(),
                 crosses_water_surface: l.crosses_water_surface,
                 removed: l.removed,

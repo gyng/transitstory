@@ -20,12 +20,16 @@ declare global {
     __ot_test?: {
       tickMs(ms: number): void;
       placeStationLngLat(lng: number, lat: number): number;
+      placeSignalLngLat(lng: number, lat: number): boolean;
+      placedSignalIds(): string[];
       placeBarracksLngLat(lng: number, lat: number): number;
       postBounty(station: number, amount: number): void;
       unlockTech(tech: number): void;
       castSpell(kind: number): void;
       setAutocast(enabled: boolean): void;
       drawLine(stationIds: number[]): number;
+      selectLine(id: number | null): void;
+      setLineTrack(line: number, track: number): void;
       assignTrainset(line: number, count: number): void;
       setHeadwayMs(line: number, ms: number): void;
       setRunning(running: boolean): void;

@@ -718,6 +718,32 @@ pub fn signal_markers_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved PLAYER-PLACED block signals (TTD L5c) — 6 `f64` each: `[line, path, span, at_mm, x_m, y_m]`.
+/// Distinct from the per-tick `signal_markers_m` occupancy readout above: this is the AUTHORITATIVE
+/// `world.signals` store (the posts the player dropped), surfaced so the UI can DRAW each post + hit-test
+/// a click against it to remove. `at_mm` + ids ride as `f64` (exact for integers < 2^53, so the round-trip
+/// back into a `RemoveSignal` command is lossless); the position is in local metres. Empty until a signal
+/// is placed. The signal self-positions via `point_at(at_mm)` on its `(line, path)` (the same crossing the
+/// occupancy markers use). Render/query copy-out — never hashed, never fed back into state.
+pub fn placed_signals_f64(w: &World) -> Vec<f64> {
+    let mut out = Vec::with_capacity(w.signals.len() * 6);
+    for s in &w.signals {
+        let (x, y) = w
+            .lines
+            .get(s.line.index())
+            .and_then(|l| l.paths.get(s.path as usize))
+            .map(|p| p.point_at(s.at_mm))
+            .unwrap_or((0, 0));
+        out.push(s.line.0 as f64);
+        out.push(s.path as f64);
+        out.push(s.span as f64);
+        out.push(s.at_mm as f64);
+        out.push(x as f64 / 1000.0);
+        out.push(y as f64 / 1000.0);
+    }
+    out
+}
+
 /// Interleaved decadence-tide cells `[x0_m, y0_m, v0, ...]` (fantasy S10c): each CORRUPTED CA cell
 /// (decadence > 0) as local metres + a 0..1 strength (`decadence / DECAD_MAX`) for the cold-tide overlay.
 /// Empty for transit / before the tide starts. Render-only — the field is hashed; this is a copy-out

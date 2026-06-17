@@ -494,6 +494,13 @@ function Editor({ l }: { l: PerLine }) {
           ) : (
             <div style={{ marginTop: "4px", color: "var(--ot-con-ink-dim)", fontSize: 11 }}>⚊ Single track — opposing carts meet at stations.</div>
           )}
+          {/* TTD L5c: signal placement is a CONTEXTUAL map gesture (no tool), so surface it here for
+              discoverability when the selected line has a single-track span (recognition over recall). */}
+          {!stats.running && (game.bridge.linesView()[id]?.trackTypes ?? []).some((t) => t === 1) && (
+            <div data-testid="signal-hint" style={{ marginTop: "6px", color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
+              ◫ Click a single-track segment to drop a block signal (a passing point); click the post to remove it.
+            </div>
+          )}
         </div>
       )}
 

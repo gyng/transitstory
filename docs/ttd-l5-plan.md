@@ -101,9 +101,19 @@ unchanged — only the KEY graduates, exactly as it did per layer
        pinned constants.
   The with-signals motion is pinned by a NEW position fingerprint on a signalled scenario; the existing
   goldens stay byte-identical (they place no signals) ⇒ NO further golden re-pin at L5b.
-- **L5c — UI: place/remove a signal on a single-track span** (the diegetic toolbar gesture; snap to a
-  span, click to drop a signal; render placed signals distinctly from the derived occupancy markers).
-  Frontend-only, golden-neutral. Cause→effect: place a signal ⇒ opposing trains visibly pass there.
+- **L5c — UI: place/remove a signal on a single-track span. [LANDED 2026-06-17]** A CONTEXTUAL per-line
+  gesture (no new tool — mirrors the waypoint-handle pattern, respecting the locked thin-loop budget):
+  with a line selected in BUILD mode, a click near one of its SINGLE-track spans drops a block signal; a
+  click on an existing post removes it; sub-100ms snap ghost on mousemove. A `placed_signals_f64` /
+  `placedSignals()` getter exposes `world.signals` (position via `point_at(at_mm)` ⇒ on-rail by
+  construction); a distinct white "signal-post" deck layer renders them (vs the amber/red/green occupancy
+  aspect dots). The click→span→`at_mm` geometry projects onto the trunk polyline (stops pin span
+  boundaries across smoothing) and routes lng/lat⇄mm through `coords/geo.ts` (the one crossing). Verified:
+  tsc clean, vitest 27/27, full sim suite 59 (determinism intact — view-only core additions), sim-wasm
+  builds, AND a new camera-independent e2e (`e2e/signals.spec.ts`) places→places→removes via the
+  production `placeSignalLngLat` hook, asserting the `signal-<line>-<span>-<atMm>` store contract + a
+  screenshot (post renders on the rail, on land). Test hooks added: `placeSignalLngLat`, `placedSignalIds`,
+  `selectLine`, `setLineTrack`. Frontend-only; the goldens/fingerprints are untouched.
 - **L5d — single-track capacity/cost balance** (a placed signal raises the line's effective single-track
   throughput; small capital cost per signal). Tunable, behind the existing economy.
 

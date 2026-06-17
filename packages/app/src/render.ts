@@ -152,6 +152,25 @@ export interface SignalMarker {
   lat: number;
   aspect: number;
 }
+/** A PLAYER-PLACED block signal (TTD L5c) — the post the player dropped on a single-track span, drawn
+ *  DISTINCT from the live occupancy aspect dots (`SignalMarker`): a small upright marker the player can
+ *  click to remove. `addr` is its `(line, path, span, atMm)` address (for the testid + remove command);
+ *  `snap` flags the pre-commit highlight (the post the next click would remove). */
+export interface PlacedSignalMarker {
+  lng: number;
+  lat: number;
+  line: number;
+  path: number;
+  span: number;
+  atMm: number;
+  snap?: boolean;
+}
+/** Pre-commit PLACE candidate (TTD L5c): the spot on a single-track span the next click would drop a new
+ *  signal at — a translucent ghost post drawn before the click commits (AGENTS sub-100 ms feedback). */
+export interface SignalGhost {
+  lng: number;
+  lat: number;
+}
 /** A node BUFFER-FILL pip (fantasy #8): `fill` 0..1 of the node's Forge-Line buffer — a backed-up source
  *  (ship it) reads high, a starved sink reads low. Rendered as a small gauge dot on the node. */
 export interface BufferPip {
@@ -417,6 +436,11 @@ export interface RenderView {
   ghostStation?: { lng: number; lat: number } | null;
   /** TTD signal markers (single-track block state) — only populated when the Signals lens is on. */
   signals?: SignalMarker[];
+  /** TTD L5c player-placed block signals (the posts the player dropped) — shown when their line is the
+   *  selected line in build mode (clickable to remove). Distinct glyph from the occupancy `signals` above. */
+  placedSignals?: PlacedSignalMarker[];
+  /** TTD L5c pre-commit PLACE ghost — where the next click would drop a signal (snap candidate highlight). */
+  signalGhost?: SignalGhost | null;
   /** Node nameplates (town/resource name + key stats) — fantasy only; drawn LOD-gated (zoomed in). */
   nodePlates?: NodePlate[];
 }
@@ -1676,4 +1700,56 @@ export function signalLayer(signals: SignalMarker[]): Layer {
     pickable: false,
     updateTriggers: { getFillColor: signals.map((s) => s.aspect).join("") },
   });
+}
+
+/** TTD L5c — the PLAYER-PLACED block signals (the posts dropped on single-track spans) + the pre-commit
+ *  place ghost. Drawn DISTINCT from the amber/red/green occupancy aspect dots (`signalLayer`): an upright
+ *  white post with a dark casing (a "signal mast"), reading as infrastructure the player owns rather than a
+ *  live aspect. The snap candidate (the post the next click would remove) gets a bright selection-blue ring;
+ *  the place ghost is a translucent post. Above the line PathLayer, below the vehicles (composeAndSet z-order).
+ *  Not deck-pickable — hit-tested in screen space by Game, like the waypoint control handles. */
+export function placedSignalLayers(placed: PlacedSignalMarker[], ghost: SignalGhost | null): Layer[] {
+  const out: Layer[] = [];
+  if (placed.length > 0) {
+    out.push(
+      new ScatterplotLayer<PlacedSignalMarker>({
+        id: "placed-signals",
+        data: placed,
+        getPosition: (d: PlacedSignalMarker) => [d.lng, d.lat],
+        // White post, selection-blue when it's the snap (remove) candidate.
+        getFillColor: (d: PlacedSignalMarker) => (d.snap ? [0, 114, 178, 255] : [245, 247, 250, 245]),
+        getLineColor: (d: PlacedSignalMarker) => (d.snap ? [255, 255, 255, 255] : [28, 32, 40, 235]),
+        getRadius: 6,
+        radiusUnits: "pixels",
+        radiusMinPixels: 4.5,
+        radiusMaxPixels: 9,
+        stroked: true,
+        getLineWidth: 2,
+        lineWidthUnits: "pixels",
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+        updateTriggers: { getFillColor: placed.map((s) => (s.snap ? 1 : 0)).join(""), getLineColor: placed.map((s) => (s.snap ? 1 : 0)).join("") },
+      }),
+    );
+  }
+  if (ghost) {
+    out.push(
+      new ScatterplotLayer<SignalGhost>({
+        id: "signal-ghost",
+        data: [ghost],
+        getPosition: (d: SignalGhost) => [d.lng, d.lat],
+        getFillColor: [0, 114, 178, 110], // translucent provisional post (dashed-blueprint cousin)
+        getLineColor: [0, 114, 178, 220],
+        getRadius: 6,
+        radiusUnits: "pixels",
+        radiusMinPixels: 4.5,
+        stroked: true,
+        getLineWidth: 1.5,
+        lineWidthUnits: "pixels",
+        lineWidthMinPixels: 1.5,
+        pickable: false,
+      }),
+    );
+  }
+  return out;
 }

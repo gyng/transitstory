@@ -164,6 +164,16 @@ impl Sim {
         sim::render_buf::signal_markers_m(&self.world)
     }
 
+    /// PLAYER-PLACED block signals (TTD L5c) — the authoritative `world.signals` store as a flat
+    /// `Float64Array`, 6 per signal `[line, path, span, at_mm, x_m, y_m]`. Distinct from `signalMarkers`
+    /// (the per-tick occupancy readout): these are the posts the player dropped, so the UI draws them +
+    /// hit-tests a click to remove one. `at_mm`/ids ride as f64 (exact integers < 2^53 ⇒ lossless round-trip
+    /// back into a `RemoveSignal`); positions are local metres. Read on the ~3 Hz / on-change cadence.
+    #[wasm_bindgen(js_name = placedSignals)]
+    pub fn placed_signals(&self) -> Vec<f64> {
+        sim::render_buf::placed_signals_f64(&self.world)
+    }
+
     /// Interleaved `[onboard, capacity]` per vehicle (Uint16Array) — the train inspector's load.
     #[wasm_bindgen(js_name = vehicleLoads)]
     pub fn vehicle_loads(&self) -> Vec<u16> {

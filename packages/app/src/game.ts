@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type RaidLabel, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -216,6 +216,14 @@ export class Game {
   /** Pre-commit snap candidate: the station the next click would chain (line tool) or demolish
    *  (bulldozer). Set by the pointer per mousemove; rendered as a ring BEFORE the click commits. */
   snapStation: number | null = null;
+  /** TTD L5c pre-commit signal candidate: what a click would do near the SELECTED line's track in build
+   *  mode. `remove` carries an existing placed signal's address (the post the click would delete);
+   *  `place` carries the spot + derived `(line, path, span, atMm)` the click would drop a new signal at.
+   *  Set by the pointer per mousemove → drawn as a highlight/ghost BEFORE the click commits (AGENTS UX). */
+  signalSnap:
+    | { kind: "remove"; lng: number; lat: number; line: number; path: number; span: number; atMm: number }
+    | { kind: "place"; lng: number; lat: number; line: number; path: number; span: number; atMm: number }
+    | null = null;
   /** Last rejection reason (e.g. afford-gate) for a transient toast; cleared on dismiss. */
   notice: string | null = null;
 
@@ -242,6 +250,9 @@ export class Game {
   /** Cached topology layers (stable identity across frames; rebuilt only on refresh). */
   private below: Layer[] = [];
   private above: Layer[] = [];
+  /** Cached TTD L5c placed-signal layers (the selected line's posts + the place ghost). Rebuilt on refresh
+   *  (place/remove/select/snap change), NOT per rAF — they don't move with the trains (AGENTS render hot path). */
+  private placedSignalLayersCache: Layer[] = [];
   /** Spatial juice canvas (ripples / connect-flash / throbs). Client-side acknowledgement only —
    *  driven by the existing GameLoop rAF, never a deck rebuild or a sim tick. */
   effects!: Effects;
@@ -957,6 +968,240 @@ export class Game {
       out.push({ lng, lat, aspect: raw[i + 2] });
     }
     return out;
+  }
+
+  // --- TTD L5c: player-placed block signals (a CONTEXTUAL per-line map interaction, no new tool) ---
+
+  /** Screen-pixel hit radius for grabbing/placing a signal on a single-track span (Fitts: a generous
+   *  screen-pixel constant, not metres, so it stays tappable when zoomed out). */
+  private static readonly SIGNAL_PX = SNAP_PX;
+
+  /** The PLAYER-PLACED block signals (TTD L5c) for the SELECTED line, as lng/lat + their `(line,path,span,
+   *  atMm)` address, with the snap candidate flagged. The core fills the authoritative store as
+   *  `[line, path, span, at_mm, x_m, y_m, ...]`; we convert metres→lng/lat through coords/geo.ts (the one
+   *  coordinate crossing). Shown only when their line is the selected line in build mode (so the clean map
+   *  isn't peppered with posts). Read-only — no sim state, no Command. */
+  placedSignals(): PlacedSignalMarker[] {
+    if (this.mode !== "build" || this.selectedLine === null) return [];
+    const raw = this.bridge.placedSignals();
+    const out: PlacedSignalMarker[] = [];
+    const snap = this.signalSnap?.kind === "remove" ? this.signalSnap : null;
+    for (let i = 0; i + 5 < raw.length; i += 6) {
+      const line = raw[i];
+      if (line !== this.selectedLine) continue; // only the selected line's posts
+      const path = raw[i + 1];
+      const span = raw[i + 2];
+      const atMm = raw[i + 3];
+      const [lng, lat] = metersToLngLat([raw[i + 4], raw[i + 5]]);
+      const isSnap = snap !== null && snap.line === line && snap.path === path && snap.span === span && snap.atMm === atMm;
+      out.push({ lng, lat, line, path, span, atMm, snap: isSnap });
+    }
+    return out;
+  }
+
+  /** The pre-commit PLACE ghost (TTD L5c): the translucent post the next click would drop, or null. */
+  signalGhost(): SignalGhost | null {
+    return this.signalSnap?.kind === "place" ? { lng: this.signalSnap.lng, lat: this.signalSnap.lat } : null;
+  }
+
+  /** Resolve what a signal gesture at a screen pixel would DO for the selected line (no mutation): remove an
+   *  existing placed signal under the cursor (priority), else place a new one on the nearest SINGLE-track span
+   *  of the selected line — projecting the click onto that span's polyline and mapping the in-span fraction
+   *  into the SIM-frame arc-length (`at_mm`). Returns null if neither is in reach (or no line is selected /
+   *  not in build mode). The single geometry path shared by the live highlight (`mousemove`) and the commit
+   *  (`click`), so the ghost can never disagree with what commits. Routes lng/lat→mm via coords/geo.ts. */
+  signalCandidateAt(px: number, py: number): NonNullable<Game["signalSnap"]> | null {
+    if (this.mode !== "build" || this.selectedLine === null) return null;
+    const lineId = this.selectedLine;
+    const lv = this.bridge.linesView()[lineId];
+    if (!lv || lv.removed || lv.polylineMm.length < 2) return null;
+
+    // 1) REMOVE: an existing placed signal of this line within the snap radius (screen space) wins.
+    {
+      let best: { line: number; path: number; span: number; atMm: number; lng: number; lat: number } | null = null;
+      let bestD = Game.SIGNAL_PX;
+      const raw = this.bridge.placedSignals();
+      for (let i = 0; i + 5 < raw.length; i += 6) {
+        if (raw[i] !== lineId) continue;
+        const [lng, lat] = metersToLngLat([raw[i + 4], raw[i + 5]]);
+        const p = this.map.project([lng, lat]);
+        const d = Math.hypot(p.x - px, p.y - py);
+        if (d <= bestD) {
+          bestD = d;
+          best = { line: raw[i], path: raw[i + 1], span: raw[i + 2], atMm: raw[i + 3], lng, lat };
+        }
+      }
+      if (best) return { kind: "remove", ...best };
+    }
+
+    // 2) PLACE: project the click onto the nearest SINGLE-track span of the trunk and derive `at_mm`. The
+    //    trunk polyline is the render-smoothed geometry, but STOPS PIN the span boundaries (same vertex in
+    //    both frames), so the span index + the in-span fraction map exactly onto the SIM arc-length table
+    //    (`stopArclenMm`) that `Signal.at_mm` lives in — keeping `at_mm` authoritative without the smoothing.
+    const poly = lv.polylineMm; // mm
+    const stopArc = lv.stopArclenMm ?? [];
+    if (stopArc.length < 2) return null;
+    // Project each polyline vertex to screen once; walk segments, tracking which SPAN we're in by matching
+    // a vertex to its stop arc-length (stops are exact polyline vertices). Find the closest point on a
+    // single-track span.
+    const screen = poly.map(([x, y]) => {
+      const [lng, lat] = mmToLngLat([x, y]);
+      const p = this.map.project([lng, lat]);
+      return [p.x, p.y] as [number, number];
+    });
+    // Per-vertex SIM arc-length: vertex i sits at smoothed arc-fraction (cumulative mm)/total, mapped onto
+    // the SIM total. Stops pin, so we anchor at each stop vertex and interpolate by smoothed length between.
+    const stopPosMm = this.stopPositionsMm(lv.stops);
+    const simArc = this.vertexSimArclen(poly, stopArc, stopPosMm);
+    let best: { span: number; atMm: number; lng: number; lat: number } | null = null;
+    let bestD = Game.SIGNAL_PX;
+    for (let i = 1; i < screen.length; i++) {
+      const a = screen[i - 1];
+      const b = screen[i];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+      if (d > bestD) continue;
+      // SIM arc-length at the projected point along this segment.
+      const segSim = simArc[i - 1] + (simArc[i] - simArc[i - 1]) * t;
+      // Which span does this arc-length fall in? (strictly inside, not on a stop gate)
+      const span = this.spanOfArclen(stopArc, segSim);
+      if (span < 0) continue;
+      if ((lv.trackTypes[span] ?? 0) !== 1) continue; // SINGLE-track spans only (1 = Single)
+      const lo = stopArc[span];
+      const hi = stopArc[span + 1];
+      // Clamp strictly inside the span (the core rejects on-gate signals); keep a 1mm margin off each stop.
+      const atMm = Math.round(Math.min(hi - 1, Math.max(lo + 1, segSim)));
+      if (atMm <= lo || atMm >= hi) continue;
+      // The committed post self-positions via the SIM point_at(at_mm); echo that here so the ghost sits
+      // exactly where the post will land (route mm→lng/lat through geo.ts).
+      const [glng, glat] = this.simPointAtLngLat(poly, simArc, atMm);
+      bestD = d;
+      best = { span, atMm, lng: glng, lat: glat };
+    }
+    if (best) return { kind: "place", line: lineId, path: 0, ...best };
+    return null;
+  }
+
+  /** Per-vertex SIM arc-length for the (render-smoothed) trunk polyline: stops are exact polyline vertices
+   *  (pinned across smoothing — they survive the Chaikin/Catmull pass), so we ANCHOR each stop vertex to its
+   *  SIM `stopArclenMm` and distribute the SIM span length across the interior vertices in proportion to their
+   *  SMOOTHED chord lengths. The stop vertices are found by matching each station's mm position to the nearest
+   *  polyline vertex (in order) — robust to a variable per-span vertex count (grid smoothing isn't uniform).
+   *  Pure geometry over mm arrays — never reads the camera, so it's frame-stable. */
+  private vertexSimArclen(poly: [number, number][], stopArc: number[], stopPosMm: ([number, number] | null)[]): number[] {
+    const n = poly.length;
+    const out = new Array<number>(n).fill(0);
+    // Smoothed cumulative chord length per vertex.
+    const cum = new Array<number>(n).fill(0);
+    for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]);
+    const stopVtx = this.stopVertexIndices(poly, stopArc.length, stopPosMm);
+    for (let k = 0; k + 1 < stopVtx.length; k++) {
+      const v0 = stopVtx[k];
+      const v1 = stopVtx[k + 1];
+      const simLo = stopArc[k];
+      const simHi = stopArc[k + 1];
+      const smLo = cum[v0];
+      const smSpan = cum[v1] - smLo || 1;
+      out[v0] = simLo;
+      for (let v = v0 + 1; v <= v1; v++) {
+        const frac = (cum[v] - smLo) / smSpan;
+        out[v] = simLo + frac * (simHi - simLo);
+      }
+    }
+    // Any tail vertices past the last stop (loops aside, there shouldn't be) hold the last stop's arc-length.
+    for (let v = stopVtx[stopVtx.length - 1] + 1; v < n; v++) out[v] = stopArc[stopArc.length - 1];
+    return out;
+  }
+
+  /** The polyline vertex index at each STOP, found by the vertex NEAREST that stop's station position (in
+   *  order, monotonic). Stops pin across smoothing, so each station sits exactly on a polyline vertex; this
+   *  recovers which one without assuming a uniform per-span vertex count. Falls back to a proportional split
+   *  for any stop whose position is unknown (removed station). */
+  private stopVertexIndices(poly: [number, number][], count: number, stopPosMm: ([number, number] | null)[]): number[] {
+    const n = poly.length;
+    if (count <= 1) return [0];
+    const out: number[] = [0]; // stop 0 is always vertex 0
+    let from = 1;
+    for (let k = 1; k < count; k++) {
+      const pos = stopPosMm[k];
+      if (k === count - 1) { out.push(n - 1); break; } // last stop is the last vertex
+      if (!pos) { out.push(Math.round((k * (n - 1)) / (count - 1))); from = out[out.length - 1] + 1; continue; }
+      let bestV = from;
+      let bestD = Infinity;
+      for (let v = from; v < n - 1; v++) {
+        const d = (poly[v][0] - pos[0]) ** 2 + (poly[v][1] - pos[1]) ** 2;
+        if (d < bestD) { bestD = d; bestV = v; }
+      }
+      out.push(bestV);
+      from = bestV + 1;
+    }
+    return out;
+  }
+
+  /** mm positions of a line's stop station ids (null for a removed/unknown station). */
+  private stopPositionsMm(stops: number[]): ([number, number] | null)[] {
+    const sv = this.bridge.stationsView();
+    return stops.map((id) => {
+      const s = sv[id];
+      return s && !s.removed ? ([s.xMm, s.yMm] as [number, number]) : null;
+    });
+  }
+
+  /** The span index a SIM arc-length falls STRICTLY inside (between two stop boundaries), or -1 if on a stop
+   *  gate / out of range. Mirrors the core's `Path::strictly_inside` (a signal can't sit on a station). */
+  private spanOfArclen(stopArc: number[], s: number): number {
+    for (let sp = 0; sp + 1 < stopArc.length; sp++) {
+      if (s > stopArc[sp] && s < stopArc[sp + 1]) return sp;
+    }
+    return -1;
+  }
+
+  /** lng/lat of a SIM arc-length `atMm` along the (smoothed) trunk polyline — the render echo of the core's
+   *  `Path::point_at`, so the ghost/highlight sits exactly where the committed post self-positions. Walks the
+   *  per-vertex SIM arc-lengths, lerps the bracketing vertices, then crosses to lng/lat via coords/geo.ts. */
+  private simPointAtLngLat(poly: [number, number][], simArc: number[], atMm: number): [number, number] {
+    for (let i = 1; i < poly.length; i++) {
+      if (atMm <= simArc[i]) {
+        const seg = simArc[i] - simArc[i - 1] || 1;
+        const t = (atMm - simArc[i - 1]) / seg;
+        const x = poly[i - 1][0] + (poly[i][0] - poly[i - 1][0]) * t;
+        const y = poly[i - 1][1] + (poly[i][1] - poly[i - 1][1]) * t;
+        return mmToLngLat([x, y]);
+      }
+    }
+    const last = poly[poly.length - 1];
+    return mmToLngLat(last);
+  }
+
+  /** Commit the signal gesture at a screen pixel (a contextual click on the selected line in build mode):
+   *  REMOVE the placed signal under the cursor, else PLACE a new one on the nearest single-track span. One
+   *  undoable Command each (PlaceSignal / RemoveSignal). Returns true if it acted (so the pointer doesn't
+   *  fall through to deselect). The Build/Run wall holds — `signalCandidateAt` is null outside build mode. */
+  signalGestureAt(px: number, py: number): boolean {
+    const c = this.signalCandidateAt(px, py);
+    if (!c) return false;
+    if (c.kind === "remove") {
+      this.bridge.apply(cmd.removeSignal(c.line, c.path, c.span, c.atMm));
+    } else {
+      this.bridge.apply(cmd.placeSignal(c.line, c.path, c.span, c.atMm));
+      audio.place();
+      this.effects.ripple(c.lng, c.lat); // selection-blue placement echo (sub-100 ms acknowledgement)
+    }
+    this.signalSnap = null;
+    this.refresh();
+    return true;
+  }
+
+  /** Camera-independent test hook: place a signal at a lng/lat by the SAME production path a click takes —
+   *  project to the screen pixel, then run the gesture (so the e2e exercises the geo.ts coordinate boundary
+   *  + the real span/at_mm geometry, not a second one). Returns true if a signal was placed/removed. */
+  placeSignalLngLat(lng: number, lat: number): boolean {
+    const p = this.map.project([lng, lat]);
+    return this.signalGestureAt(p.x, p.y);
   }
 
   /** Build the binary-attribute peep layer at interpolation `alpha`, or null when off / not running
@@ -2518,6 +2763,8 @@ export class Game {
     const { below, above } = topoLayers(this.buildView());
     this.below = below;
     this.above = above;
+    // TTD L5c: rebuild the selected line's placed-signal posts + place ghost on-change (not per rAF).
+    this.placedSignalLayersCache = placedSignalLayers(this.placedSignals(), this.signalGhost());
     this.refreshAmbientServed(); // re-evaluate which trade routes the rail now serves (station set changed)
     this.composeAndSet(this.currentVehicleDots(), this.vehicleCarsAt(1), this.peepLayerAt(1));
     for (const cb of this.onChange) cb();
@@ -2703,9 +2950,13 @@ export class Game {
     // TTD signals (opt-in lens): single-track block state UNDER the vehicles, so a cart rides on top of
     // the signal that gates it. Per-frame (occupancy shifts with the trains), like the other motion layers.
     const signals = this.showSignals ? [signalLayer(this.signalMarkers())] : [];
+    // TTD L5c: the selected line's PLAYER-PLACED block-signal posts (+ place ghost), above the network /
+    // below the vehicles — a cached on-change layer set (see `placedSignalLayersCache`), distinct glyph from
+    // the occupancy aspect dots above. Only populated in build mode with a line selected.
+    const placedSig = this.placedSignalLayersCache;
     // Legion NAMEPLATES drop at the strategic overview (label clutter); the 3D hosts stay so the force reads.
     const armyL = detail ? army : army.filter((l) => l.id !== "legion-names");
-    let layers = [...below, ...ambient, ...signals, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
+    let layers = [...below, ...ambient, ...signals, ...placedSig, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

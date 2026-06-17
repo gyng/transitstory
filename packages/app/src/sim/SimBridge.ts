@@ -172,6 +172,14 @@ export class SimBridge {
     return this.sim.signalMarkers();
   }
 
+  /** PLAYER-PLACED block signals (TTD L5c) — the authoritative store as a flat Float64Array, 6 per
+   *  signal `[line, path, span, at_mm, x_m, y_m]` (positions in metres; ids + at_mm are exact integers,
+   *  lossless for a RemoveSignal round-trip). Distinct from `signalMarkers` (the per-tick occupancy
+   *  readout). Read on the ~3 Hz / on-change cadence — these are the posts the player dropped. */
+  placedSignals(): Float64Array {
+    return this.sim.placedSignals();
+  }
+
   /** Interleaved decadence-tide cells `[x0,y0,v0,...]` (metres + 0..1 strength) — the cold-tide overlay. */
   decadenceTide(): Float32Array {
     return this.sim.decadenceTide();

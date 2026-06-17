@@ -251,6 +251,15 @@ pub struct LineView {
     pub min_radius_mm: f64,
     /// Build mode per inter-stop span (0=Surface,1=Elevated,2=Tunnel).
     pub span_modes: Vec<u8>,
+    /// TTD L5c — the TRUNK path's authoritative arc-length (mm) at each STOP, in the SIM frame (the frame
+    /// `Signal.at_mm` lives in, NOT the render-smoothed `polyline_mm`). Stops are pinned across the smoothing,
+    /// so span boundaries coincide in both frames: the UI projects a click onto a span on the smoothed
+    /// polyline, then maps the in-span fraction into this sim arc-length to derive a `PlaceSignal` `at_mm`.
+    /// `len == stops.len()` for a non-loop line; `stop_arclen_mm[span]..stop_arclen_mm[span+1]` bounds span.
+    /// f64 (like `polyline_mm`/`min_radius_mm`) so it never crosses the JS boundary as BigInt — mm
+    /// arc-lengths are integer-exact in f64, and `at_mm` is rounded back to an integer before the Command.
+    #[serde(default)]
+    pub stop_arclen_mm: Vec<f64>,
     pub crosses_water_surface: bool,
     /// Track type per inter-stop span (0=Double,1=Single; P2) — the trunk's, for the Editor toggle.
     #[serde(default)]

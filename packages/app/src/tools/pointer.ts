@@ -116,6 +116,10 @@ export function attachPointer(game: Game): void {
     // Stations stay the higher-priority, larger target — peep-pick never steals a station selection.
     const hit = game.nearestStation(px, py);
     if (hit !== null) { game.selectStation(hit); return; }
+    // TTD L5c (contextual, no new tool): with a line SELECTED in build mode, a click near its single-track
+    // span drops a block signal — and a click on an existing post removes it. Stations win (handled above);
+    // tried before line-select so you can edit the selected line's signals without it stealing the click.
+    if (game.mode === "build" && game.selectedLine !== null && game.signalGestureAt(px, py)) return;
     if (game.mode === "run" && game.showPeeps && map.getZoom() >= DETAIL_ZOOM && game.inspectPeepAt(px, py)) {
       return; // followed a rider (inspectPeepAt opened the FollowCard); nothing more to do
     }
@@ -181,9 +185,23 @@ export function attachPointer(game: Game): void {
       game.refresh();
       return;
     }
+    // TTD L5c pre-commit signal highlight (AGENTS UX: highlight the snap candidate BEFORE the click): with a
+    // line selected in build mode, show what a click near its track would do (place ghost / remove highlight).
+    let sigChanged = false;
+    if (game.mode === "build" && game.selectedLine !== null) {
+      const cand = game.signalCandidateAt(e.point.x, e.point.y);
+      const prev = game.signalSnap;
+      sigChanged =
+        (cand === null) !== (prev === null) ||
+        (cand !== null && prev !== null && (cand.kind !== prev.kind || cand.atMm !== prev.atMm || cand.span !== prev.span || cand.line !== prev.line));
+      game.signalSnap = cand;
+    } else if (game.signalSnap !== null) {
+      game.signalSnap = null;
+      sigChanged = true;
+    }
     // Hover highlight: show the nearest station's catchment.
     const id = game.nearestStation(e.point.x, e.point.y);
-    if (id !== game.hoveredStation || snapChanged) {
+    if (id !== game.hoveredStation || snapChanged || sigChanged) {
       game.hoveredStation = id;
       game.refresh();
     }

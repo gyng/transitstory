@@ -70,6 +70,9 @@ export type Event =
   | { SpellCast: { kind: number; balance_left: number } }
   | { AutocastSet: { enabled: boolean } }
   | { PlatformsBuilt: { station: number; k: number } }
+  // TTD L5: a block signal was placed/removed (echoes the location so the UI can confirm the edit).
+  | { SignalPlaced: { line: number; path: number; span: number; at_mm: number } }
+  | { SignalRemoved: { line: number; path: number; span: number; at_mm: number } }
   | { Rejected: { reason: string } };
 
 export interface PerStation {
@@ -298,6 +301,10 @@ export interface LineView {
   branchTermini: number[];
   minRadiusMm: number;
   spanModes: number[];
+  // TTD L5c: the trunk path's SIM-frame arc-length (mm) at each stop — the frame `Signal.at_mm` lives in
+  // (NOT the render-smoothed `polylineMm`). Stops pin span boundaries across the smoothing, so the signal
+  // gesture projects a click onto a span on the smoothed polyline then maps the in-span fraction here.
+  stopArclenMm: number[];
   trackTypes: number[]; // 0=Double,1=Single per span (P2)
   crossesWaterSurface: boolean;
   removed: boolean;

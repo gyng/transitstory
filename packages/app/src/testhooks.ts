@@ -20,12 +20,27 @@ export function installTestHooks(game: Game, loop: GameLoop): void {
       game.refresh();
     },
     placeStationLngLat: (lng, lat) => game.placeStation(lng, lat),
+    // TTD L5c: place/remove a block signal at a lng/lat by the SAME production path a click takes (project →
+    // signalGestureAt → coords/geo.ts span/at_mm geometry). Requires a line selected in build mode.
+    placeSignalLngLat: (lng, lat) => game.placeSignalLngLat(lng, lat),
+    // TTD L5c testid contract: ALL placed signals' addresses as `signal-<line>-<span>-<atMm>` ids (deck
+    // layers aren't DOM, so the e2e asserts on this camera-independent list + the `placed-signals` layer).
+    placedSignalIds: () => {
+      const raw = game.bridge.placedSignals();
+      const ids: string[] = [];
+      for (let i = 0; i + 5 < raw.length; i += 6) ids.push(`signal-${raw[i]}-${raw[i + 2]}-${raw[i + 3]}`);
+      return ids;
+    },
     placeBarracksLngLat: (lng, lat) => game.placeBarracks(lng, lat),
     postBounty: (station, amount) => game.postBounty(station, amount),
     unlockTech: (tech) => game.unlockTech(tech),
     castSpell: (kind) => game.castSpell(kind),
     setAutocast: (enabled) => game.setAutocast(enabled),
     drawLine: (ids) => game.drawLineByIds(ids),
+    // TTD L5c: select a line (the signal gesture is contextual — it needs a selected line) + set its
+    // whole-line track type (0=double, 1=single) — the single-track precondition for placing a signal.
+    selectLine: (id) => game.selectLine(id),
+    setLineTrack: (line, track) => game.setLineTrack(line, track),
     assignTrainset: (line, count) => game.assignTrainset(line, count),
     setHeadwayMs: (line, ms) => game.setHeadwayMs(line, ms),
     setRunning: (running) => game.setMode(running ? "run" : "build"),
