@@ -123,16 +123,21 @@ fn legion_position_survives_a_set_headway() {
 #[test]
 fn army_targets_buffer_points_a_marching_legion_at_its_town() {
     let mut w = war_world();
-    // Run until a legion is MARCHING (launched + en route, not yet besieging the town).
+    // Run until a legion is EN ROUTE (launched + travelling, not yet besieging). war_world runs the default
+    // metro (cap 7) and the legion's strength (8) exceeds it, so it can't board ⇒ it WALKS the corridor —
+    // an en-route state whose intent arc still points at the town. (#legion-ride-trains split MARCHING into
+    // walk/wait/ride; AT_STATION is now a one-tick decide state, so we look for the travelling sub-states.)
     let mut idx = None;
     for _ in 0..6000 {
         w.tick(50);
-        if let Some(i) = (0..w.armies.len()).find(|&i| w.armies.state[i] == sim::army::MARCHING) {
+        if let Some(i) = (0..w.armies.len()).find(|&i| {
+            matches!(w.armies.state[i], sim::army::WALKING | sim::army::RIDING)
+        }) {
             idx = Some(i);
             break;
         }
     }
-    let i = idx.expect("a legion should be marching within the run");
+    let i = idx.expect("a legion should be travelling (walking/riding) within the run");
     let pos = sim::render_buf::army_positions_m(&w);
     let tgt = sim::render_buf::army_targets_m(&w);
     assert_eq!(pos.len(), tgt.len(), "the two buffers are index-aligned (one [x,y] per legion)");

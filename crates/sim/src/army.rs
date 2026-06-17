@@ -12,10 +12,14 @@
 use crate::ids::LineId;
 use crate::world::World;
 
-/// Marching pace in mm per sim-second (a legion riding the rails). Balance knob — tuned via the
-/// headless harness (tests/balance.rs) so the first conquest lands inside the design's ~60–120 s
-/// "bites" window rather than dragging past it.
-const ARMY_SPEED_MM_S: i64 = 50_000;
+/// A marginal-rail bias (ms): a legion only WAITS for a train when rail beats walking by at least this
+/// much — it models a legion's reluctance to gamble on a train that might be raided. Integer, city-
+/// independent. (#legion-ride-trains.)
+const WAIT_RISK_MS: i64 = 60_000;
+/// How long a WAITING legion holds out for a train before re-deciding (ms). If no train comes (line cut /
+/// no service), patience lapses → it re-decides AT_STATION → usually WALKS. Bounds the wait so a legion is
+/// never stranded forever on a dead line.
+const WAIT_PATIENCE_MS: i64 = 240_000;
 /// Tribute to field one legion — ties the war machine to the supply economy (feed towns → tribute →
 /// armies). The non-derivable launch knob; balance-swept later (externalised to `CityData` then). S8a:
 /// a flat, low cost so a modest supply network fields its first legion fast (harness-tuned: with the
@@ -45,6 +49,13 @@ pub const WAITING: u8 = 4; // parked at a station, holding for a train on its ch
 pub const RIDING: u8 = 5; // aboard a real vehicle — position slaved to it (no free arc-length integration)
 /// Back-compat alias — launch still enters at AT_STATION (the old MARCHING discriminant 0).
 pub const MARCHING: u8 = AT_STATION;
+
+/// Is the legion still travelling to its target (deciding / walking / waiting / riding) — as opposed to
+/// BESIEGING or DONE? The render draws a forward intent arc for en-route legions; the terminal states collapse
+/// it. Shared so the render and any future UI agree on "en route".
+pub fn is_en_route(state: u8) -> bool {
+    matches!(state, AT_STATION | WALKING | WAITING | RIDING)
+}
 
 /// Separate Structure-of-Arrays for legions. Authoritative (hashed) fields + render-only cartesian.
 #[derive(Clone, Default)]
@@ -170,48 +181,217 @@ pub(crate) fn maybe_launch(world: &mut World) {
     }
 }
 
-/// MARCH (the move sub-phase): advance every marching legion along its route at a constant pace,
-/// clamped to the route's arc-length. Owns `s_mm` (never touched by `dispatch::v.clear()`). Integer,
-/// index-ordered ⇒ deterministic. The siege trigger (reaching the target) + grind/flip are S8b.
-pub(crate) fn advance_armies(world: &mut World, dt_ms: i64) {
+/// The legion's on-foot pace (mm/s). A legion WALKS at the citizen walk speed (`demand::WALK_SPEED_MM_S`),
+/// optionally overridden per-city (`army_speed_mm_s`, externalised so a continent-scale baked map can march
+/// legions at continent scale) and sped up by the WAR_MARCH tech (+50%). 0 override ⇒ the walk default, so the
+/// demo + golden fixtures are unchanged. (Riding is at the train's own speed, not this — see `army_travel_step`.)
+fn walk_speed(world: &World) -> i64 {
+    let base = if world.city.army_speed_mm_s > 0 { world.city.army_speed_mm_s } else { crate::demand::WALK_SPEED_MM_S };
+    if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::WAR_MARCH) { base * 3 / 2 } else { base }
+}
+
+/// The target town's arc-length on the legion's route (bounty-steered; may be an intermediate stop), and the
+/// route's total length. `None` if the route/path is gone (a bulldozed line). Legions launch on path 0 (the
+/// trunk), so `l.stops` is this path's stop list. Shared by every travel sub-state so they agree on the goal.
+fn target_arc(world: &World, i: usize) -> Option<(i64, i64)> {
+    let l = world.lines.get(world.armies.line[i].index())?;
+    let p = l.paths.get(world.armies.path[i] as usize)?;
+    let t = world.armies.target[i];
+    let arc = l
+        .stops
+        .iter()
+        .position(|s| s.0 == t)
+        .and_then(|idx| p.stop_arclen_mm.get(idx).copied())
+        .unwrap_or_else(|| p.length_mm());
+    Some((p.length_mm(), arc))
+}
+
+/// TRAVEL (#legion-ride-trains): the legion's decide → walk / wait → ride → arrive machine, replacing the old
+/// free-ride march. A legion always lives on its line's arc-length `s_mm` (the ON-LINE model). Per state:
+/// - **AT_STATION** — decide walk-vs-wait: compare a WALK estimate (corridor distance ÷ walk speed) against a
+///   RAIL estimate (`headway/2` cold-start wait + in-vehicle ride at the train's top speed). Take rail only if
+///   it beats walking by `WAIT_RISK_MS` AND the legion fits a seat (1 seat per strength) AND the line is
+///   serviced + not raided; else WALK. (Already at the target arc ⇒ BESIEGE.)
+/// - **WALKING** — trudge the corridor on foot: advance `s_mm` toward the target at `walk_speed`. On arrival ⇒
+///   BESIEGE. (Committed — a walking legion does not re-evaluate; it chose the foot-leg.)
+/// - **WAITING** — hold at the station for a train (the actual board is `army_board`, after pax board). If
+///   patience lapses (no train came) ⇒ re-decide AT_STATION (usually WALK now).
+/// - **RIDING** — `s_mm` MIRRORS the carrying vehicle (no free arc-length integration — a real, contended
+///   ride). On the vehicle reaching the target arc ⇒ alight + BESIEGE. If the ride is lost (a dispatch
+///   `v.clear()` rebuild / line removed) ⇒ drop to AT_STATION at the last known spot and re-decide.
+///
+/// Integer + index-ordered ⇒ deterministic. Owns `s_mm` (never touched by `dispatch::v.clear()`).
+pub(crate) fn army_travel_step(world: &mut World, dt_ms: i64) {
     let dt = dt_ms.max(0);
-    // March pace is a per-city knob (externalised so the large baked continent's legions move at
-    // continent scale). 0 ⇒ the `ARMY_SPEED_MM_S` default, so the demo + golden fixture are unchanged.
-    let base = if world.city.army_speed_mm_s > 0 { world.city.army_speed_mm_s } else { ARMY_SPEED_MM_S };
-    // S11 WAR_MARCH: legions march +50% faster (×3/2). 0 ⇒ ×1, byte-identical.
-    let speed = if crate::tech::is_unlocked(world.tech_unlocked, crate::tech::WAR_MARCH) { base * 3 / 2 } else { base };
-    let step = speed.saturating_mul(dt) / 1000;
+    let clock = world.clock_ms;
+    let wspeed = walk_speed(world).max(1);
+    let walk_step = wspeed.saturating_mul(dt) / 1000;
+    let n_v = world.vehicles.len();
     for i in 0..world.armies.len() {
-        if world.armies.state[i] != MARCHING {
-            continue;
+        match world.armies.state[i] {
+            AT_STATION => {
+                let Some((_total, t_arc)) = target_arc(world, i) else {
+                    world.armies.state[i] = DONE;
+                    continue;
+                };
+                let s = world.armies.s_mm[i];
+                if s == t_arc {
+                    world.armies.state[i] = BESIEGING; // already there ⇒ besiege (preserves the old arrive→siege edge)
+                    world.armies.wait_line[i] = -1;
+                    world.armies.wait_dir[i] = 0;
+                    world.armies.riding_veh[i] = -1;
+                    continue;
+                }
+                let li = world.armies.line[i].index();
+                let loop_line = world.lines[li].paths.get(world.armies.path[i] as usize).map(|p| p.loop_line).unwrap_or(false);
+                let dir: i8 = if loop_line || t_arc >= s { 1 } else { -1 };
+                let remaining = (t_arc - s).abs();
+                let walk_est = remaining.saturating_mul(1000) / wspeed;
+                // RAIL estimate: only finite when the line runs trains, isn't raided, and the legion FITS a seat
+                // (1 seat per strength — a legion too big for the stock can never board ⇒ it must walk).
+                let line = &world.lines[li];
+                let serviced = line.trainset.map(|t| t.count > 0).unwrap_or(false) && !world.line_disabled(li);
+                let wait_est = if serviced {
+                    let spec = line.vehicle_spec();
+                    if world.armies.strength[i].max(1) > spec.capacity as i64 {
+                        i64::MAX
+                    } else {
+                        let ride_ms = remaining.saturating_mul(1000) / spec.v_max_mm_s.max(1);
+                        (line.headway_ms / 2).saturating_add(ride_ms)
+                    }
+                } else {
+                    i64::MAX
+                };
+                let take_rail = wait_est != i64::MAX && wait_est.saturating_add(WAIT_RISK_MS) <= walk_est;
+                world.armies.dir[i] = dir;
+                if take_rail {
+                    world.armies.state[i] = WAITING;
+                    world.armies.wait_line[i] = li as i32;
+                    world.armies.wait_dir[i] = dir;
+                    world.armies.wait_until_ms[i] = clock.saturating_add(WAIT_PATIENCE_MS);
+                } else {
+                    world.armies.state[i] = WALKING;
+                    world.armies.wait_line[i] = -1;
+                    world.armies.wait_dir[i] = 0;
+                }
+            }
+            WALKING => {
+                let Some((total, t_arc)) = target_arc(world, i) else {
+                    world.armies.state[i] = DONE;
+                    continue;
+                };
+                let dir = world.armies.dir[i] as i64;
+                let ns = world.armies.s_mm[i] + dir * walk_step;
+                let reached = (dir >= 0 && ns >= t_arc) || (dir < 0 && ns <= t_arc);
+                if reached {
+                    world.armies.s_mm[i] = t_arc;
+                    world.armies.state[i] = BESIEGING;
+                } else {
+                    world.armies.s_mm[i] = ns.clamp(0, total);
+                }
+            }
+            WAITING => {
+                if clock >= world.armies.wait_until_ms[i] {
+                    world.armies.state[i] = AT_STATION; // no train came — re-decide (usually WALK now)
+                    world.armies.wait_line[i] = -1;
+                    world.armies.wait_dir[i] = 0;
+                }
+            }
+            RIDING => {
+                let rv = world.armies.riding_veh[i];
+                let valid = rv >= 0
+                    && (rv as usize) < n_v
+                    && world.vehicles.line[rv as usize] == world.armies.line[i]
+                    && world.vehicles.path[rv as usize] == world.armies.path[i];
+                if !valid {
+                    // Lost the ride (a SetHeadway's dispatch rebuild cleared the vehicles, or the line was
+                    // bulldozed) → fall off at the last known arc-length and re-decide next tick. Never teleport.
+                    world.armies.state[i] = AT_STATION;
+                    world.armies.riding_veh[i] = -1;
+                    world.armies.wait_line[i] = -1;
+                    world.armies.wait_dir[i] = 0;
+                    continue;
+                }
+                let Some((_total, t_arc)) = target_arc(world, i) else {
+                    world.armies.state[i] = DONE;
+                    continue;
+                };
+                let vs = world.vehicles.s_mm[rv as usize];
+                let dir = world.armies.dir[i] as i64;
+                let reached = (dir >= 0 && vs >= t_arc) || (dir < 0 && vs <= t_arc);
+                if reached {
+                    world.armies.s_mm[i] = t_arc; // alight at the target ⇒ besiege
+                    world.armies.state[i] = BESIEGING;
+                    world.armies.riding_veh[i] = -1;
+                    world.armies.wait_line[i] = -1;
+                    world.armies.wait_dir[i] = 0;
+                } else {
+                    world.armies.s_mm[i] = vs; // mirror the carrying vehicle — no free slide
+                }
+            }
+            _ => {} // BESIEGING / DONE — terminal, frozen
         }
-        let line_idx = world.armies.line[i].index();
-        let path_i = world.armies.path[i] as usize;
-        let (total, target_arc) = match world.lines.get(line_idx).and_then(|l| {
-            let p = l.paths.get(path_i)?;
-            // The target town's arc-length on this route (bounty-steered; may be an intermediate stop).
-            let t = world.armies.target[i];
-            let arc = l
-                .stops
-                .iter()
-                .position(|s| s.0 == t)
-                .and_then(|idx| p.stop_arclen_mm.get(idx).copied())
-                .unwrap_or_else(|| p.length_mm());
-            Some((p.length_mm(), arc))
-        }) {
-            Some(v) => v,
-            None => continue,
+    }
+}
+
+/// BOARD (#legion-ride-trains): seat WAITING legions onto dwelling vehicles — a real, capacity-contended ride.
+/// Runs AFTER `pax::board_alight` (so paying citizens always win the seat contention; legions take leftovers)
+/// and BEFORE `siege`. A legion boards a vehicle iff: the vehicle is dwelling at a stop, on the legion's own
+/// line+path, travelling the legion's chosen direction, parked at the legion's stop arc, the line is serviced,
+/// and there are `strength` free seats (1 seat per strength). Seats already held by riding legions count against
+/// capacity, derived fresh from the hashed `riding_veh`+`strength` (no separate stored seat cache to drift).
+/// Index-ordered over vehicles, then over legions (FIFO by launch order) ⇒ deterministic.
+pub(crate) fn army_board(world: &mut World) {
+    let clock = world.clock_ms;
+    let n_v = world.vehicles.len();
+    if world.armies.is_empty() || n_v == 0 {
+        return;
+    }
+    // Seats already taken per vehicle: paying pax + legions currently riding it (strength = seats).
+    let mut occupied: Vec<i64> = (0..n_v).map(|v| world.vehicles.onboard_pax[v].len() as i64).collect();
+    for a in 0..world.armies.len() {
+        if world.armies.state[a] == RIDING {
+            let rv = world.armies.riding_veh[a];
+            if rv >= 0 && (rv as usize) < n_v {
+                occupied[rv as usize] = occupied[rv as usize].saturating_add(world.armies.strength[a].max(1));
+            }
+        }
+    }
+    for v in 0..n_v {
+        if clock >= world.vehicles.dwell_until_ms[v] {
+            continue; // not dwelling — can't board (matches the pax board signal, derived post-`at_station` reset)
+        }
+        let line_id = world.vehicles.line[v];
+        let path_i = world.vehicles.path[v] as usize;
+        let vdir = world.vehicles.dir[v];
+        let vs = world.vehicles.s_mm[v];
+        let (cap, serviced) = {
+            let Some(line) = world.lines.get(line_id.index()) else { continue };
+            let Some(path) = line.paths.get(path_i) else { continue };
+            if !path.stop_arclen_mm.iter().any(|&arc| arc == vs) {
+                continue; // dwelling between stops (shouldn't happen) — only board at a stop arc
+            }
+            (line.vehicle_spec().capacity as i64, line.trainset.map(|t| t.count > 0).unwrap_or(false))
         };
-        if total <= 0 {
+        if !serviced {
             continue;
         }
-        let dir = world.armies.dir[i] as i64;
-        let s = (world.armies.s_mm[i] + dir * step).clamp(0, total);
-        world.armies.s_mm[i] = s;
-        // Reached the target town's arc-length ⇒ lay siege (an intermediate bounty target halts the
-        // legion there; the default last-stop target halts it at the route end).
-        if s >= target_arc {
-            world.armies.state[i] = BESIEGING;
+        for a in 0..world.armies.len() {
+            if world.armies.state[a] != WAITING
+                || world.armies.line[a] != line_id
+                || world.armies.path[a] as usize != path_i
+                || world.armies.wait_dir[a] != vdir
+                || world.armies.s_mm[a] != vs
+            {
+                continue;
+            }
+            let need = world.armies.strength[a].max(1);
+            if occupied[v].saturating_add(need) > cap {
+                continue; // not enough free seats — this legion waits for a roomier service (or its patience lapses)
+            }
+            occupied[v] = occupied[v].saturating_add(need);
+            world.armies.state[a] = RIDING;
+            world.armies.riding_veh[a] = v as i32;
         }
     }
 }

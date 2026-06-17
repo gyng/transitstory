@@ -594,8 +594,10 @@ pub fn army_targets_m(w: &World) -> Vec<f32> {
                 .map(|p| p.point_at(a.s_mm[i]))
                 .unwrap_or((0, 0))
         };
-        // Only a MARCHING legion has a forward intent to draw; otherwise collapse the arc to its own spot.
-        let (x, y) = if a.state[i] == crate::army::MARCHING {
+        // An EN-ROUTE legion (deciding / walking / waiting / riding) has a forward intent to draw; a
+        // besieging/done legion collapses the arc to its own spot. (#legion-ride-trains: "marching" split
+        // into walk/wait/ride, all still headed for the target.)
+        let (x, y) = if crate::army::is_en_route(a.state[i]) {
             w.stations
                 .get(a.target[i] as usize)
                 .map(|s| (s.pos.x_mm, s.pos.y_mm))
@@ -673,9 +675,10 @@ pub fn raider_roles_m(w: &World) -> Vec<f32> {
     out
 }
 
-/// LEGION STATE per legion (#war), aligned 1:1 with `army_positions_m` — 0 MARCHING, 1 BESIEGING, 2 DONE
-/// (captured/garrisoned/inert). Lets the UI dim the permanent DONE garrisons (which otherwise render as
-/// full-strength live dots that litter the map + inflate the apparent army strength). Render-only copy-out.
+/// LEGION STATE per legion (#war), aligned 1:1 with `army_positions_m`. After #legion-ride-trains the
+/// travel sub-states split out: 0 AT_STATION (deciding), 1 BESIEGING, 2 DONE (captured/garrisoned/inert),
+/// 3 WALKING (on foot), 4 WAITING (holding for a train), 5 RIDING (aboard a real train). Lets the UI dim
+/// the permanent DONE garrisons and badge a walking vs waiting vs riding legion apart. Render-only copy-out.
 pub fn army_states_m(w: &World) -> Vec<f32> {
     w.armies.state.iter().map(|&s| s as f32).collect()
 }

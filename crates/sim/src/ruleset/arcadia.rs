@@ -41,11 +41,13 @@ impl Ruleset for ArcadiaRuleset {
     }
 
     fn war_step(&self, world: &mut World, dt_ms: i64) {
-        // The war trailer (locked order): launch (tribute-funded) → march → siege grind→flip. Each
-        // sub-phase is integer + index-ordered ⇒ deterministic. Supply-gated siege + bounties + the
-        // army↔train single-track admission (occ_claim) are the next refinements.
+        // The war trailer (locked order): launch (manpower-funded) → travel (decide→walk/wait→ride→arrive) →
+        // board (seat WAITING legions onto dwelling trains, AFTER pax win their seats) → siege grind→flip. Each
+        // sub-phase is integer + index-ordered ⇒ deterministic. Legions ride REAL, capacity-contended trains
+        // (#legion-ride-trains) — no more free slide — choosing walk-vs-wait from a RAPTOR-free single-line ETA.
         crate::army::maybe_launch(world);
-        crate::army::advance_armies(world, dt_ms);
+        crate::army::army_travel_step(world, dt_ms);
+        crate::army::army_board(world);
         crate::army::siege(world);
         // The RIVAL (S11): decadence raiders field from the reservoir + march the capital, cut down by the
         // rail network, breaching the lose meter if they get through. Runs BEFORE the tide is re-derived so
