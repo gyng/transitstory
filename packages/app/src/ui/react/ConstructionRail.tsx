@@ -22,7 +22,7 @@ import type { CSSProperties } from "react";
 import type { Tool } from "../../game";
 import { useGame, useGameUI, useStats } from "./GameContext";
 import { MODES } from "./shared";
-import { Button, BigModeButton } from "./keys";
+import { Button, BigModeButton, toolKey, TOOL_KEY_MAP, FANTASY_TOOL_KEY_MAP } from "./keys";
 import { techUnlocked } from "../../commands/codec";
 import { TechPanel } from "./TechPanel";
 
@@ -38,9 +38,10 @@ const TOOL_HINT: Record<Tool, string> = {
   bounty: "[Y] Click a town to post a bounty — steers the NEXT legions fielded toward it (already-marching legions keep their target) · Esc when done",
 };
 
-// RAIL flyout tools: select at the head, then the build tools.
+// RAIL flyout tools: the inspect tool at the head (select/inspect objects — its glyph + label make
+// that purpose obvious), then the build tools. Icon-forward + short labels keep the flyout compact.
 const RAIL_TOOLS: [Tool, string][] = [
-  ["select", "▣ Select"],
+  ["select", "🔍 Inspect"],
   ["line", "╱ Track"],
   ["service", "🚆 Service"],
   ["station", "◉ Station"],
@@ -83,12 +84,25 @@ const RAIL_STYLE: CSSProperties = {
 };
 const KEY_STYLE: CSSProperties = { width: "100%", justifyContent: "flex-start", textAlign: "left" };
 
-// A flyout panel anchored to the right of the armed category key.
+/** The per-tool how-to hint, collapsed to one dim line by default (keeps the flyout compact —
+ *  item 3) and expanding on hover/focus. Prefixed with 💡 so it reads as a peek-able tip. The
+ *  full text stays in the title attribute too, for the immediate native tooltip. */
+function ToolHint({ text }: { text: string }) {
+  return (
+    <div className="ot-tool-hint" tabIndex={0} title={text}>
+      💡 {text}
+    </div>
+  );
+}
+
+// A flyout panel anchored to the right of the armed category key. Compacted (item 3): tighter
+// padding + gaps so the RAIL flyout (tools row + mode row + a collapsible hint) lands ~100px instead
+// of ~180px. The long per-tool hint is a single dim line that expands on hover/focus (see HINT_*).
 const FLYOUT_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 8,
-  padding: "12px 14px",
+  gap: 4,
+  padding: "8px 10px",
   width: "min(440px,70vw)",
   pointerEvents: "auto",
 };
@@ -123,12 +137,11 @@ export function ConstructionRail() {
       }
       const m = MODES.find((x) => x.key === e.key);
       if (m) { game.setTransport(m.id); setArmed("rail"); return; }
-      // Build-tool hotkeys — disjoint from WASD/Q/E camera keys. T=Track, R=Service, N=statioN, V=select,
-      // X=bulldoze; arcadia adds B=Barracks, Y=bountY. Arming a tool in Run flips to Build first.
+      // Build-tool hotkeys — disjoint from WASD/Q/E camera keys. The letter→tool maps come from the
+      // KEYMAP (keys.tsx) so the keys never drift from the legend/kbd hints. Arcadia adds the
+      // fantasy-only tools (B=Barracks, Y=bountY). Arming a tool in Run flips to Build first.
       const lk = e.key.toLowerCase();
-      const TOOL_KEYS: Record<string, Tool> = { t: "line", r: "service", n: "station", v: "select", x: "bulldozer" };
-      if (arcadia) { TOOL_KEYS.b = "barracks"; TOOL_KEYS.y = "bounty"; }
-      const tool = TOOL_KEYS[lk];
+      const tool = TOOL_KEY_MAP[lk] ?? (arcadia ? FANTASY_TOOL_KEY_MAP[lk] : undefined);
       if (tool) {
         if (game.mode === "run") game.setMode("build");
         game.setTool(tool);
@@ -179,14 +192,17 @@ export function ConstructionRail() {
         ))}
       </div>
 
-      {/* L2 — the armed category's flyout (anchored to the right of the rail) */}
+      {/* L2 — the armed category's flyout (anchored to the right of the rail). Compacted (item 3):
+          tool buttons carry their kbd hint; the mode segment is icon+kbd (labels collapse); the
+          per-tool how-to is one collapsible dim line. */}
       {armed === "rail" && (
         <div id="mode-flyout" className="ot-console" style={FLYOUT_STYLE}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {RAIL_TOOLS.map(([t, label]) => (
               <Button
                 key={t}
                 label={label}
+                kbd={toolKey(t)}
                 testid={`tool-${t}`}
                 onClick={() => game.setTool(t)}
                 on={ui.tool === t}
@@ -194,8 +210,9 @@ export function ConstructionRail() {
               />
             ))}
           </div>
-          {/* the transport-MODE segment (gated by enabledModes; arcadia rail-gate) */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {/* the transport-MODE segment (gated by enabledModes; arcadia rail-gate). compact = icon +
+              kbd, labels collapse below 1024px (BigModeButton owns the label collapse). */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {visibleModes.map((m) => (
               <BigModeButton
                 key={m.id}
@@ -203,31 +220,32 @@ export function ConstructionRail() {
                 active={ui.transport === m.id}
                 enabled={enabled.has(m.id)}
                 onClick={() => game.setTransport(m.id)}
+                compact
               />
             ))}
           </div>
-          <div style={{ color: "#9aa3ad", font: "11px system-ui,sans-serif" }}>{TOOL_HINT[ui.tool]}</div>
+          <ToolHint text={TOOL_HINT[ui.tool]} />
         </div>
       )}
 
       {armed === "military" && (
         <div className="ot-console" style={FLYOUT_STYLE}>
-          <Button label="🏰 Barracks" testid="tool-barracks" onClick={() => game.setTool("barracks")} on={ui.tool === "barracks"} style={KEY_STYLE} />
-          <div style={{ color: "#9aa3ad", font: "11px system-ui,sans-serif" }}>{TOOL_HINT.barracks}</div>
+          <Button label="🏰 Barracks" kbd={toolKey("barracks")} testid="tool-barracks" onClick={() => game.setTool("barracks")} on={ui.tool === "barracks"} style={KEY_STYLE} />
+          <ToolHint text={TOOL_HINT.barracks} />
         </div>
       )}
 
       {armed === "bounty" && (
         <div className="ot-console" style={FLYOUT_STYLE}>
-          <Button label="⚑ Bounty" testid="tool-bounty" onClick={() => game.setTool("bounty")} on={ui.tool === "bounty"} style={KEY_STYLE} />
-          <div style={{ color: "#9aa3ad", font: "11px system-ui,sans-serif" }}>{TOOL_HINT.bounty}</div>
+          <Button label="⚑ Bounty" kbd={toolKey("bounty")} testid="tool-bounty" onClick={() => game.setTool("bounty")} on={ui.tool === "bounty"} style={KEY_STYLE} />
+          <ToolHint text={TOOL_HINT.bounty} />
         </div>
       )}
 
       {armed === "bulldoze" && (
         <div className="ot-console" style={FLYOUT_STYLE}>
-          <Button label="💥 Bulldoze" testid="tool-bulldozer" onClick={() => game.setTool("bulldozer")} on={ui.tool === "bulldozer"} tone="danger" style={KEY_STYLE} />
-          <div style={{ color: "#9aa3ad", font: "11px system-ui,sans-serif" }}>{TOOL_HINT.bulldozer}</div>
+          <Button label="💥 Bulldoze" kbd={toolKey("bulldozer")} testid="tool-bulldozer" onClick={() => game.setTool("bulldozer")} on={ui.tool === "bulldozer"} tone="danger" style={KEY_STYLE} />
+          <ToolHint text={TOOL_HINT.bulldozer} />
         </div>
       )}
 

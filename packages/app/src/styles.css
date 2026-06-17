@@ -225,6 +225,28 @@ body {
   box-shadow: 0 0 5px currentColor, inset 0 0 2px rgba(255, 255, 255, 0.6);
 }
 
+/* The compacted RAIL-flyout tool hint (item 3): a single dim CLAMPED line by default (so the flyout
+   stays ~100px), expanding to the full how-to on hover/focus. Pure CSS — no React state, no per-frame
+   work. The leading 💡 + "How" stays visible as the affordance that more text is one hover away. */
+.ot-tool-hint {
+  color: var(--ot-con-ink-dim);
+  font: 11px system-ui, sans-serif;
+  line-height: 1.3;
+  max-height: 1.45em; /* one line */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: help;
+  transition: max-height 0.16s var(--ot-ease);
+}
+.ot-tool-hint:hover,
+.ot-tool-hint:focus,
+.ot-tool-hint:focus-within {
+  max-height: 6em; /* reveal the wrapped how-to */
+  white-space: normal;
+  overflow: visible;
+}
+
 /* ===== Responsive (stage 8): below 1024px the chrome compresses so the union still never overflows
    and the map keeps its width. The grid geometry is unchanged — only the region CONTENTS shrink. ===== */
 @media (max-width: 1024px) {
