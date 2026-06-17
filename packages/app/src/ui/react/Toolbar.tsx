@@ -248,8 +248,11 @@ export function Toolbar() {
             gap: 8,
             padding: "12px 14px",
             width: "min(440px,92vw)",
-            background: "rgba(255,255,255,.97)",
-            borderRadius: 12,
+            background: "rgba(252,253,255,.94)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,.7)",
+            borderRadius: 14,
             boxShadow: "var(--ot-shadow)",
             pointerEvents: "auto",
           }}
@@ -294,10 +297,15 @@ export function Toolbar() {
             justifyContent: "center",
             flexWrap: "wrap",
             gap: 6,
-            padding: 6,
+            padding: 7,
             maxWidth: "96vw",
-            background: "rgba(255,255,255,.94)",
-            borderRadius: 12,
+            // Frosted-glass game HUD: a near-opaque surface over a blurred map (crafted, not a flat webapp
+            // box). High opacity keeps the controls fully legible; the layered --ot-shadow does the lift.
+            background: "rgba(252,253,255,.9)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,.7)",
+            borderRadius: 14,
             boxShadow: "var(--ot-shadow)",
             pointerEvents: "auto",
           }}
