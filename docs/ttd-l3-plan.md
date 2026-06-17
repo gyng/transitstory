@@ -123,6 +123,23 @@ fresh, focused context, NOT an incremental grind: a gate-blind deadlock replays 
 commit here is a silent determinism-spine break. Phase A (safe) is the right stopping point for one pass; the
 B/C unit resumes here with this doc + the 6 review gaps as the spec.
 
+## ✅ C1 LANDED (2026-06-17, attempt #2, `bbfe3ca`) — the cliff is cleared
+
+Geometry is now **segment-authoritative**. A bound (grid) `Path` hand-serializes only stops/loop_line/
+literal/segments and OMITS its 7 geometry fields, which are authored in the hashed `Canonical.track_segments`
+slab (`CanonSegments`, keyed on endpoint cells — topology-pure, command-order-independent). `bind_path_
+segments` reconstructs a bound path's runtime polyline from the slab; an unbound (continuous) path keeps its
+own geometry. EARNED golden re-pin (transit `0xea39_755c_339d_ab9e`, arcadia `0xbc3c_87c3_28ba_0d70`), with
+the **position fingerprint UNCHANGED** (`0xdccb…e54a`/`0xbf4d…3236`) proving only serialization moved.
+`SetSegmentTrack span→seg: TrackSegmentId` + contract mirror landed same-commit. **B3 deferred** (cross-line
+cap/mutex kept). Verified by mechanical gates (suite 302/0, fingerprint untampered+passing, liveness 4/4,
+save→replay) AND an independent adversarial review (verdict SAFE; the one LOW note: add a state_hash-level
+order-independence test for a bound network as optional hardening). wasm rebuilt, frontend tsc + vitest green.
+
+**L3 is complete for L4's purposes** (authoritative geometry exists). Remaining optional refinements: B3
+(segment-keyed PBS mutex unification), the state_hash order-independence hardening test. **L4** (vehicle
+routing on the segment graph + berth choice) is now unblocked and attaches at `Path.segments` + the slab.
+
 ## Cliff attempt #1 (2026-06-17) — REJECTED by review, reverted; learnings
 
 A tests→implement→review Workflow attempted the whole B/C cliff in one shot. The adversarial review
