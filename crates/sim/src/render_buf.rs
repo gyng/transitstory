@@ -170,18 +170,52 @@ pub fn smooth_polyline_mm(path: &Path, cell_mm: i64) -> Vec<[f64; 2]> {
     smooth_grid_path(path, cell_mm).poly.iter().map(|q| [q.x_mm as f64, q.y_mm as f64]).collect()
 }
 
-/// Render position (mm) of vehicle `i` at arc-length `s`: the smoothed-track point in GRID mode, else the
-/// supplied `raw` SoA cartesian (already on the crisp/transit path). Falls back to `raw` if the path is gone.
-fn veh_xy(w: &World, cell: i64, i: usize, s: i64, raw: (i64, i64)) -> (i64, i64) {
+/// Lateral spacing (mm) between platform berths (TTD L2c render): how far apart parallel-berthed consists
+/// draw. Cell-derived on a grid (~⅕ of a cell-step) so it scales with the map; a fixed fall-back off-grid.
+#[inline]
+fn berth_spacing_mm(cell: i64) -> i64 {
     if cell <= 0 {
-        return raw;
+        80_000
+    } else {
+        (crate::hexgrid::center_of((1, 0), cell).x_mm / 5).max(1)
+    }
+}
+
+/// Perpendicular berth offset (mm) for a consist holding `berth_idx` at a station, given the local track
+/// `tangent` (radians, the UN-flipped heading so berths stay on a consistent side regardless of travel
+/// direction). Berth 0 = centerline (no offset). Render-only (#2 multi-platform); never touches state.
+#[inline]
+fn berth_offset(cell: i64, berth_idx: i32, tangent: f32) -> (i64, i64) {
+    if berth_idx < 1 {
+        return (0, 0);
+    }
+    let off = (berth_idx as i64 * berth_spacing_mm(cell)) as f32;
+    // perpendicular to the tangent: (-sin, cos)
+    ((-tangent.sin() * off) as i64, (tangent.cos() * off) as i64)
+}
+
+/// Render position (mm) of vehicle `i` at arc-length `s`: the smoothed-track point in GRID mode, else the
+/// supplied `raw` SoA cartesian (already on the crisp/transit path), PLUS a lateral berth offset when the
+/// consist is parked in / pulling into a platform berth >0 (TTD L2c — so parallel-berthed trains don't draw
+/// on top of each other). Falls back to `raw` if the path is gone.
+fn veh_xy(w: &World, cell: i64, i: usize, s: i64, raw: (i64, i64)) -> (i64, i64) {
+    let berth = w.vehicles.berth_idx[i];
+    if cell <= 0 && berth < 1 {
+        return raw; // transit fast path: no smoothing, no berth offset
     }
     let v = &w.vehicles;
     let Some(line) = w.lines.get(v.line[i].index()) else { return raw };
     let Some(path) = line.paths.get(v.path[i] as usize) else { return raw };
-    let sm = smooth_grid_path(path, cell);
-    let ss = map_s(path, &sm, s);
-    poly_point_at(&sm.poly, &sm.arclen, ss)
+    let (x, y, tangent) = if cell <= 0 {
+        (raw.0, raw.1, path.heading_at(s))
+    } else {
+        let sm = smooth_grid_path(path, cell);
+        let ss = map_s(path, &sm, s);
+        let (px, py) = poly_point_at(&sm.poly, &sm.arclen, ss);
+        (px, py, poly_heading_at(&sm.poly, &sm.arclen, ss))
+    };
+    let (dx, dy) = berth_offset(cell, berth, tangent);
+    (x + dx, y + dy)
 }
 
 // --- "peeps": individual rider dots (Cities:Skylines-style), purely RENDER-DERIVED ---------------
@@ -429,15 +463,18 @@ pub fn vehicle_cars_m(w: &World) -> Vec<f32> {
         let cap = line.vehicle_spec().capacity.max(1);
         let load = (v.onboard[i] as f32 / cap as f32).clamp(0.0, 1.0);
         let line_id = v.line[i].0 as f32;
+        let berth = v.berth_idx[i]; // L2c: shift the whole consist into its berth (perp to the local tangent)
         for k in 1..=cars {
             let back = car_pitch_mm(cell) * k as i64;
             let s = (v.s_mm[i] - dir * back).clamp(0, len);
-            let (cx, cy, mut ang) = car_point(path, sm.as_ref(), s);
+            let (cx, cy, ang_raw) = car_point(path, sm.as_ref(), s);
+            let (dx, dy) = berth_offset(cell, berth, ang_raw);
+            let mut ang = ang_raw;
             if dir < 0 {
                 ang += std::f32::consts::PI;
             }
-            out.push(mm_to_m(cx));
-            out.push(mm_to_m(cy));
+            out.push(mm_to_m(cx + dx));
+            out.push(mm_to_m(cy + dy));
             out.push(ang);
             out.push(commodity as f32);
             out.push(load);
@@ -480,12 +517,14 @@ pub fn vehicle_cars_prev_m(w: &World) -> Vec<f32> {
         let len = path.length_mm();
         let sm = if cell > 0 { Some(smooth_grid_path(path, cell)) } else { None };
         let dir = v.dir[i] as i64;
+        let berth = v.berth_idx[i];
         for k in 1..=cars {
             let back = car_pitch_mm(cell) * k as i64;
             let s = (v.prev_s_mm[i] - dir * back).clamp(0, len);
-            let (px, py, _) = car_point(path, sm.as_ref(), s);
-            out.push(mm_to_m(px));
-            out.push(mm_to_m(py));
+            let (px, py, ang_raw) = car_point(path, sm.as_ref(), s);
+            let (dx, dy) = berth_offset(cell, berth, ang_raw);
+            out.push(mm_to_m(px + dx));
+            out.push(mm_to_m(py + dy));
         }
     }
     out

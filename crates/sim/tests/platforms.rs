@@ -205,6 +205,29 @@ fn platforms_never_freeze() {
 }
 
 #[test]
+fn berthed_train_renders_laterally_offset() {
+    // L2c: a consist holding berth >=1 draws OFFSET from its centerline (so parallel berths don't overlap).
+    // Render-only — does not touch the hash. Run the K=2 loop until a train is berthed >=1, then compare its
+    // render position to its on-centerline point.
+    let mut w = bunched_line(2, 5, true);
+    for _ in 0..4000 {
+        w.tick(50);
+        let bi = (0..w.vehicles.len()).find(|&i| w.vehicles.berth_idx[i] >= 1);
+        let Some(i) = bi else { continue };
+        let pos = sim::render_buf::vehicle_positions_m(&w); // metres, interleaved
+        let (rx, ry) = (pos[i * 2], pos[i * 2 + 1]);
+        let line = &w.lines[w.vehicles.line[i].index()];
+        let path = &line.paths[w.vehicles.path[i] as usize];
+        let (cx, cy) = path.point_at(w.vehicles.s_mm[i]); // centerline (mm)
+        let off_m = ((rx - cx as f32 / 1000.0).powi(2) + (ry - cy as f32 / 1000.0).powi(2)).sqrt();
+        // berth 1 ⇒ ~80 m off-centre (the off-grid berth spacing); assert it's clearly displaced.
+        assert!(off_m > 30.0, "a berthed consist should render laterally offset (got {off_m:.1} m)");
+        return;
+    }
+    panic!("no consist reached berth >=1 in the run");
+}
+
+#[test]
 fn k2_run_replays_bit_for_bit() {
     // The whole berth behaviour is deterministic (same seed + log incl. BuildPlatforms{k:2} ⇒ same hash).
     let run = || -> u64 {
