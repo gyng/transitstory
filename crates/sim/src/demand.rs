@@ -252,6 +252,11 @@ pub(crate) fn spawn_modulated(world: &mut World, dt_ms: i64, mult: f32, bias: f3
         ..
     } = *world;
 
+    // Reused destination-candidate scratch (`pick_dest` clears + refills it each call) — the same
+    // contents and the same weighted-draw order as a fresh `Vec`, just allocated once per spawn pass
+    // instead of once per token. Behaviour byte-identical.
+    let mut cands: Vec<(StationId, u64)> = Vec::new();
+
     for s in 0..n {
         // Only stations on an operational line originate trips.
         if serving.get(s).map(|v| v.is_empty()).unwrap_or(true) {
@@ -290,7 +295,7 @@ pub(crate) fn spawn_modulated(world: &mut World, dt_ms: i64, mult: f32, bias: f3
             let trip_commodity = station_commodity.get(s).copied().unwrap_or(0) as usize;
             if let Some(dest) = pick_dest(
                 stations, serving, captured_origin, captured_dest, dest_by_comm, has_multistage,
-                trip_commodity, access, bias, s, rng,
+                trip_commodity, access, bias, s, rng, &mut cands,
             ) {
                 // Route across the network (transfers at interchanges), cached per O/D pair.
                 let entry = route_cache
@@ -383,10 +388,11 @@ fn pick_dest(
     bias: f32,
     origin: usize,
     rng: &mut ChaCha8Rng,
+    cands: &mut Vec<(StationId, u64)>,
 ) -> Option<StationId> {
     let use_access = !access.is_empty();
     let opos = stations[origin].pos;
-    let mut cands: Vec<(StationId, u64)> = Vec::new();
+    cands.clear();
     let mut total: u64 = 0;
     for d_idx in 0..stations.len() {
         if d_idx == origin || serving.get(d_idx).map(|v| v.is_empty()).unwrap_or(true) {
@@ -422,7 +428,7 @@ fn pick_dest(
     }
     let r = rng.random_range(0..total);
     let mut acc = 0u64;
-    for (st, w) in cands {
+    for &(st, w) in cands.iter() {
         acc += w;
         if r < acc {
             return Some(st);

@@ -72,6 +72,64 @@ fn run_ticks(w: &mut World, ticks: usize, dt: i64) -> f64 {
     t.elapsed().as_secs_f64() * 1000.0
 }
 
+/// STEADY-STATE per-tick benchmark — isolates the EVERY-TICK move/board cost (`vehicle::advance` +
+/// `board_alight`) from the ONE-TIME, amortized RAPTOR cache fill. We warm the route/access caches
+/// with a long pre-roll, then time a fresh window of ticks: cache hits dominate spawn, so the timed
+/// window measures the recurring tick hot path the player pays forever. (Run:
+/// `cargo test -p sim --release --test agents_bench -- --nocapture steady_state_tick_benchmark`.)
+#[test]
+fn steady_state_tick_benchmark() {
+    let mut w = build_tokyo_scale();
+    let dt = 50i64;
+    // Warm: fill route_cache + access_cache so the timed window is steady-state.
+    for _ in 0..8000 {
+        w.tick(dt);
+    }
+    let vehicles = w.vehicles.len();
+    // Time a fresh window. The caches stay warm (no dispatch_dirty), so this is the recurring cost.
+    let ticks = 20000usize;
+    let ms = run_ticks(&mut w, ticks, dt);
+    println!(
+        "\n=== Steady-state tick benchmark ({} vehicles, {} routes cached) ===\n  {} ticks: {:.0} ms total  ({:.4} ms/tick)  {:.0} ticks/sec",
+        vehicles,
+        w.route_cache.len(),
+        ticks,
+        ms,
+        ms / ticks as f64,
+        ticks as f64 / (ms / 1000.0),
+    );
+    assert!(w.stats_snapshot().ridership_total > 0.0);
+}
+
+/// MOVE-PHASE stress: maximise vehicle count (24 trains/line × 30 lines) so the per-tick
+/// `vehicle::advance` work (and its scratch handling) dominates over spawn/routing noise. We disable
+/// gravity demand (zero captured weights) so the timed window is almost entirely the move integrator —
+/// the every-tick hot path the scratch-reuse change targets.
+#[test]
+fn move_phase_stress_benchmark() {
+    let mut w = build_tokyo_scale();
+    // Crank every served line to the max fleet so the SoA is as large as the clamps allow.
+    let nlines = w.lines.len();
+    for li in 0..nlines as u32 {
+        if w.lines[li as usize].trainset.is_some() {
+            w.apply(&Command::AssignTrainset { line: LineId(li), spec: 0, count: 24 });
+            w.apply(&Command::SetHeadway { line: LineId(li), headway_ms: 30_000 });
+        }
+    }
+    // Silence gravity: no captured weight ⇒ no spawn ⇒ the window is the move phase + (empty) board.
+    w.captured_origin.iter_mut().for_each(|x| *x = 0.0);
+    w.captured_dest.iter_mut().for_each(|x| *x = 0.0);
+    w.tick(50); // commit the dispatch rebuild
+    let vehicles = w.vehicles.len();
+    let ticks = 40000usize;
+    let ms = run_ticks(&mut w, ticks, 50);
+    println!(
+        "\n=== Move-phase stress benchmark ({} vehicles) ===\n  {} ticks: {:.0} ms total  ({:.5} ms/tick)  {:.0} ticks/sec",
+        vehicles, ticks, ms, ms / ticks as f64, ticks as f64 / (ms / 1000.0),
+    );
+    assert!(vehicles > 100);
+}
+
 #[test]
 fn agent_demand_benchmark() {
     let ticks = 6000usize;
