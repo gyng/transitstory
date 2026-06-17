@@ -3059,6 +3059,28 @@ Built green-at-every-commit, one reusable block-reservation primitive (only the 
 - **Owner-flagged for L4 follow-up:** at metro dwell (700 ms) a follower PULLS UP but rarely fully
   overlap-dwells (catch-up > dwell window); full parallel loading + a follower OVERTAKING into a free berth
   needs L4 routing. Also: the fantasy line is supply-gated, ramping to ~8 trains — bunching IS reachable.
+- **L6 — the "track + services" interaction (owner-chosen via AskUserQuestion, 2026-06-17).** Owner picked
+  the OpenTTD model ("lay bare track, then route coloured services over it; multiple services share one
+  corridor; the roster hides bare track") over the simpler staged-single-flow. Shipped as a pure FRONTEND
+  reskin — ZERO core/Command/types change, so both goldens stay byte-identical (the proof gate). Three steps:
+  - **Render (`74d05ca`):** a line with NO assigned stock is bare TRACK — drawn as one muted grey rail at the
+    bottom of the network band (new `track-rails` PathLayer), under every coloured service; co-located bare
+    tracks overlap into one grey corridor. `LinePath.serviced` is set from `LineStat.trains > 0` (the ASSIGNED
+    count, so it's Build-mode-correct). The coloured `lines`/heavy layers filter to serviced lines. Bare track
+    stays inspectable + selectable (`nearestLine` is geometry-based). `drawLineByIds` already commits stockless,
+    so a freshly-drawn line IS bare track — it lights up to its hue the instant stock lands (immediate echo).
+  - **Tools + roster (`08e396a`):** `line` → "╱ Track", `station` → "◉ Station" (ids/testids/chords unchanged
+    ⇒ specs untouched); hints teach the flow. LineList filters to SERVICED lines (a selected bare track stays
+    to anchor its editor), header shows "+N track" for unserved corridors. Spatial-on-map / abstract-in-panels.
+  - **Verified live (Dublin sandbox):** drew a 3-stop stockless line → renders in `track-rails` (coloured
+    `lines`=0), roster "+1 track", editor "Assign trainset"; assigned 3 trains → moves to `lines` (track-rails=0),
+    roster lists the service. Screenshots `l6-bare-track`/`l6-serviced`.
+  - **Deferred (clean seams, logged not half-built):** a DEDICATED "Service" tool (the same draw gesture,
+    snap-restricted to on-track stations + auto-assigning stock on commit — a new `Tool` id branching only at
+    `commitDraft`); the `TrackGraph` fat-rail collapse for shared corridors (the copy-out already ships); and
+    the L3 `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until `TrackSegment` is
+    authoritative). The MVP's one Track tool + editor Assign-trainset already produces track + services; the
+    Service tool is an alternative INPUT gesture, not a missing capability. Marker at `game.ts` `Tool` type.
 
 ## Legions ride REAL trains + walk-vs-wait (owner-directed, 2026-06-17)
 

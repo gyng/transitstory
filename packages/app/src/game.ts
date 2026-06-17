@@ -71,6 +71,12 @@ const EMPTY_STATS: Stats = {
 };
 
 export type Mode = "build" | "run";
+// TTD L6 (track + services): the `line` tool is now "Track" — it lays a stockless corridor (bare grey
+// rail) that becomes a coloured SERVICE the moment stock is assigned. A dedicated "Service" tool (the same
+// draw gesture, snap-restricted to on-track stations + auto-assigning stock on commit) is the clean next
+// seam — it attaches as a new Tool id reusing extendDraft/commitDraft, branching only at commit. Deferred
+// with the L3 `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until TrackSegment is
+// first-class). Today the one Track tool + the editor's Assign-trainset already produce track+services.
 export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty";
 
 /** Map-lens (#5) → the deck layer ids HIDDEN in that view mode (terrain + the player's network/vehicles are
