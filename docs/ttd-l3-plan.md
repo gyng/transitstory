@@ -25,6 +25,17 @@ Migration (b) (`s_mm → (seg,offset)`) is deferred to L4 where routing needs th
 
 - **A0 — `TrackSegmentId` newtype + serde derives on graph structs.** `ids.rs` + `track_graph.rs`
   derives. NEUTRAL (nothing enters `Canonical`). Test: `TrackGraph` postcard round-trip.
+> **A1 OPEN SUBTLETY (found 2026-06-17, must resolve before A1):** a shared segment (one cell-chain
+> traversed by ≥2 lines) does **not** have a unique smoothed polyline — Catmull-Rom curvature depends on
+> each line's *neighboring* stops/waypoints, so two lines over the same cells can smooth that run
+> DIFFERENTLY. So "segment geometry = the owning Path's sub-range, byte-identical" is **false for shared
+> segments**. Resolution options for A1: (i) segment owns the **cell-centre** chain (coarse, line-independent,
+> matches the L1 graph) and lines keep their own smoothed deviation as a render-only overlay until C1; or
+> (ii) define a **canonical** segment smoothing (e.g. clamped to endpoints, neighbor-independent) and have
+> lines CONFORM to it at C1 (changes rendered curvature → a behaviour/golden change, must be justified).
+> (i) keeps A1 truly additive/neutral; (ii) is the real end-state but defers the curvature decision to C1.
+> Pick (i) for A1 (neutral), schedule (ii)'s curvature reconciliation as an explicit C1 sub-decision.
+
 - **A1 — Segments own *derived* geometry tables** (`polyline`/`arclen_mm`/`track_type`/`span_mode`/
   `min_radius_mm`/`speed_cap_mm_s` + segment-local `point_at`/`length_mm`/…), populated by
   `derive_track_graph` slicing the contributing `Path` sub-range. NEUTRAL (non-hashed graph field).
