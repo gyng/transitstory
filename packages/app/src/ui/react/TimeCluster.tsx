@@ -6,8 +6,8 @@
 //     game.setMode (Build↔Run is a mode flip, committed via the existing Game seam).
 //   • Speed ladder — LOCAL state → loop.setSpeed. Speed is a GameLoop knob, NEVER a Command
 //     (AGENTS: "speed is a GameLoop knob, not a Command"). `,`/`.` step the ladder.
-//   • Clock — reads the ~3 Hz stats slice (simHour). The clock/period TESTIDS stay on StatsBar
-//     until the StatsBar split (stage 5) to avoid duplicate testids; this is the glance readout.
+//   • Clock — reads the ~3 Hz stats slice (simHour). The clock/period/tod-glyph TESTIDS live HERE
+//     now (stage 5 split them off StatsBar, which became the top-left resource strip).
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useGame, useGameUI, useLoop, useStats } from "./GameContext";
@@ -30,6 +30,16 @@ const CLUSTER_STYLE: CSSProperties = {
   padding: 7,
   pointerEvents: "auto",
 };
+
+/** Sun/moon glyph for the hour — makes the time-of-day (+ the day/night map wash) legible in TEXT,
+ *  not hue alone (recognition-over-recall, colour-blind-safe). Bands match the sky.ts palette. */
+function todGlyph(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  if (h < 6 || h >= 20) return "🌙";
+  if (h < 8) return "🌅";
+  if (h >= 18) return "🌇";
+  return "☀️";
+}
 
 export function TimeCluster() {
   const game = useGame();
@@ -68,7 +78,9 @@ export function TimeCluster() {
 
   const running = ui.mode === "run";
 
-  // Clock readout (no clock/period testid here — StatsBar still owns those until stage 5).
+  // Clock readout — owns the clock/period/tod-glyph testids (moved off StatsBar in the stage-5 split).
+  // The fantasy ("arcadia") world has no day/night sun glyph and labels its period "Arcadia".
+  const arcadia = stats.ruleset === "arcadia";
   const hh = Math.floor(stats.simHour);
   const mm = Math.floor((stats.simHour - hh) * 60);
   const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
@@ -80,8 +92,18 @@ export function TimeCluster() {
       className="ot-console"
       style={CLUSTER_STYLE}
     >
-      <span style={{ font: `600 13px var(--ot-readout-font)`, color: "var(--ot-con-ink-dim)", fontVariantNumeric: "tabular-nums", padding: "0 4px" }} title="In-game clock">
-        {clock}
+      <span style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 2px" }} title="In-game clock">
+        {!arcadia && (
+          <span data-testid="tod-glyph" title={stats.period}>
+            {todGlyph(stats.simHour)}
+          </span>
+        )}
+        <b data-testid="clock" style={{ font: `600 13px var(--ot-readout-font)`, color: "var(--ot-con-ink)", fontVariantNumeric: "tabular-nums" }}>
+          {clock}
+        </b>
+        <span data-testid="period" style={{ fontSize: 11, color: "var(--ot-con-ink-dim)" }}>
+          {arcadia ? "Arcadia" : stats.period}
+        </span>
       </span>
       <span style={SEP_STYLE} />
       <Button

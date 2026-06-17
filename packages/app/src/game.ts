@@ -1287,6 +1287,28 @@ export class Game {
     this.refresh();
   }
 
+  /** Fly the IMPERATIVE map camera to an alert's anchor station and pin it, so the badge + the map
+   *  always agree (AGENTS render-hot-path: this drives the existing MapLibre flyTo seam directly —
+   *  NOT a React rAF). Called from the top-centre AlertCluster when a ping is clicked. `tool` (when
+   *  given) arms the build tool that fixes the pressure (e.g. Track to extend a starved station's
+   *  service), so the click both shows AND prepares the remedy. The station id comes straight from a
+   *  `stats.perStation[]` index, so there's no parallel heuristic to drift. No-op for a stale id. */
+  flyToAlert(stationId: number, tool?: Tool): void {
+    const ll = this.stationLngLat(stationId);
+    if (!ll) return;
+    // Pin the station (mounts the inspector + draws its catchment) and pan to it. easeTo keeps the
+    // camera move imperative + interruptible; the reduced-motion preference jumps instead.
+    this.selectStation(stationId);
+    if (tool) {
+      if (this.mode === "run") this.setMode("build"); // tools only arm behind the Build wall
+      this.setTool(tool);
+    }
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const z = Math.max(this.map.getZoom(), 12);
+    if (reduce) this.map.jumpTo({ center: ll, zoom: z });
+    else this.map.easeTo({ center: ll, zoom: z, duration: 700, essential: true });
+  }
+
   cancelDraft(): void {
     this.draft = [];
     this.draftWaypoints = [];

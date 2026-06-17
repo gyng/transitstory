@@ -1,6 +1,12 @@
-// Top-centre HUD: the headline Ridership counter + a 0–100 Coverage/Satisfaction gauge.
-// Fed by the ~3 Hz stats throttle (useStats — never per frame). One number + one gauge,
-// details on demand elsewhere (AGENTS IA). React reconciles, so no last-value caching.
+// TOP-LEFT resource strip (Transport Fever / Anno / Factorio resource bar): the at-a-glance economy
+// readouts for the active ruleset — transit riders·coverage·waiting·left-behind·net-load·money;
+// fantasy tribute·mana·manpower·standing·decadence·towns·armies·raiders. Each scalar is an
+// `.ot-readout`-styled well. Stage 5 split this off the old centred StatsBar: the clock/period/
+// tod-glyph testids moved to TimeCluster (top-right), the alert pings to AlertCluster (top-centre),
+// and this became the flow-anchored top-LEFT cell of the grid shell (no more position:fixed centre).
+//
+// Mode-aware off `ui.ruleset`; fed by the ~3 Hz `stats` slice (useStats — never per frame). The two
+// oversized gauges (coverage / standing + decadence) keep their bar+tween for glanceability.
 import type { CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats } from "./GameContext";
@@ -16,38 +22,26 @@ const CITY_ANCHOR = () => cityById(new URLSearchParams(location.search).get("cit
 // Stable formatters (module-level so the tween hook's dep identity never changes per render).
 const fmtInt = (n: number): string => `${Math.round(n)}`;
 
-/** Sun/moon glyph for the hour — makes the time-of-day (and the day/night map wash) legible in TEXT,
- *  not hue alone (recognition-over-recall, colour-blind-safe). Bands match the sky.ts palette. */
-function todGlyph(hour: number): string {
-  const h = ((hour % 24) + 24) % 24;
-  if (h < 6 || h >= 20) return "🌙";
-  if (h < 8) return "🌅";
-  if (h >= 18) return "🌇";
-  return "☀️";
-}
-
-/** The HUD shell — shared chrome (position/style) so transit + fantasy read the same. The console
- *  face (dark gradient / bevel / elevation) is owned by the `.ot-console` class; this carries only
- *  layout + the ink colour. */
+/** The resource-strip shell — flow-anchored to the top-left grid cell. The console face (dark
+ *  gradient / bevel / elevation) comes from `.ot-console`; this carries layout + the ink colour.
+ *  Wraps to a 2nd row only inside this L cell (responsive rule) — the C/R cells are unaffected. */
 const BAR_STYLE: CSSProperties = {
-  position: "fixed",
-  top: "10px",
-  left: "50%",
-  transform: "translateX(-50%)",
   display: "flex",
   alignItems: "center",
-  gap: "16px",
-  padding: "8px 14px",
-  zIndex: 9,
+  flexWrap: "wrap",
+  gap: "12px",
+  rowGap: "4px",
+  padding: "7px 12px",
+  margin: "7px 0 0 14px",
+  pointerEvents: "auto",
   font: "13px system-ui,sans-serif",
   color: "var(--ot-con-ink)",
+  maxWidth: "min(640px, 42vw)",
 };
 
 /** Manpower a legion costs to field (mirrors the core `army::LAUNCH_COST`) — for the "starved" hint. */
 const LEGION_COST = 8;
 
-/** Fantasy (arcadia) HUD: the supply→conquest→decadence readout — tribute, the lose-meter gauge,
- *  towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
 /** A per-minute flow-rate pill (▲ earning / ▼ draining) for an economy channel — the "am I net-positive?"
  *  legibility a logistics economy needs. Hidden when ~flat (|rate| < 1) so it's never noise. */
 function RatePill({ rate, color }: { rate: number | undefined; color: string }) {
@@ -60,7 +54,9 @@ function RatePill({ rate, color }: { rate: number | undefined; color: string }) 
   );
 }
 
-function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
+/** Fantasy (arcadia) resource strip: the supply→conquest→decadence readout — tribute, the lose-meter
+ *  gauge, towns taken, legions afield. Replaces riders/coverage; the same `useStats` ~3 Hz slice. */
+function FantasyStatsBar({ s }: { s: Stats }) {
   const tribute = Math.round(s.tribute);
   // S11 economy split — the two specialised channels show only once they've been earned (a clean HUD for
   // a realm that hasn't built an aether/arms chain yet; they appear the moment one does).
@@ -88,11 +84,6 @@ function FantasyStatsBar({ s, clock }: { s: Stats; clock: string }) {
   const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "var(--ot-con-amber)" : "#7a93ad";
   return (
     <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
-      <div>
-        <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>{clock}</b>{" "}
-        <span data-testid="period" style={{ color: "var(--ot-con-ink-dim)" }}>Arcadia</span>
-      </div>
-      <div style={{ width: "1px", alignSelf: "stretch", background: "rgba(255,255,255,.08)" }} />
       <div data-testid="tribute" title="Gold — every town you supply pays this; it funds bounties and building.">
         ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> gold
         <RatePill rate={rates?.gold} color="var(--ot-con-ink)" />
@@ -195,12 +186,8 @@ export function StatsBar() {
   const ridershipRef = useTweenedNumber(s.ridershipTotal, fmtInt);
   const coverageRef = useTweenedNumber(s.coverageScore, fmtInt);
 
-  const hh = Math.floor(s.simHour);
-  const mm = Math.floor((s.simHour - hh) * 60);
-  const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-
   // Mode-aware: the fantasy campaign shows its own supply/conquest/decadence readout.
-  if (s.ruleset === "arcadia") return <FantasyStatsBar s={s} clock={clock} />;
+  if (s.ruleset === "arcadia") return <FantasyStatsBar s={s} />;
 
   const c = Math.round(s.coverageScore);
   const w = Math.round(s.waitingTotal);
@@ -226,36 +213,7 @@ export function StatsBar() {
   const netPip = loadPip(s.avgLoadFactor);
 
   return (
-    <div
-      id="stats-bar"
-      data-testid="stats-bar"
-      className="ot-console"
-      style={{
-        position: "fixed",
-        top: "10px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
-        padding: "8px 14px",
-        zIndex: 9,
-        font: "13px system-ui,sans-serif",
-        color: "var(--ot-con-ink)",
-      }}
-    >
-      <div>
-        <span data-testid="tod-glyph" title={s.period} style={{ marginRight: "5px" }}>
-          {todGlyph(s.simHour)}
-        </span>
-        <b data-testid="clock" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {clock}
-        </b>{" "}
-        <span data-testid="period" style={{ color: "var(--ot-con-ink-dim)" }}>
-          {s.period}
-        </span>
-      </div>
-      <div style={{ width: "1px", alignSelf: "stretch", background: "rgba(255,255,255,.08)" }}></div>
+    <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
       <div>
         🚇{" "}
         <b ref={ridershipRef} data-testid="ridership" style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }} />{" "}
@@ -319,7 +277,7 @@ export function StatsBar() {
       )}
       {/* Build impact left the run HUD — it's a build-time, per-line concern (EditorPanel
           `line-impact`), not a global always-on number. Money mounts only with the economy
-          ruleset on, so it's never dead chrome. StatsBar = clock · ridership · gauge · pressure. */}
+          ruleset on, so it's never dead chrome. */}
       {s.economyEnabled && (() => {
         // Operating-cash trend (fares − opex per day; capital excluded): the "am I dying?"
         // affordance the audit asked for — the drain is visible BEFORE the afford-gate fires.

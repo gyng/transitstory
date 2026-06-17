@@ -19,6 +19,7 @@ import { installTestHooks } from "../../testhooks";
 import { GameProvider, useGame, useGameUI } from "./GameContext";
 import { AppShell } from "./AppShell";
 import { TimeCluster } from "./TimeCluster";
+import { AlertCluster } from "./AlertCluster";
 import { LensRail } from "./LensRail";
 import { ConstructionRail } from "./ConstructionRail";
 import { CornerCluster } from "./CornerCluster";
@@ -326,12 +327,18 @@ export function App() {
           grid + pointer scoping with zero behaviour change. Later stages flow each group into its cell. */}
       <AppShell
         top={
+          // Top strip — three flow cells: resources (L) · alerts (C, clickable→fly-to) · time (R).
+          // StatsBar + AlertCluster + TimeCluster are real grid-flowed children now (stage 5 dissolved
+          // the position:fixed centred bar). The L cell holds the resource strip; the centre flexes so
+          // the alert tray stays centred between them; the R cell pins the time cluster to the corner.
           <>
-            <StatsBar />
-            {/* Time cluster pinned to the top-right of the strip: Build/Run + speed + clock. The
-                spacer pushes it right; StatsBar is position:fixed (top-centre) so it ignores flow. */}
-            <div style={{ flex: 1, pointerEvents: "none" }} />
-            <div style={{ display: "flex", alignItems: "flex-start", padding: "8px 14px 0 0", pointerEvents: "none" }}>
+            <div style={{ flex: "0 1 auto", display: "flex", alignItems: "flex-start", pointerEvents: "none" }}>
+              <StatsBar />
+            </div>
+            <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "7px 0 0", pointerEvents: "none" }}>
+              <AlertCluster />
+            </div>
+            <div style={{ flex: "0 0 auto", display: "flex", alignItems: "flex-start", padding: "8px 14px 0 0", pointerEvents: "none" }}>
               <TimeCluster />
             </div>
           </>
@@ -375,7 +382,7 @@ export function App() {
           bottom Outliner (stage 6) and the editor to the right Inspector (stage 7). Mounted here so its
           testids + behaviour are untouched this stage. */}
       <Panels />
-      <Toast />
+      <NoticeAutoDismiss />
       <OnboardingCoach />
       <SpellBar />
       <Fleet />
@@ -396,9 +403,10 @@ export function App() {
   );
 }
 
-/** Transient notice (e.g. an afford-gate rejection) so a gated Command has a visible echo
- *  (AGENTS: every Command needs an on-map/HUD echo). Auto-dismisses after a few seconds. */
-function Toast() {
+/** A transient notice (e.g. an afford-gate rejection) now renders as a ping in the top-centre
+ *  AlertCluster (`notice` testid lives there) — this hook-only component preserves the toast's
+ *  auto-dismiss after a few seconds, so a gated Command's visible echo still clears itself. */
+function NoticeAutoDismiss() {
   const game = useGame();
   const { notice } = useGameUI();
   useEffect(() => {
@@ -406,28 +414,6 @@ function Toast() {
     const id = window.setTimeout(() => game.dismissNotice(), 3000);
     return () => window.clearTimeout(id);
   }, [notice, game]);
-  if (!notice) return null;
-  return (
-    <div
-      data-testid="notice"
-      onClick={() => game.dismissNotice()}
-      style={{
-        position: "fixed",
-        top: 56,
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 20,
-        padding: "8px 16px",
-        borderRadius: 8,
-        background: "var(--ot-gauge-bad, #d62828)",
-        color: "#fff",
-        font: "600 13px system-ui,sans-serif",
-        boxShadow: "0 4px 16px rgba(0,0,0,.3)",
-        cursor: "pointer",
-      }}
-    >
-      {notice}
-    </div>
-  );
+  return null;
 }
 
