@@ -3091,9 +3091,15 @@ Built green-at-every-commit, one reusable block-reservation primitive (only the 
     `track-rails` above the selection casing (below coloured services); S6 raided bare track painted red over
     grey → filter `lines-raided` to serviced; S8 onboarding read `tool === "line"` → `isDrawTool`. S7 (a
     service is N+2 undo commands) left as-is — undo has always been command-granular under command-sourcing.
-  - **Deferred (clean seams, logged not half-built):** snap-restricting the Service tool to on-track stations;
-    the `TrackGraph` fat-rail collapse for shared corridors (the copy-out already ships); and the L3
-    `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until `TrackSegment` is authoritative).
+  - **Deferred (clean seams, logged not half-built):** snap-restricting the Service tool to on-track stations
+    (conditional — transit has no TrackGraph, so it must not block snapping there); the shared-corridor "one
+    fat rail" collapse; and the L3 `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until
+    `TrackSegment` is authoritative).
+  - **Fat-rail finding (dead-end logged):** a first cut rendered the shared trunk from the `trackGraph()`
+    copy-out, but `world.track_graph` is derived ONLY in `dispatch()` (tick/Run) ⇒ it is EMPTY in Build mode —
+    exactly when you draw and want to see shared corridors. Plus the copy-out is cell-CENTRE coarse vs the
+    smoothed lines, and grid-only. Reverted. The fat-rail collapse needs CLIENT-SIDE shared-cell detection on
+    the live line polylines (Build-mode-capable), not the trackGraph copy-out — that's the real shape of the seam.
 
 ## Legions ride REAL trains + walk-vs-wait (owner-directed, 2026-06-17)
 
