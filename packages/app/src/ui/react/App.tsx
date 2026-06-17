@@ -163,32 +163,26 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   return { game, loop, cityName: city.raw.name };
 }
 
+/** The app title (city name). Folded into the grid TopStrip's LEFT cell as the first flex element,
+ *  ordered BEFORE the resource strip in the SAME flex context — so a long city name pushes the
+ *  resources along instead of the old `position:fixed` bar sliding UNDER them (the overlap fix).
+ *  Keeps id `app-title` (e2e contract: load/menu specs assert its text). */
 function Title({ name }: { name: string }) {
   return (
     <div
       id="app-title"
+      className="ot-console"
       style={{
-        margin: 0,
-        padding: "4px 10px",
-        borderRadius: 8,
-        background: "rgba(255,255,255,.85)",
+        margin: "7px 0 0 0",
+        padding: "7px 12px",
         font: "600 14px system-ui,sans-serif",
-        color: "#1c2024",
-        boxShadow: "0 2px 10px rgba(0,0,0,.12)",
+        color: "var(--ot-con-ink)",
         whiteSpace: "nowrap",
+        alignSelf: "flex-start",
+        pointerEvents: "auto",
       }}
     >
       Transit Story · {name}
-    </div>
-  );
-}
-
-/** Top-left chrome row: title · Undo · Stats laid out by flex, so a long city name pushes its
- *  neighbours along instead of sliding under them (the old fixed `left` offsets overlapped). */
-function TopLeftBar({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ position: "fixed", top: 10, left: 14, zIndex: 10, display: "flex", alignItems: "stretch", gap: 8 }}>
-      {children}
     </div>
   );
 }
@@ -329,7 +323,11 @@ export function App() {
           // the position:fixed centred bar). The L cell holds the resource strip; the centre flexes so
           // the alert tray stays centred between them; the R cell pins the time cluster to the corner.
           <>
-            <div style={{ flex: "0 1 auto", display: "flex", alignItems: "flex-start", pointerEvents: "none" }}>
+            {/* Title → resources, in ONE left-cell flex context (Title first), so they can never
+                overlap: a long city name pushes the resource strip along instead of sliding under it.
+                The 14px left padding matches the other shell edges' inset. */}
+            <div style={{ flex: "0 1 auto", display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0, padding: "0 0 0 14px", pointerEvents: "none" }}>
+              <Title name={world.cityName} />
               <StatsBar />
             </div>
             <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "7px 0 0", pointerEvents: "none" }}>
@@ -376,10 +374,8 @@ export function App() {
       />
       {/* Floating / transient overlays — kept outside the shell so they retain their own fixed
           position + z-order (build HUD, draft, cards, beats). The roster migrated to the bottom
-          Outliner (stage 6) and the editor to the right Inspector (stage 7). */}
-      <TopLeftBar>
-        <Title name={world.cityName} />
-      </TopLeftBar>
+          Outliner (stage 6), the editor to the right Inspector (stage 7), and the title into the
+          top-strip L cell (folded in with the resource strip so they can't overlap — item 1). */}
       <NoticeAutoDismiss />
       <OnboardingCoach />
       <DraftControls />

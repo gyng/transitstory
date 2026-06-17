@@ -32,7 +32,10 @@ const BAR_STYLE: CSSProperties = {
   gap: "12px",
   rowGap: "4px",
   padding: "7px 12px",
-  margin: "7px 0 0 14px",
+  // Top margin aligns the strip with the Title/TimeCluster row; the LEFT inset now comes from the
+  // shared left-cell flex container (gap after the Title) instead of a fixed margin, so the Title and
+  // resources sit in one row without an extra offset that could push them apart (item 1 overlap fix).
+  margin: "7px 0 0 0",
   pointerEvents: "auto",
   font: "13px system-ui,sans-serif",
   color: "var(--ot-con-ink)",
