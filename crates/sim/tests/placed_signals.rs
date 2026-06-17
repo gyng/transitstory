@@ -44,6 +44,24 @@ fn place_signal_records_and_validates() {
 }
 
 #[test]
+fn a_signal_adds_capital_cost_refunded_on_removal() {
+    // TTD L5d: a placed signal carries a small capital cost (so signalling is an economic tradeoff),
+    // refunded on removal. The cost recompute is triggered directly from the dispatch-exempt apply arm.
+    let mut w = line3();
+    let base = w.lines[0].capital_cost;
+    assert!(base > 0, "the line has a track capital cost to begin with");
+    place(&mut w, 0, 2_000_000);
+    let with_one = w.lines[0].capital_cost;
+    assert!(with_one > base, "a placed signal must add capital cost: {base} -> {with_one}");
+    place(&mut w, 0, 3_000_000); // a second signal on the same span
+    assert!(w.lines[0].capital_cost > with_one, "each signal adds cost (two cost more than one)");
+    // removing both refunds exactly back to the track-only base.
+    w.apply(&Command::RemoveSignal { line: LineId(0), path: 0, span: 0, at_mm: 2_000_000 });
+    w.apply(&Command::RemoveSignal { line: LineId(0), path: 0, span: 0, at_mm: 3_000_000 });
+    assert_eq!(w.lines[0].capital_cost, base, "removing every signal refunds the capital exactly");
+}
+
+#[test]
 fn place_then_remove_is_hash_neutral() {
     let mut w = line3();
     let h0 = w.state_hash();

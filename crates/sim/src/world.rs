@@ -45,6 +45,11 @@ const TAKING_PER_KM_BUILT: i64 = 6_000_000;
 /// P2: single track costs this percent of double-track per-km capital (one rail pair, not two).
 const SINGLE_TRACK_PCT: i64 = 55;
 const TRAIN_COST: i64 = 15_000_000;
+// TTD L5d: capital per player-placed block signal (~¼ km of surface track). A signal raises a
+// single-track span's same-direction throughput, so it's a cheaper alternative to double-tracking
+// (which adds ~45% of PER_KM_SURFACE per km) — but it's not free, so signalling is an economic
+// tradeoff in the fantasy economy. 0 signals ⇒ 0 added ⇒ the goldens (no signals) stay byte-identical.
+const SIGNAL_COST: i64 = 2_000_000;
 // Recurring maintenance (opex), accrued only while the economy is ON and running. A slow drain
 // that fares must outrun — the second pressure axis alongside waiting. Tunable game balance.
 const DAY_MS: i64 = 86_400_000;
@@ -835,6 +840,10 @@ impl World {
             .trainset
             .map(|t| t.count as i64 * crate::trainset::train_cost(mode, t.spec, TRAIN_COST))
             .unwrap_or(0);
+        // TTD L5d: each player-placed block signal on this line adds a small capital cost. 0 signals ⇒
+        // 0 added (the goldens place none ⇒ byte-identical). Counted from the authoritative store.
+        let sig_count = self.signals.iter().filter(|s| s.line == line).count() as i64;
+        capital += SIGNAL_COST * sig_count;
         self.lines[idx].disruption_units = disr;
         self.lines[idx].crosses_water_surface = water;
         self.lines[idx].capital_cost = capital;
@@ -1615,6 +1624,10 @@ impl World {
                             Ok(_) => {} // already present ⇒ no-op (keeps the store deduped)
                             Err(pos) => self.signals.insert(pos, sig),
                         }
+                        // TTD L5d: refresh the line's capital (signals carry a cost). PlaceSignal is
+                        // dispatch-exempt (no train reset), so the cost is recomputed here directly — it
+                        // touches only disruption/water/capital, never the vehicle SoA.
+                        self.recompute_line_buildability(*line);
                         vec![Event::SignalPlaced { line: *line, path: *path, span: *span, at_mm: *at_mm }]
                     }
                     _ => vec![Event::Rejected { reason: "PlaceSignal: signal must lie strictly inside an existing span".into() }],
@@ -1624,6 +1637,7 @@ impl World {
                 let sig = Signal { line: *line, path: *path, span: *span, at_mm: *at_mm };
                 if let Ok(pos) = self.signals.binary_search_by(|s| signal_key(s).cmp(&signal_key(&sig))) {
                     self.signals.remove(pos);
+                    self.recompute_line_buildability(*line); // TTD L5d: refund the signal's capital cost
                 }
                 vec![Event::SignalRemoved { line: *line, path: *path, span: *span, at_mm: *at_mm }]
             }
