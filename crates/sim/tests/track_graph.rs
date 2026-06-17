@@ -242,6 +242,76 @@ fn track_graph_postcard_round_trips() {
     }
 }
 
+/// TTD L3 A1: each segment owns a DERIVED smoothed geometry sourced from the owning line's `Path.polyline`
+/// sub-range. For a single straight line (single-line segments, no sharing) the segment's `polyline` must
+/// equal the owning path's vertices for that segment's cell sub-range BIT-FOR-BIT, `arclen_mm` must be
+/// cumulative + monotonic from 0 with `length_mm()` == the last arclen, and concatenating all of a path's
+/// segments' polylines (deduping the shared endpoint vertex) must reproduce the full path polyline.
+#[test]
+fn segment_geometry_matches_owning_path_subrange() {
+    let mut w = grid_world(CELL);
+    // A single straight line on the x-axis through several stations ⇒ single-line segments, no sharing.
+    let s0 = place(&mut w, xcell(0).0, xcell(0).1);
+    let s1 = place(&mut w, xcell(3).0, xcell(3).1);
+    let s2 = place(&mut w, xcell(7).0, xcell(7).1);
+    let s3 = place(&mut w, xcell(12).0, xcell(12).1);
+    make_line(&mut w, &[s0, s1, s2, s3]);
+    let g = derive_track_graph(&w);
+    assert_eq!(g.segments.len(), 3, "4 stops in a row ⇒ 3 single-line segments");
+
+    let path = &w.lines[0].paths[0];
+    // Map each path-polyline vertex to its cell (a grid-walk vertex is a cell centre ⇒ axial_of recovers it).
+    let pcells: Vec<_> = path.polyline.iter().map(|&p| hexgrid::axial_of(p, CELL)).collect();
+
+    for seg in &g.segments {
+        assert!(!seg.shared, "single line shares nothing");
+        assert!(seg.polyline.len() >= 2, "segment geometry has at least its two endpoints");
+        assert_eq!(seg.polyline.len(), seg.cells.len(), "one vertex per cell in the chain");
+        assert_eq!(seg.polyline.len(), seg.arclen_mm.len(), "arclen parallels the polyline");
+
+        // Find this segment's cell sub-range in the owning path's polyline (forward, single line).
+        let start = (0..=pcells.len() - seg.cells.len())
+            .find(|&i| pcells[i..i + seg.cells.len()] == seg.cells[..])
+            .expect("segment cell chain is a contiguous sub-range of the owning path polyline");
+        let end = start + seg.cells.len();
+
+        // BIT-FOR-BIT: the segment polyline equals the path's vertices for that sub-range.
+        assert_eq!(&seg.polyline[..], &path.polyline[start..end], "segment polyline == owning path sub-range");
+
+        // arclen_mm is cumulative + strictly monotonic from 0, and matches the (rebased) path sub-range.
+        assert_eq!(seg.arclen_mm[0], 0, "arclen rebased to 0 at the first vertex");
+        let base = path.arclen_mm[start];
+        for (k, &a) in seg.arclen_mm.iter().enumerate() {
+            assert_eq!(a, path.arclen_mm[start + k] - base, "arclen == rebased path arclen sub-range");
+        }
+        for win in seg.arclen_mm.windows(2) {
+            assert!(win[1] > win[0], "arclen strictly increasing along a non-degenerate segment");
+        }
+        assert_eq!(seg.length_mm(), *seg.arclen_mm.last().unwrap(), "length_mm == last arclen");
+
+        // point_at hits the endpoints exactly (integer-lerp parity with Path::point_at).
+        assert_eq!(seg.point_at(0), (seg.polyline[0].x_mm, seg.polyline[0].y_mm));
+        let last = seg.polyline[seg.polyline.len() - 1];
+        assert_eq!(seg.point_at(seg.length_mm()), (last.x_mm, last.y_mm));
+    }
+
+    // Concatenating all segments' polylines (in path order along the cells) reproduces the full path
+    // polyline, deduping the shared endpoint vertex between consecutive segments.
+    let mut ordered: Vec<&_> = g.segments.iter().collect();
+    // Order segments by where their cell chain starts in the path.
+    ordered.sort_by_key(|seg| {
+        (0..=pcells.len() - seg.cells.len())
+            .find(|&i| pcells[i..i + seg.cells.len()] == seg.cells[..])
+            .unwrap()
+    });
+    let mut concat: Vec<_> = Vec::new();
+    for (si, seg) in ordered.iter().enumerate() {
+        let skip = if si == 0 { 0 } else { 1 }; // dedup the shared endpoint vertex
+        concat.extend_from_slice(&seg.polyline[skip..]);
+    }
+    assert_eq!(concat, path.polyline, "segments concatenate back to the full path polyline");
+}
+
 #[test]
 fn degenerate_inputs_do_not_panic() {
     let mut w = grid_world(CELL);

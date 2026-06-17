@@ -12,6 +12,7 @@
 //! Empty (inert) for continuous / non-grid networks (`grid_cell_mm <= 0`) — that geometry never shares
 //! exact vertices, so a graph is meaningless there (p5-shared-track-roadmap.md). Later layers (L2 berths,
 //! L3 authoritative geometry, L4 routing) graduate this from observational to load-bearing.
+use crate::geo_local::PointMm;
 use crate::hexgrid::{self, Axial};
 use crate::world::World;
 use serde::{Deserialize, Serialize};
@@ -53,6 +54,55 @@ pub struct TrackSegment {
     pub cells: Vec<Axial>,
     /// Traversed by ≥ 2 distinct lines — the cross-line shared-infrastructure hint (drives the fat ribbon).
     pub shared: bool,
+    /// TTD L3 A1 (DERIVED, NOT YET AUTHORITATIVE, NOT HASHED): this segment's OWNED smoothed polyline (mm),
+    /// oriented `cells[0] → cells[last]`. Sourced from the smoothed `Path.polyline` sub-range of the
+    /// LOWEST-index line+path that traverses this cell chain — so a single-line segment is byte-identical to
+    /// that line's `Path` sub-range (preserves the #29 smooth curve) and a shared segment uses the lowest
+    /// line index as a deterministic representative. Integer mm only (no float ever stored here).
+    #[serde(default)]
+    pub polyline: Vec<PointMm>,
+    /// Cumulative arc-length (mm) at each `polyline` vertex; `arclen_mm[0] == 0`. Rebased copy of the owning
+    /// path's arclen sub-range (integer mm). Parallel to `polyline`.
+    #[serde(default)]
+    pub arclen_mm: Vec<i64>,
+}
+
+impl TrackSegment {
+    /// Length (mm) of this segment's owned polyline (the last cumulative arc-length, 0 when empty).
+    /// Mirrors `line::Path::length_mm` so segment-local motion math reads identically.
+    #[inline]
+    pub fn length_mm(&self) -> i64 {
+        self.arclen_mm.last().copied().unwrap_or(0)
+    }
+
+    /// Cartesian point (mm) at forward arc-length `s_mm` along this segment's owned polyline. Integer-lerp
+    /// along the arc, copied verbatim from `line::Path::point_at` so the two cannot drift.
+    pub fn point_at(&self, s_mm: i64) -> (i64, i64) {
+        match self.polyline.len() {
+            0 => return (0, 0),
+            1 => return (self.polyline[0].x_mm, self.polyline[0].y_mm),
+            _ => {}
+        }
+        let s = s_mm.clamp(0, self.length_mm());
+        for i in 1..self.arclen_mm.len() {
+            if s <= self.arclen_mm[i] {
+                let seg_start = self.arclen_mm[i - 1];
+                let seg_len = self.arclen_mm[i] - seg_start;
+                let a = self.polyline[i - 1];
+                let b = self.polyline[i];
+                if seg_len <= 0 {
+                    return (a.x_mm, a.y_mm);
+                }
+                let t = s - seg_start;
+                return (
+                    a.x_mm + (b.x_mm - a.x_mm) * t / seg_len,
+                    a.y_mm + (b.y_mm - a.y_mm) * t / seg_len,
+                );
+            }
+        }
+        let last = self.polyline[self.polyline.len() - 1];
+        (last.x_mm, last.y_mm)
+    }
 }
 
 /// The derived track graph: nodes sorted by `cell`, segments sorted canonically. Empty for non-grid.
@@ -263,7 +313,7 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
             if cells.first() != Some(&nodes[a as usize].cell) {
                 cells.reverse();
             }
-            TrackSegment { seg_id: 0, a, b, cells, shared }
+            TrackSegment { seg_id: 0, a, b, cells, shared, polyline: Vec::new(), arclen_mm: Vec::new() }
         })
         .collect();
     segments.sort_by(|s, t| {
@@ -274,5 +324,72 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
         s.seg_id = i as u32;
     }
 
+    // 8. (TTD L3 A1) Give each segment its OWNED smoothed geometry, DERIVED (not hashed, not authoritative):
+    //    the contiguous `Path.polyline` vertex sub-range of the LOWEST-index line+path that traverses this
+    //    segment's cell chain, oriented `cells[0] → cells[last]`. For a single-line segment this is
+    //    byte-identical to that line's `Path` sub-range (preserves the #29 smooth grid walk); for a shared
+    //    segment the lowest contributing line index is a deterministic, command-order-independent
+    //    representative. We slice the path's OWN `arclen_mm` sub-range (integer mm) and rebase it to 0, so
+    //    the stored cumulative arc-lengths match the path's geometry exactly with no float involved here.
+    //    `world.lines`/`line.paths` iterate in index order ⇒ "lowest line, then lowest path, then lowest
+    //    start index" is fixed and command-order-independent (the polylines themselves are pure functions of
+    //    the hashed topology). Every grid-walk polyline vertex is a cell CENTRE, so `axial_of(vertex)`
+    //    recovers the cell; consecutive vertices map to distinct adjacent cells (zero-length steps emit no
+    //    vertex), matching `seg.cells`'s no-consecutive-duplicate shape.
+    for seg in &mut segments {
+        if let Some((poly, arclen)) = source_segment_geometry(world, cell, &seg.cells) {
+            seg.polyline = poly;
+            seg.arclen_mm = arclen;
+        }
+    }
+
     TrackGraph { nodes, segments }
+}
+
+/// Locate the smoothed polyline sub-range for a segment's `cells` chain in the LOWEST-index line+path whose
+/// polyline traverses exactly those cells in order (forward or reversed). Returns the vertex sub-range
+/// oriented `cells[0] → cells[last]` plus a 0-rebased copy of that range's cumulative arc-lengths.
+fn source_segment_geometry(world: &World, cell: i64, cells: &[Axial]) -> Option<(Vec<PointMm>, Vec<i64>)> {
+    if cells.len() < 2 {
+        return None;
+    }
+    for line in &world.lines {
+        if line.removed || line.stops.len() < 2 || line.crosses_water_surface {
+            continue; // same liveness filter as edge collection — only BUILT lines contribute geometry
+        }
+        for path in &line.paths {
+            let poly = &path.polyline;
+            if poly.len() < cells.len() {
+                continue;
+            }
+            // Cell of each polyline vertex (a grid-walk vertex is a cell centre ⇒ axial_of recovers it).
+            let vcells: Vec<Axial> = poly.iter().map(|&p| hexgrid::axial_of(p, cell)).collect();
+            // First contiguous window of `vcells` equal to `cells` (forward) or its reverse. Index order ⇒
+            // lowest start index wins; a forward match is preferred over a reverse one at the same start.
+            for start in 0..=(vcells.len() - cells.len()) {
+                let window = &vcells[start..start + cells.len()];
+                let forward = window.iter().eq(cells.iter());
+                let reverse = !forward && window.iter().rev().eq(cells.iter());
+                if !forward && !reverse {
+                    continue;
+                }
+                let end = start + cells.len(); // exclusive
+                let sub_poly: Vec<PointMm> = poly[start..end].to_vec();
+                // Rebase the path's own arclen sub-range to start at 0 (integer mm, no float).
+                let base = path.arclen_mm.get(start).copied().unwrap_or(0);
+                let mut arclen: Vec<i64> = path.arclen_mm[start..end].iter().map(|&a| a - base).collect();
+                if reverse {
+                    // Orient `cells[0] → cells[last]`: reverse the vertices and re-accumulate arc-length
+                    // from the (now-first) far endpoint so `arclen_mm[0] == 0` and lengths stay monotonic.
+                    let mut rev_poly = sub_poly.clone();
+                    rev_poly.reverse();
+                    let total = *arclen.last().unwrap_or(&0);
+                    arclen = arclen.iter().rev().map(|&a| total - a).collect();
+                    return Some((rev_poly, arclen));
+                }
+                return Some((sub_poly, arclen));
+            }
+        }
+    }
+    None
 }
