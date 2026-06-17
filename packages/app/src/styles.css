@@ -288,6 +288,15 @@ body {
   [data-testid="stats-bar"] {
     max-width: 46vw;
   }
+
+  /* TITLE truncates with an ellipsis below 1024px so the L cell (title + resources) can shrink and never
+     pushes into the top-right TimeCluster — the nowrap title was the one rigid element keeping the L cell
+     wide enough to collide with the time corner at ~1000px (item 1 audit). */
+  #app-title {
+    max-width: 30vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 /* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */

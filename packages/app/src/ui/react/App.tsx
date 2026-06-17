@@ -175,6 +175,7 @@ function Title({ name }: { name: string }) {
     <div
       id="app-title"
       className="ot-console"
+      title={`Transit Story · ${name}`}
       style={{
         margin: "7px 0 0 0",
         padding: "7px 12px",

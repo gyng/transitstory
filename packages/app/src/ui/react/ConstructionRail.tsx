@@ -103,7 +103,9 @@ const FLYOUT_STYLE: CSSProperties = {
   flexDirection: "column",
   gap: 4,
   padding: "8px 10px",
-  width: "min(440px,70vw)",
+  // Wide enough that the 4 tools pack onto ONE row and the (transit) 5-mode segment fits on one row
+  // too — so the flyout is two short button rows + the one-line hint (~110px), not four wrapped rows.
+  width: "min(560px,80vw)",
   pointerEvents: "auto",
 };
 
@@ -206,7 +208,7 @@ export function ConstructionRail() {
                 testid={`tool-${t}`}
                 onClick={() => game.setTool(t)}
                 on={ui.tool === t}
-                style={{ flex: "1 0 auto" }}
+                style={{ flex: "0 0 auto" }}
               />
             ))}
           </div>
