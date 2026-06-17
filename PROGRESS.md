@@ -3060,6 +3060,45 @@ Built green-at-every-commit, one reusable block-reservation primitive (only the 
   overlap-dwells (catch-up > dwell window); full parallel loading + a follower OVERTAKING into a free berth
   needs L4 routing. Also: the fantasy line is supply-gated, ramping to ~8 trains — bunching IS reachable.
 
+## Legions ride REAL trains + walk-vs-wait (owner-directed, 2026-06-17)
+
+Owner: *"legions should ride the rails — estimate whether it's faster to wait for a train or walk. They should
+ride regular trains, not just ride for free."* Legions stop free-sliding the route; they now make a real
+decision at each station and ride real, capacity-contended vehicles.
+
+- **The ON-LINE model (chosen over off-rail walking).** A legion always lives on its line's arc-length `s_mm`
+  — WALKING trudges the corridor on foot, RIDING mirrors a boarded vehicle's `s_mm`. So `point_at`, the siege,
+  and the render need NO off-rail special-casing, and only **4** travel fields are carried
+  (`wait_line/wait_dir/riding_veh/wait_until_ms`) — the over-broad 9-field step-1 set (off-rail walk endpoints)
+  was trimmed first (`aef0295`, appended-bytes-only re-pin: transit `0x8775…e2fe → 0x0ac9_996a_3815_b26a`,
+  arcadia `0xf6ff…3774 → 0x98c9_2af6_50fd_babc`; both fixtures legion-free ⇒ behaviour byte-identical).
+- **`army_travel_step` replaces `advance_armies` (`c612eae`).** A decide→walk/wait→ride→arrive machine:
+  - **decide (AT_STATION):** WALK ETA (corridor ÷ walk speed) vs single-line RAIL ETA (`headway/2` cold-start +
+    ride at the train's top speed). Take rail only if it beats walking by `WAIT_RISK_MS=60 s`, the legion FITS
+    a seat (**1 seat per strength**, owner's choice), and the line is serviced + not raided; else WALK.
+    RAPTOR-free — a legion rides ITS own line, so no cross-line routing is needed yet.
+  - **WALKING:** advance `s_mm` at walk speed (the old `army_speed_mm_s` city knob now scales the foot-march;
+    WAR_MARCH +50% applies); arrive ⇒ besiege. Committed (no re-eval).
+  - **WAITING:** hold for a train; patience (`240 s`) lapse ⇒ re-decide (usually walk on a dead line).
+  - **RIDING:** `s_mm` MIRRORS the carrying vehicle (no free slide); reach the target arc ⇒ alight + besiege;
+    lose the ride to a dispatch `v.clear()` rebuild ⇒ drop to AT_STATION + re-decide (never teleport).
+  - **`army_board`** seats WAITING legions onto dwelling vehicles AFTER `pax::board_alight` (citizens win
+    seats; legions take leftovers), capacity contended via `cap − onboard_pax − riding-legion strength`, FIFO
+    by launch order. War-step order: launch → travel → board → siege.
+- **Determinism + goldens.** Integer + index-ordered + no HashMap/float ⇒ deterministic. Both pinned goldens
+  are legion-free ⇒ the behaviour change is golden-NEUTRAL (no behavioural re-pin; the only pins moved on the
+  field-trim above). Legion-bearing tests assert via `run()==run()`. New `legion_rides.rs` (5 tests): a legion
+  boards+rides; RIDING `s_mm` mirrors its vehicle exactly; too-big-for-stock walks; a short hop behind
+  infrequent service walks (ETA, not just capacity); a ridden legion still conquers; replay bit-for-bit. The
+  existing `army.rs` "marching"-intent test updated for the walk/ride split.
+- **Render.** `army_positions_m` unchanged (`point_at(s_mm)` already covers every state); the intent arc draws
+  for any en-route state via `army::is_en_route`; a RIDING legion's 3D standard draws ON its train (mirrored
+  position) — the "riding the rails" read. `army_states_m` now emits 0 deciding/1 besieging/2 done/3 walking/
+  4 waiting/5 riding; the frontend `armyLayerAt` degrades correctly (skips DONE, flags BESIEGING).
+- Tiers: cargo full sim suite **green (55 binaries, 0 fail)** · wasm rebuilt · tsc clean. Default metro (cap 7)
+  can't seat a strength-8 legion, so demo/arcadia legions WALK; riding wants the **Heavy** stock (cap 15) — a
+  legible "to move your army by rail, run bigger trains" lever, in keeping with TTD.
+
 ## Known gaps / deferred
 
 - **T7 (self-host PMTiles)** — deferred per PLAN §15; slice ships on the hosted CARTO/MapLibre style. Not on the critical path.
