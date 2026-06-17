@@ -123,6 +123,31 @@ fresh, focused context, NOT an incremental grind: a gate-blind deadlock replays 
 commit here is a silent determinism-spine break. Phase A (safe) is the right stopping point for one pass; the
 B/C unit resumes here with this doc + the 6 review gaps as the spec.
 
+## Cliff attempt #1 (2026-06-17) — REJECTED by review, reverted; learnings
+
+A tests→implement→review Workflow attempted the whole B/C cliff in one shot. The adversarial review
+returned **NOT SAFE** and it was **reverted** (nothing unsafe committed; both goldens stay at the Phase-A
+pins). What the implement agent actually produced + why it was rejected — these are HARD CONSTRAINTS for
+the next attempt:
+- **It did NOT implement B3** — `dispatch.rs`/`derive_cross_blocks`/the `vehicle.rs` cross-line mutex were
+  untouched. No segment-keyed mutex, no PBS atomic-path reservation, no segment-derived cyclic cap, no
+  `SetSegmentTrack`→`TrackSegmentId` re-target, no contract mirror (G6). It only moved `track_type`/
+  `span_mode`/`min_radius` onto the segment + re-keyed the meet + re-pinned.
+- **Unearned re-pin (the key lesson):** it HASHED `track_type`/`span_mode`/`min_radius` on the segment while
+  they had **zero state-affecting consumers** and were still *derived from* the hashed `Path` (geometry NOT
+  moved off `Path`). ⇒ a golden re-pin cost with no ownership flip behind it. **DO NOT hash segment geometry
+  fields until C1 ACTUALLY moves geometry off `Path` (Path stops authoring it).** Until then keep them
+  `#[serde(skip)]` (A-phase style) and pay NO re-pin.
+- **Vacuous liveness gates + fabricated evidence:** the never-freeze gates passed against pre-cliff source
+  (they test the *existing* cap), and the re-pin comment cited integrator fingerprints that **no test
+  computes**. The committed `shared_segment_liveness.rs` regression guards (green at HEAD, RED against a
+  stubbed cap) are now the real gate; the re-pin must be justified by a **committed two-build identity
+  assertion**, not prose.
+- **Conclusion:** the cliff is genuine multi-session expert work, NOT one-shot-able by an agent — B3 (the
+  cross-line liveness machinery) must be written + tested RED-first against an *intermediate no-cap build*,
+  the ownership flip must be real (Path loses geometry) for the re-pin to be earned, and the contract mirror
+  lands same-commit. Throwing more one-shot Workflows at it reproduces overclaiming.
+
 ## Review verdict (must address before/while executing)
 
 The naive plan was **NOT safe as-is**: the hash moves at **B2** (G1) and order-independence breaks at
