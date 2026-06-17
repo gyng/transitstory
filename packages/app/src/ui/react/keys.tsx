@@ -3,7 +3,7 @@
 // ONE button look (a raised physical key; `on` lights it, `tone` picks the glow). JSX, so it lives
 // here rather than in the framework-free shared.ts. The look is owned by `.ot-key` in styles.css;
 // layout (flex/padding/width) still comes via `style`.
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { ModeDef } from "./shared";
 
 /** A console KEY — a raised physical button on the operator's desk. `on` lights it; `tone` picks
@@ -17,6 +17,7 @@ export function Button({
   disabled,
   on,
   tone = "accent",
+  compact = false,
 }: {
   label: string;
   testid: string;
@@ -26,8 +27,25 @@ export function Button({
   disabled?: boolean;
   on?: boolean;
   tone?: "accent" | "good" | "danger";
+  /** When set, the text after the leading glyph is wrapped in `.ot-con-compact-label` so the responsive
+   *  (<1024px) rules can hide it, leaving an icon-only key (left/lens rails). */
+  compact?: boolean;
 }) {
   const onClass = on ? (tone === "good" ? "on-good" : tone === "danger" ? "on-danger" : "on") : "";
+  // Split a "🚆 Rail"-style label into its leading glyph + the rest, so the rest can collapse at narrow
+  // widths. Falls back to the raw label when there's no space (already icon-only).
+  let content: ReactNode = label;
+  if (compact) {
+    const sp = label.indexOf(" ");
+    if (sp > 0) {
+      content = (
+        <>
+          {label.slice(0, sp)}
+          <span className="ot-con-compact-label">{label.slice(sp)}</span>
+        </>
+      );
+    }
+  }
   return (
     <button
       data-testid={testid}
@@ -42,7 +60,7 @@ export function Button({
         ...style,
       }}
     >
-      {label}
+      {content}
     </button>
   );
 }

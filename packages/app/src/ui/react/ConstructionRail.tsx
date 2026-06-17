@@ -173,6 +173,7 @@ export function ConstructionRail() {
             onClick={() => armCategory(c.id)}
             on={armed === c.id}
             tone={c.tone === "danger" ? "danger" : "accent"}
+            compact /* icon-only below 1024px */
             style={KEY_STYLE}
           />
         ))}

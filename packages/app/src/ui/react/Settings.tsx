@@ -89,10 +89,15 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
       data-testid="settings-panel"
       className="ot-console"
       style={{
+        // Anchored near the bottom-LEFT ⚙ trigger in the CornerCluster (stage 8 — it was disconnected
+        // bottom-right). Opens upward from just above the corner cluster so the ⚙ and its panel read as
+        // one control. Capped height with scroll so it never runs off the top on a short viewport.
         position: "fixed",
-        bottom: 84,
-        right: 14,
+        bottom: 60,
+        left: 14,
         width: 240,
+        maxHeight: "calc(100vh - 80px)",
+        overflowY: "auto",
         padding: 14,
         display: "block",
         zIndex: 11,

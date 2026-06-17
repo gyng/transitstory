@@ -42,6 +42,8 @@ test("fantasy upkeep: a running network drains gold each day", async ({ page }) 
   // Over a day, deliveries add gold and upkeep subtracts it; the charge is real (the day-rollover drain ran).
   // We can't assert a net drop (deliveries may outpace it — that's the point: keep delivering), but the HUD
   // line must be present and the figure positive.
+  // The realm ledger (svc-*) migrated into the bottom Outliner's Report tab (UI reorg stage 6) — open it.
+  await page.getByTestId("outliner-tab-report").click();
   await expect(page.getByTestId("svc-upkeep")).toBeVisible();
   await page.evaluate(() => {
     const cap = (window as any).__ot.game.towns.find((t: any) => t.kind === "capital");

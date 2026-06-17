@@ -114,8 +114,14 @@ body {
    Persistent chrome (roster, dashboard, bar) is left alone — it shouldn't re-animate on updates. */
 #editor-panel,
 #settings-panel,
-[data-testid="commuter-card"] {
+[data-testid="commuter-card"],
+[data-testid="inspector"] {
   animation: ot-pop 0.18s var(--ot-ease) both;
+}
+/* Alert pings (top-centre tray) ease in as they appear — a status LIGHTING UP on the desk; the notice
+   ping keeps its dedicated slide-in. Both ride the 3 Hz stats slice, no per-frame work. */
+[data-testid="alert-cluster"] > .ot-key {
+  animation: ot-pop 0.16s var(--ot-ease) both;
 }
 [data-testid="notice"] {
   animation: ot-toast-in 0.22s var(--ot-ease) both;
@@ -217,6 +223,49 @@ body {
   height: 7px;
   border-radius: 50%;
   box-shadow: 0 0 5px currentColor, inset 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+/* ===== Responsive (stage 8): below 1024px the chrome compresses so the union still never overflows
+   and the map keeps its width. The grid geometry is unchanged — only the region CONTENTS shrink. ===== */
+@media (max-width: 1024px) {
+  /* INSPECTOR OVERLAYS the lens rail (modal) — it leaves the flex row and floats over the rail, so the
+     map keeps its full width instead of the inspector pushing the centre column narrower. It sits just
+     inboard of the rail; the rail stays clickable beneath/beside it. */
+  .ot-right-edge {
+    position: relative;
+  }
+  .ot-right-edge [data-testid="inspector"] {
+    position: absolute;
+    right: 58px; /* clear of the collapsed lens rail */
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 14;
+  }
+
+  /* LEFT rail icon-only: hide the text after the leading glyph on the category keys (the .ot-key-label
+     span), keeping the emoji. Tool/mode keys in the flyout keep their labels (the flyout is on demand). */
+  .ot-con-compact-label {
+    display: none;
+  }
+
+  /* LENS rail → a single column of compact icon keys (labels hidden), so it stays a thin strip. */
+  [data-testid="lens-rail"] .ot-key {
+    padding: 6px 7px;
+  }
+  [data-testid="lens-rail"] .ot-con-compact-label {
+    display: none;
+  }
+
+  /* TICKER → a single line (the dock is short; the roster ⅔ keeps priority). */
+  [data-testid="ticker"] {
+    font-size: 11px;
+  }
+
+  /* RESOURCES wrap to (at most) 2 rows inside the L cell only — already flex-wrap; cap its width so it
+     can't shove the centre alert tray. */
+  [data-testid="stats-bar"] {
+    max-width: 46vw;
+  }
 }
 
 /* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */

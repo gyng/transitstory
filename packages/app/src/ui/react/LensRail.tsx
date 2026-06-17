@@ -48,6 +48,7 @@ export function LensRail() {
         title={game.lensHides("demand") ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.` : "Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."}
         onClick={() => game.setShowDemand(!ui.showDemand)}
         on={ui.showDemand}
+        compact
         style={KEY_STYLE}
       />
       <Button
@@ -57,6 +58,7 @@ export function LensRail() {
         title={ui.selectedStation === null ? "Reach needs a pinned station — click one first, then shade every other by how fast transit reaches it." : "Reach: shade every station by how fast transit gets there from the pinned one. Faster reach pulls more demand — extend it to unlock trips."}
         onClick={() => game.setShowReach(!ui.showReach)}
         on={ui.showReach}
+        compact
         style={KEY_STYLE}
       />
       <Button
@@ -65,6 +67,7 @@ export function LensRail() {
         title="Road corridors where buses run cheap + fast. Turn on when planning a bus line — route along roads to cut cost and speed service."
         onClick={() => game.setShowRoads(!ui.showRoads)}
         on={ui.showRoads}
+        compact
         style={KEY_STYLE}
       />
       <Button
@@ -73,6 +76,7 @@ export function LensRail() {
         title="Show individual riders: walking to the platform, waiting, riding the train, and heading out at their stop. Purely visual — no effect on the sim."
         onClick={() => game.setShowPeeps(!ui.showPeeps)}
         on={ui.showPeeps}
+        compact
         style={KEY_STYLE}
       />
       {/* TTD signals (fantasy single-track): show each block's state so meets read at a glance. */}
@@ -83,6 +87,7 @@ export function LensRail() {
           title="Signal view: single-track block state — 🟢 clear · 🔴 occupied · 🟠 a cart held, waiting for the block ahead. Purely visual — shows WHY carts meet and wait on single track."
           onClick={() => game.setShowSignals(!ui.showSignals)}
           on={ui.showSignals}
+          compact
           style={KEY_STYLE}
         />
       )}
