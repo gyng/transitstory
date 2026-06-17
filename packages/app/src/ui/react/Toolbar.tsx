@@ -12,18 +12,21 @@ import { Settings } from "./Settings";
 import { BuildHud } from "./BuildHud";
 
 // Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
+// TTD L6 (track + services): the Track tool lays bare rail (grey infrastructure); a line stays grey
+// until you assign trains in the panel, which lights it up as a coloured SERVICE. Draw more lines over
+// the same stations to run several services on one shared corridor.
 const TOOL_HINT: Record<Tool, string> = {
-  station: "[T] Click to place — stays armed for the next one · Esc when done · right-click to inspect",
-  line: "Click stations to chain · double-click to build · ⌫ undo · Esc / right-click to cancel the draft",
-  select: "[V] Click — or right-click anything — to inspect it",
+  station: "[T] Click to drop a station — stays armed for the next · the Track tool also drops them while chaining · Esc when done",
+  line: "Lay TRACK: click stations to chain rail (drops new ones as you go) · double-click to build · ⌫ undo · Esc to cancel. It stays grey until you assign trains in the panel — then it's a coloured service.",
+  select: "[V] Click — or right-click anything — to inspect it. Click bare grey track to assign it trains.",
   bulldozer: "[X] Click a station or line to demolish it · Esc to stop · right-click to inspect",
   barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc when done",
   bounty: "[Y] Click a town to post a bounty — steers the NEXT legions fielded toward it (already-marching legions keep their target) · Esc when done",
 };
 
 const TOOLS: [Tool, string][] = [
-  ["station", "◉ Stations"],
-  ["line", "╱ Draw line"],
+  ["line", "╱ Track"],
+  ["station", "◉ Station"],
   ["select", "▣ Select"],
   ["bulldozer", "💥 Bulldoze"],
 ];

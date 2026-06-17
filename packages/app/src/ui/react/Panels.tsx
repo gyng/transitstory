@@ -167,16 +167,31 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
 function LineList() {
   const ui = useGameUI();
   const stats = useStats();
-  const lines = stats.perLine;
+  const all = stats.perLine;
+  // TTD L6 (track + services): the roster is the SERVICE list (abstract state in panels); bare TRACK
+  // is infrastructure shown on the MAP as grey rail, not here. A selected bare track stays in the list
+  // so its row anchors the editor while you assign it stock. `trains` is the assigned count (Build-safe).
+  const lines = all.filter((l) => l.trains > 0 || l.lineId === ui.selectedLine);
+  const services = all.filter((l) => l.trains > 0).length;
+  const bareTrack = all.length - services;
   return (
     <div id="line-list" data-testid="line-list" style={LIST_STYLE}>
       <div style={{ display: "flex", alignItems: "baseline", padding: "0 8px 6px" }}>
         <span style={{ fontWeight: 700 }}>Lines</span>
-        {lines.length > 0 && <span style={{ marginLeft: 6, color: "#9aa1a9", fontSize: 11 }}>{lines.length}</span>}
+        {services > 0 && <span style={{ marginLeft: 6, color: "#9aa1a9", fontSize: 11 }}>{services}</span>}
+        {bareTrack > 0 && (
+          <span title="Bare track laid but unserved — click the grey track on the map and assign trains to run a service." style={{ marginLeft: 6, color: "#8a93a3", fontSize: 11 }}>
+            +{bareTrack} track
+          </span>
+        )}
         <span style={{ marginLeft: "auto", color: "#b3b9c0", fontSize: 10, letterSpacing: 0.3 }}>riders</span>
       </div>
       {lines.length === 0 ? (
-        <div style={{ color: "#7a818a", padding: "0 8px" }}>No lines yet — draw one with the ╱ Line tool.</div>
+        <div style={{ color: "#7a818a", padding: "0 8px" }}>
+          {bareTrack > 0
+            ? "Grey track is laid but unserved — click it on the map, then assign trains to run a coloured service."
+            : "No lines yet — lay one with the ╱ Track tool."}
+        </div>
       ) : (
         lines.map((l) => <LineRow key={l.lineId} l={l} s={stats} selected={ui.selectedLine === l.lineId} />)
       )}
