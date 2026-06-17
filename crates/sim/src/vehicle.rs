@@ -32,6 +32,11 @@ pub struct VehicleSoA {
     pub onboard_pax: Vec<Vec<crate::pax::Pax>>,
     /// Station id this vehicle arrived at THIS tick (-1 otherwise); consumed by board/alight.
     pub at_station: Vec<i32>,
+    /// RENDER-ONLY (TTD L2, **excluded from `Canonical`**): the platform berth index this consist holds
+    /// (or is pulling into) at a multi-platform station this tick, else -1. Re-derived every tick from the
+    /// dwell order; drives the lateral render offset so parallel-berthed trains don't draw on top of each
+    /// other. Never hashed — like `x_mm`/`angle`, a derived display value, not state.
+    pub berth_idx: Vec<i32>,
 }
 
 impl VehicleSoA {
@@ -61,6 +66,7 @@ impl VehicleSoA {
         self.onboard.clear();
         self.onboard_pax.clear();
         self.at_station.clear();
+        self.berth_idx.clear();
     }
 }
 
@@ -166,6 +172,14 @@ fn junc_key(line: u32, key_station: u32) -> u64 {
     ((line as u64) << 32) | (key_station as u64)
 }
 
+/// Packed total-order key for a station PLATFORM BERTH (TTD L2): `(station, berth)`. Line-INDEPENDENT (a
+/// berth is shared infrastructure — two lines at one station contend for its berths), in its own per-tick
+/// `berth_occ` Vec (so the `<<8` key space never aliases `seg_key`/`junc_key`). `berth < MAX_PLATFORMS`.
+#[inline]
+fn berth_key(station: u32, berth: u32) -> u64 {
+    ((station as u64) << 8) | (berth as u64)
+}
+
 /// Does consist segment `[tail, head]` OVERLAP the group span `[lo, hi]`? Half-open at BOTH gates
 /// (`head > lo` and `tail < hi`) — a train resting with its head exactly on the near gate `lo` does
 /// NOT occupy (it sits at the passing place), matching P2's strict `strictly_inside`. The ONE shared
@@ -206,6 +220,7 @@ fn cross_span_covered(cross_blocks: &[crate::world::CrossBlock], line: usize, pa
 pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let clock = world.clock_ms;
     let lines = &world.lines;
+    let stations = &world.stations; // TTD L2: platform_count per station (disjoint field co-borrow)
     let disabled = &world.line_disabled_until_ms; // #war: RAIDED lines — their consists freeze in place
     let junctions = &world.junctions; // P4: immutable co-borrow (disjoint field) alongside &mut vehicles
     let cross_blocks = &world.cross_blocks; // Phase 2: cross-line shared-rail blocks (shared-rail.md)
@@ -284,6 +299,44 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let mut c_has_path = vec![false; n]; // valid path (gets prev-capture, maybe no move)
     let mut c_move = vec![false; n]; // participates in the move (path ok, total>0, not dwelling)
     let mut c_dwell = vec![false; n];
+    // TTD L2 multi-platform scratch: the P1-UNCLAMPED advance (so Phase A.3 can restore it when relaxing a
+    // follower into a free berth), and which station each consist is DWELLING at this tick (-1 = none).
+    let mut unclamped_ds = vec![0i64; n];
+    let mut unclamped_nv = vec![0i64; n];
+    let mut dwell_station = vec![-1i32; n];
+
+    // TTD L2 — berth occupancy (derived, never hashed). Reset the render-only berth index, find each
+    // consist's dwelling station (parked on a stop's arclen with its dwell timer live), and SEED the berth
+    // mutex: every dwelling consist claims the lowest free berth at its station (index order ⇒ deterministic,
+    // first-claimant-wins like the P4 mutex). `berth_occ` lives one tick. At K=1 a station's single dwelling
+    // train fills its only berth (free = 0), so Phase A.3's relaxation never fires ⇒ byte-identical.
+    let mut berth_occ: Vec<(u64, u32)> = Vec::new();
+    for i in 0..n {
+        v.berth_idx[i] = -1;
+        if clock >= v.dwell_until_ms[i] {
+            continue;
+        }
+        let line = &lines[v.line[i].index()];
+        let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
+        let s = v.s_mm[i];
+        if let Some(stop_idx) = path.stop_arclen_mm.iter().position(|&a| a == s) {
+            dwell_station[i] = path.station_for_stop_index(stop_idx).0 as i32;
+        }
+    }
+    for i in 0..n {
+        let st = dwell_station[i];
+        if st < 0 {
+            continue;
+        }
+        let k = stations.get(st as usize).map(|s| s.platform_count).unwrap_or(1).max(1) as u32;
+        for b in 0..k {
+            if occ_owner(&berth_occ, berth_key(st as u32, b)).is_none() {
+                occ_claim(&mut berth_occ, berth_key(st as u32, b), i as u32);
+                v.berth_idx[i] = b as i32;
+                break;
+            }
+        }
+    }
 
     // Phase A.1 — start-of-tick single-span occupancy, scanned in index order into a sorted Vec.
     // A train occupies a SINGLE span if it is (a) strictly inside it, or (b) sitting at a TERMINUS
@@ -492,6 +545,10 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         nv = nv.min(vmax_eff); // hold the curve cap even mid-brake
 
         let ds = nv * dt_ms / 1000;
+        // TTD L2: remember the P1-UNCLAMPED advance (still braked to halt at `next_arc`, so it never
+        // overruns the stop) — Phase A.3 restores it when relaxing a follower into a free berth.
+        unclamped_ds[i] = ds;
+        unclamped_nv[i] = nv;
         // Block following (P1): cap this tick's advance so the head holds a braking-distance + standoff
         // gap behind the LEADER'S TAIL, in the loop coordinate `p`. Homogeneous lines run untouched.
         let round = if path.loop_line { total } else { 2 * total };
@@ -510,6 +567,48 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         c_s[i] = s;
         c_stop_idx[i] = stop_idx;
         c_next_arc[i] = next_arc;
+    }
+
+    // Phase A.3 — TTD L2 MULTI-PLATFORM relaxation (docs/ttd-track-model.md). The single-cell jam is the
+    // P1 follow-clamp: a follower brakes a block-gap behind a DWELLING leader and the whole chain idles. If
+    // the follower's next stop has a FREE berth AND the train it's clamped behind is dwelling AT that stop,
+    // relax the clamp — let it pull up to the platform (the unclamped advance still halts at the stop, so it
+    // never overruns) and CLAIM a berth, so it dwells in PARALLEL instead of queueing. Index order; the
+    // claim reserves the berth so the next follower sees it taken ⇒ at most K consists pull in. This only
+    // un-does the SOFT P1 clamp — the HARD track mutexes (Phase B single-track / B.4 junction / B.6
+    // cross-line) still run after this and have the final say on `desired_ds`, so a relaxed follower can
+    // never violate track occupancy; the berth itself is a real mutex. INERT at K=1 (free==0 ⇒ never fires
+    // ⇒ byte-identical), so the goldens are unchanged beyond L2a's platform_count byte.
+    for i in 0..n {
+        if !c_move[i] {
+            continue;
+        }
+        let ld = leader[i];
+        if ld == i || clock >= v.dwell_until_ms[ld] {
+            continue; // lone train, or the leader isn't dwelling — the normal P1 clamp stands
+        }
+        let line = &lines[v.line[i].index()];
+        let Some(path) = line.paths.get(v.path[i] as usize) else { continue };
+        let station = path.station_for_stop_index(c_stop_idx[i]).0;
+        // the leader must be dwelling at OUR next stop (the jam we're relieving), not some other station.
+        if dwell_station[ld] != station as i32 {
+            continue;
+        }
+        let k = stations.get(station as usize).map(|s| s.platform_count).unwrap_or(1).max(1) as u32;
+        // claim the lowest free berth, if any; reserving it gates the next follower this same tick.
+        let mut got = None;
+        for b in 0..k {
+            if occ_owner(&berth_occ, berth_key(station, b)).is_none() {
+                occ_claim(&mut berth_occ, berth_key(station, b), i as u32);
+                got = Some(b);
+                break;
+            }
+        }
+        if let Some(b) = got {
+            v.berth_idx[i] = b as i32;
+            desired_ds[i] = unclamped_ds[i]; // pull up to the platform (still braked to halt at the stop)
+            desired_nv[i] = unclamped_nv[i];
+        }
     }
 
     // Phase B — single-track MEET authority: gate entry into a SINGLE span (further min() on `ds`).

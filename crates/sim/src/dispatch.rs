@@ -449,6 +449,7 @@ pub(crate) fn dispatch(world: &mut World) {
                 v.onboard.push(0);
                 v.onboard_pax.push(Vec::new());
                 v.at_station.push(-1);
+                v.berth_idx.push(-1);
             }
         }
     }
