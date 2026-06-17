@@ -6,6 +6,7 @@
 // remembers it was seen under its own key, so neither nags a returning player.
 import { useEffect, useState } from "react";
 import { useGame, useStats } from "./GameContext";
+import { isDrawTool } from "../../game";
 
 const SEEN_KEY = "transitstory.onboarded.v1";
 const SEEN_KEY_ARCADIA = "transitstory.onboarded.arcadia.v1";
@@ -63,9 +64,9 @@ export function OnboardingCoach() {
 
   if (done || seen || dismissedKeys.has(key)) return null;
 
-  // Transit: nudge toward the station tool. Fantasy: the line tool (stations are pre-placed).
+  // Transit: nudge toward the station tool. Fantasy: a DRAW tool — Track or Service (stations are pre-placed).
   const onStationTool = game.tool === "station";
-  const onLineTool = game.tool === "line";
+  const onLineTool = isDrawTool(game.tool);
 
   return (
     <div
@@ -101,7 +102,7 @@ export function OnboardingCoach() {
           <div style={{ lineHeight: 1.35 }}>
             <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
-              ① {onLineTool ? "Draw rail" : "Pick Draw line, then rail"} a resource → a town to deliver supply
+              ① {onLineTool ? "Draw rail" : "Pick Service (or Track), then rail"} a resource → a town to deliver supply
               (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them, and conquer towns to grow
               your ⚜ Standing (right gauge) · ③ Hold Standing ahead of the ☠ Decadence — you lose if the rot
               reaches your capital (100%)
@@ -112,7 +113,7 @@ export function OnboardingCoach() {
             <b style={{ fontSize: 14 }}>Build your first line</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
               ① {onStationTool ? "Click the map" : "Pick the Station tool, then click"} to place 2 stations · ②
-              Draw a line between them · ③ Press ▶ Run
+              Run a Service between them (or lay Track + assign trains) · ③ Press ▶ Run
             </div>
           </div>
         )}

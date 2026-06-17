@@ -877,12 +877,14 @@ export class Game {
   }
 
   /** Select the transport mode for new construction (chorded bottom bar). Switching mode
-   *  drops any in-progress draft and arms the line tool so the next draw uses the new mode. */
+   *  drops any in-progress draft and arms a DRAW tool so the next draw uses the new mode —
+   *  PRESERVING the Service tool if it's the one armed (else default to Track), so picking a
+   *  mode mid-Service doesn't silently land a stockless line. */
   setTransport(mode: number): void {
     if (!this.enabledModes.has(mode) || mode === this.transport) return;
     this.cancelDraft();
     this.transport = mode;
-    this.tool = "line";
+    if (!isDrawTool(this.tool)) this.tool = "line";
     audio.tick();
     this.refresh();
   }

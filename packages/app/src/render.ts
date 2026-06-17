@@ -793,23 +793,6 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getLineColor: view.catchments.map((c) => !!c.peek).join(",") + `:${view.shed.length > 0}`,
       },
     }),
-    // TTD L6 (track + services): BARE TRACK — a line with no assigned stock — draws as ONE muted grey
-    // rail at the bottom of the network band (the infrastructure layer, under every coloured service).
-    // Co-located bare tracks overlap into one grey corridor; the moment a service is routed + given stock
-    // it lights up to its hue OVER this rail. Pickable so the player can select bare track to assign stock.
-    new PathLayer({
-      id: "track-rails",
-      data: view.lines.filter((d) => d.serviced === false),
-      getPath: (d: LinePath) => d.path,
-      getColor: [122, 128, 136, 205],
-      getWidth: 8,
-      widthUnits: "pixels",
-      widthMinPixels: 5,
-      capRounded: true,
-      jointRounded: true,
-      pickable: true,
-      updateTriggers: { getColor: view.lines.filter((d) => d.serviced === false).length },
-    }),
     // Selected-line emphasis: a wide dark casing under the picked line so it pops on the muted
     // basemap regardless of hue (width + dark frame = colour-blind-safe, not a hue change). Wider
     // than the heavy-rail casing so it frames even mainline track. Bumps only on selection change.
@@ -840,9 +823,26 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       capRounded: true,
       jointRounded: true,
     }),
+    // TTD L6 (track + services): BARE TRACK — a line with no assigned stock — draws as ONE muted grey rail.
+    // Placed ABOVE the selected-casing (so a selected bare track shows grey rail framed by the dark casing,
+    // not a solid dark blob) but BELOW the coloured `lines` (so a service routed over track lights up on top).
+    // Co-located bare tracks overlap into one grey corridor; pickable so the player can select track to stock it.
+    new PathLayer({
+      id: "track-rails",
+      data: view.lines.filter((d) => d.serviced === false),
+      getPath: (d: LinePath) => d.path,
+      getColor: [122, 128, 136, 205],
+      getWidth: 8,
+      widthUnits: "pixels",
+      widthMinPixels: 5,
+      capRounded: true,
+      jointRounded: true,
+      pickable: true,
+      updateTriggers: { getColor: view.lines.filter((d) => d.serviced === false).length },
+    }),
     new PathLayer({
       id: "lines",
-      // TTD L6: only SERVICED lines wear their colour; bare track is the grey `track-rails` layer above.
+      // TTD L6: only SERVICED lines wear their colour; bare track is the grey `track-rails` layer below.
       data: view.lines.filter((d) => d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: (d: LinePath) => d.color,
@@ -875,7 +875,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     // set so the overlay only rebuilds when a line is cut or re-opens (no per-frame churn).
     new PathLayer({
       id: "lines-raided",
-      data: view.lines.filter((d) => d.raided),
+      // Only a SERVICED line shows the raided red stripe (bare track has no trains to freeze) — matches the
+      // other coloured layers' serviced filter, so a cut never paints red over an otherwise-grey corridor.
+      data: view.lines.filter((d) => d.raided && d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: [224, 48, 48, 205],
       getWidth: 5,

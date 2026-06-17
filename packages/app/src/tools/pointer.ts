@@ -41,7 +41,9 @@ export function attachPointer(game: Game): void {
     // fresh draft as before.
     const id = game.nearestStation(px, py);
     if (id !== null) {
-      if (game.draft.length === 0 && game.selectedLine !== null) {
+      // Terminus-grab (Mini-Metro extend) is a TRACK-tool gesture only: the Service tool always starts a
+      // FRESH service draft, so grabbing a terminus never silently downgrades it to a stockless track-extend.
+      if (game.draft.length === 0 && game.selectedLine !== null && game.tool === "line") {
         const lv = game.bridge.linesView()[game.selectedLine];
         if (lv && !lv.removed && !lv.loopLine && lv.stops.length >= 2) {
           const head = lv.stops[0] === id;
@@ -113,10 +115,15 @@ export function attachPointer(game: Game): void {
     // "pick up" the nearest rider under the cursor → the FollowCard opens on them; else deselect.
     // Stations stay the higher-priority, larger target — peep-pick never steals a station selection.
     const hit = game.nearestStation(px, py);
-    if (hit !== null) game.selectStation(hit);
-    else if (game.mode === "run" && game.showPeeps && map.getZoom() >= DETAIL_ZOOM && game.inspectPeepAt(px, py)) {
-      // followed a rider (inspectPeepAt opened the FollowCard); nothing more to do
-    } else game.clearSelection();
+    if (hit !== null) { game.selectStation(hit); return; }
+    if (game.mode === "run" && game.showPeeps && map.getZoom() >= DETAIL_ZOOM && game.inspectPeepAt(px, py)) {
+      return; // followed a rider (inspectPeepAt opened the FollowCard); nothing more to do
+    }
+    // TTD L6: a click near a LINE selects it (so clicking the grey bare track opens its editor to assign
+    // stock — the on-screen copy promises this). Stations win (handled above); empty space deselects.
+    const ln = game.nearestLine(px, py);
+    if (ln !== null) game.selectLine(ln);
+    else game.clearSelection();
   });
 
   // Double-click a control point removes it (straighten); otherwise commit the draft. Enter also
