@@ -9,7 +9,12 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   forbidOnly: CI,
-  retries: 0,
+  // The fantasy "*-shot" specs render a WebGL/3D diorama on (headless) SOFTWARE GL, which is slow — when
+  // ~16 of them queue back-to-back the browser falls behind and individually-passing specs trip the 30s
+  // default. Give every spec headroom (60s) and ONE retry (a retried spec gets a fresh context + clears the
+  // accumulated GPU load), so the full serial suite is reliably green; a REAL regression still fails twice.
+  timeout: 60_000,
+  retries: 1,
   reporter: [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
