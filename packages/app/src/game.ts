@@ -2497,11 +2497,12 @@ export class Game {
     const count = xy.length >> 1;
     if (count === 0) return [];
     const tg = this.bridge.armyTargets(); // #war: target position per legion (metres), aligned with xy
-    const states = this.bridge.armyStates(); // 0 marching / 1 besieging / 2 done
-    // #legion-3d: each AFIELD legion (marching/besieging) is a 3D crimson STANDARD yawed to its march
-    // direction + a NAMEPLATE. A DONE legion is inert (its holding reads from the captured-town state), so
-    // it's dropped to de-litter the map. Heading is the metre-space bearing to the target (yawOf calibrated
-    // for the same atan2 the vehicles use); a besieging/idle legion (target == own spot) faces north.
+    const states = this.bridge.armyStates(); // #legion-ride-trains: 0 deciding / 1 besieging / 2 done / 3 walking / 4 waiting / 5 riding
+    // #legion-3d: each AFIELD legion (deciding/walking/waiting/riding/besieging) is a 3D crimson STANDARD
+    // yawed to its march direction + a NAMEPLATE. A RIDING legion mirrors its train's position, so its
+    // standard draws ON the train (the "riding the rails" read). A DONE legion is inert (its holding reads
+    // from the captured-town state), so it's dropped to de-litter the map. Heading is the metre-space bearing
+    // to the target (yawOf calibrated for the same atan2 the vehicles use); a besieging legion faces north.
     const legions: LegionDot[] = [];
     for (let i = 0; i < count; i++) {
       if ((states[i] | 0) === 2) continue; // DONE / garrisoned — skip
