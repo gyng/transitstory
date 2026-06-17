@@ -87,7 +87,11 @@ fn replay_equality() {
 //                           is UNCHANGED, proving only serialization moved, not positions. The shared-corridor
 //                           single-curve behaviour change (#36 "one track, many services") is invisible to this
 //                           non-sharing continuous golden. If a behaviour-PRESERVING refactor changes this, STOP.
-const GOLDEN_TRANSIT_HASH: u64 = 0xea39_755c_339d_ab9e;
+//   0x9d4e_09ab_b4ea_9d7a — TTD L5a, the placeable-block-signal store: `Canonical` gains `signals`
+//                           (player-placed `Signal`s) appended LAST. Transit places NO signal ⇒ a length-0
+//                           slice ⇒ a PURE EMPTY-SLICE SHIFT. The position fingerprint is UNCHANGED
+//                           (signals don't re-key occupancy until L5b), proving only serialization moved.
+const GOLDEN_TRANSIT_HASH: u64 = 0x9d4e_09ab_b4ea_9d7a;
 
 #[test]
 fn golden_transit_hash_pinned() {

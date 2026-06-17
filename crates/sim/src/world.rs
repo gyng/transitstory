@@ -69,6 +69,27 @@ pub struct SignalOccupancy {
     pub status: u8,
 }
 
+/// TTD L5a — a PLAYER-PLACED block signal: a passing-place gate at arc-length `at_mm` strictly inside
+/// span `span` of `(line, path)`. Placed/removed via `Command::PlaceSignal`/`RemoveSignal`; AUTHORITATIVE
+/// player state (hashed in `Canonical`, unlike the derived scratch `SignalOccupancy` readout above).
+/// In L5a it is RECORDED + replayable but does NOT yet re-key occupancy — L5b makes a signal subdivide a
+/// single span into sub-blocks (a mid-span meet point). Integer-only (i64 mm) ⇒ determinism-safe; the
+/// store is kept canonically SORTED + deduped so the hash is command-order-independent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Signal {
+    pub line: LineId,
+    pub path: u8,
+    pub span: u32,
+    pub at_mm: i64,
+}
+
+/// The canonical total-order key for a `Signal` — `(line, path, span, at_mm)`. The store is kept sorted
+/// by this so it is deduped and its serialization is command-order-independent (placement order can't
+/// change the hash), mirroring the topology-pure `track_segments` discipline.
+fn signal_key(s: &Signal) -> (u32, u8, u32, i64) {
+    (s.line.0, s.path, s.span, s.at_mm)
+}
+
 pub struct World {
     pub seed: u64,
     pub clock_ms: i64,
@@ -195,6 +216,11 @@ pub struct World {
     /// it can't perturb the next tick. Deliberately NOT in `Canonical`/`state_hash` (like `spell_flashes`/
     /// `forge_accum`) ⇒ golden-neutral, regenerated bit-identically on replay.
     pub signal_occupancy: Vec<SignalOccupancy>,
+    /// TTD L5a — the AUTHORITATIVE store of player-placed block signals. HASHED (in `Canonical`, appended
+    /// LAST) — distinct from the scratch `signal_occupancy` readout above. Kept canonically sorted+deduped
+    /// so the hash is command-order-independent. EMPTY for transit + the arcadia golden (no signal ever
+    /// placed) ⇒ a one-time length-0 append re-pin, then byte-identical; motion unaffected in L5a.
+    pub signals: Vec<Signal>,
     /// AUTOCAST toggle (fantasy, S11): off (default) ⇒ spells fire only on `Command::CastSpell` (the player
     /// picks WHEN, the invest-vs-cast tradeoff); on ⇒ `spell::step` auto-fires the battery each tick. Set by
     /// `Command::SetAutocast`. **Deliberately NOT in `Canonical`**: a pure input toggle whose EVERY effect
@@ -480,6 +506,11 @@ struct Canonical<'a> {
     /// pure empty-slice shift). Topology-pure: the projection hashes endpoint CELLS (not the index/seg_id)
     /// in canonical seg-order, so the hash is command-order-independent (same network ⇒ same hash).
     track_segments: CanonSegments<'a>,
+    /// TTD L5a — player-placed block signals (the authoritative store). Appended LAST. EMPTY for transit +
+    /// the arcadia golden (neither places a signal), so the re-pin is the appended length-0 sequence ONCE
+    /// then byte-identical; motion is unaffected in L5a (the position fingerprint proves it). Kept sorted+
+    /// deduped at the apply boundary ⇒ command-order-independent, integer-only ⇒ determinism-safe.
+    signals: &'a [Signal],
 }
 
 /// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
@@ -615,6 +646,7 @@ impl World {
             spells_cast: 0,
             spell_flashes: Vec::new(),
             signal_occupancy: Vec::new(),
+            signals: Vec::new(),
             autocast: false,
             tech_unlocked: 0,
             waiting: Vec::new(),
@@ -1571,6 +1603,30 @@ impl World {
                     vec![Event::PlatformsBuilt { station: *station, k: kk as u16 }]
                 }
             }
+            Command::PlaceSignal { line, path, span, at_mm } => {
+                // TTD L5a — record a player block signal. Validate the (line,path,span) exists and `at_mm`
+                // is STRICTLY inside that span's arc-length range, then insert into the canonically
+                // sorted+deduped store (so the hash is command-order-independent). Recorded only — L5b
+                // makes it re-key occupancy. Idempotent: placing the same signal twice is a no-op.
+                match self.signal_span_bounds(*line, *path, *span) {
+                    Some((lo, hi)) if *at_mm > lo && *at_mm < hi => {
+                        let sig = Signal { line: *line, path: *path, span: *span, at_mm: *at_mm };
+                        match self.signals.binary_search_by(|s| signal_key(s).cmp(&signal_key(&sig))) {
+                            Ok(_) => {} // already present ⇒ no-op (keeps the store deduped)
+                            Err(pos) => self.signals.insert(pos, sig),
+                        }
+                        vec![Event::SignalPlaced { line: *line, path: *path, span: *span, at_mm: *at_mm }]
+                    }
+                    _ => vec![Event::Rejected { reason: "PlaceSignal: signal must lie strictly inside an existing span".into() }],
+                }
+            }
+            Command::RemoveSignal { line, path, span, at_mm } => {
+                let sig = Signal { line: *line, path: *path, span: *span, at_mm: *at_mm };
+                if let Ok(pos) = self.signals.binary_search_by(|s| signal_key(s).cmp(&signal_key(&sig))) {
+                    self.signals.remove(pos);
+                }
+                vec![Event::SignalRemoved { line: *line, path: *path, span: *span, at_mm: *at_mm }]
+            }
             Command::CreateLine { color, name, loop_line, mode, literal } => {
                 let id = LineId(self.lines.len() as u32);
                 let mut l = Line::new(*color, DEFAULT_HEADWAY_MS);
@@ -1951,7 +2007,13 @@ impl World {
         // (berths are parallel DWELL slots, not extra vehicles), and a needless re-dispatch would reset
         // every train to spawn (a gameplay bug) AND perturb the golden — so building a platform must not
         // invalidate dispatch.
-        if !matches!(cmd, Command::PlaceStation { .. } | Command::BuildPlatforms { .. }) {
+        if !matches!(
+            cmd,
+            Command::PlaceStation { .. }
+                | Command::BuildPlatforms { .. }
+                | Command::PlaceSignal { .. }
+                | Command::RemoveSignal { .. }
+        ) {
             self.dispatch_dirty = true;
             // TTD L3 C1: refresh the authoritative HASHED segment slab + each path's segment binding + the
             // segment-derived runtime geometry in the WRITE-PATH, so `state_hash` (which may be taken before
@@ -1973,6 +2035,15 @@ impl World {
     /// Advance the simulation by one fixed step.
     pub fn tick(&mut self, dt_ms: i64) {
         tick::step(self, dt_ms);
+    }
+
+    /// TTD L5 — the arc-length bounds `(lo, hi)` of span `span` on `(line, path)`, or `None` if the line/
+    /// path/span doesn't exist. A signal must lie strictly inside this range (`lo < at_mm < hi`).
+    fn signal_span_bounds(&self, line: LineId, path: u8, span: u32) -> Option<(i64, i64)> {
+        let p = self.lines.get(line.index())?.paths.get(path as usize)?;
+        let lo = *p.stop_arclen_mm.get(span as usize)?;
+        let hi = *p.stop_arclen_mm.get(span as usize + 1)?;
+        if hi > lo { Some((lo, hi)) } else { None }
     }
 
     /// FNV-1a over a canonical, ordered serialization of state. The determinism oracle.
@@ -2033,6 +2104,7 @@ impl World {
             raider_tx_mm: &self.raiders.tx_mm,
             raider_ty_mm: &self.raiders.ty_mm,
             track_segments: CanonSegments(&self.track_graph),
+            signals: &self.signals,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

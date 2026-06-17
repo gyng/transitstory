@@ -1,0 +1,108 @@
+//! TTD L5a — the player-placed block-signal STORE (docs/ttd-l5-plan.md). Distinct from `signals.rs`,
+//! which tests the derived per-tick `signal_occupancy` render scratch; THIS pins the AUTHORITATIVE,
+//! HASHED `world.signals` store. L5a records signals as replayable state but does NOT yet re-key
+//! occupancy (that is L5b). Contract: validate-then-record, deterministic replay, command-order- AND
+//! place/remove-INVARIANT hashing (the canonical sorted+deduped store), and rejection of bad placements.
+use sim::*;
+
+/// A straight 3-stop line (spans ~4_000_000 mm each), one trainset, so a signal at at_mm=2_000_000 is
+/// strictly inside span 0. Not running — L5a needs no motion.
+fn line3() -> World {
+    let mut w = World::new(42, CityData::default());
+    for x in [0_i64, 4_000_000, 8_000_000] {
+        w.apply(&Command::PlaceStation { x_mm: x, y_mm: 0, name: None });
+    }
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..3u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 1 });
+    w
+}
+
+fn place(w: &mut World, span: u32, at_mm: i64) -> Vec<Event> {
+    w.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span, at_mm })
+}
+
+#[test]
+fn place_signal_records_and_validates() {
+    let mut w = line3();
+    assert_eq!(w.signals.len(), 0, "no signals to start");
+    let ev = place(&mut w, 0, 2_000_000); // strictly inside span 0 ⇒ accepted
+    assert!(matches!(ev.as_slice(), [Event::SignalPlaced { .. }]), "valid placement accepted: {ev:?}");
+    assert_eq!(w.signals.len(), 1);
+    assert_eq!(w.signals[0], Signal { line: LineId(0), path: 0, span: 0, at_mm: 2_000_000 });
+
+    // ON a station gate (the span boundary) ⇒ rejected (must be STRICTLY inside).
+    assert!(matches!(place(&mut w, 0, 0).as_slice(), [Event::Rejected { .. }]), "signal on a gate rejected");
+    // nonexistent span ⇒ rejected.
+    assert!(matches!(place(&mut w, 99, 1_000_000).as_slice(), [Event::Rejected { .. }]), "missing span rejected");
+    // nonexistent line ⇒ rejected.
+    let ev = w.apply(&Command::PlaceSignal { line: LineId(9), path: 0, span: 0, at_mm: 1_000_000 });
+    assert!(matches!(ev.as_slice(), [Event::Rejected { .. }]), "missing line rejected");
+    assert_eq!(w.signals.len(), 1, "rejections must not mutate the store");
+}
+
+#[test]
+fn place_then_remove_is_hash_neutral() {
+    let mut w = line3();
+    let h0 = w.state_hash();
+    assert!(matches!(place(&mut w, 0, 2_000_000).as_slice(), [Event::SignalPlaced { .. }]));
+    let h1 = w.state_hash();
+    assert_ne!(h0, h1, "placing a signal must change the hash (it is authoritative, hashed state)");
+    w.apply(&Command::RemoveSignal { line: LineId(0), path: 0, span: 0, at_mm: 2_000_000 });
+    assert_eq!(w.signals.len(), 0);
+    assert_eq!(w.state_hash(), h0, "remove must return the hash exactly to pre-placement (no residue)");
+}
+
+#[test]
+fn signal_store_is_deduped_and_command_order_independent() {
+    let build = |order: &[(u32, i64)]| -> u64 {
+        let mut w = line3();
+        for &(span, at) in order {
+            w.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span, at_mm: at });
+        }
+        w.state_hash()
+    };
+    let a = build(&[(0, 1_000_000), (0, 3_000_000), (1, 2_000_000)]);
+    let b = build(&[(1, 2_000_000), (0, 3_000_000), (0, 1_000_000)]); // shuffled
+    assert_eq!(a, b, "signal-set hash must be independent of placement command order");
+
+    let mut w = line3();
+    place(&mut w, 0, 1_000_000);
+    let h = w.state_hash();
+    assert!(matches!(place(&mut w, 0, 1_000_000).as_slice(), [Event::SignalPlaced { .. }]), "dup echoes placed");
+    assert_eq!(w.signals.len(), 1, "duplicate signal not stored twice");
+    assert_eq!(w.state_hash(), h, "duplicate placement is hash-neutral (deduped)");
+}
+
+#[test]
+fn signal_log_replays_bit_for_bit() {
+    let run = || -> u64 {
+        let mut w = line3();
+        w.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span: 0, at_mm: 1_500_000 });
+        w.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span: 1, at_mm: 6_000_000 });
+        w.apply(&Command::RemoveSignal { line: LineId(0), path: 0, span: 0, at_mm: 1_500_000 });
+        w.apply(&Command::SetRunning { running: true });
+        for _ in 0..400 {
+            w.tick(50);
+        }
+        w.state_hash()
+    };
+    assert_eq!(run(), run(), "a signal-bearing log replays bit-for-bit");
+}
+
+#[test]
+fn no_signal_run_is_deterministic_pre_l5b_path() {
+    // L5a adds NO behaviour: a run that places no signal ticks via exactly the pre-L5a motion path
+    // (proven byte-identical by the unchanged position fingerprints). Locally: two builds agree.
+    let run = || -> u64 {
+        let mut w = line3();
+        w.apply(&Command::SetRunning { running: true });
+        for _ in 0..600 {
+            w.tick(50);
+        }
+        w.state_hash()
+    };
+    assert_eq!(run(), run(), "a signal-free run is deterministic (the pre-L5a path)");
+}

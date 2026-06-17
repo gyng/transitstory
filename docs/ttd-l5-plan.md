@@ -47,12 +47,16 @@ unchanged — only the KEY graduates, exactly as it did per layer
 
 ## Sub-steps (smallest independently-green commits)
 
-- **L5a — command + inert hashed store (NO behaviour, NO UI).** Add `PlaceSignal`/`RemoveSignal`, the
-  `signals` store + Canonical append, the `apply` arms + validation, the TS/contract mirror. Signals
-  are RECORDED + replayable but do NOT yet re-key occupancy. **Golden-neutral while empty** (assert: a
-  log with no PlaceSignal is byte-identical; a PlaceSignal log replays bit-for-bit; placing then
-  removing returns to the empty hash). Re-pin is deferred to L5b (when signals first affect motion).
-  RED-first: a `signal_store_replays_and_empty_is_neutral` test.
+- **L5a — command + inert hashed store (NO behaviour, NO UI). [LANDED 2026-06-17]** Added
+  `PlaceSignal`/`RemoveSignal` (+ `SignalPlaced`/`SignalRemoved` events), the `Signal` struct + the
+  sorted+deduped `world.signals` store appended LAST to `Canonical`, the `apply` arms (validate the
+  signal lies strictly inside an existing span; idempotent dedup), the dispatch-dirty exemption, and
+  the TS/`contract.rs` mirror. Signals are RECORDED + replayable but do NOT yet re-key occupancy.
+  Per the established `forge_stock`/`track_segments` append-last convention, the empty-slice store
+  **re-pins both goldens EXACTLY ONCE** (transit `0xea39…`→`0x9d4e…`, arcadia `0xbc3c…`→`0x94e8…`) —
+  a pure serialization shift; the K=1 + K=2 **position fingerprints are byte-identical**, proving zero
+  behaviour change. Tests in `placed_signals.rs`: validate/reject, place→remove hash-neutral,
+  command-order- + dedup-invariant hashing, signal-bearing log replays bit-for-bit.
 - **L5b — the meet mutex keys by signal sub-block (the MOTION change + the liveness-critical core).**
   Phase A.1 occupancy + Phase B meet gate + Phase B.5 no-rest re-keyed from whole-span to
   signal-subdivided sub-block; a signal arc-length becomes a passing-place gate. **RED-first liveness

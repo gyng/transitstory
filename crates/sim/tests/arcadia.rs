@@ -255,7 +255,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // (tests/position_fingerprint.rs) is UNCHANGED — only SERIALIZATION moved, not the integrator's positions or
 // ridership. The shared-corridor single-canonical-curve change (#36 "one track, many services") is invisible
 // to this single-line, non-sharing golden. Prior: 0x98c9_2af6_50fd_babc.
-const GOLDEN_ARCADIA_HASH: u64 = 0xbc3c_87c3_28ba_0d70;
+// TTD L5a re-pin (0x94e8_209e_3424_d550): `Canonical` gains the player-placed `signals` store, appended
+// LAST. The arcadia fixture places NO signal ⇒ a length-0 slice ⇒ a PURE EMPTY-SLICE SHIFT; the position
+// fingerprint is UNCHANGED (signals don't re-key occupancy until L5b). Prior: 0xbc3c_87c3_28ba_0d70.
+const GOLDEN_ARCADIA_HASH: u64 = 0x94e8_209e_3424_d550;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

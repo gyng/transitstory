@@ -55,6 +55,6 @@ pub use stats::{LineStat, ShedCell, StationStat, StatsSnapshot};
 pub use trainset::{TrainsetAssignment, TrainsetSpec};
 pub use vehicle::VehicleSoA;
 pub use world::{
-    replay, SaveGame, World, DEFAULT_HEADWAY_MS, FARE, MAX_HEADWAY_MS, MAX_TRAINS_PER_LINE,
+    replay, SaveGame, Signal, World, DEFAULT_HEADWAY_MS, FARE, MAX_HEADWAY_MS, MAX_TRAINS_PER_LINE,
     MIN_HEADWAY_MS, START_BUDGET,
 };

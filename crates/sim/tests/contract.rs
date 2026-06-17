@@ -34,14 +34,16 @@ fn command_variant_tags_match_the_frontend_mirror() {
         Command::SetDemandMode { agents: false },
         Command::RemoveStation { station: StationId(0) },
         Command::RemoveLine { line: LineId(0) },
+        Command::PlaceSignal { line: LineId(0), path: 0, span: 0, at_mm: 0 },
+        Command::RemoveSignal { line: LineId(0), path: 0, span: 0, at_mm: 0 },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
     tags.sort();
     // Mirror: packages/app/src/types.ts `Command` + codec.ts `cmd.*`.
     let expected = sorted(vec![
-        "AddStop", "AssignTrainset", "CreateLine", "PlaceStation", "RemoveLine", "RemoveStation",
-        "SetDemandMode", "SetEconomy", "SetHeadway", "SetLineWaypoints", "SetRunning", "SetSegmentMode",
-        "SetSegmentTrack",
+        "AddStop", "AssignTrainset", "CreateLine", "PlaceSignal", "PlaceStation", "RemoveLine",
+        "RemoveSignal", "RemoveStation", "SetDemandMode", "SetEconomy", "SetHeadway", "SetLineWaypoints",
+        "SetRunning", "SetSegmentMode", "SetSegmentTrack",
     ]);
     assert_eq!(tags, expected, "Command vocabulary drifted from the frontend mirror");
 }
@@ -63,14 +65,16 @@ fn event_variant_tags_match_the_frontend_mirror() {
         Event::StationRemoved { station: StationId(0) },
         Event::LineRemoved { line: LineId(0) },
         Event::Rejected { reason: String::new() },
+        Event::SignalPlaced { line: LineId(0), path: 0, span: 0, at_mm: 0 },
+        Event::SignalRemoved { line: LineId(0), path: 0, span: 0, at_mm: 0 },
     ];
     let mut tags: Vec<String> = samples.iter().map(sole_tag).collect();
     tags.sort();
     // Mirror: packages/app/src/types.ts `Event`.
     let expected = sorted(vec![
         "DemandModeSet", "EconomySet", "HeadwaySet", "LineCreated", "LineRemoved", "Rejected", "RunningSet",
-        "SegmentModeSet", "SegmentTrackSet", "StationPlaced", "StationRemoved", "StopAdded", "TrainsetAssigned",
-        "WaypointsSet",
+        "SegmentModeSet", "SegmentTrackSet", "SignalPlaced", "SignalRemoved", "StationPlaced", "StationRemoved",
+        "StopAdded", "TrainsetAssigned", "WaypointsSet",
     ]);
     assert_eq!(tags, expected, "Event vocabulary drifted from the frontend mirror");
 }

@@ -181,6 +181,21 @@ pub enum Command {
         station: StationId,
         k: u16,
     },
+    /// TTD L5 — place a player block signal at arc-length `at_mm` strictly inside span `span` of
+    /// `(line, path)`. Recorded as authoritative state (hashed); in L5a it does not yet re-key occupancy.
+    PlaceSignal {
+        line: LineId,
+        path: u8,
+        span: u32,
+        at_mm: i64,
+    },
+    /// TTD L5 — remove the block signal matching `(line, path, span, at_mm)` exactly (no-op if absent).
+    RemoveSignal {
+        line: LineId,
+        path: u8,
+        span: u32,
+        at_mm: i64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -210,5 +225,9 @@ pub enum Event {
     /// A station's platform count was set to the clamped `k` (TTD L2). The UI reads the clamped value back
     /// from here (never re-clamps), per the dispatch-clamp discipline.
     PlatformsBuilt { station: StationId, k: u16 },
+    /// A block signal was placed/removed (TTD L5). Echoes the location so the UI can confirm the edit
+    /// landed (an invalid placement yields `Rejected` instead).
+    SignalPlaced { line: LineId, path: u8, span: u32, at_mm: i64 },
+    SignalRemoved { line: LineId, path: u8, span: u32, at_mm: i64 },
     Rejected { reason: String },
 }

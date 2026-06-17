@@ -40,7 +40,11 @@ export type Command =
   | { SetAutocast: { enabled: boolean } }
   // TTD L2: build a station's platform berths (k clamped to [1, MAX_PLATFORMS] in the core). k berths ⇒ k
   // parallel dwells, so followers stop piling up behind a dwelling train.
-  | { BuildPlatforms: { station: number; k: number } };
+  | { BuildPlatforms: { station: number; k: number } }
+  // TTD L5: place/remove a player block signal at arc-length `at_mm` strictly inside span `span` of
+  // (line, path). Recorded as authoritative state; L5b makes it a mid-span passing point on single track.
+  | { PlaceSignal: { line: number; path: number; span: number; at_mm: number } }
+  | { RemoveSignal: { line: number; path: number; span: number; at_mm: number } };
 
 export type Event =
   | { StationPlaced: { id: number; name: string } }

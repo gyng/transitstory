@@ -67,6 +67,13 @@ export const cmd = {
   setAutocast: (enabled: boolean): Command => ({ SetAutocast: { enabled } }),
   // TTD L2: set a station's platform berth count (k clamped to [1, MAX_PLATFORMS] in the core).
   buildPlatforms: (station: number, k: number): Command => ({ BuildPlatforms: { station, k } }),
+  // TTD L5: place/remove a player block signal strictly inside span `span` of (line, path).
+  placeSignal: (line: number, path: number, span: number, atMm: number): Command => ({
+    PlaceSignal: { line, path, span, at_mm: atMm },
+  }),
+  removeSignal: (line: number, path: number, span: number, atMm: number): Command => ({
+    RemoveSignal: { line, path, span, at_mm: atMm },
+  }),
 };
 
 /** An economy channel (S11 split) — MUST mirror crates/sim/tech.rs `Channel`. */
