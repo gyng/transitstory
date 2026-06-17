@@ -7,17 +7,27 @@ execution spec; it follows the L3 de-risking discipline exactly.
 
 ## What L5 delivers (the gameplay value)
 
-**A player-placed signal subdivides a single-track span into sub-blocks, creating a mid-span passing
-point** — so two opposing trains can MEET at a signal instead of only at the bounding stations. That
-raises single-track line capacity (more frequent service without paying for double track everywhere)
-— OpenTTD's core single-track lever. Today a "block" on a SINGLE span is the WHOLE span between two
-stations (`seg_key(line, path, span)`, vehicle.rs Phase A.1 / Phase B meet mutex); the only passing
-places are stations. L5 makes the player able to add passing points anywhere on a span.
+**CORRECTED MODEL (2026-06-17), after pressure-testing the original framing against this sim's
+mechanics — read this before implementing L5b.** A player-placed signal subdivides a single span into
+SUB-BLOCKS so that **SAME-DIRECTION trains can follow closer** (one consist per sub-block, like TTD
+block signals) — raising single-track throughput. This is the real, correct value: today the meet
+mutex (vehicle.rs Phase A.1 + Phase B) claims `seg_key(line,path,span)` DIRECTION-AGNOSTICALLY, so a
+SINGLE span admits exactly ONE consist at a time regardless of direction ⇒ single-track same-direction
+capacity is one-train-per-station-span. Signals lift that to one-train-per-SUB-block.
+
+**A signal does NOT let OPPOSING trains pass.** Opposing passing requires a PASSING LOOP (a double-track
+sub-section) — a separate lever that already exists at station/segment granularity via
+`SetSegmentTrack` (see `single_track.rs::opposing_trains_meet_at_a_middle_single_span`: double-track
+spans flanking a single span ARE the passing places). The original plan's "opposing trains meet at a
+signal" was WRONG — admitting opposing consists into adjacent sub-blocks of one single track is a
+head-on. **So in L5b the OPPOSING exclusion stays WHOLE-SPAN; only SAME-DIRECTION admission graduates
+to per-sub-block.** (A future "placeable passing loop" — a sub-span double section — is the separate,
+correct opposing lever; out of scope here.)
 
 The value lives ENTIRELY in the occupancy re-keying (an inert "place a marker that does nothing" is
-valueless and misleading) — so L5 is a deliberate determinism-core batch, not a cosmetic add. Signals
-are already DERIVED + rendered as occupancy markers (`SignalOccupancy`, render.ts `signalLayer`); L5
-promotes them to PLACED, block-defining objects.
+valueless) — so L5 is a deliberate determinism-core batch. Signals are already DERIVED + rendered as
+occupancy markers (`SignalOccupancy`, render.ts `signalLayer`); L5 promotes them to PLACED, block-
+defining objects.
 
 ## The block-keying graduation (the reusable primitive, one more KEY)
 
@@ -25,12 +35,17 @@ The occ primitive (`occ_claim`/`occ_owner`/`try_claim` + the depth-1-forest no-r
 unchanged — only the KEY graduates, exactly as it did per layer
 (`(line,path,span)` → `(line,key_station)` → `edge_key` → `TrackSegmentId` → `(station,berth)`):
 
-- **Today:** a single span is one meet block, keyed `seg_key(line,path,span)`. Opposing trains may not
-  both be inside it; the loser rests at the bounding-station gate.
-- **L5:** N player signals on a span split it into N+1 SUB-BLOCKS at the signal arc-lengths. The meet
-  mutex keys by `(line, path, span, sub_block)`; a signal arc-length is a PASSING-PLACE GATE (like a
-  station gate) where the denied opposing train rests owning nothing. The depth-1-forest argument
-  carries: every blocked train still rests at a GATE (station OR signal) owning nothing.
+- **Today:** a single span is one block, keyed `seg_key(line,path,span)`, claimed DIRECTION-AGNOSTICALLY
+  ⇒ only ONE consist (any direction) at a time; others rest at the bounding-station gate.
+- **L5 (corrected):** N player signals split a span into N+1 SUB-BLOCKS at the signal arc-lengths.
+  - **SAME-DIRECTION** following keys by `(line,path,span,sub_block)` ⇒ a follower may enter a FREE
+    sub-block behind a leader in an adjacent sub-block (closer following = the throughput gain). A
+    signal arc-length is a following-gate where a denied same-direction train rests owning nothing.
+  - **OPPOSING** exclusion stays WHOLE-SPAN: an opposing consist may not enter ANY sub-block while the
+    span holds a consist of the other direction (no head-on; passing needs a loop, not a signal).
+  - The depth-1-forest argument carries: every blocked train rests at a GATE (station OR signal) owning
+    nothing; the whole-span opposing exclusion is unchanged in structure (just an additional
+    same-direction relaxation within a span), so no new wait-for cycle is introduced.
 
 ## State + command surface
 
@@ -57,21 +72,27 @@ unchanged — only the KEY graduates, exactly as it did per layer
   a pure serialization shift; the K=1 + K=2 **position fingerprints are byte-identical**, proving zero
   behaviour change. Tests in `placed_signals.rs`: validate/reject, place→remove hash-neutral,
   command-order- + dedup-invariant hashing, signal-bearing log replays bit-for-bit.
-- **L5b — the meet mutex keys by signal sub-block (the MOTION change + the liveness-critical core).**
-  Phase A.1 occupancy + Phase B meet gate + Phase B.5 no-rest re-keyed from whole-span to
-  signal-subdivided sub-block; a signal arc-length becomes a passing-place gate. **RED-first liveness
-  gates FIRST** (a gate-blind deadlock replays green):
-    1. `mid_span_signal_lets_opposing_trains_pass` — a long single span, a mid-span signal, opposing
-       trains on a demand corridor: NO head-on (never two opposing inside one SUB-BLOCK) AND cumulative
-       ridership strictly rises (the meet resolves AT the signal, not just at stations). RED today
-       (no mid-span passing ⇒ lower throughput / the test's tighter headway starves).
-    2. `signalled_single_track_never_freezes` — over-provisioned single line WITH signals: the
-       depth-1-forest no-rest property holds across signal gates ⇒ never deadlocks. STUB proof: make a
-       denied train rest STRICTLY INSIDE a sub-block (not at the signal gate) ⇒ a 2-cycle ⇒ RED.
-    3. K=0-signals neutrality: with no signals the sub-block keying degenerates to the whole span ⇒
-       the K=1 position fingerprint + goldens stay byte-identical (assert against the pinned constants).
-  **The ONE earned golden re-pin** lands here (signals first enter a hashed scenario's motion), as a
-  deliberate documented commit + a NEW position fingerprint on a with-signals scenario.
+- **L5b — same-direction sub-block following (the MOTION change + the liveness-critical core).**
+  Phase A.1 occupancy + Phase B gate + Phase B.5 no-rest re-keyed so SAME-DIRECTION admission is per
+  signal sub-block while OPPOSING exclusion stays whole-span (see the corrected keying above). A signal
+  arc-length becomes a following-gate. **RED-first gates FIRST** (a gate-blind deadlock replays green):
+    1. `signals_raise_same_direction_single_track_throughput` — a long single span, several
+       same-direction trains on a demand corridor, WITH vs WITHOUT a mid-span signal: with the signal,
+       MORE trains occupy the span concurrently (sub-block following) and cumulative ridership is
+       strictly HIGHER over the window. RED today (one-train-per-span caps it).
+    2. `no_head_on_with_signals` — opposing trains on a signalled single span: NEVER two OPPOSING
+       consists inside the span (the whole-span opposing exclusion must survive sub-block keying). A
+       signal must NOT become an opposing passing point (that's a loop). STUB proof: relax opposing to
+       per-sub-block ⇒ head-on ⇒ RED.
+    3. `signalled_single_track_never_freezes` — over-provisioned signalled single line: the
+       depth-1-forest no-rest holds across signal gates ⇒ never deadlocks. STUB: rest a denied train
+       strictly inside a sub-block (not at a gate) ⇒ a 2-cycle ⇒ RED.
+    4. No-signals neutrality: with no signal on a span the sub-block keying degenerates to the whole
+       span ⇒ the K=1 + K=2 position fingerprints AND the goldens stay byte-identical (the signal-free
+       goldens never place a signal, so L5b adds NO re-pin beyond L5a's append). Assert against the
+       pinned constants.
+  The with-signals motion is pinned by a NEW position fingerprint on a signalled scenario; the existing
+  goldens stay byte-identical (they place no signals) ⇒ NO further golden re-pin at L5b.
 - **L5c — UI: place/remove a signal on a single-track span** (the diegetic toolbar gesture; snap to a
   span, click to drop a signal; render placed signals distinctly from the derived occupancy markers).
   Frontend-only, golden-neutral. Cause→effect: place a signal ⇒ opposing trains visibly pass there.
@@ -89,7 +110,10 @@ unchanged — only the KEY graduates, exactly as it did per layer
   clock enters the hash. Signals sort canonically (by line,path,span,at_mm) for the sub-block split.
 
 ## Sequencing
-L5a is golden-neutral plumbing (safe to land first). L5b is the liveness-critical core re-keying + the
-ONE earned re-pin — land its RED-first never-freeze + head-on gates FIRST, then the keying, then re-pin
-the goldens deliberately with a NEW with-signals fingerprint. L5c/L5d are frontend/balance, separable.
-The no-signals position fingerprint is the silent-drift tripwire throughout.
+L5a (LANDED) did the one-time empty-slice append re-pin (the store joins `Canonical`). L5b is the
+liveness-critical core re-keying — land its RED-first throughput + no-head-on + never-freeze gates
+FIRST (each with its stub proof), then the direction-aware sub-block keying, then pin a NEW with-signals
+position fingerprint. **L5b adds NO golden re-pin** (the signal-free goldens never place a signal, so
+the sub-block keying degenerates to whole-span and they stay byte-identical) — the no-signals K=1/K=2
+fingerprints + goldens are the silent-drift tripwires. L5c (UI place/remove) + L5d (balance) are
+frontend/separable. L5b is the determinism heart and warrants dedicated focus + adversarial review.
