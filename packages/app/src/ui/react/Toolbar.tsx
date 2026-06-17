@@ -12,12 +12,13 @@ import { Settings } from "./Settings";
 import { BuildHud } from "./BuildHud";
 
 // Per-tool controls hint shown in the build popover (the #4 "how to cancel" tooltip).
-// TTD L6 (track + services): the Track tool lays bare rail (grey infrastructure); a line stays grey
-// until you assign trains in the panel, which lights it up as a coloured SERVICE. Draw more lines over
-// the same stations to run several services on one shared corridor.
+// TTD L6 (track + services): TRACK lays bare grey rail (infrastructure, no trains); SERVICE draws the same
+// way but lands a live coloured line (auto-stocked). Draw several services over the same stations to run
+// many services on ONE shared corridor.
 const TOOL_HINT: Record<Tool, string> = {
-  station: "[T] Click to drop a station — stays armed for the next · the Track tool also drops them while chaining · Esc when done",
-  line: "Lay TRACK: click stations to chain rail (drops new ones as you go) · double-click to build · ⌫ undo · Esc to cancel. It stays grey until you assign trains in the panel — then it's a coloured service.",
+  line: "[T] Lay TRACK: click stations to chain bare rail (drops new ones as you go) · double-click to build · ⌫ undo · Esc to cancel. Stays grey until a service runs on it.",
+  service: "[R] Run a SERVICE: click stations to route a coloured line (over track or fresh) · double-click to build · ⌫ undo · Esc to cancel. Lands with trains already running — tune them in the panel.",
+  station: "[N] Click to drop a station — stays armed for the next · the Track/Service tools also drop them while chaining · Esc when done",
   select: "[V] Click — or right-click anything — to inspect it. Click bare grey track to assign it trains.",
   bulldozer: "[X] Click a station or line to demolish it · Esc to stop · right-click to inspect",
   barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc when done",
@@ -26,6 +27,7 @@ const TOOL_HINT: Record<Tool, string> = {
 
 const TOOLS: [Tool, string][] = [
   ["line", "╱ Track"],
+  ["service", "🚆 Service"],
   ["station", "◉ Station"],
   ["select", "▣ Select"],
   ["bulldozer", "💥 Bulldoze"],
@@ -155,9 +157,9 @@ export function Toolbar() {
   const speedRef = useRef(speed);
   speedRef.current = speed;
 
-  // Game keyboard: 1–5 chord transport modes; R / Space toggle Build↔Run; T/V/X (+ arcadia B/Y) arm the
-  // build tools; ',' / '.' step the speed ladder. (WASD/arrows/Q/E camera nav live in App.tsx.) Ignored
-  // while typing in a field and for ctrl/meta/alt chords (so Ctrl-Z etc. pass through).
+  // Game keyboard: 1–5 chord transport modes; Space toggles Build↔Run; T/R/N/V/X (+ arcadia B/Y) arm the
+  // build tools (Track/Service/Station/Select/Bulldoze); ',' / '.' step the speed ladder. (WASD/arrows/Q/E
+  // camera nav live in App.tsx.) Ignored while typing in a field and for ctrl/meta/alt chords (Ctrl-Z etc.).
   useEffect(() => {
     const setSpd = (mult: number) => {
       setSpeed(mult);
@@ -184,15 +186,12 @@ export function Toolbar() {
       if (e.key === ".") { stepSpeed(1); return; }
       const m = MODES.find((x) => x.key === e.key);
       if (m) { game.setTransport(m.id); return; }
-      if (e.key === "r" || e.key === "R") {
-        game.setMode(game.mode === "build" ? "run" : "build");
-        return;
-      }
-      // Build-tool hotkeys — letters chosen disjoint from the WASD/Q/E camera keys (T=sTation, V=select,
-      // X=bulldoze; arcadia adds B=Barracks, Y=bountY). Arming a tool in Run flips to Build first so it
+      // Build-tool hotkeys — letters disjoint from the WASD/Q/E camera keys. TTD L6: T=Track, R=Service
+      // (Route), N=statioN, V=select, X=bulldoze; arcadia adds B=Barracks, Y=bountY. (Run/Build is Space —
+      // R no longer aliases it, so it can route a service.) Arming a tool in Run flips to Build first so it
       // isn't silently inert behind the build-gated pointer/popover.
       const lk = e.key.toLowerCase();
-      const TOOL_KEYS: Record<string, Tool> = { t: "station", v: "select", x: "bulldozer" };
+      const TOOL_KEYS: Record<string, Tool> = { t: "line", r: "service", n: "station", v: "select", x: "bulldozer" };
       if (ui.ruleset === "arcadia") { TOOL_KEYS.b = "barracks"; TOOL_KEYS.y = "bounty"; }
       const tool = TOOL_KEYS[lk];
       if (tool) {

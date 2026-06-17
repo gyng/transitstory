@@ -71,13 +71,27 @@ const EMPTY_STATS: Stats = {
 };
 
 export type Mode = "build" | "run";
-// TTD L6 (track + services): the `line` tool is now "Track" — it lays a stockless corridor (bare grey
-// rail) that becomes a coloured SERVICE the moment stock is assigned. A dedicated "Service" tool (the same
-// draw gesture, snap-restricted to on-track stations + auto-assigning stock on commit) is the clean next
-// seam — it attaches as a new Tool id reusing extendDraft/commitDraft, branching only at commit. Deferred
-// with the L3 `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until TrackSegment is
-// first-class). Today the one Track tool + the editor's Assign-trainset already produce track+services.
-export type Tool = "select" | "station" | "line" | "bulldozer" | "barracks" | "bounty";
+// TTD L6 (track + services), the OWNER-CHOSEN OpenTTD model. Two draw gestures share the SAME pipeline
+// (extendDraft → commitDraft → drawLineByIds), branching only at commit:
+//  • `line` is "Track" — lays a stockless corridor (bare grey rail) you route services over.
+//  • `service` is "Service" — the same draw, but commit AUTO-ASSIGNS stock so it lands as a live coloured
+//    line. Draw several services over the same stations to share one corridor (emergent via co-located
+//    cells; the L1 cross-line mutex + TrackGraph already fuse them).
+// Snap-restricting Service to on-track stations + the L3 `BindLineToTrack{line,segments}` Command (a
+// first-class TrackSegment reference instead of binding-by-co-located-cells) remain the clean next seams.
+export type Tool = "select" | "station" | "line" | "service" | "bulldozer" | "barracks" | "bounty";
+
+/** The two TTD L6 draw tools that share the chain-stations gesture (Track lays bare rail, Service routes a
+ *  stocked line). Everything in the draw pipeline (pointer dispatch, control handles, snap ring, blueprint
+ *  cursor) treats them identically; only `commitDraft` branches to auto-assign stock for a service. */
+export function isDrawTool(tool: Tool): boolean {
+  return tool === "line" || tool === "service";
+}
+
+/** Default fleet a freshly-drawn SERVICE lands with (the Service tool auto-assigns this so it's a live
+ *  coloured line at once; the player tunes count/headway/model in the editor). Bare track (the Track tool)
+ *  gets nothing — it stays grey until stocked. */
+const DEFAULT_SERVICE_TRAINS = 2;
 
 /** Map-lens (#5) → the deck layer ids HIDDEN in that view mode (terrain + the player's network/vehicles are
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
@@ -853,7 +867,9 @@ export class Game {
   }
 
   setTool(tool: Tool): void {
-    if (this.tool === "line" && tool !== "line") this.cancelDraft();
+    // Switching tools while drawing drops the in-progress draft — for EITHER draw tool (Track/Service),
+    // since they share the draft pipeline (so a Track↔Service switch starts fresh, not mid-chain).
+    if (isDrawTool(this.tool) && tool !== this.tool) this.cancelDraft();
     if (this.tool === "station" && tool !== "station") this.pendingStation = null; // drop the ghost on tool change
     if (tool !== this.tool) audio.tick();
     this.tool = tool;
@@ -1108,6 +1124,7 @@ export class Game {
       return;
     }
     if (ids.length >= 2) {
+      const service = this.tool === "service"; // capture before drawLineByIds (which doesn't touch the tool)
       const lineId = this.drawLineByIds(ids);
       // drawLineByIds is all-or-nothing (rolls back on any rejection), so a returned line has
       // every drafted stop and the per-span waypoints line up 1:1.
@@ -1115,6 +1132,10 @@ export class Game {
         this.noteRejections(this.bridge.apply(cmd.setLineWaypoints(lineId, wps)));
         this.refresh();
       }
+      // TTD L6: the SERVICE tool lands a live coloured line — auto-assign a default fleet (+ auto-headway)
+      // so it runs at once, distinguishing it from the Track tool's bare grey corridor. The Track tool
+      // leaves it stockless. The player tunes count/model/headway in the editor (which the commit opened).
+      if (service && lineId >= 0) this.assignTrainset(lineId, DEFAULT_SERVICE_TRAINS);
     } else {
       this.refresh();
     }
@@ -1265,7 +1286,7 @@ export class Game {
     // No bend handles while EXTENDING: the extension commits straight AddStops (no waypoint
     // vocabulary for "append these bends"), so offering handles would silently drop the bends
     // on commit — the blueprint must never differ from what commits.
-    if (this.tool !== "line" || this.draft.length < 2 || this.extendTarget !== null) return [];
+    if (!isDrawTool(this.tool) || this.draft.length < 2 || this.extendTarget !== null) return [];
     const sv = this.bridge.stationsView();
     const out: { lng: number; lat: number; kind: "waypoint" | "add"; span: number; index: number }[] = [];
     for (let span = 0; span < this.draft.length - 1; span++) {
@@ -1896,7 +1917,7 @@ export class Game {
 
     // ROAD corridors: shown when the toggle is on, OR auto-revealed while drawing a Bus line
     // (transport 1) so you can see where to route it cheap + fast. Empty otherwise (no overlay).
-    const showRoads = this.showRoads || (this.mode === "build" && this.tool === "line" && this.transport === 1);
+    const showRoads = this.showRoads || (this.mode === "build" && isDrawTool(this.tool) && this.transport === 1);
     const roads = showRoads ? this.roadPoints() : [];
     const roadHour = Math.floor(this.lastStats.simHour); // drives the live congestion recolour
 
@@ -1978,7 +1999,7 @@ export class Game {
    *  (line tool) or demolish (bulldozer), set by the pointer per mousemove. */
   private snapRingView(): { lng: number; lat: number; demolish: boolean } | null {
     if (this.snapStation === null || this.mode !== "build") return null;
-    if (this.tool !== "line" && this.tool !== "bulldozer") return null;
+    if (!isDrawTool(this.tool) && this.tool !== "bulldozer") return null;
     const s = this.bridge.stationsView()[this.snapStation];
     if (!s || s.removed) return null;
     const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);

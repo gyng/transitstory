@@ -12,7 +12,7 @@
 //  • Esc and right-click both "stop" — a two-stage cancel: drop the in-progress route, then
 //    (if nothing pending) leave the build tool (#4). The map pans on LEFT-drag, so right-click
 //    is free to use as cancel (it isn't camera-pan here).
-import type { Game } from "../game";
+import { isDrawTool, type Game } from "../game";
 import { DETAIL_ZOOM } from "../config";
 
 export function attachPointer(game: Game): void {
@@ -22,9 +22,10 @@ export function attachPointer(game: Game): void {
   let dragging: "handle" | "draw" | null = null;
   let suppressClick = false;
 
-  // Line-tool press: grab/create a control point on the ghost, else begin a drag-to-draw chain.
+  // Draw-tool press (Track or Service — same gesture): grab/create a control point on the ghost, else
+  // begin a drag-to-draw chain.
   map.on("mousedown", (e) => {
-    if (game.mode !== "build" || game.tool !== "line") return;
+    if (game.mode !== "build" || !isDrawTool(game.tool)) return;
     const px = e.point.x;
     const py = e.point.y;
     // Control point on the in-progress ghost (only once there's a span to bend).
@@ -97,9 +98,9 @@ export function attachPointer(game: Game): void {
       return;
     }
 
-    if (game.mode === "build" && game.tool === "line") {
+    if (game.mode === "build" && isDrawTool(game.tool)) {
       // Station chaining + control points are handled on mousedown/drag now; nothing to do here
-      // (and crucially, don't fall through to Select and clear the draft).
+      // (and crucially, don't fall through to Select and clear the draft). Track + Service alike.
       return;
     }
 
@@ -121,7 +122,7 @@ export function attachPointer(game: Game): void {
   // Double-click a control point removes it (straighten); otherwise commit the draft. Enter also
   // commits; Escape / right-click cancel (T11).
   map.on("dblclick", (e) => {
-    if (game.tool === "line" && game.draft.length >= 2) {
+    if (isDrawTool(game.tool) && game.draft.length >= 2) {
       e.preventDefault();
       if (game.removeHandleAt(e.point.x, e.point.y)) return; // straighten this bend, keep drawing
       game.commitDraft();
@@ -150,7 +151,7 @@ export function attachPointer(game: Game): void {
     // Pre-commit snap highlight (AGENTS UX: "highlight the snap candidate BEFORE the click
     // commits"): in the line tool, the station a click/drag would chain; in the bulldozer, the
     // station a click would demolish. Cleared for every other tool.
-    const snappable = game.mode === "build" && (game.tool === "line" || game.tool === "bulldozer");
+    const snappable = game.mode === "build" && (isDrawTool(game.tool) || game.tool === "bulldozer");
     const snap = snappable ? game.nearestStation(e.point.x, e.point.y) : null;
     const snapChanged = snap !== game.snapStation;
     game.snapStation = snap;
@@ -167,8 +168,8 @@ export function attachPointer(game: Game): void {
       game.refresh();
       return;
     }
-    // Live blueprint cursor while drawing.
-    if (game.tool === "line" && game.draft.length >= 1) {
+    // Live blueprint cursor while drawing (Track or Service).
+    if (isDrawTool(game.tool) && game.draft.length >= 1) {
       game.cursor = [e.lngLat.lng, e.lngLat.lat];
       game.refresh();
       return;
@@ -188,9 +189,9 @@ export function attachPointer(game: Game): void {
       game.confirmPendingStation(); // commit the ghost station
     } else if (game.pendingStation && e.key === "Escape") {
       game.cancelPendingStation(); // discard the ghost
-    } else if (e.key === "Enter" && game.tool === "line" && game.draft.length >= 2) {
+    } else if (e.key === "Enter" && isDrawTool(game.tool) && game.draft.length >= 2) {
       game.commitDraft();
-    } else if (e.key === "Backspace" && game.tool === "line" && game.draft.length > 0) {
+    } else if (e.key === "Backspace" && isDrawTool(game.tool) && game.draft.length > 0) {
       e.preventDefault(); // don't let the browser navigate back
       game.popDraft();
     } else if (e.key === "Escape") {
