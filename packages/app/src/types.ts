@@ -206,6 +206,8 @@ export interface StationView {
   removed: boolean;
   /** Posted bounty (fantasy) — >0 draws a ⚑ marker on the town. 0 for transit + un-bountied towns. */
   bounty: number;
+  /** Platform berth count K (TTD L2) — the station panel shows/steps the buildable berths. */
+  platformCount: number;
 }
 
 /** One OD "desire line" from a selected origin station to a destination it draws riders toward

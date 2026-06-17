@@ -221,6 +221,8 @@ pub struct StationView {
     /// Posted bounty on this town (fantasy, S8 steering) — >0 draws a marker so the player SEES where
     /// they've baited the legions. 0 for transit + un-bountied towns. Render read-out, not hashed.
     pub bounty: f64,
+    /// Platform berth count K (TTD L2) — the station panel reads it back to show/step the buildable berths.
+    pub platform_count: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

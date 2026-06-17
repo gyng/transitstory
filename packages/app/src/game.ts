@@ -603,6 +603,23 @@ export class Game {
     this.refresh();
   }
 
+  /** TTD L2: set a station's platform berth count (clamped [1, MAX_PLATFORMS] in the core — the UI reads
+   *  the committed value back). K berths let K consists dwell in parallel. One undoable Command. */
+  buildPlatforms(stationId: number, k: number): void {
+    this.noteRejections(this.bridge.apply(cmd.buildPlatforms(stationId, k)));
+    this.refresh();
+  }
+
+  /** Current platform-berth count for a station (read from the snapshot; default 1). */
+  stationPlatforms(id: number): number {
+    return this.bridge.stationsView()[id]?.platformCount ?? 1;
+  }
+
+  /** Display name for a station (snapshot read) — the station panel title. */
+  stationName(id: number): string {
+    return this.bridge.stationsView()[id]?.name || `Station ${id + 1}`;
+  }
+
   /** Buy a tech upgrade (fantasy, S11) — spends tribute, sets the tech's bit. The core afford-gates +
    *  rejects a repeat/unknown/broke unlock (no mutation), so the UI can fire optimistically and resync
    *  from the next snapshot. The tech panel calls this; `tech` is an index into the tech table. */

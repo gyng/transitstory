@@ -555,6 +555,55 @@ function Editor({ l }: { l: PerLine }) {
   );
 }
 
+// Station property panel (TTD L2): when a bare station is selected (no line), step its PLATFORM berths —
+// K berths let K consists dwell in parallel, so followers stop piling up behind a dwelling train. One
+// undoable Command per committed value (clamped [1,4] in the core); local state gives the stepper instant
+// feedback and resyncs from the snapshot on reselect.
+function StationEditor({ id }: { id: number }) {
+  const game = useGame();
+  const [, bump] = useState(0); // force a re-read of the snapshot after a commit
+  const k = game.stationPlatforms(id); // always the committed value (so it can't go stale on reselect)
+  const step = (next: number) => {
+    const kk = Math.max(1, Math.min(4, next));
+    if (kk === k) return;
+    game.buildPlatforms(id, kk); // commits synchronously
+    bump((v) => v + 1); // re-render → k re-reads the new committed count
+  };
+  const btn: CSSProperties = {
+    width: 26,
+    height: 26,
+    border: "1px solid #d7dade",
+    borderRadius: 7,
+    background: "#fff",
+    font: "700 15px system-ui",
+    color: "#1c2024",
+    cursor: "pointer",
+    lineHeight: "1",
+  };
+  return (
+    <div data-testid="station-editor" style={EDITOR_STYLE}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>{game.stationName(id)}</div>
+      <div data-testid="platform-stepper" style={{ marginBottom: 4 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Platforms</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button data-testid="platform-minus" style={{ ...btn, opacity: k <= 1 ? 0.4 : 1 }} disabled={k <= 1} onClick={() => step(k - 1)}>
+            −
+          </button>
+          <b data-testid="platform-count" style={{ minWidth: 16, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            {k}
+          </b>
+          <button data-testid="platform-plus" style={{ ...btn, opacity: k >= 4 ? 0.4 : 1 }} disabled={k >= 4} onClick={() => step(k + 1)}>
+            +
+          </button>
+        </div>
+        <div style={{ color: "#7a818a", fontSize: 11, marginTop: 5 }}>
+          {k} berth{k > 1 ? "s" : ""} — up to {k} train{k > 1 ? "s" : ""} dwell here at once, so followers don't queue behind a stopped one.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Panels() {
   const ui = useGameUI();
   const perLine = useStats().perLine;
@@ -563,7 +612,7 @@ export function Panels() {
   return (
     <>
       <LineList />
-      {l ? <Editor key={l.lineId} l={l} /> : null}
+      {l ? <Editor key={l.lineId} l={l} /> : ui.selectedStation !== null ? <StationEditor key={ui.selectedStation} id={ui.selectedStation} /> : null}
     </>
   );
 }

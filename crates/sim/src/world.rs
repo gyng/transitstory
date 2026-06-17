@@ -1974,6 +1974,7 @@ impl World {
                 name: s.name.clone(),
                 removed: s.removed,
                 bounty: self.bounty.get(i).copied().unwrap_or(0) as f64,
+                platform_count: s.platform_count,
             })
             .collect()
     }
