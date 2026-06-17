@@ -379,3 +379,101 @@ fn signalled_following_fingerprint_pinned() {
     assert!(!w.vehicles.is_empty(), "the signalled scenario must dispatch vehicles");
     assert!(w.ridership_total > 0, "the signalled scenario must serve riders");
 }
+
+// ============================================================================================
+// The CROSS-LINE THROAT position fingerprint — the TTD L4d motion pin (docs/ttd-l4-plan.md
+// "CROSS-LINE FINDING").
+//
+// The K=1/K=2 fingerprints + goldens above pin the SINGLE-line paths, which L4d must keep BYTE-
+// IDENTICAL (a single same-direction stream gives a throat count of 1 < k=2, so the gate never
+// binds ⇒ no motion change). The goldens have no shared k>=2 station, so L4d earns NO golden re-pin.
+// This NEW fingerprint pins the cross-line motion the throat mutex introduces: THREE INDEPENDENT
+// lines crossing one shared k=2 station, whose independent schedules collide so the throat caps
+// co-dwellers at 2 (without it, up to 6 overbook). It folds `berth_idx` too (the K=2 fold), since
+// the throat governs which consists dwell. A future change to the throat that perturbs the admitted
+// motion on this shared-station scenario must move this deliberately, with a documented re-pin.
+// ============================================================================================
+
+/// Byte-for-byte the same builder as `cross_line_throat.rs::three_lines_one_shared_station` — a central
+/// k=2 station crossed by 3 independent out-and-back lines (horizontal / vertical / diagonal) on a grid,
+/// each over-provisioned, with demand strung along every corridor so the lines run + serve + contend.
+fn cross_line_throat_world() -> World {
+    const CELL: i64 = 100_000;
+    let dc = |x: i64, y: i64, ow: f32, dw: f32| DemandCell { x_mm: x, y_mm: y, origin_w: ow, dest_w: dw, commodity: 0 };
+    let mut cells = vec![
+        dc(0, 4 * CELL + 50_000, 12.0, 12.0),
+        dc(2 * CELL + 50_000, 4 * CELL + 50_000, 12.0, 12.0),
+        dc(6 * CELL + 50_000, 4 * CELL + 50_000, 12.0, 12.0),
+        dc(8 * CELL + 50_000, 4 * CELL + 50_000, 12.0, 12.0),
+        dc(4 * CELL + 50_000, 50_000, 12.0, 12.0),
+        dc(4 * CELL + 50_000, 2 * CELL + 50_000, 12.0, 12.0),
+        dc(4 * CELL + 50_000, 6 * CELL + 50_000, 12.0, 12.0),
+        dc(4 * CELL + 50_000, 8 * CELL + 50_000, 12.0, 12.0),
+        dc(2 * CELL + 50_000, 2 * CELL + 50_000, 12.0, 12.0),
+        dc(6 * CELL + 50_000, 6 * CELL + 50_000, 12.0, 12.0),
+    ];
+    cells.push(dc(4 * CELL + 50_000, 4 * CELL + 50_000, 6.0, 6.0));
+    let mut w = World::new(7, CityData { grid_cell_mm: CELL, demand: DemandGrid { cell_m: 100.0, cells }, ..Default::default() });
+    let center = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 4 * CELL + 50_000, y_mm: 4 * CELL + 50_000, name: None });
+    let l0a = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 50_000, y_mm: 4 * CELL + 50_000, name: None });
+    let l0b = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 8 * CELL + 50_000, y_mm: 4 * CELL + 50_000, name: None });
+    let l1a = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 4 * CELL + 50_000, y_mm: 50_000, name: None });
+    let l1b = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 4 * CELL + 50_000, y_mm: 8 * CELL + 50_000, name: None });
+    let l2a = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 50_000, y_mm: 50_000, name: None });
+    let l2b = StationId(w.stations.len() as u32);
+    w.apply(&Command::PlaceStation { x_mm: 8 * CELL + 50_000, y_mm: 8 * CELL + 50_000, name: None });
+    w.apply(&Command::BuildPlatforms { station: center, k: 2 });
+    let mk = |w: &mut World, a: StationId, b: StationId| {
+        let li = LineId(w.lines.len() as u32);
+        w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+        w.apply(&Command::AddStop { line: li, station: a, after: None });
+        w.apply(&Command::AddStop { line: li, station: center, after: None });
+        w.apply(&Command::AddStop { line: li, station: b, after: None });
+        w.apply(&Command::AssignTrainset { line: li, spec: 0, count: 4 });
+    };
+    mk(&mut w, l0a, l0b);
+    mk(&mut w, l1a, l1b);
+    mk(&mut w, l2a, l2b);
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+fn run_cross_line_throat() -> World {
+    let mut w = cross_line_throat_world();
+    for _ in 0..4000 {
+        w.tick(50);
+    }
+    w
+}
+
+/// PINNED cross-line throat motion fingerprint (TTD L4d): the shared-station capping the throat introduces.
+/// Computed over `cross_line_throat_world()` @ 4000 ticks, folding `berth_idx` (the K=2 fold). NOT a silent-
+/// drift case — it pins the NEW cross-line motion L4d adds; a change to the throat mutex that perturbs the
+/// admitted motion must move it deliberately, with a documented re-pin. The K=1/K=2 fingerprints + goldens
+/// stay byte-identical (a single same-direction stream never trips the throat).
+const CROSS_LINE_THROAT_FINGERPRINT: u64 = 0xc397_0cb3_f14f_97c8;
+
+#[test]
+fn cross_line_throat_fingerprint_pinned() {
+    let a = k2_position_fingerprint(&run_cross_line_throat());
+    let b = k2_position_fingerprint(&run_cross_line_throat());
+    assert_eq!(a, b, "the cross-line throat fingerprint must be reproducible (two builds agree)");
+    assert_eq!(
+        a, CROSS_LINE_THROAT_FINGERPRINT,
+        "cross-line throat motion fingerprint drifted: 0x{a:016x} != 0x{CROSS_LINE_THROAT_FINGERPRINT:016x}. \
+         This pins the TTD L4d cross-line throat-mutex motion (3 independent lines, one shared k=2 station; \
+         vehicle line/path/dir/s_mm/berth_idx + ridership). The K=1/K=2 fingerprints + goldens stay \
+         byte-identical; THIS pins the new cross-line motion. A change to the throat mutex must move it \
+         deliberately, with a documented re-pin."
+    );
+    // Non-vacuous: the scenario dispatches a fleet and serves riders (the throat actually contends).
+    let w = run_cross_line_throat();
+    assert!(!w.vehicles.is_empty(), "the cross-line throat scenario must dispatch vehicles");
+    assert!(w.ridership_total > 0, "the cross-line throat scenario must serve riders");
+}

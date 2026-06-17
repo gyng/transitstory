@@ -706,6 +706,180 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         }
     }
 
+    // Phase A.4 — TTD L4d CROSS-LINE THROAT MUTEX (docs/ttd-l4-plan.md "CROSS-LINE FINDING"). A HARD gate
+    // on station ENTRY — a further min() on `desired_ds`, exactly like the Phase B.4/B.6 junction/cross-line
+    // mutexes. The gap it closes: at a k-berth station served by MULTIPLE INDEPENDENT lines, their
+    // independent schedules collide and MORE than k consists try to dwell at once — the A.1 seed + A.3
+    // relaxation pull arrivers into FREE berths but NEVER DENY, and the same-line P1 follow-clamp doesn't
+    // gate a DIFFERENT line's train, so nothing caps co-dwellers at k (the excess overlaps the platform).
+    //
+    // OCCUPANCY is SELF-CLEARING — only ACTUAL dwellers count toward a station's k berths (never a "phantom"
+    // reservation by a far-off in-flight train, which would never clear ⇒ gridlock). A station is FULL when k
+    // distinct (line,path,dir) STREAMS are dwelling there (the same-direction P1 clamp serialises a stream
+    // ⇒ at most one of its trains dwells at a time ⇒ one stream contributes 1; OPPOSING streams of one line,
+    // and DISTINCT lines, are distinct keys and legitimately use separate berths). When a full station's
+    // berth frees (a dweller departs), the held arrivals resume.
+    //
+    // TWO CLAMP TARGETS by approach-span track type (the G2 discipline):
+    //   • DOUBLE approach span: gate at ARRIVAL — clamp the head to halt SHORT of the next-stop gate
+    //     (`next_arc`), holding INSIDE the double span. Safe: a double span has no single-span exclusive
+    //     ownership, so a waiter there owns nothing exclusive (no berth<->span 2-cycle is possible). The
+    //     count of arrivals admitted THIS tick is tracked so two trains can't both slip into the last berth.
+    //   • SINGLE approach span: gate at the PRIOR gate — a train about to cross the prior gate INTO its
+    //     single approach span toward a full station holds SHORT at that gate (the previous stop / passing
+    //     place), owning NOTHING and NEVER entering (claiming) the single span. This runs BEFORE Phase B's
+    //     meet `try_claim`, so the held train will not claim the span — precluding the berth<->span 2-cycle
+    //     (train A holds a berth + waits for the single exit span; train B sits IN that span + waits for a
+    //     berth). The single span's own (<=1 same-stream) committed occupant IS counted (it self-clears: it
+    //     is the sole occupant, will arrive next, dwell a bounded time, and depart via the existing exit
+    //     mutex) so a held entrant isn't admitted into a span whose far berth is already spoken for.
+    //
+    // Counting (not per-berth identity) makes the G1 allocation cycle structurally impossible — there is no
+    // "wait for berth b specifically" edge; a denied train holds no berth and waits for ANY slot to free.
+    // It does NOT touch `v.berth_idx` (the render-only berth a DWELLER draws on, set by A.1/A.3) — only
+    // `desired_ds`/`desired_nv`. INERT at K=1 (gated on `platform_count >= 2`) AND a NO-OP on a single line
+    // even at K>=2 (a single same-direction stream ⇒ count 1 < k=2 ⇒ the gate never binds) ⇒ the K=1 goldens
+    // + the K=1/K=2 position fingerprints stay byte-identical (verified by those pinned tests).
+    {
+        // Stream key (st,line,path,dir) for the same-stream skip. WIDENED packing: `line` gets bits 9..32
+        // (23 bits, ≤8M lines) — the old `st<<17` gave line only 8 bits and COLLIDED at ≥256 lines (no
+        // line cap exists), silently undercounting. `path` (u8) fits bits 1..9, `fwd` bit 0, `st` bits 32+.
+        let stp_key = |st: u32, line: u32, path: u8, fwd: bool| -> u64 {
+            ((st as u64) << 32) | ((line as u64) << 9) | ((path as u64) << 1) | (fwd as u64)
+        };
+        let is_k2 = |st: u32| stations.get(st as usize).map(|s| s.platform_count).unwrap_or(1) >= 2;
+        // n_at: per-station count of PHYSICAL consists committed to a k>=2 station's berths (a berth is a
+        // physical slot — counting dedup'd streams would UNDERCOUNT if two same-stream trains ever fill two
+        // berths, wrongly admitting a cross-stream arrival ⇒ overbooking). occ_st: the (deduped) STREAMS
+        // present, used ONLY for the same-stream SKIP — a same-stream follower is governed by P1/A.3 (which
+        // hold it short, no overbook) not the throat, so it isn't gated by its own stream's dwellers (keeps
+        // single-line behaviour byte-identical). Sorted Vecs, index-ordered ⇒ deterministic; never hashed.
+        let mut occ_st: Vec<u64> = Vec::new();
+        let mut n_at: Vec<(u32, u32)> = Vec::new();
+        let add_stream = |occ: &mut Vec<u64>, n: &mut Vec<(u32, u32)>, st: u32, key: u64| {
+            // PHYSICAL count: every consist bumps n_at (NOT deduped by stream).
+            match n.binary_search_by_key(&st, |&(s, _)| s) {
+                Ok(q) => n[q].1 += 1,
+                Err(q) => n.insert(q, (st, 1)),
+            }
+            // stream membership (deduped) for the same-stream skip.
+            if let Err(p) = occ.binary_search(&key) {
+                occ.insert(p, key);
+            }
+        };
+        let n_distinct = |n: &[(u32, u32)], st: u32| -> u32 { n.binary_search_by_key(&st, |&(s, _)| s).map(|p| n[p].1).unwrap_or(0) };
+        // approach span index this train traverses to its next stop (mirrors Phase B's `trav_span`).
+        let approach_span = |stop_idx: usize, dir: i64| -> usize {
+            if dir > 0 { stop_idx.saturating_sub(1) } else { stop_idx }
+        };
+        // (1) Seed: actual DWELLERS at k>=2 stations + the committed occupant of a SINGLE approach span. A
+        // double-approach in-flight train is NOT seeded (it is gated at arrival instead ⇒ no phantom occupancy
+        // ⇒ self-clearing). K=1 stations are skipped (their single berth is governed by the existing same-line
+        // clamp/relaxation ⇒ strict K=1 neutrality).
+        for i in 0..n {
+            let li = v.line[i].index() as u32;
+            let pa = v.path[i];
+            let Some(path) = lines[li as usize].paths.get(pa as usize) else { continue };
+            let fwd = v.dir[i] > 0;
+            if dwell_station[i] >= 0 {
+                let st = dwell_station[i] as u32;
+                if is_k2(st) {
+                    add_stream(&mut occ_st, &mut n_at, st, stp_key(st, li, pa, fwd));
+                }
+                continue;
+            }
+            if !c_move[i] {
+                continue;
+            }
+            if let Some(sp) = path.strictly_inside(c_s[i]) {
+                // committed inbound on a SINGLE span only (a double-span in-flight train is gated at arrival).
+                if path.track_type.get(sp).copied().unwrap_or(0) == crate::line::track::SINGLE {
+                    let st = path.station_for_stop_index(c_stop_idx[i]).0;
+                    if is_k2(st) {
+                        add_stream(&mut occ_st, &mut n_at, st, stp_key(st, li, pa, fwd));
+                    }
+                }
+            }
+        }
+        // (2) Gate, in index order.
+        for i in 0..n {
+            if !c_move[i] || desired_ds[i] == 0 {
+                continue;
+            }
+            let li = v.line[i].index() as u32;
+            let pa = v.path[i];
+            let Some(path) = lines[li as usize].paths.get(pa as usize) else { continue };
+            let dir = eff_dir[i];
+            let s = c_s[i];
+            let st = path.station_for_stop_index(c_stop_idx[i]).0;
+            let k = stations.get(st as usize).map(|s| s.platform_count).unwrap_or(1);
+            if k < 2 {
+                continue; // K=1 / unknown: inert (the load-bearing neutrality switch)
+            }
+            let key = stp_key(st, li, pa, dir > 0);
+            let mine_present = occ_st.binary_search(&key).is_ok();
+            let asp = approach_span(c_stop_idx[i], dir);
+            let single_approach = path.track_type.get(asp).copied().unwrap_or(0) == crate::line::track::SINGLE;
+            if single_approach {
+                // already INSIDE the single approach span ⇒ the committed occupant (seeded), can't retreat.
+                if path.strictly_inside(s).is_some() {
+                    continue;
+                }
+                // the prior gate = the stop the approach span departs FROM (the previous stop in travel dir).
+                let nsp = path.stop_arclen_mm.len();
+                let prior_idx = if dir > 0 {
+                    c_stop_idx[i].checked_sub(1)
+                } else {
+                    let pi = c_stop_idx[i] + 1;
+                    if pi < nsp { Some(pi) } else { None }
+                };
+                let Some(prior_idx) = prior_idx else { continue };
+                let gate = path.stop_arclen_mm[prior_idx];
+                let head_after = s + dir * desired_ds[i];
+                let crossing = (dir > 0 && s <= gate && head_after > gate)
+                    || (dir < 0 && s >= gate && head_after < gate);
+                if !crossing {
+                    continue; // not entering the single approach span this tick
+                }
+                if !mine_present && n_distinct(&n_at, st) >= k as u32 {
+                    // hold SHORT at the prior gate, owning nothing — never enter (claim) the single span.
+                    let room = (dir * (gate - s)).max(0);
+                    if desired_ds[i] > room {
+                        desired_ds[i] = room;
+                        desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                    }
+                } else {
+                    // admit + register (the single span's committed occupant) for this-tick entrants.
+                    add_stream(&mut occ_st, &mut n_at, st, key);
+                }
+            } else {
+                // DOUBLE approach: gate at ARRIVAL. Only act when this tick's advance would CROSS next_arc
+                // (i.e. the train would dwell THIS tick). Hold short of next_arc inside the (safe) double span.
+                let next_arc = c_next_arc[i];
+                let head_after = s + dir * desired_ds[i];
+                let arriving = (dir > 0 && head_after >= next_arc) || (dir < 0 && head_after <= next_arc);
+                if !arriving {
+                    continue;
+                }
+                if !mine_present && n_distinct(&n_at, st) >= k as u32 {
+                    // station full — halt SHORT of the arrival gate (a braking standoff inside the double
+                    // span). `room` brakes to one standoff before next_arc; clamp to >=0.
+                    let standoff = crate::trainset::block_gap_mm(0, 1).max(1);
+                    let hold_at = if dir > 0 { next_arc - standoff } else { next_arc + standoff };
+                    let room = (dir * (hold_at - s)).max(0);
+                    if desired_ds[i] > room {
+                        desired_ds[i] = room;
+                        desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                    }
+                } else {
+                    // admit this arrival — it becomes a dweller this tick; register so the next arrival
+                    // this tick sees the slot taken (greedy, lowest index first).
+                    add_stream(&mut occ_st, &mut n_at, st, key);
+                }
+            }
+        }
+    }
+
     // Phase B — single-track MEET authority: gate entry into a SINGLE span (further min() on `ds`).
     let mut claimed: Vec<(u64, u32)> = Vec::new();
     // L5b: fresh-this-tick SAME-direction sub-block claims (a follower entering a sub-block another
