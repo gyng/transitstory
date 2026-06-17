@@ -51,6 +51,11 @@ impl Fnv1a {
         self.u64(v as u8 as u64);
     }
     #[inline]
+    fn i32(&mut self, v: i32) {
+        // Reinterpret the two's-complement bit pattern as u32 (no float, no sign branch).
+        self.u64(v as u32 as u64);
+    }
+    #[inline]
     fn finish(self) -> u64 {
         self.0
     }
@@ -187,5 +192,114 @@ fn arcadia_position_fingerprint_pinned() {
          0x{ARCADIA_POSITION_FINGERPRINT:016x}. This pins authoritative motion (vehicle \
          line/path/dir/s_mm) + ridership across the TTD L3 C1 flip — only serialization may move, \
          not positions. If a behaviour-preserving change drifts it, STOP."
+    );
+}
+
+// ============================================================================================
+// The K=2 BERTH-MOTION fingerprint — the TTD L4 G3 prerequisite (docs/ttd-l4-plan.md).
+//
+// The K=1 fingerprints above MUST NOT move through any of L4 (silent-drift tripwire). But L4d
+// turns today's SOFT berth relaxation (which only ever pulls a follower FORWARD, never holds)
+// into a HARD throat mutex that can DENY — neutral on the K=1 goldens, but it changes K≥2 berth
+// motion. The existing `platforms.rs` K=2 tests assert liveness/relaxation qualitatively but are
+// NOT fingerprint-pinned, so an L4d regression would slip through. This pins the exact K=2 berth
+// motion of BOTH `bunched_line` scenarios so L4d must either hold them BYTE-NEUTRAL (proving the
+// hard mutex changes no admitted motion on these scenarios) or be re-classed motion-changing with
+// a deliberate, documented re-pin — never a silent K≥2 drift.
+//
+// Unlike the K=1 fold, this ADDITIONALLY folds `berth_idx` (the berth-allocation state L4c/L4d/L4f
+// touch directly): a change in WHICH berth a consist takes — even at an identical `s_mm` — must
+// move this fingerprint. `berth_idx` is deterministic scratch today (recomputed each tick); the
+// fold reads it test-side, it is not (yet) hashed into `Canonical` (that graduates at L4f).
+// ============================================================================================
+
+/// The K=2 berth-motion fold: per vehicle (index order) `(line, path, dir, s_mm, berth_idx)`, then
+/// `ridership_total` + per-line ridership — integer-only, index-ordered, no HashMap, no float.
+fn k2_position_fingerprint(world: &World) -> u64 {
+    let mut h = Fnv1a::new();
+    let v = &world.vehicles;
+    let n = v.line.len();
+    for i in 0..n {
+        h.u32(v.line[i].0);
+        h.u64(v.path[i] as u64);
+        h.i8(v.dir[i]);
+        h.i64(v.s_mm[i]);
+        h.i32(v.berth_idx[i]);
+    }
+    let stats = world.stats_snapshot();
+    h.u64(stats.ridership_total as u64);
+    for ls in &stats.per_line {
+        h.u64(ls.ridership as u64);
+    }
+    h.finish()
+}
+
+/// Byte-for-byte the same builder as `platforms.rs::bunched_line` — a short line packed with enough
+/// trains to bunch up behind a dwelling leader, with `k` berths on every station. `loop_line=true`
+/// runs them all one direction (the relaxation exercise); `false` is out-and-back (opposing meets).
+fn bunched_line(k: u16, count: u16, loop_line: bool) -> World {
+    let mut w = World::new(7, CityData::default());
+    let xs = [0_i64, 600_000, 1_200_000, 1_800_000];
+    for &x in &xs {
+        w.apply(&Command::PlaceStation { x_mm: x, y_mm: if loop_line { x / 3 } else { 0 }, name: None });
+    }
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line, mode: 0, literal: false });
+    for s in 0..xs.len() as u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    if k > 1 {
+        for s in 0..xs.len() as u32 {
+            w.apply(&Command::BuildPlatforms { station: StationId(s), k });
+        }
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count });
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+fn run_bunched(k: u16, count: u16, loop_line: bool, ticks: usize) -> World {
+    let mut w = bunched_line(k, count, loop_line);
+    for _ in 0..ticks {
+        w.tick(50);
+    }
+    w
+}
+
+/// PINNED K=2 berth-motion fingerprint — LOOP variant (`bunched_line(2, 5, true)` @ 3000 ticks). The
+/// relaxation exercise: same-direction followers pulling into free berths behind a dwelling leader.
+/// L4d MUST hold this byte-neutral or re-pin it deliberately (documented motion change). NOT a K=1
+/// silent-drift case — it is the K≥2 regression tripwire G3 demands before L4d.
+const BUNCHED_LOOP_K2_FINGERPRINT: u64 = 0x6bc6_6df8_97fa_0a3a;
+
+/// PINNED K=2 berth-motion fingerprint — OUT-AND-BACK variant (`bunched_line(2, 6, false)` @ 3000
+/// ticks): opposing meets + berths. Same re-pin discipline as the loop variant.
+const BUNCHED_OUTBACK_K2_FINGERPRINT: u64 = 0x62f6_7abd_db36_a779;
+
+#[test]
+fn bunched_loop_k2_fingerprint_pinned() {
+    let a = k2_position_fingerprint(&run_bunched(2, 5, true, 3000));
+    let b = k2_position_fingerprint(&run_bunched(2, 5, true, 3000));
+    assert_eq!(a, b, "the K=2 loop berth-motion fingerprint must be reproducible (two builds agree)");
+    assert_eq!(
+        a, BUNCHED_LOOP_K2_FINGERPRINT,
+        "K=2 LOOP berth-motion fingerprint drifted: 0x{a:016x} != 0x{BUNCHED_LOOP_K2_FINGERPRINT:016x}. \
+         This pins K=2 berth allocation + motion (vehicle line/path/dir/s_mm/berth_idx) so the L4d hard \
+         throat mutex can't silently regress K≥2 behaviour. L4d must hold it neutral or re-pin it as a \
+         documented motion change. If an L4 step before L4d drifts it, STOP."
+    );
+}
+
+#[test]
+fn bunched_outback_k2_fingerprint_pinned() {
+    let a = k2_position_fingerprint(&run_bunched(2, 6, false, 3000));
+    let b = k2_position_fingerprint(&run_bunched(2, 6, false, 3000));
+    assert_eq!(a, b, "the K=2 out-and-back berth-motion fingerprint must be reproducible (two builds agree)");
+    assert_eq!(
+        a, BUNCHED_OUTBACK_K2_FINGERPRINT,
+        "K=2 OUT-AND-BACK berth-motion fingerprint drifted: 0x{a:016x} != \
+         0x{BUNCHED_OUTBACK_K2_FINGERPRINT:016x}. This pins K=2 berth allocation + motion across \
+         opposing meets so the L4d hard throat mutex can't silently regress K≥2 behaviour. L4d must \
+         hold it neutral or re-pin it as a documented motion change. If an L4 step before L4d drifts \
+         it, STOP."
     );
 }
