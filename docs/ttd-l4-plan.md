@@ -117,3 +117,31 @@ shared segment graph, legs station-keyed, golden-neutral, behind the Router trai
 and reuses L4a/L4b. The berth cluster (O1/O2/L4c–L4g) and L4d/L4e/L4f move to the cross-line capacity
 workstream, documented above. O0 (the K=2 berth-motion fingerprints, `position_fingerprint.rs`) is landed
 and stands as the tripwire for whenever that workstream resumes.
+
+---
+
+## CROSS-LINE FINDING (2026-06-17) — the overbooking gap is REAL + reachable (the throat mutex IS warranted)
+
+An empirical probe (2–4 INDEPENDENT lines all stopping at one shared central station, heavy demand at it,
+k=2 berths, 8000 ticks) settled whether the cross-line premise holds — and it does, decisively:
+- **Cross-line co-dwell is frequent**, not a non-problem: `ticks_codwell` = 4185 (2 lines) / 5855 (3) /
+  7058 (4) of 8000; `max_codwell_distinct_lines` reaches all lines. Independent schedules genuinely collide
+  at a shared interchange — the OPPOSITE of the single-line case (where the dwell cap blocks co-dwell).
+- **OVERBOOKING is real**: with k=2 berths, up to `max_codwell=4` consists dwell at the station at once,
+  so the excess (beyond k) fall back to the centerline (`berth_idx=-1`) and OVERLAP the berth-0 dweller —
+  `overbook_ticks` = 1319 (2 lines) / 7024 (3) / 15290 (4). The L2 relaxation pulls into FREE berths but
+  NEVER DENIES, and the same-line P1 clamp doesn't gate a *different* line's train — so nothing caps
+  co-dwellers at k. This is a genuine bug at busy interchanges (trains stack on the platform).
+
+**⇒ The hard THROAT MUTEX (L4d) is justified after all** (for cross-line, not single-line): gate station
+ENTRY on berth availability so excess trains hold on the approach instead of overbooking the platform.
+This is determinism-heart + liveness-critical, and it makes the G1/G2 blockers REAL — especially **G2 on a
+single-track-both-sides shared station**: train A holds a berth and waits for the single exit span; train B
+sits inside that single span (it claimed it via the meet `occ`) and waits for a berth — a berth↔span
+2-cycle. The fix discipline: a berth-WAITER must rest at a gate owning NOTHING — so the throat must gate
+B BEFORE it enters/claims the approach span (hold at the prior gate), never after. Greedy take-any-free
+berth claim (not wait-for-a-specific-berth) avoids the G1 allocation cycle. RED-first never-freeze must
+construct exactly the single-track-both-sides shared-station scenario and prove no deadlock (stubbing the
+"hold the span while waiting for a berth" path to show it deadlocks). K=1/single-line stays neutral: the
+throat clamp is a further `min()` on `desired_ds` that is a no-op when P1/meet already clamp tighter (which
+they always do on a single line), so the goldens + K=1/K=2 fingerprints are byte-identical.
