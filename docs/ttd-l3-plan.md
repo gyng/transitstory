@@ -100,6 +100,29 @@ Migration (b) (`s_mm → (seg,offset)`) is deferred to L4 where routing needs th
     out to every path's spans) — a single `TrackSegmentId` drops that affordance; preserve a sentinel/None.
 - **C2 — DROP dead code** (`derive_cross_blocks`/`CrossBlock` once fully subsumed). NEUTRAL.
 
+## Phase A complete + the Phase B/C entanglement finding (2026-06-17)
+
+**Phase A is DONE, green, golden byte-identical** (A0 `764595b`, A1 `ab48f7d`, A2 `6824f39`): segments own
+derived smoothed geometry (lowest-index representative, #29 curves preserved) and each `Path` carries a
+derived post-dispatch `segments` binding (`#[serde(skip)]`, non-hashed). The additive staging area is built.
+
+**Finding — Phase B/C does NOT decompose into clean independent reader-flips.** Executing A1/A2 revealed the
+remaining concerns INTERLOCK and cannot be shipped as separate golden-neutral commits the optimistic plan
+implied:
+- The owned segment geometry from A1 lacks `track_type`/`span_mode` (they're per-`Path`, HASHED via
+  `Canonical.lines`). So "B1: render per-segment track_type" and "B2: P2 meet reads the segment's track_type"
+  both REQUIRE moving `track_type` onto the segment — which is a hashed-state move (re-pin), i.e. C1 work.
+- B2's meet re-key changes occupancy-row cardinality for shared single segments → changes clamped `ds` →
+  changes hashed `s_mm` (review G1). So B2 is hash-moving, not neutral.
+- B3 deletes `derive_cross_blocks`, which computes the `cyclic` capacity CAP that PROVIDES cross-line
+  liveness (not the mutex) — the replacement cap must land in the SAME unit (review G2).
+⇒ **B2 + B3 + the `track_type`/`span_mode` ownership move + C1 must be designed and executed as ONE focused,
+determinism-core unit** (one documented re-pin; RED-first never-freeze tests for every liveness change; PBS
+atomic-path reservation + cross-line cap + aging tiebreak per G3). This is the genuine "cliff" — it needs a
+fresh, focused context, NOT an incremental grind: a gate-blind deadlock replays green (AGENTS), so a rushed
+commit here is a silent determinism-spine break. Phase A (safe) is the right stopping point for one pass; the
+B/C unit resumes here with this doc + the 6 review gaps as the spec.
+
 ## Review verdict (must address before/while executing)
 
 The naive plan was **NOT safe as-is**: the hash moves at **B2** (G1) and order-independence breaks at
