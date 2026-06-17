@@ -15,6 +15,7 @@ use crate::line::Line;
 
 mod bfs;
 mod raptor;
+pub mod segment_graph;
 pub use bfs::{plan_route, BfsRouter};
 pub use raptor::RaptorRouter;
 

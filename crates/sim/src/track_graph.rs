@@ -121,6 +121,16 @@ impl TrackSegment {
 pub struct TrackGraph {
     pub nodes: Vec<TrackNode>,
     pub segments: Vec<TrackSegment>,
+    /// TTD L4a (DERIVED, NOT HASHED): CSR node→incident-segment adjacency. Node `n`'s incident seg_ids are
+    /// `inc_flat[inc_start[n] as usize .. inc_start[n + 1] as usize]`, each list SORTED ascending by seg_id
+    /// (canonical, fair tiebreak). `inc_start.len() == nodes.len() + 1` (the trailing entry is the flat len),
+    /// so `incident` needs no bounds branch. Built at the tail of `derive_track_graph`; like the rest of the
+    /// graph it is a pure function of the hashed topology and never enters `Canonical`. `#[serde(default)]`
+    /// keeps it absent from older save bytes (an empty CSR re-derives on the next dispatch).
+    #[serde(default)]
+    pub inc_start: Vec<u32>,
+    #[serde(default)]
+    pub inc_flat: Vec<u32>,
 }
 
 impl TrackGraph {
@@ -128,6 +138,20 @@ impl TrackGraph {
     #[inline]
     pub fn node_at(&self, cell: Axial) -> Option<u32> {
         self.nodes.binary_search_by(|n| n.cell.cmp(&cell)).ok().map(|i| i as u32)
+    }
+
+    /// TTD L4a: the seg_ids of segments incident to `node` (i.e. `a == node || b == node`), SORTED by
+    /// seg_id. Empty when the CSR is unbuilt (a default/old-save graph) or `node` is out of range — so it
+    /// is total and never panics on the hot path. CSR slice: O(1) lookup, no allocation.
+    #[inline]
+    pub fn incident(&self, node: u32) -> &[u32] {
+        let n = node as usize;
+        if n + 1 >= self.inc_start.len() {
+            return &[];
+        }
+        let lo = self.inc_start[n] as usize;
+        let hi = self.inc_start[n + 1] as usize;
+        &self.inc_flat[lo..hi]
     }
 }
 
@@ -366,7 +390,28 @@ pub fn derive_track_graph(world: &World) -> TrackGraph {
         }
     }
 
-    TrackGraph { nodes, segments }
+    // 9. (TTD L4a) CSR node→incident-segment adjacency over the FINAL canonical segments. Mirrors step 3's
+    //    incidence pattern, but keyed by node index + seg_id instead of cell + edge index: collect a
+    //    `(node, seg_id)` pair for each of a segment's two endpoints, sort, then bucket into CSR. Sorting by
+    //    `(node, seg_id)` makes each node's incident run ascend by seg_id (the canonical, fair tiebreak L4b's
+    //    Dijkstra leans on). `inc_start` is prefix-summed so `inc_start[n]` is node `n`'s first flat index and
+    //    `inc_start[nodes.len()]` is the total — index-ordered, integer-only, no HashMap iteration.
+    let mut sinc: Vec<(u32, u32)> = Vec::with_capacity(segments.len() * 2); // (node index, seg_id)
+    for seg in &segments {
+        sinc.push((seg.a, seg.seg_id));
+        sinc.push((seg.b, seg.seg_id));
+    }
+    sinc.sort();
+    let mut inc_start: Vec<u32> = vec![0; nodes.len() + 1];
+    for &(node, _) in &sinc {
+        inc_start[node as usize + 1] += 1; // bucket count at node+1, prefix-summed below
+    }
+    for n in 0..nodes.len() {
+        inc_start[n + 1] += inc_start[n];
+    }
+    let inc_flat: Vec<u32> = sinc.into_iter().map(|(_, seg_id)| seg_id).collect();
+
+    TrackGraph { nodes, segments, inc_start, inc_flat }
 }
 
 /// Locate the smoothed polyline sub-range for a segment's `cells` chain in the LOWEST-index line+path whose
