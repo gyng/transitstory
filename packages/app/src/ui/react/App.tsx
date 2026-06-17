@@ -17,6 +17,7 @@ import { GameLoop } from "../../sim/GameLoop";
 import { attachPointer } from "../../tools/pointer";
 import { installTestHooks } from "../../testhooks";
 import { GameProvider, useGame, useGameUI } from "./GameContext";
+import { AppShell } from "./AppShell";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
@@ -311,6 +312,22 @@ export function App() {
 
   return (
     <GameProvider game={world.game} loop={world.loop}>
+      {/* The viewport chrome shell: a CSS grid over #map owning the four rigid edges. STAGE 1 hosts
+          the EXISTING (position:fixed) chrome inside their current-equivalent region cells unchanged
+          — fixed positioning keeps them visually pinned exactly where they were, so this proves the
+          grid + pointer scoping with zero behaviour change. Later stages flow each group into its cell. */}
+      <AppShell
+        top={<StatsBar />}
+        left={<Panels />}
+        right={
+          <>
+            {scenario && <ObjectivePanel scenario={scenario} />}
+          </>
+        }
+        bottom={<Toolbar />}
+      />
+      {/* Floating / transient overlays — kept outside the shell so they retain their own fixed
+          position + z-order (re-parented into regions in later stages where the spec calls for it). */}
       <TopLeftBar>
         <Title name={world.cityName} />
         <UndoControl />
@@ -318,11 +335,8 @@ export function App() {
       </TopLeftBar>
       <Toast />
       <OnboardingCoach />
-      <StatsBar />
-      {scenario && <ObjectivePanel scenario={scenario} />}
       <TechPanel />
       <SpellBar />
-      <Panels />
       <Fleet />
       <ServiceReport />
       <DraftControls />
@@ -333,7 +347,6 @@ export function App() {
       <Milestones />
       <ContextMenu />
       <StationConfirmBar />
-      <Toolbar />
     </GameProvider>
   );
 }

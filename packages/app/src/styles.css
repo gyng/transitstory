@@ -74,6 +74,24 @@ body {
   pointer-events: auto;
 }
 
+/* The chrome SHELL (AppShell): a viewport grid over #map that owns the four rigid edges. It is
+   pointer-transparent so map drags pass through the gaps between regions (the existing Toolbar
+   pattern); only its interactive console children re-enable pointers. Being a direct child of #ui,
+   this rule overrides the `#ui > * { pointer-events:auto }` universal above (class > universal). */
+.ot-shell,
+.ot-shell [data-region] {
+  pointer-events: none;
+}
+/* Interactive chrome inside a region takes pointers back. `.ot-console` is the diegetic panel face
+   every console/key/rail uses; explicit interactive tags cover bare buttons/inputs not yet wrapped. */
+.ot-shell .ot-console,
+.ot-shell button,
+.ot-shell input,
+.ot-shell select,
+.ot-shell label {
+  pointer-events: auto;
+}
+
 /* --- Game-feel layer (juice): subtle CSS micro-motion on the React chrome. The spatial juice
    (ripples / connect-flash / starved throbs) lives on a separate canvas driven by the rAF loop;
    these rules cover only the DOM chrome and ride no sim/render hot path. --- */
