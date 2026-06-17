@@ -42,6 +42,14 @@ is the green-at-every-commit execution spec, with the review's confirmed gaps fo
   station-keyed so pax board/alight is byte-unchanged. Land behind a RED-first leg-equivalence test (segment
   cost == `stop_arclen_mm` sum on the single-corridor goldens) ⇒ golden-neutral; if legs diverge, a separate
   documented routing re-pin. Reuses L4a/L4b only.
+  - **RESOLUTION (2026-06-17): WON'T-DO (not deferred-pending).** A frontend/router survey found the current
+    RAPTOR already does K>1 transfers + footpaths with `Leg`s keyed station-to-station and edge cost =
+    `stop_arclen_mm` diffs. Swapping the cost SOURCE to the segment graph would be byte-NEUTRAL on grids
+    (segment lengths == arclen diffs, stops at nodes) AND would return EMPTY / break on CONTINUOUS (non-grid)
+    networks where `TrackGraph` is empty — i.e. pure invisible plumbing with a correctness hazard, zero
+    player-visible payoff. So L4h is rejected, not shelved. The L4a CSR adjacency + L4b `route_segments`
+    Dijkstra primitives REMAIN committed + tested, available if a FUTURE feature (e.g. vehicle path-choice
+    through a branched junction) ever needs graph routing — at which point it gets its own RED-first plan.
 
 ## REVIEW VERDICT: NOT safe to execute as-is — close these first
 The phase ordering + re-pin discipline are SOUND (L4a/L4b are genuinely safe to start). But:
