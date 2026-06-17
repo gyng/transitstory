@@ -18,6 +18,7 @@ import { attachPointer } from "../../tools/pointer";
 import { installTestHooks } from "../../testhooks";
 import { GameProvider, useGame, useGameUI } from "./GameContext";
 import { AppShell } from "./AppShell";
+import { TimeCluster } from "./TimeCluster";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
@@ -317,7 +318,17 @@ export function App() {
           — fixed positioning keeps them visually pinned exactly where they were, so this proves the
           grid + pointer scoping with zero behaviour change. Later stages flow each group into its cell. */}
       <AppShell
-        top={<StatsBar />}
+        top={
+          <>
+            <StatsBar />
+            {/* Time cluster pinned to the top-right of the strip: Build/Run + speed + clock. The
+                spacer pushes it right; StatsBar is position:fixed (top-centre) so it ignores flow. */}
+            <div style={{ flex: 1, pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "flex-start", padding: "8px 14px 0 0", pointerEvents: "none" }}>
+              <TimeCluster />
+            </div>
+          </>
+        }
         left={<Panels />}
         right={
           <>

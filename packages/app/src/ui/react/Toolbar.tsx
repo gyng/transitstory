@@ -2,11 +2,12 @@
 // 5 Heavy Rail) drive construction; selecting one opens its build controls in a popover ABOVE
 // the bar. Right of the modes: Run/Build, speed, the Demand map-layer toggle, and Settings.
 // Keyboard 1–5 chord the modes. Emits to Game / GameLoop only (never mutates sim state directly).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Tool } from "../../game";
-import { useGame, useGameUI, useLoop, useStats } from "./GameContext";
-import { MODES, type ModeDef } from "./shared";
+import { useGame, useGameUI, useStats } from "./GameContext";
+import { MODES } from "./shared";
+import { Button, BigModeButton } from "./keys";
 import { techUnlocked } from "../../commands/codec";
 import { Settings } from "./Settings";
 import { BuildHud } from "./BuildHud";
@@ -39,16 +40,6 @@ const FANTASY_TOOLS: [Tool, string][] = [
   ["bounty", "⚑ Bounty"],
 ];
 
-// A doubling gear ladder (1×→8×) for fine control, plus a max fast-forward. The sim is a GameLoop
-// knob (loop.setSpeed), never a Command — speed never touches sim state.
-const SPEEDS: [number, string][] = [
-  [1, "1×"],
-  [2, "2×"],
-  [4, "4×"],
-  [8, "8×"],
-  [100, "max"],
-];
-
 // A cut seam between key groups on the console face (a dark groove with a faint top-light).
 const SEP_STYLE: CSSProperties = {
   width: 2,
@@ -58,130 +49,18 @@ const SEP_STYLE: CSSProperties = {
   margin: "2px 5px",
 };
 
-// A console KEY (the bar's Run/Build, speeds, Demand, gear, and the popover tools) — a raised physical
-// button on the operator's desk (#28 diegetic theme). `on` lights it; `tone` picks the glow (accent /
-// good=Run / danger=Bulldoze). Layout (flex/padding/width) still comes via `style`; the look is `.ot-key`.
-function Button({
-  label,
-  testid,
-  onClick,
-  style,
-  title,
-  disabled,
-  on,
-  tone = "accent",
-}: {
-  label: string;
-  testid: string;
-  onClick: () => void;
-  style?: CSSProperties;
-  title?: string;
-  disabled?: boolean;
-  on?: boolean;
-  tone?: "accent" | "good" | "danger";
-}) {
-  const onClass = on ? (tone === "good" ? "on-good" : tone === "danger" ? "on-danger" : "on") : "";
-  return (
-    <button
-      data-testid={testid}
-      className={`ot-key ${onClass}`}
-      onClick={disabled ? undefined : onClick}
-      title={title}
-      disabled={disabled}
-      style={{
-        padding: "6px 10px",
-        cursor: disabled ? "default" : "pointer",
-        ...(disabled ? { opacity: 0.45, filter: "saturate(0.4)" } : null),
-        ...style,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function BigModeButton({
-  m,
-  active,
-  enabled,
-  onClick,
-}: {
-  m: ModeDef;
-  active: boolean;
-  enabled: boolean;
-  onClick: () => void;
-}) {
-  const on = active && enabled;
-  // A big mode KEY on the console: raised graphite, the mode's identity COLOUR as a lit edge + glow when
-  // selected (diegetic — a backlit selector key), the icon/name etched in light. The kbd is its key-cap.
-  return (
-    <button
-      data-testid={`mode-transport-${m.id}`}
-      className="ot-key"
-      disabled={!enabled}
-      onClick={onClick}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 3,
-        minWidth: 64,
-        padding: "8px 10px",
-        borderRadius: 10,
-        cursor: enabled ? "pointer" : "not-allowed",
-        opacity: enabled ? 1 : 0.4,
-        ...(on
-          ? {
-              color: "#fff",
-              boxShadow: `var(--ot-well), 0 0 0 1.5px ${m.color}, 0 0 14px ${m.color}66`,
-            }
-          : null),
-      }}
-    >
-      <span style={{ fontSize: 20, lineHeight: 1, filter: on ? "none" : "saturate(.85)" }}>{m.icon}</span>
-      <span style={{ font: "600 13px system-ui,sans-serif", color: on ? m.color : "var(--ot-con-ink)" }}>{m.name}</span>
-      <kbd
-        style={{
-          font: `600 10px ${"var(--ot-readout-font)"}`,
-          borderRadius: 4,
-          padding: "0 4px",
-          background: "rgba(0,0,0,.35)",
-          border: "1px solid rgba(0,0,0,.5)",
-          color: on ? m.color : "var(--ot-con-ink-dim)",
-        }}
-      >
-        {m.key}
-      </kbd>
-    </button>
-  );
-}
-
 export function Toolbar() {
   const game = useGame();
-  const loop = useLoop();
   const ui = useGameUI();
   const stats = useStats();
 
-  const [speed, setSpeed] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // The keydown handler reads the live speed via a ref so the single window listener stays stable across
-  // speed changes (no add/remove churn that would also re-bind the co-located tool/Space handlers).
-  const speedRef = useRef(speed);
-  speedRef.current = speed;
 
   // Game keyboard: 1–5 chord transport modes; Space toggles Build↔Run; T/R/N/V/X (+ arcadia B/Y) arm the
-  // build tools (Track/Service/Station/Select/Bulldoze); ',' / '.' step the speed ladder. (WASD/arrows/Q/E
-  // camera nav live in App.tsx.) Ignored while typing in a field and for ctrl/meta/alt chords (Ctrl-Z etc.).
+  // build tools (Track/Service/Station/Select/Bulldoze). The speed ladder's ',' / '.' keys moved with the
+  // speed buttons to TimeCluster. (WASD/arrows/Q/E camera nav live in App.tsx.) Ignored while typing in a
+  // field and for ctrl/meta/alt chords (Ctrl-Z etc.).
   useEffect(() => {
-    const setSpd = (mult: number) => {
-      setSpeed(mult);
-      loop.setSpeed(mult);
-    };
-    const stepSpeed = (dir: number) => {
-      const i = SPEEDS.findIndex(([v]) => v === speedRef.current);
-      const ni = Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 0 : i) + dir));
-      setSpd(SPEEDS[ni][0]);
-    };
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -194,8 +73,6 @@ export function Toolbar() {
         game.setMode(game.mode === "build" ? "run" : "build");
         return;
       }
-      if (e.key === ",") { stepSpeed(-1); return; }
-      if (e.key === ".") { stepSpeed(1); return; }
       const m = MODES.find((x) => x.key === e.key);
       if (m) { game.setTransport(m.id); return; }
       // Build-tool hotkeys — letters disjoint from the WASD/Q/E camera keys. TTD L6: T=Track, R=Service
@@ -214,7 +91,7 @@ export function Toolbar() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game, loop, ui.ruleset]);
+  }, [game, ui.ruleset]);
 
   const enabled = new Set(ui.enabledModes);
   // S11 RAIL-GATE: arcadia builds RAIL only; Heavy Rail (mode 4) appears once its tech is unlocked.
@@ -225,7 +102,6 @@ export function Toolbar() {
       ? MODES.filter((m) => m.id === 0 || (m.id === 4 && techUnlocked(stats.techUnlocked, HEAVY_RAIL_TECH)))
       : MODES;
   const activeMode = MODES.find((x) => x.id === ui.transport) ?? MODES[0];
-  const running = ui.mode === "run";
 
   return (
     <>
@@ -250,10 +126,10 @@ export function Toolbar() {
       >
         {/* live route readout (stops · length · validity) while drawing */}
         <BuildHud />
-        {/* build-controls popover (opens above the bar for the active mode) */}
+        {/* build-controls popover (opens above the bar for the active mode). The `mode-controls`
+            testid moved to TimeCluster (stage 2); this popover keeps its own id. */}
         <div
-          id="mode-controls"
-          data-testid="mode-controls"
+          id="build-controls"
           className="ot-console"
           style={{
             display: ui.mode === "build" ? "flex" : "none",
@@ -315,34 +191,6 @@ export function Toolbar() {
             onClick={() => game.setTransport(m.id)}
           />
         ))}
-
-        <span style={SEP_STYLE} />
-
-        <Button
-          label={running ? "⏸ Build" : "▶ Run"}
-          testid="mode-toggle"
-          onClick={() => game.setMode(running ? "build" : "run")}
-          on={running}
-          tone="good"
-        />
-
-        <span style={SEP_STYLE} />
-
-        {SPEEDS.map(([mult, label]) => {
-          const on = speed === mult;
-          return (
-            <Button
-              key={mult}
-              label={label}
-              testid={`speed-${mult}`}
-              onClick={() => {
-                setSpeed(mult);
-                loop.setSpeed(mult);
-              }}
-              on={on}
-            />
-          );
-        })}
 
         <span style={SEP_STYLE} />
 
