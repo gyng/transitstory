@@ -283,6 +283,14 @@ pub(crate) fn dispatch(world: &mut World) {
                 let single = path.track_type.iter().filter(|&&t| t == crate::line::track::SINGLE).count();
                 if single > 0 {
                     let doubles = path.track_type.len().saturating_sub(single) as u16;
+                    // TTD L5b: a player signal subdivides a SINGLE span into sub-blocks so SAME-direction
+                    // trains follow closer. It does NOT raise the OPPOSING-meet capacity (a signal is not a
+                    // passing loop), and an out-and-back line's binding constraint IS the opposing meet — so
+                    // the train COUNT cap stays `doubles + 1` (over-admitting beyond it deadlocks on
+                    // reversal, as the never-freeze gate proves). The throughput WIN is in the move phase:
+                    // within this safe fleet, a same-direction follower no longer waits a full span behind a
+                    // leader — it closes up into the leader's wake one sub-block back, so the spacing tightens
+                    // and the round-trip cadence rises (higher ridership at the SAME train count).
                     count = count.min(doubles.saturating_add(1));
                 }
             }

@@ -93,6 +93,38 @@ fn signal_log_replays_bit_for_bit() {
 }
 
 #[test]
+fn placing_a_signal_mid_run_does_not_redispatch_or_reset_trains() {
+    // REGRESSION (L5b): placing a signal must NOT re-dispatch — that would teleport every running train
+    // back to spawn (the BuildPlatforms exemption rationale). Proof: on a DEFAULT double-track line a
+    // signal is behaviourally INERT (the relaxation only lifts a single-track meet denial), so a world
+    // that places one mid-run must keep vehicle positions BYTE-IDENTICAL to a control that does not.
+    let build = || {
+        let mut w = line3();
+        w.apply(&Command::SetRunning { running: true });
+        for _ in 0..400 {
+            w.tick(50);
+        }
+        w
+    };
+    let mut control = build();
+    let mut with_sig = build();
+    // both are at the same point now
+    assert_eq!(control.vehicles.s_mm, with_sig.vehicles.s_mm, "control + test diverged before the edit");
+    // place a signal on the (double-track) span 0 mid-run — valid (strictly inside), behaviourally inert.
+    let ev = with_sig.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span: 0, at_mm: 2_000_000 });
+    assert!(matches!(ev.as_slice(), [Event::SignalPlaced { .. }]), "the mid-run placement is valid: {ev:?}");
+    // the apply itself must not move trains (it mutates only the signals store)...
+    assert_eq!(control.vehicles.s_mm, with_sig.vehicles.s_mm, "PlaceSignal apply must not reset/move trains");
+    // ...and after a tick they must still match the control (no re-dispatch reset, signal inert on double track).
+    control.tick(50);
+    with_sig.tick(50);
+    assert_eq!(
+        control.vehicles.s_mm, with_sig.vehicles.s_mm,
+        "a mid-run signal must not re-dispatch (trains would reset to spawn); it is inert on double track",
+    );
+}
+
+#[test]
 fn no_signal_run_is_deterministic_pre_l5b_path() {
     // L5a adds NO behaviour: a run that places no signal ticks via exactly the pre-L5a motion path
     // (proven byte-identical by the unchanged position fingerprints). Locally: two builds agree.

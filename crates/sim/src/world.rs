@@ -2006,7 +2006,11 @@ impl World {
         // `BuildPlatforms` are exempt: they don't change line topology / dispatch cadence / SoA sizing
         // (berths are parallel DWELL slots, not extra vehicles), and a needless re-dispatch would reset
         // every train to spawn (a gameplay bug) AND perturb the golden — so building a platform must not
-        // invalidate dispatch.
+        // invalidate dispatch. TTD L5b: `PlaceSignal`/`RemoveSignal` are EXEMPT for the SAME reason — a
+        // signal does NOT change the dispatch cap (it stays `doubles+1`; see dispatch.rs) nor the SoA
+        // sizing; its only effect is the per-tick move-phase same-direction following relaxation, which
+        // reads `world.signals` afresh every tick in `advance`. So a signal placed on a RUNNING line must
+        // take effect WITHOUT re-dispatching (which would teleport every train back to spawn).
         if !matches!(
             cmd,
             Command::PlaceStation { .. }

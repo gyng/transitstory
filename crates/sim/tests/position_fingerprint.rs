@@ -303,3 +303,79 @@ fn bunched_outback_k2_fingerprint_pinned() {
          it, STOP."
     );
 }
+
+// ============================================================================================
+// The WITH-SIGNALS position fingerprint — the TTD L5b motion pin (docs/ttd-l5-plan.md).
+//
+// The K=1/K=2 fingerprints + goldens above pin the NO-SIGNALS path, which L5b must keep BYTE-
+// IDENTICAL (the signal-free goldens place no signal, so the sub-block keying degenerates to the
+// whole span). This NEW fingerprint pins the WITH-SIGNALS motion the relaxation introduces: a
+// mostly-double out-and-back line with one long SINGLE span (span 3) carrying 3 player signals,
+// over which a SAME-DIRECTION convoy follows (sub-block following). Any future change to the L5b
+// admission relaxation that perturbs the admitted motion must move this — or be re-pinned with a
+// documented reason. Same K=1 fold (vehicle line/path/dir/s_mm + ridership), integer-only.
+// ============================================================================================
+
+/// Byte-for-byte the same builder as `signal_blocks.rs::mostly_double_one_single(3, 8)` — a 7-stop
+/// out-and-back line, span 3 single + 3 evenly-spaced signals, the rest double (passing places), a
+/// demand corridor. The dispatch cap (`doubles + 1`) clamps the fleet to 6; the signal relaxation
+/// raises throughput via same-direction sub-block following.
+fn signalled_following_world() -> World {
+    const SINGLE: u8 = 1;
+    const CELL: i64 = 100_000;
+    let cells: Vec<DemandCell> = (0..60)
+        .map(|k| DemandCell { x_mm: k * CELL + 50_000, y_mm: 50_000, origin_w: 8.0, dest_w: 8.0, commodity: 0 })
+        .collect();
+    let mut w = World::new(7, CityData { grid_cell_mm: CELL, demand: DemandGrid { cell_m: 100.0, cells }, ..Default::default() });
+    let xs = [0i64, 3, 6, 9, 25, 28, 31].map(|c| c * CELL + 50_000);
+    for x in xs {
+        w.apply(&Command::PlaceStation { x_mm: x, y_mm: 50_000, name: None });
+    }
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    for s in 0..7u32 {
+        w.apply(&Command::AddStop { line: LineId(0), station: StationId(s), after: None });
+    }
+    w.apply(&Command::SetSegmentTrack { line: LineId(0), seg: TrackSegmentId(3), track: SINGLE });
+    let lo = w.lines[0].paths[0].stop_arclen_mm[3];
+    let hi = w.lines[0].paths[0].stop_arclen_mm[4];
+    for g in 0..3u32 {
+        let at = lo + (hi - lo) * (g as i64 + 1) / 4;
+        w.apply(&Command::PlaceSignal { line: LineId(0), path: 0, span: 3, at_mm: at });
+    }
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 8 });
+    w.apply(&Command::SetRunning { running: true });
+    w
+}
+
+fn run_signalled() -> World {
+    let mut w = signalled_following_world();
+    for _ in 0..3000 {
+        w.tick(50);
+    }
+    w
+}
+
+/// PINNED with-signals position fingerprint (TTD L5b motion pin): the SAME-direction sub-block
+/// following motion the relaxation introduces. Computed over `signalled_following_world()` @ 3000
+/// ticks. NOT a silent-drift case (it is the NEW motion L5b adds) — a future change to the admission
+/// relaxation that perturbs admitted motion must move this, with a documented re-pin.
+const SIGNALLED_FOLLOWING_FINGERPRINT: u64 = 0x77d0_16f8_2198_cf36;
+
+#[test]
+fn signalled_following_fingerprint_pinned() {
+    let a = position_fingerprint(&run_signalled());
+    let b = position_fingerprint(&run_signalled());
+    assert_eq!(a, b, "the with-signals following fingerprint must be reproducible (two builds agree)");
+    assert_eq!(
+        a, SIGNALLED_FOLLOWING_FINGERPRINT,
+        "with-signals following fingerprint drifted: 0x{a:016x} != \
+         0x{SIGNALLED_FOLLOWING_FINGERPRINT:016x}. This pins the TTD L5b SAME-direction sub-block \
+         following motion (vehicle line/path/dir/s_mm + ridership). The no-signals goldens/K=1 \
+         fingerprints stay byte-identical; THIS pins the new motion. A change to the L5b admission \
+         relaxation must move it deliberately, with a documented re-pin."
+    );
+    // Non-vacuous: the scenario dispatches a fleet and serves riders (the relaxation actually fires).
+    let w = run_signalled();
+    assert!(!w.vehicles.is_empty(), "the signalled scenario must dispatch vehicles");
+    assert!(w.ridership_total > 0, "the signalled scenario must serve riders");
+}

@@ -72,10 +72,18 @@ unchanged — only the KEY graduates, exactly as it did per layer
   a pure serialization shift; the K=1 + K=2 **position fingerprints are byte-identical**, proving zero
   behaviour change. Tests in `placed_signals.rs`: validate/reject, place→remove hash-neutral,
   command-order- + dedup-invariant hashing, signal-bearing log replays bit-for-bit.
-- **L5b — same-direction sub-block following (the MOTION change + the liveness-critical core).**
-  Phase A.1 occupancy + Phase B gate + Phase B.5 no-rest re-keyed so SAME-DIRECTION admission is per
-  signal sub-block while OPPOSING exclusion stays whole-span (see the corrected keying above). A signal
-  arc-length becomes a following-gate. **RED-first gates FIRST** (a gate-blind deadlock replays green):
+- **L5b — same-direction sub-block following (the MOTION change). [LANDED 2026-06-17]** Implemented as
+  a RELAXATION layered on the unchanged whole-span meet mutex (mirroring the A.3 berth relaxation): when
+  the base mutex would DENY entry, a SAME-DIRECTION follower on a SIGNALLED span is admitted past the
+  gate (opposing is NEVER relaxed → no head-on), then P1 governs spacing inside the span. Inert without
+  signals ⇒ goldens + K=1/K=2 fingerprints BYTE-IDENTICAL (no re-pin); a new `SIGNALLED_FOLLOWING_
+  FINGERPRINT = 0x77d0_16f8_2198_cf36` pins the with-signals motion. **Adversarial review: SAFE** (no
+  head-on, no deadlock, no determinism hole). Two findings folded in: (i) the load-bearing effect is the
+  ADMISSION (conditions 1+2) — P1 normally provides the tighter clamp, so the sub-block far-gate clamp
+  (conditions 3+4) + the B.5 sub-block branch are defence-in-depth (KEEP them; they bind if P1 is ever
+  loosened; their dir<0 math is pinned by `vehicle::l5b_subblock_math` unit tests). (ii) `PlaceSignal`
+  stays dispatch-dirty-EXEMPT — a signal must not re-dispatch (it would reset running trains), pinned by
+  `placed_signals::placing_a_signal_mid_run_does_not_redispatch_or_reset_trains`. RED-first gates landed:
     1. `signals_raise_same_direction_single_track_throughput` — a long single span, several
        same-direction trains on a demand corridor, WITH vs WITHOUT a mid-span signal: with the signal,
        MORE trains occupy the span concurrently (sub-block following) and cumulative ridership is

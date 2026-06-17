@@ -126,6 +126,79 @@ fn seg_key(line: u32, path: u8, span: u32) -> u64 {
     ((line as u64) << 40) | ((path as u64) << 32) | (span as u64)
 }
 
+// --- TTD L5b — SAME-DIRECTION sub-block following on a SIGNALLED single span (docs/ttd-l5-plan.md) ----
+// A player signal subdivides a single span into SUB-BLOCKS. The whole-span `occ`/Phase-B mutex above is
+// the unchanged BASE (still blocks entry, still excludes OPPOSING whole-span). LAYERED ON TOP — exactly
+// like the A.3 berth relaxation un-clamps a follower into a free berth — Phase B RELAXES the whole-span
+// denial for a SAME-DIRECTION follower IFF its target sub-block is free and the leader is in a different,
+// more-forward sub-block; the follower is then clamped to halt at the next SIGNAL gate (never entering the
+// leader's sub-block). INERT WITHOUT SIGNALS: a span with no signal is exactly ONE sub-block, so the
+// relaxation can never fire (condition 1 false) ⇒ byte-identical to today (the load-bearing neutrality).
+
+/// Sorted+deduped arc-lengths of the signals on `(line,path,span)` from the authoritative `signals` store.
+/// The store is already canonically sorted by `(line,path,span,at_mm)`, so a linear filter yields ascending
+/// `at_mm`. Integer-only, index-ordered (no HashMap iteration). Returns an empty Vec when the span is unsignalled.
+fn span_signal_arclens(signals: &[crate::world::Signal], line: usize, path: u8, span: u32) -> Vec<i64> {
+    let mut out: Vec<i64> = Vec::new();
+    for s in signals {
+        if s.line.index() == line && s.path == path && s.span == span {
+            // store is sorted by at_mm within (line,path,span); guard against a duplicate just in case.
+            if out.last().copied() != Some(s.at_mm) {
+                out.push(s.at_mm);
+            }
+        }
+    }
+    out
+}
+
+/// The sub-block index of arc-length `s` within span `[lo, hi]` partitioned by the ascending `sigs` (signal
+/// arc-lengths strictly inside the span). Sub-block 0 = `[lo, sigs[0]]`, …, sub-block `g` = `[sigs[g-1], hi]`.
+/// A point exactly on a signal gate `sigs[k]` is the BOUNDARY — it counts as the lower sub-block `k` (it
+/// owns the block it is leaving; a follower clamps to rest AT the gate, the leader has already advanced past
+/// it). With no signals there is exactly ONE sub-block (index 0). Pure integer; saturating.
+#[inline]
+fn sub_block_of(sigs: &[i64], s: i64) -> usize {
+    let mut idx = 0usize;
+    for &g in sigs {
+        if s > g {
+            idx += 1;
+        } else {
+            break;
+        }
+    }
+    idx
+}
+
+/// The far SIGNAL gate of sub-block `sb` in span `[lo, hi]` for a train travelling `dir`: the arc-length the
+/// follower's head must HALT at so it never enters the next sub-block (mirrors Phase B clamping to the
+/// station gate). For `dir>0`, the far gate of sub-block `sb` is `sigs[sb]` (or `hi` past the last signal);
+/// for `dir<0`, sub-blocks are indexed forward but the train moves toward decreasing `s`, so its far gate is
+/// the lower boundary of `sb`, i.e. `sigs[sb-1]` (or `lo` for sub-block 0). Pure integer; bounds-checked.
+#[inline]
+fn sub_block_far_gate(sigs: &[i64], lo: i64, hi: i64, sb: usize, dir: i64) -> i64 {
+    if dir > 0 {
+        sigs.get(sb).copied().unwrap_or(hi)
+    } else if sb == 0 {
+        lo
+    } else {
+        sigs.get(sb - 1).copied().unwrap_or(lo)
+    }
+}
+
+/// Packed total-order key for a SIGNAL SUB-BLOCK + direction: `(line, path, span, sub_block, dir_bit)`. A
+/// distinct per-tick key space (its own `subblock_occ` Vec) so it never aliases `seg_key`. `dir_bit` is 1 for
+/// forward, 0 for returning — the whole-span opposing exclusion is handled by the base `occ`; this key tracks
+/// SAME-direction sub-block tenancy only (an opposing train can never be admitted to relax against, so its
+/// sub-block tenancy is irrelevant here). `sub_block` and `span` are small; injective in the packed bits.
+#[inline]
+fn subblock_key(line: u32, path: u8, span: u32, sub_block: u32, dir_fwd: bool) -> u64 {
+    ((line as u64) << 40)
+        | ((path as u64) << 32)
+        | ((span as u64) << 12)
+        | ((sub_block as u64) << 1)
+        | (dir_fwd as u64)
+}
+
 // Single-track working is BLOCK working keyed by TRAIN IDENTITY (vehicle index), not direction: a
 // single span holds exactly ONE train at a time. A train at a TERMINUS (a dead-end, not a passing
 // place) reserves the adjacent single span through its whole turnaround, so opposing trains hold at
@@ -224,6 +297,8 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     let disabled = &world.line_disabled_until_ms; // #war: RAIDED lines — their consists freeze in place
     let junctions = &world.junctions; // P4: immutable co-borrow (disjoint field) alongside &mut vehicles
     let cross_blocks = &world.cross_blocks; // Phase 2: cross-line shared-rail blocks (shared-rail.md)
+    let signals = &world.signals; // TTD L5b: player block signals — sub-block following on single spans
+    let has_signals = !signals.is_empty(); // INERT (no sub-block pass) when no signal is placed ⇒ byte-identical
     let build_lookup = &world.build_lookup;
     let build_cell_mm = world.build_cell_mm;
     let v = &mut world.vehicles;
@@ -343,6 +418,12 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     // gate adjacent to it — the terminus is a dead-end, not a passing place, so its single span is
     // reserved through the whole turnaround (this is the deadlock fix).
     let mut occ: Vec<(u64, u32)> = Vec::new();
+    // TTD L5b — start-of-tick SUB-BLOCK occupancy (per-tick scratch, never hashed). Only built when a
+    // signal exists; keyed `(line,path,span,sub_block,dir)` so a SAME-direction follower can be relaxed
+    // into a free sub-block behind a leader in a more-forward one. A train sitting AT a terminus gate is
+    // recorded in the whole-span `occ` (so opposing exclusion holds) but its sub-block is the gate's own
+    // (it owns nothing forward). Index order ⇒ first-claimant-wins, the same deterministic tiebreak as `occ`.
+    let mut subblock_occ: Vec<(u64, u32)> = Vec::new();
     for i in 0..n {
         let line = &lines[v.line[i].index()];
         let path = match line.paths.get(v.path[i] as usize) {
@@ -375,6 +456,20 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                     && !cross_span_covered(cross_blocks, v.line[i].index(), v.path[i], lo, hi)
                 {
                     occ_claim(&mut occ, seg_key(v.line[i].index() as u32, v.path[i], sp as u32), i as u32);
+                    // L5b: also record this train's SAME-direction sub-block tenancy (only when the span
+                    // bears a signal — otherwise the relaxation never reads it, so skip for neutrality).
+                    if has_signals {
+                        let sigs = span_signal_arclens(signals, v.line[i].index(), v.path[i], sp as u32);
+                        if !sigs.is_empty() {
+                            let dir_fwd = v.dir[i] > 0;
+                            let sb = sub_block_of(&sigs, s) as u32;
+                            occ_claim(
+                                &mut subblock_occ,
+                                subblock_key(v.line[i].index() as u32, v.path[i], sp as u32, sb, dir_fwd),
+                                i as u32,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -613,6 +708,9 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
 
     // Phase B — single-track MEET authority: gate entry into a SINGLE span (further min() on `ds`).
     let mut claimed: Vec<(u64, u32)> = Vec::new();
+    // L5b: fresh-this-tick SAME-direction sub-block claims (a follower entering a sub-block another
+    // follower already claimed this tick is denied — first-claimant, lowest index, like `claimed`).
+    let mut subblock_claimed: Vec<(u64, u32)> = Vec::new();
     for i in 0..n {
         if !c_move[i] || desired_ds[i] == 0 {
             continue;
@@ -648,24 +746,95 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
             continue; // already the occupant — P1 governs spacing, P2 does not re-gate
         }
         let key = seg_key(v.line[i].index() as u32, v.path[i], trav_span as u32);
-        let admit = match occ_owner(&occ, key) {
+        // The whole-span owner at start-of-tick (None ⇒ empty ⇒ lowest-index-this-tick wins). Kept so the
+        // L5b relaxation can inspect the leader's direction + sub-block when the base mutex would DENY.
+        let span_owner = occ_owner(&occ, key);
+        let admit = match span_owner {
             Some(o) if o == i as u32 => true, // my OWN reservation (a terminus span I'm departing into)
-            Some(_) => false,                 // another train holds the block — HOLD
+            Some(_) => false,                 // another train holds the block — HOLD (relaxation below may lift it)
             None => try_claim(&mut claimed, key, i as u32), // empty: lowest-index this tick wins
         };
         if !admit {
-            // Clamp to the ENTRY gate of trav_span (the passing place we wait at; room2==0 on the gate).
-            let entry_arc = if dir > 0 {
-                path.stop_arclen_mm[trav_span]
-            } else {
-                path.stop_arclen_mm[trav_span + 1]
-            };
-            // TTD signals: an AMBER marker at the gate this cart is held at — the block ahead is occupied.
-            sig.push(crate::world::SignalOccupancy { line: v.line[i].index() as u32, path: v.path[i], span: trav_span as u32, mid_mm: entry_arc, status: 2 });
-            let room2 = (dir * (entry_arc - s)).max(0);
-            if desired_ds[i] > room2 {
-                desired_ds[i] = room2;
-                desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+            // ---- L5b SIGNAL SUB-BLOCK RELAXATION (mirrors the A.3 berth relaxation) ----------------
+            // The base mutex DENIED `i` entry because `span_owner == Some(o)` (another train holds the
+            // span). A player signal subdivides the span into sub-blocks: admit `i` ANYWAY iff ALL hold:
+            //   (1) trav_span bears >=1 signal (so it HAS sub-blocks; else INERT, byte-identical);
+            //   (2) the owner `o` is the SAME travel direction as `i` (NEVER relax opposing — head-on);
+            //   (3) `i`'s TARGET sub-block (the one its head advances INTO this tick) is free of any
+            //       same-direction consist (start-of-tick `subblock_occ` + fresh `subblock_claimed`),
+            //       AND `o` sits in a strictly more-FORWARD sub-block than `i`'s target;
+            //   (4) clamp `desired_ds` so the head halts at that sub-block's far SIGNAL gate (it must not
+            //       enter the leader's sub-block) — exactly as the base clamps to the station gate.
+            // A relaxed follower thus rests at a SIGNAL gate (sub-block boundary) owning nothing (B.5),
+            // so the depth-1-forest no-rest argument carries (the leader ahead is the one advancing).
+            let mut relaxed = false;
+            if has_signals {
+                if let Some(o) = span_owner {
+                    let o = o as usize;
+                    let lo = path.stop_arclen_mm[trav_span];
+                    let hi = path.stop_arclen_mm.get(trav_span + 1).copied().unwrap_or(lo);
+                    let sigs = span_signal_arclens(signals, v.line[i].index(), v.path[i], trav_span as u32);
+                    // (2) same direction as the leader (eff_dir is the LOOP-agnostic travel sign; loops
+                    //     never reach here). The owner's stored dir is its travel sign on an out-and-back.
+                    let same_dir = !sigs.is_empty() && o < n && (v.dir[o] as i64) == dir;
+                    if same_dir {
+                        // (3) target sub-block = the sub-block `i`'s head ENTERS this span at (the entry
+                        //     gate side). Going forward it enters at `lo` (sub-block 0 of the span); going
+                        //     back it enters at `hi` (the last sub-block). We let it advance INTO the span
+                        //     up to the first occupied sub-block boundary, clamping at that signal gate.
+                        //     The leader must be in a strictly more-forward sub-block than `i`'s target.
+                        let entry_s = if dir > 0 { lo } else { hi };
+                        let target_sb = sub_block_of(&sigs, entry_s);
+                        let owner_sb = {
+                            // the leader's sub-block at start-of-tick. Use the AUTHORITATIVE `v.s_mm[o]`
+                            // (start-of-tick position, committed only in Phase C) — NOT `c_s[o]`, which is
+                            // populated only for MOVING trains (0 for a dwelling/frozen owner). Clamped into
+                            // the span if it sits on the far gate it is departing into. Consistent with the
+                            // `occ`/`subblock_occ` scan, which also keyed off `v.s_mm`.
+                            let os = v.s_mm[o].clamp(lo, hi);
+                            sub_block_of(&sigs, os)
+                        };
+                        // "more forward" in travel direction: forward ⇒ larger index; back ⇒ smaller index.
+                        let leader_ahead =
+                            if dir > 0 { owner_sb > target_sb } else { owner_sb < target_sb };
+                        let dir_fwd = dir > 0;
+                        let tkey = subblock_key(
+                            v.line[i].index() as u32,
+                            v.path[i],
+                            trav_span as u32,
+                            target_sb as u32,
+                            dir_fwd,
+                        );
+                        let target_free = occ_owner(&subblock_occ, tkey).is_none()
+                            && try_claim(&mut subblock_claimed, tkey, i as u32);
+                        if leader_ahead && target_free {
+                            // (4) clamp to the FAR signal gate of the target sub-block (never enter the
+                            //     leader's sub-block). The head halts at the gate, owning nothing forward.
+                            let gate = sub_block_far_gate(&sigs, lo, hi, target_sb, dir);
+                            let room_sb = (dir * (gate - s)).max(0);
+                            if desired_ds[i] > room_sb {
+                                desired_ds[i] = room_sb;
+                                desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                            }
+                            relaxed = true;
+                        }
+                    }
+                }
+            }
+            if !relaxed {
+                // Clamp to the ENTRY gate of trav_span (the passing place we wait at; room2==0 on the gate).
+                let entry_arc = if dir > 0 {
+                    path.stop_arclen_mm[trav_span]
+                } else {
+                    path.stop_arclen_mm[trav_span + 1]
+                };
+                // TTD signals: an AMBER marker at the gate this cart is held at — the block ahead is occupied.
+                sig.push(crate::world::SignalOccupancy { line: v.line[i].index() as u32, path: v.path[i], span: trav_span as u32, mid_mm: entry_arc, status: 2 });
+                let room2 = (dir * (entry_arc - s)).max(0);
+                if desired_ds[i] > room2 {
+                    desired_ds[i] = room2;
+                    desired_nv[i] = desired_ds[i] * 1000 / dt_ms.max(1);
+                }
             }
         }
     }
@@ -786,7 +955,10 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
     // Phase B.5 — no train comes to REST strictly inside a single span it didn't already own. This is
     // the forest-of-advancing-roots property: every blocked/stopped train rests at a gate owning
     // nothing, so the wait-for graph is an acyclic depth-1 forest (waiters → the one advancing
-    // occupant) ⇒ deadlock-free.
+    // occupant) ⇒ deadlock-free. L5b: on a SIGNALLED span a SIGNAL gate (sub-block boundary) is ALSO a
+    // legal rest — a relaxed follower halts there owning nothing forward (the leader ahead advances), so
+    // the forest argument carries. A rest STRICTLY inside a sub-block (between gates) is still illegal
+    // and clamped back to the nearest gate BEHIND it (the entry gate or the last signal it passed).
     for i in 0..n {
         if !c_move[i] || desired_nv[i] != 0 {
             continue;
@@ -808,14 +980,33 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
                 && !span_block_covered(junctions, v.line[i].index(), v.path[i], elo, ehi)
                 && !cross_span_covered(cross_blocks, v.line[i].index(), v.path[i], elo, ehi)
             {
-                let entry_arc = if dir > 0 {
-                    path.stop_arclen_mm[esp]
+                // The set of legal rest GATES inside this span in travel order: the span entry gate plus
+                // every signal arclen (sub-block boundary). Without signals this is just the entry gate
+                // ⇒ byte-identical to the pre-L5b clamp. Resting ON any gate owns nothing forward.
+                let entry_arc = if dir > 0 { elo } else { ehi };
+                let sigs = if has_signals {
+                    span_signal_arclens(signals, v.line[i].index(), v.path[i], esp as u32)
                 } else {
-                    path.stop_arclen_mm[esp + 1]
+                    Vec::new()
                 };
-                let room3 = (dir * (entry_arc - s)).max(0);
-                if desired_ds[i] > room3 {
-                    desired_ds[i] = room3;
+                // Is end_s exactly on a legal gate? (the entry gate, or a signal gate). If so, it is a
+                // valid sub-block rest and we leave it. Else clamp to the furthest legal gate NOT past
+                // end_s in travel direction (the last gate the head crossed before stopping).
+                let on_gate = end_s == entry_arc || sigs.iter().any(|&g| g == end_s);
+                if !on_gate {
+                    // furthest legal gate the head has reached (<= end_s going forward, >= going back).
+                    let mut gate = entry_arc;
+                    for &g in &sigs {
+                        let reached = if dir > 0 { g <= end_s } else { g >= end_s };
+                        let further = if dir > 0 { g > gate } else { g < gate };
+                        if reached && further {
+                            gate = g;
+                        }
+                    }
+                    let room3 = (dir * (gate - s)).max(0);
+                    if desired_ds[i] > room3 {
+                        desired_ds[i] = room3;
+                    }
                 }
             }
         }
@@ -876,5 +1067,42 @@ pub(crate) fn advance(world: &mut World, dt_ms: i64) {
         v.y_mm[i] = y;
         let h = path.heading_at(new_s);
         v.angle[i] = if dir < 0 { h + std::f32::consts::PI } else { h };
+    }
+}
+
+#[cfg(test)]
+mod l5b_subblock_math {
+    //! TTD L5b — direct unit coverage of the pure sub-block geometry helpers. The adversarial review
+    //! noted the relaxation's far-gate clamp is normally NOT the binding clamp (P1 dominates), so the
+    //! `dir<0` arithmetic is otherwise "argued-only". These pin it directly (no scenario needed).
+    use super::{sub_block_far_gate, sub_block_of};
+
+    #[test]
+    fn sub_block_of_partitions_by_signals() {
+        assert_eq!(sub_block_of(&[], 5), 0, "no signals => one block (index 0)");
+        let sigs = [10i64, 20];
+        assert_eq!(sub_block_of(&sigs, 5), 0, "before the first signal");
+        assert_eq!(sub_block_of(&sigs, 10), 0, "ON a gate => the LOWER block (it owns the block it's leaving)");
+        assert_eq!(sub_block_of(&sigs, 15), 1, "between the two signals");
+        assert_eq!(sub_block_of(&sigs, 20), 1, "ON the second gate => lower block");
+        assert_eq!(sub_block_of(&sigs, 25), 2, "after the last signal");
+    }
+
+    #[test]
+    fn far_gate_forward_is_the_next_signal_or_hi() {
+        let sigs = [10i64, 20];
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 0, 1), 10, "fwd sub-block 0 halts at sigs[0]");
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 1, 1), 20, "fwd sub-block 1 halts at sigs[1]");
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 2, 1), 30, "fwd last sub-block halts at hi");
+    }
+
+    #[test]
+    fn far_gate_returning_is_the_lower_boundary() {
+        // dir<0: a returning train moves toward DECREASING s, so its far gate is the LOWER boundary of
+        // its sub-block — sub-block 0 => lo, sub-block k => sigs[k-1]. (The review's flagged arithmetic.)
+        let sigs = [10i64, 20];
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 0, -1), 0, "ret sub-block 0 halts at lo");
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 1, -1), 10, "ret sub-block 1 halts at sigs[0]");
+        assert_eq!(sub_block_far_gate(&sigs, 0, 30, 2, -1), 20, "ret sub-block 2 halts at sigs[1]");
     }
 }
