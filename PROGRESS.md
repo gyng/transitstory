@@ -3075,12 +3075,25 @@ Built green-at-every-commit, one reusable block-reservation primitive (only the 
   - **Verified live (Dublin sandbox):** drew a 3-stop stockless line → renders in `track-rails` (coloured
     `lines`=0), roster "+1 track", editor "Assign trainset"; assigned 3 trains → moves to `lines` (track-rails=0),
     roster lists the service. Screenshots `l6-bare-track`/`l6-serviced`.
-  - **Deferred (clean seams, logged not half-built):** a DEDICATED "Service" tool (the same draw gesture,
-    snap-restricted to on-track stations + auto-assigning stock on commit — a new `Tool` id branching only at
-    `commitDraft`); the `TrackGraph` fat-rail collapse for shared corridors (the copy-out already ships); and
-    the L3 `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until `TrackSegment` is
-    authoritative). The MVP's one Track tool + editor Assign-trainset already produces track + services; the
-    Service tool is an alternative INPUT gesture, not a missing capability. Marker at `game.ts` `Tool` type.
+  - **The dedicated Service tool (`f106d06`).** The second gesture: a new `Tool` id `service` sharing the
+    draw pipeline with Track via an `isDrawTool()` helper (every pointer/commit/snap/cursor branch that keyed
+    on the `line` tool now routes through it), differing ONLY at `commitDraft` — a service AUTO-ASSIGNS a
+    default fleet (`DEFAULT_SERVICE_TRAINS=2` + auto-headway) so it lands as a live coloured line; Track stays
+    bare grey. Toolbar gains "🚆 Service"; chords reorganised T=Track, R=Service (Route), N=Station, V/X
+    unchanged (R freed from its redundant Run alias — Space stays the toggle). Verified live: Track-commit →
+    trains 0, Service-commit → trains 2 + auto-headway; transport-switch preserves the armed Service tool.
+  - **Adversarial review + fixes (`df961c2`).** A 4-lens Workflow review (completeness / chord-regression /
+    commit-undo / render-roster) over the Service-tool diff found 6 real issues, all fixed + re-verified:
+    S1 `setTransport` force-armed Track (demoting Service) → arm Track only when not already a draw tool;
+    S2 terminus-grab hijacked Service into a stockless Track-extend → gated to the Track tool (resolves S3,
+    so extend correctly preserves a line's stock); S4 the "click grey track to assign trains" copy was a
+    no-op → Select left-click now selects a nearby line; S5 a selected bare track drew as a dark blob → moved
+    `track-rails` above the selection casing (below coloured services); S6 raided bare track painted red over
+    grey → filter `lines-raided` to serviced; S8 onboarding read `tool === "line"` → `isDrawTool`. S7 (a
+    service is N+2 undo commands) left as-is — undo has always been command-granular under command-sourcing.
+  - **Deferred (clean seams, logged not half-built):** snap-restricting the Service tool to on-track stations;
+    the `TrackGraph` fat-rail collapse for shared corridors (the copy-out already ships); and the L3
+    `BindLineToTrack{line,segments}` Command (binding-by-co-located-cells until `TrackSegment` is authoritative).
 
 ## Legions ride REAL trains + walk-vs-wait (owner-directed, 2026-06-17)
 
