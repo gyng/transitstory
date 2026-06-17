@@ -20,20 +20,22 @@ import { GameProvider, useGame, useGameUI } from "./GameContext";
 import { AppShell } from "./AppShell";
 import { TimeCluster } from "./TimeCluster";
 import { LensRail } from "./LensRail";
+import { ConstructionRail } from "./ConstructionRail";
+import { CornerCluster } from "./CornerCluster";
+import { Settings } from "./Settings";
+import { StatsDashboard } from "./StatsDashboard";
+import { BuildHud } from "./BuildHud";
 import { Menu } from "./Menu";
 import { StatsBar } from "./StatsBar";
 import { Panels } from "./Panels";
-import { Toolbar } from "./Toolbar";
 import { OnboardingCoach } from "./Onboarding";
 import { ObjectivePanel } from "./Objectives";
-import { TechPanel } from "./TechPanel";
 import { SpellBar } from "./SpellBar";
 import { ServiceReport } from "./ServiceReport";
 import { Fleet } from "./Fleet";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
-import { StatsDashboard } from "./StatsDashboard";
 import { StatsRecorder } from "./statsHistory";
 import { ContextMenu } from "./ContextMenu";
 import { StationConfirmBar } from "./StationConfirmBar";
@@ -197,6 +199,10 @@ export function App() {
   const [world, setWorld] = useState<BootedWorld | null>(null);
   const [booting, setBooting] = useState(false);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
+  // Dashboard + settings modal open flags live here (App level) so the modals render as shell siblings
+  // at #ui-level z, above the grid shell's stacking context — opened from the bottom-left CornerCluster.
+  const [dashOpen, setDashOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const started = useRef(false);
 
   const startBoot = useCallback((manifestPath: string, withNetwork: boolean, scenario: string | null = null) => {
@@ -330,7 +336,18 @@ export function App() {
             </div>
           </>
         }
-        left={<Panels />}
+        left={
+          // Left edge: the construction rail (categories + flyout) anchored top, and the corner
+          // utility cluster (undo/redo · dashboard · settings) pinned to the bottom-left corner (Fitts).
+          // A raised z keeps the rail + corner CLICKABLE above the still-fixed Panels roster (z:9), which
+          // moves to the bottom Outliner in stage 6; the EditorPanel (top-right) consolidates in stage 7.
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start", padding: "0 0 14px 14px", pointerEvents: "none", position: "relative", zIndex: 13 }}>
+            <div style={{ paddingTop: 0, pointerEvents: "none" }}>
+              <ConstructionRail />
+            </div>
+            <CornerCluster onOpenDashboard={() => setDashOpen(true)} onToggleSettings={() => setSettingsOpen((o) => !o)} />
+          </div>
+        }
         right={
           // Right edge: the objective card floats as before (position:fixed). The LensRail is the new
           // flow-anchored vertical rail, pinned to the far edge and VERTICALLY CENTRED so it clears the
@@ -341,18 +358,25 @@ export function App() {
             <LensRail />
           </div>
         }
-        bottom={<Toolbar />}
+        bottom={
+          // Bottom strip: the live build HUD floats bottom-centre (sub-100ms client-side route readout),
+          // freed from the deleted #transport-bar. Other dock contents (roster/ticker) land in stage 6.
+          <div style={{ height: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 14px", pointerEvents: "none" }}>
+            <BuildHud />
+          </div>
+        }
       />
       {/* Floating / transient overlays — kept outside the shell so they retain their own fixed
           position + z-order (re-parented into regions in later stages where the spec calls for it). */}
       <TopLeftBar>
         <Title name={world.cityName} />
-        <UndoControl />
-        <DashboardControl />
       </TopLeftBar>
+      {/* Panels (roster LineList + EditorPanel) stay position:fixed for now — the roster moves to the
+          bottom Outliner (stage 6) and the editor to the right Inspector (stage 7). Mounted here so its
+          testids + behaviour are untouched this stage. */}
+      <Panels />
       <Toast />
       <OnboardingCoach />
-      <TechPanel />
       <SpellBar />
       <Fleet />
       <ServiceReport />
@@ -364,36 +388,11 @@ export function App() {
       <Milestones />
       <ContextMenu />
       <StationConfirmBar />
+      {/* Settings + dashboard modals: shell siblings so they float above the grid shell (their own
+          higher z) — triggered from the bottom-left CornerCluster. */}
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <StatsDashboard open={dashOpen} onClose={() => setDashOpen(false)} />
     </GameProvider>
-  );
-}
-
-/** The prominent "📊 Stats" entry point + the dashboard it opens (ledger + detailed stats +
- *  charts). The button sits top-left next to Undo; the dashboard is a centred overlay. State is
- *  local — the always-mounted StatsRecorder keeps history accruing whether or not it's open. */
-function DashboardControl() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        data-testid="open-dashboard"
-        onClick={() => setOpen(true)}
-        title="Network dashboard — ledger, ridership, satisfaction, trend charts"
-        style={{
-          padding: "4px 12px",
-          borderRadius: 8,
-          border: "0",
-          background: "#1c2024",
-          color: "#fff",
-          font: "700 13px system-ui,sans-serif",
-          cursor: "pointer",
-          boxShadow: "0 2px 10px rgba(0,0,0,.18)",
-        }}
-      >
-        📊 Stats
-      </button>
-      <StatsDashboard open={open} onClose={() => setOpen(false)} />
-    </>
   );
 }
 
@@ -432,42 +431,3 @@ function Toast() {
   );
 }
 
-/** Undo/redo affordances next to the title (AGENTS UX "reversible by construction"). Ctrl-Z /
- *  Ctrl-Shift-Z are the primary paths; these make them discoverable. Re-render on the UI slice
- *  so the disabled states track the history boundaries. */
-function HistoryButton({ testid, label, hint, enabled, onClick }: { testid: string; label: string; hint: string; enabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      data-testid={testid}
-      onClick={onClick}
-      disabled={!enabled}
-      title={hint}
-      style={{
-        padding: "4px 10px",
-        borderRadius: 8,
-        border: "0",
-        background: enabled ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.4)",
-        color: enabled ? "#1c2024" : "#9aa3ad",
-        font: "600 13px system-ui,sans-serif",
-        cursor: enabled ? "pointer" : "default",
-        boxShadow: "0 2px 10px rgba(0,0,0,.12)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function UndoControl() {
-  const game = useGame();
-  useGameUI(); // subscribe: re-render when selection/mode change (covers the empty↔non-empty edge)
-  return (
-    <>
-      <HistoryButton testid="undo" label="↶ Undo" hint="Undo last action (Ctrl-Z)" enabled={game.canUndo()} onClick={() => game.undo()} />
-      {/* Redo renders only when there IS something to redo — dead chrome otherwise. */}
-      {game.canRedo() && (
-        <HistoryButton testid="redo" label="↷ Redo" hint="Redo (Ctrl-Shift-Z / Ctrl-Y)" enabled onClick={() => game.redo()} />
-      )}
-    </>
-  );
-}

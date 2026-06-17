@@ -22,7 +22,12 @@ const SHELL_STYLE: CSSProperties = {
   gridTemplateRows: "44px 1fr 92px",
   gridTemplateColumns: "auto 1fr auto",
   pointerEvents: "none",
-  zIndex: 6, // above #map's deck overlay (z-below), the floating chrome still uses its own higher z
+  // The shell forms a stacking context (position:fixed). It sits ABOVE the legacy edge panels that are
+  // still position:fixed siblings at z:9 (LineList / EditorPanel / ServiceReport) so the new rails are
+  // CLICKABLE over them during the transition (those panels migrate into the shell's regions in stages
+  // 6-7). Genuinely-modal overlays (Settings z:11, Toast z:20, dashboard/context-menu, …) are rendered
+  // as shell SIBLINGS at higher z, so they still float above the shell.
+  zIndex: 10,
 };
 
 /** Top strip — spans all three columns (row 1). Resources (L) · alerts (C) · time (R). */
