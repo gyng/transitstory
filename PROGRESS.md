@@ -3042,8 +3042,23 @@ Built green-at-every-commit, one reusable block-reservation primitive (only the 
   replay-determinism, K=1 runtime no-op). **Deliberate behaviour-neutral DOUBLE golden re-pin** — the
   appended `platform_count` byte (= 1 everywhere, no fixture issues BuildPlatforms) shifts both:
   GOLDEN_TRANSIT `0xd753…9163 → 0x2f16_02bb_65d4_68ca`, GOLDEN_ARCADIA `0x8626…852e → 0xddb2_bee9_22ac_67fc`
-  (same class as the prior fixed-width-field re-pins). The berth BEHAVIOUR (parallel dwell + the follow-clamp
-  relaxation + never-freeze liveness) is L2b; render lateral-offset L2c; UI L2d. Blueprint via Workflow.
+  (same class as the prior fixed-width-field re-pins). Blueprint via Workflow (4 readers → synth).
+- **L2b — berth occupancy + the follow-clamp relaxation (`9aadd49`, the jam fix).** Per-tick berth occupancy
+  (derived, NEVER hashed — the proven P2/P4 occ primitive, keyed `(station,berth)` line-independently): each
+  dwelling consist claims a berth. Phase A.3: when a follower's next stop has a FREE berth AND the train it's
+  clamped behind is dwelling there, restore its P1-UNCLAMPED advance (still braked to halt at the stop, never
+  overruns) + claim a berth — it pulls up to the platform instead of idling a block-gap back. The HARD track
+  mutexes (Phase B) still run after, so it can't violate track occupancy. **INERT at K=1** (free==0 ⇒ never
+  fires) ⇒ both goldens UNCHANGED from L2a. RED-first `platforms_never_freeze` liveness test (a deterministic
+  berth deadlock replays green — the only net) + relaxation-fires/berth-exclusion/replay tests.
+- **L2c — lateral render offset (`bf23372`).** A berthed consist (loco + every car) draws displaced perp to
+  the local track tangent (un-flipped, so berths stay one side regardless of direction), cell-derived spacing.
+  Render-only ⇒ goldens untouched.
+- **L2d — station platform panel (`bb9d49d`).** Select a bare station → a right panel Platforms −/+ stepper
+  (1–4) emits BuildPlatforms; StationView.platformCount read back. Verified in Playwright (1→2→3→2 in lockstep).
+- **Owner-flagged for L4 follow-up:** at metro dwell (700 ms) a follower PULLS UP but rarely fully
+  overlap-dwells (catch-up > dwell window); full parallel loading + a follower OVERTAKING into a free berth
+  needs L4 routing. Also: the fantasy line is supply-gated, ramping to ~8 trains — bunching IS reachable.
 
 ## Known gaps / deferred
 
