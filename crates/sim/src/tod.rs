@@ -107,3 +107,22 @@ pub fn period_label(hour: f64) -> &'static str {
         "Evening"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin the #daynight legion gate boundary: legions march in [06:00, 20:00), camp otherwise. Pure
+    /// integer ⇒ the regression guard for the hashed `army_travel_step` WALKING gate. (The full
+    /// spawn→march→camp→upkeep→conquer loop is integration-tested in tests/balance.rs.)
+    #[test]
+    fn daylight_is_06_to_20_integer_exact() {
+        assert_eq!(hour_int(0), 6, "a fresh run opens at 06:00 (START_HOUR)");
+        assert!(is_daylight(0), "06:00 — dawn, the march begins");
+        assert!(is_daylight(13 * HOUR_MS), "19:00 — last daylight hour, still marching");
+        assert!(!is_daylight(14 * HOUR_MS), "20:00 — dusk, make camp");
+        assert!(!is_daylight(23 * HOUR_MS), "05:00 — still dark");
+        assert!(is_daylight(24 * HOUR_MS), "06:00 the next day — daylight again (24h wrap)");
+        assert_eq!(hour_int(18 * HOUR_MS), 0, "6 + 18 = 24 wraps to 00:00");
+    }
+}
