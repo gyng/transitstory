@@ -3305,7 +3305,16 @@ Then a stats/motion map (`map-stats-and-motion` workflow, 3 readers) drove:
   cumulative samples already recorded); a STATION ledger (busiest + most-starved, by name); +3 trend
   sparklines (avg wait/load/opex). All pure outer-ring. Verified on Tokyo (88 riders): the flow curve + named
   station bars render.
-- **Better peeps (`<this>`).** `render_buf::peep_tint` gives each peep a stable seed-derived ±brightness +
+- **Better peeps (`f6e8534`).** `render_buf::peep_tint` gives each peep a stable seed-derived ±brightness +
   warm/cool nudge so a crowd reads as INDIVIDUALS, not a uniform fizz (riders keep their line hue, waiters
   stay greyish). Render-only (`fill_peeps` excluded from `Canonical`) → determinism gate byte-identical
-  (position fingerprints pinned); needs the wasm rebuilt.
+  (position fingerprints pinned); needs the wasm rebuilt. Verified: 33/40 peeps distinctly coloured.
+- **True per-line P&L (`c5d4760`).** The one stats item that needed a new sim READOUT: a read-only
+  `LineStat.opex_per_day` = the global opex drain bucketed per line (its trains×per-train + track-km×per-km).
+  Threaded stats.rs → world.rs → serde camelCase → types.ts → lineEconomics → dashboard in one commit. The
+  Line P&L now shows each line's "−$X/d" RUNNING cost beside its lifetime net, and the ledger the network
+  "running $Y/day" — a true operating P&L (is this line worth RUNNING?), not just build payback. Clean seam
+  (no Command, no tick-order change); StatsSnapshot un-hashed → determinism byte-identical. Needs `pnpm build:wasm`.
+
+**Remaining mapped (not built, lower value):** supply-flow pips marching along served lines; resource-extraction
+shimmer; night-window flicker on settlements (in-world polish). All outer-ring.
