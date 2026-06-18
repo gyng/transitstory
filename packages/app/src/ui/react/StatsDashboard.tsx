@@ -6,7 +6,7 @@
 import type { CSSProperties } from "react";
 import { useGame, useStats } from "./GameContext";
 import { useStatsHistory } from "./statsHistory";
-import { ChartCard, BarList } from "./Charts";
+import { ChartCard, BarList, DualSparkline } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
 import { SIM_MS_PER_CLOCK_MIN, hex, fmtMoney } from "./shared";
 
@@ -96,6 +96,31 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
     .sort((a, b) => b.p.net - a.p.net);
   const topPnl = pnl.slice(0, 6);
 
+  // Financial FLOW: differentiate the cumulative totals → per-sample income vs OPERATING expense (opex;
+  // capital is the one-time ledger step, excluded from the burn story like cashTrend). The "am I earning
+  // faster than I spend?" line the static one-row ledger can't show.
+  const income: number[] = [];
+  const opexFlow: number[] = [];
+  for (let i = 1; i < history.length; i++) {
+    income.push(Math.max(0, history[i].fareRevenue - history[i - 1].fareRevenue));
+    opexFlow.push(Math.max(0, history[i].opexSpent - history[i - 1].opexSpent));
+  }
+
+  // Station ledger: the busiest platforms + the most-STARVED (waiting+denied+abandoned) — names the WHERE
+  // of the pressure ("left-behind is informative pressure", the money-free difficulty source).
+  const stationLabel = (id: number) => game.stationName(id) || `Station ${id + 1}`;
+  const busiest = [...s.perStation]
+    .filter((p) => p.boardings > 0)
+    .sort((a, b) => b.boardings - a.boardings)
+    .slice(0, 6)
+    .map((p) => ({ key: p.stationId, label: stationLabel(p.stationId), value: p.boardings, color: "#0072b2" }));
+  const starved = [...s.perStation]
+    .map((p) => ({ p, pain: p.waiting + p.denied + p.abandoned }))
+    .filter((x) => x.pain > 0)
+    .sort((a, b) => b.pain - a.pain)
+    .slice(0, 6)
+    .map(({ p, pain }) => ({ key: p.stationId, label: stationLabel(p.stationId), value: pain, color: "#d62828" }));
+
   return (
     <>
       <div
@@ -157,6 +182,18 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
               </div>
             </div>
 
+            {/* Cash FLOW over time — income (fares) vs operating expense (opex) per sim-minute. The
+                "earning faster than I spend?" line the static one-row ledger above can't tell. */}
+            <div style={{ ...SECTION_TITLE, marginTop: 12 }}>Cash flow</div>
+            <div data-testid="dashboard-cashflow" style={{ background: "#14171c", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
+              <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 4 }}>
+                <span style={{ color: "#009e73" }}>● income</span>
+                <span style={{ color: "#e69f00" }}>● opex</span>
+                <span style={{ color: "var(--ot-con-ink-dim)", marginLeft: "auto" }}>per sim-min</span>
+              </div>
+              <DualSparkline a={{ values: income, color: "#009e73" }} b={{ values: opexFlow, color: "#e69f00" }} width={232} height={56} />
+            </div>
+
             <div style={{ ...SECTION_TITLE, marginTop: 12 }}>Line P&amp;L</div>
             <div style={{ background: "#14171c", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
               {topPnl.length === 0 ? (
@@ -186,6 +223,31 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           </div>
         </div>
 
+        {/* Station ledger — where the riders are, and where the pain is. */}
+        <div style={{ ...SECTION_TITLE, marginTop: 14 }}>Stations</div>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ flex: "1 1 240px", minWidth: 240 }}>
+            <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginBottom: 5 }}>Busiest platforms (boardings)</div>
+            <div data-testid="dashboard-busiest" style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+              {busiest.length === 0 ? (
+                <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12 }}>No boardings yet.</div>
+              ) : (
+                <BarList items={busiest} format={fmtCount} />
+              )}
+            </div>
+          </div>
+          <div style={{ flex: "1 1 240px", minWidth: 240 }}>
+            <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginBottom: 5 }}>Most starved (waiting + left behind)</div>
+            <div data-testid="dashboard-starved" style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+              {starved.length === 0 ? (
+                <div style={{ color: "var(--ot-gauge-good,#009e73)", fontSize: 12 }}>No starvation — everyone's moving.</div>
+              ) : (
+                <BarList items={starved} format={fmtCount} />
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Trend charts over sim time */}
         <div style={{ ...SECTION_TITLE, marginTop: 14 }}>Trends</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
@@ -195,6 +257,9 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           <ChartCard testid="chart-waiting" title="Waiting now" values={history.map((h) => h.waiting)} color="#e69f00" format={fmtCount} />
           <ChartCard testid="chart-leftbehind" title="Gave up (cumulative)" values={history.map((h) => h.abandoned)} color="#d62828" format={fmtCount} />
           <ChartCard testid="chart-fares" title="Fares collected ($)" values={history.map((h) => h.fareRevenue)} color="#009e73" format={fmtMoney} />
+          <ChartCard testid="chart-avgwait" title="Avg wait" values={history.map((h) => h.avgWaitMs)} color="#e69f00" format={fmtMins} />
+          <ChartCard testid="chart-load" title="Mean load" values={history.map((h) => h.avgLoad * 100)} color="#0072b2" format={(v) => `${Math.round(v)}%`} />
+          <ChartCard testid="chart-opex" title="Opex (upkeep $)" values={history.map((h) => h.opexSpent)} color="#d62828" format={fmtMoney} />
         </div>
         <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginTop: 8 }}>
           Trends sample once per sim-minute; the window slides as you play. P&amp;L = fares − build cost; opex is a network-wide drain shown in the ledger.

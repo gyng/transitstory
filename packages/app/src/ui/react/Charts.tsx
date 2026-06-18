@@ -52,6 +52,49 @@ export function Sparkline({
   );
 }
 
+/** Two series overlaid on ONE shared axis (e.g. income vs operating expense per period) — a small
+ *  multi-line chart for the financial flow story. A dashed zero baseline when the data straddles 0. */
+export function DualSparkline({
+  a,
+  b,
+  width = 232,
+  height = 58,
+}: {
+  a: { values: number[]; color: string };
+  b: { values: number[]; color: string };
+  width?: number;
+  height?: number;
+}) {
+  const pad = 4;
+  if (a.values.length < 2 && b.values.length < 2) {
+    return (
+      <svg width={width} height={height} style={{ display: "block" }}>
+        <text x={width / 2} y={height / 2} textAnchor="middle" fill="#8a94a3" fontSize="11">
+          gathering data…
+        </text>
+      </svg>
+    );
+  }
+  const all = [...a.values, ...b.values, 0];
+  let min = Math.min(...all);
+  let max = Math.max(...all);
+  if (min === max) max = min + 1;
+  const poly = (vals: number[]) => {
+    const xAt = (i: number) => pad + (i / Math.max(1, vals.length - 1)) * (width - 2 * pad);
+    const yAt = (v: number) => height - pad - ((v - min) / (max - min)) * (height - 2 * pad);
+    return vals.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
+  };
+  const y0 = height - pad - ((0 - min) / (max - min)) * (height - 2 * pad);
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      {min < 0 && max > 0 && <line x1={pad} x2={width - pad} y1={y0} y2={y0} stroke="#c9ced4" strokeDasharray="2 3" />}
+      <polyline points={poly(a.values)} fill={`${a.color}1c`} stroke="none" />
+      <polyline points={poly(a.values)} fill="none" stroke={a.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={poly(b.values)} fill="none" stroke={b.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** A titled chart card: title + current value on top, sparkline below. */
 export function ChartCard({
   title,
