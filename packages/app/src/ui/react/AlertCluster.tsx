@@ -157,9 +157,13 @@ const CLUSTER_STYLE: CSSProperties = {
   justifyContent: "center",
 };
 
+/** The GLOBAL fantasy alerts have no anchor station, but are still click-useful (#18): they fly to the
+ *  threat — decadence/realm to the capital, raiders to the nearest marauder. */
+const GLOBAL_FLY = new Set(["decadence-breach", "realm-lost", "raiders"]);
+
 function Ping({ a, onClick }: { a: Alert; onClick: () => void }) {
-  // notice always remains clickable (to dismiss the toast); other pings only fly when anchored.
-  const clickable = a.kind === "notice" || a.station !== null;
+  // notice dismisses the toast; anchored pings fly to their station; global fantasy pings fly to the threat.
+  const clickable = a.kind === "notice" || a.station !== null || GLOBAL_FLY.has(a.kind);
   // Preserve the `notice` testid string exactly (e2e contract: the floating toast moved here intact);
   // every other ping uses the stable `alert-<kind>` id.
   const testid = a.kind === "notice" ? "notice" : `alert-${a.kind}`;
@@ -205,9 +209,12 @@ export function AlertCluster() {
           key={a.kind}
           a={a}
           onClick={() => {
-            // notice pings dismiss the toast; others fly to their anchor + arm the remedy tool.
+            // notice pings dismiss the toast; anchored pings fly to their station + arm the remedy tool;
+            // global fantasy pings (#18) fly to the threat (raiders → nearest marauder, else the capital).
             if (a.kind === "notice") game.dismissNotice();
             else if (a.station !== null) game.flyToAlert(a.station, a.tool);
+            else if (a.kind === "raiders") game.flyToThreat();
+            else if (GLOBAL_FLY.has(a.kind)) game.flyToCapital();
           }}
         />
       ))}

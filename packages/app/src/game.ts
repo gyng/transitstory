@@ -1312,6 +1312,34 @@ export class Game {
     else this.map.easeTo({ center: ll, zoom: z, duration: 700, essential: true });
   }
 
+  /** Ease the camera to a bare lng/lat (no station to pin) — the position-only fly used by the GLOBAL
+   *  alerts (#18), which have no anchor station. Reduced-motion jumps. */
+  flyTo(lng: number, lat: number): void {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const z = Math.max(this.map.getZoom(), 12);
+    const ll: [number, number] = [lng, lat];
+    if (reduce) this.map.jumpTo({ center: ll, zoom: z });
+    else this.map.easeTo({ center: ll, zoom: z, duration: 700, essential: true });
+  }
+
+  /** #18 fly to the capital — the decadence/realm alerts' fly-to (the threatened seat). */
+  flyToCapital(): void {
+    const cap = this.towns.find((t) => t.kind === "capital");
+    if (cap) this.flyTo(cap.lng, cap.lat);
+  }
+
+  /** #18 fly to the nearest raider — the "raiders" alert's fly-to (the loose threat); falls back to the
+   *  capital if none are on the map this frame. */
+  flyToThreat(): void {
+    const xy = this.bridge.raiderPositions();
+    if (xy.length >= 2) {
+      const [lng, lat] = metersToLngLat([xy[0], xy[1]]);
+      this.flyTo(lng, lat);
+    } else {
+      this.flyToCapital();
+    }
+  }
+
   cancelDraft(): void {
     this.draft = [];
     this.draftWaypoints = [];
