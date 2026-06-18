@@ -122,6 +122,9 @@ pub struct StationStat {
     /// Remaining siege resistance — a town's FRONTIER garrison (S11), grinding down under siege; 0 once
     /// captured (or for a non-town / before the war ticks). The HUD shows it for sink (town) stations.
     pub town_resistance: f64,
+    /// #23 TG1b — the town's SIZE (0..MAX_SIZE), grown by cumulative supply delivered. A render readout (NOT
+    /// hashed; the FE sprawl reads it to grow the building cluster as the town prospers). 0 for non-town/transit.
+    pub town_size: f64,
     /// FULL frontier garrison (#war) — the town's siege HP at full strength (base + depth bonus), so the HUD
     /// can draw a siege-PROGRESS ring (1 − `town_resistance`/`garrison_max` = how ground down a besieged town
     /// is). 0 for a non-town / the capital. A render readout (NOT hashed).

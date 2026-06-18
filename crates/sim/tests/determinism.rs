@@ -111,7 +111,10 @@ fn replay_equality() {
 //   0x64cc_fd5c_3bb1_a836 — #13 P2 rival builder: `Canonical` gains the rival track-build cadence
 //                           accumulator, appended LAST. 0 with no rival (transit) ⇒ an appended-zero shift;
 //                           behaviour byte-identical. Intentional re-pin.
-const GOLDEN_TRANSIT_HASH: u64 = 0x64cc_fd5c_3bb1_a836;
+//   0xf9fa_b9b9_6ee0_d3c2 — #23 TG1b town growth: `Canonical` gains per-town `town_size`, appended LAST.
+//                           EMPTY for transit (produce never runs ⇒ town_size stays empty) ⇒ a MECHANICAL
+//                           append-empty-slice shift; behaviour byte-identical. Intentional re-pin, reviewed.
+const GOLDEN_TRANSIT_HASH: u64 = 0xf9fa_b9b9_6ee0_d3c2;
 
 #[test]
 fn golden_transit_hash_pinned() {

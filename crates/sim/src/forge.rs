@@ -55,6 +55,12 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
     if world.forge_accum.len() != n {
         world.forge_accum.resize(n, 0);
     }
+    // #23 TG1b — size the per-town growth state alongside (index = StationId). Empty for transit (produce is
+    // never called there) ⇒ town_size stays empty ⇒ append-empty-slice ⇒ byte-identical hash after the re-pin.
+    if world.town_size.len() != n {
+        world.town_size.resize(n, 0);
+        world.town_growth_accum.resize(n, 0);
+    }
     let dt = dt_ms.max(0);
     // S11 production tech: PRODUCTION_SURGE ⇒ ×3, else FORGE_MASTERY ⇒ ×2, else ×1 (the shipped accrual,
     // byte-identical when no tech). Read once (copy out of the borrow).
@@ -170,6 +176,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
                 world.tribute = world.tribute.saturating_add(limit); // GOLD — once per consume, unchanged
                 world.mana = world.mana.saturating_add(mana);
                 world.manpower = world.manpower.saturating_add(manpower);
+                world.grow_town(s, limit); // #23 TG1b — a fed town prospers (the scarcer-input throughput)
             }
         } else {
             // Single/empty recipe ⇒ consume-all (S7e-1). Commodity-0 worlds take this path ⇒ byte-identical
@@ -193,6 +200,7 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
                 world.tribute = world.tribute.saturating_add(got); // GOLD, unchanged
                 world.mana = world.mana.saturating_add(mana);
                 world.manpower = world.manpower.saturating_add(manpower);
+                world.grow_town(s, got); // #23 TG1b — a fed town prospers (the consumed throughput)
             }
         }
     }

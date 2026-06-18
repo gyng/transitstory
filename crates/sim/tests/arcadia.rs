@@ -272,7 +272,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // accumulator, appended LAST; EMPTY/0 (no rival hold in the fixture) ⇒ appended-empty shift. Prior: 0xdd13_8709_70b0_9673.
 // #13 P2 rival-builder re-pin (0xb53a_5fa8_a644_0a61): Canonical gains the rival track-build cadence
 // accumulator, appended LAST; 0 (no rival in the fixture) ⇒ appended-zero shift. Prior: 0x29a5_3e3e_c4f1_719b.
-const GOLDEN_ARCADIA_HASH: u64 = 0xb53a_5fa8_a644_0a61;
+// #23 TG1b town-growth re-pin (0x9106_e32d_7d16_2a21): Canonical gains per-town `town_size`, appended LAST.
+// GENUINE value change — the baked towns grow with supply delivered, so this fixture's town_size is non-zero.
+// Intentional re-pin, reviewed. Motion-neutral (ARCADIA_POSITION_FINGERPRINT unchanged). Prior: 0xb53a_5fa8_a644_0a61.
+const GOLDEN_ARCADIA_HASH: u64 = 0x9106_e32d_7d16_2a21;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

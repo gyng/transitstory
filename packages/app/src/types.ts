@@ -94,6 +94,9 @@ export interface PerStation {
   /** Remaining siege resistance — a town's frontier garrison (S11), grinding down under siege; 0 once
    *  captured or for a non-town. The HUD shows it for sink (town) stations in arcadia. */
   townResistance: number;
+  /** #23 TG1b — the town's SIZE (0..5), grown by cumulative supply delivered. A render readout (NOT hashed);
+   *  the 3D town sprawl reads it to grow the building cluster as the town prospers. 0 for non-town / transit. */
+  townSize?: number;
   /** Full frontier garrison (#war) — the town's siege HP at full strength, so the HUD can draw a
    *  siege-PROGRESS ring (1 − townResistance/garrisonMax). 0 for a non-town / the capital. */
   garrisonMax?: number;

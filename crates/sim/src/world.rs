@@ -77,6 +77,11 @@ const HEIGHT_ROUTER_W: i64 = 20; // valley-preferring router tie-break per band 
 const RAIL_REF_SPEED_MM_S: i64 = 660_000; // reference rail speed the grade cap scales down from
 const GRADE_PCT_PER_BAND: i64 = 3; // -3% speed per band climbed — genuinely MINOR (mountain -9%), tuned so a
 const GRADE_FLOOR_PCT: i64 = 88; // line forced over a ridge still wins the decadence race (balance.rs gate)
+// #23 TG1b town-growth knobs (docs/town-growth.md): a town grows one SIZE per UNITS_PER_SIZE of supply
+// DELIVERED, capped at MAX_SIZE. Slow enough to be earned over a playthrough (~size 1 by the first-conquest
+// window, ~5 only over the full horizon), never instant. CityData can override UNITS_PER_SIZE (0 ⇒ default).
+const MAX_SIZE: i64 = 5; // 0 = village … 5 = metropolis (maps to the FE sprawl ring count)
+const UNITS_PER_SIZE: i64 = 1_200; // delivered units per size step
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -204,6 +209,15 @@ pub struct World {
     pub town_value: Vec<i64>,
     /// Count of towns captured this game (fantasy S8b) — the conquest score. **Hashed.** 0 for transit.
     pub towns_captured: i64,
+    /// #23 TG1b — per-town SIZE (0..MAX_SIZE), grown by cumulative supply DELIVERED (the player feeds it via
+    /// rail → it prospers and visibly sprawls). **Hashed** (Canonical, appended LAST). Lazily sized to the
+    /// node count (empty for transit ⇒ byte-identical append-empty-slice). FREEZES on capture (town_value==0).
+    /// Drives the garrison + the one-time conquest bounty (TG2) + the FE sprawl. Index = StationId.
+    pub town_size: Vec<i64>,
+    /// Sub-unit remainder for `town_size` growth (the UNITS_PER_SIZE accumulator) — transient/derived like
+    /// `decadence_accum`/`forge_accum` (regenerated bit-identically on replay from the tick sequence), so
+    /// NOT folded into `Canonical`; only the whole-unit `town_size` is authoritative state.
+    pub town_growth_accum: Vec<i64>,
     /// Per-station BARRACKS flag (fantasy S8): legions launch only from a barracks on a built route.
     /// **Hashed** (set by `PlaceBarracks`, a pure function of the command log). Empty for transit.
     pub is_barracks: Vec<bool>,
@@ -565,6 +579,9 @@ struct Canonical<'a> {
     rival_muster_accum_ms: i64,
     /// #13 P2 rival track-build cadence accumulator. Appended LAST — 0 without a rival ⇒ appended-zero shift.
     rival_build_accum_ms: i64,
+    /// #23 TG1b per-town SIZE. Appended LAST — EMPTY for transit/GravityDemand ⇒ append-empty-slice re-pin
+    /// once, then byte-identical. (`town_growth_accum` is EXCLUDED — transient, like `decadence_accum`.)
+    town_size: &'a [i64],
 }
 
 /// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
@@ -692,6 +709,8 @@ impl World {
             line_disabled_until_ms: Vec::new(),
             town_value: Vec::new(),
             towns_captured: 0,
+            town_size: Vec::new(),
+            town_growth_accum: Vec::new(),
             is_barracks: Vec::new(),
             bounty: Vec::new(),
             decadence: initial_decadence,
@@ -1244,6 +1263,25 @@ impl World {
         }
     }
 
+    /// #23 TG1b — accrue `delivered` supply units into a town's growth, stepping `town_size` up one per
+    /// UNITS_PER_SIZE (capped at MAX_SIZE). FREEZES on capture (town_value==0 ⇒ a captured town never grows,
+    /// so its size can't shift a banked input under your feet). Integer + saturating + index-ordered ⇒
+    /// deterministic; called from the forge consume so growth tracks SUPPLY DELIVERED, the player's own act.
+    pub(crate) fn grow_town(&mut self, s: usize, delivered: i64) {
+        if delivered <= 0 || self.town_value.get(s) == Some(&0) {
+            return; // nothing delivered, or captured (FREEZE)
+        }
+        if s >= self.town_size.len() {
+            return; // not sized yet (defensive — produce() sizes both before the consume loop)
+        }
+        self.town_growth_accum[s] = self.town_growth_accum[s].saturating_add(delivered);
+        let grown = self.town_growth_accum[s] / UNITS_PER_SIZE;
+        if grown > 0 {
+            self.town_growth_accum[s] -= grown * UNITS_PER_SIZE;
+            self.town_size[s] = (self.town_size[s] + grown).min(MAX_SIZE);
+        }
+    }
+
     /// The GOLD price of a capital delta under the fantasy build economy: `delta / build_gold_divisor`,
     /// or 0 when off (not arcadia, divisor 0, or capital didn't rise). The shared transit cost formula
     /// ($-scale, now terrain-aware) divided down to the small-integer gold scale.
@@ -1397,6 +1435,7 @@ impl World {
                 denied: *self.denied_at.get(s).unwrap_or(&0) as f64,
                 abandoned: *self.abandoned_at.get(s).unwrap_or(&0) as f64,
                 town_resistance: *self.town_value.get(s).unwrap_or(&0) as f64,
+                town_size: *self.town_size.get(s).unwrap_or(&0) as f64, // #23 TG1b — the FE sprawl reads this to grow
                 // #war legibility: the FULL garrison (for the siege-progress ring) + the barracks flag (for
                 // the ⚔ spawn-node badge). garrison_resistance is the depth-scaled full HP; only meaningful
                 // for towns (a sink with resistance), 0 elsewhere; both are pure render readouts.
@@ -2303,6 +2342,7 @@ impl World {
             rival_host_ty_mm: &self.rival_hosts.ty_mm,
             rival_muster_accum_ms: self.rival_muster_accum_ms,
             rival_build_accum_ms: self.rival_build_accum_ms,
+            town_size: &self.town_size, // #23 TG1b — appended LAST (town_growth_accum excluded, transient)
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)
