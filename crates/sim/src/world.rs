@@ -71,6 +71,12 @@ const GOLD_UPKEEP_DIVISOR: i64 = 100;
 // +0 / ×100 ⇒ exact integer identity ⇒ golden-neutral (no re-pin) until a baked world climbs.
 const CLIMB_PCT_PER_BAND: i64 = 12; // +12% of a segment's base capital per band CLIMBED (ascent spans only)
 const HEIGHT_ROUTER_W: i64 = 20; // valley-preferring router tie-break per band (atop the biome cost; never reorders it)
+// #15 Effect B — the uphill SPEED cap: a climbing span's speed_cap is scaled DOWN from this reference, -6% per
+// band climbed, never below the floor (keeps every span well above street speed ⇒ no dispatcher bunching).
+// climb == 0 ⇒ the cap is untouched ⇒ flat worlds byte-identical (golden-neutral until a baked world climbs).
+const RAIL_REF_SPEED_MM_S: i64 = 660_000; // reference rail speed the grade cap scales down from
+const GRADE_PCT_PER_BAND: i64 = 6; // -6% speed per band climbed
+const GRADE_FLOOR_PCT: i64 = 82; // never cap below 82% of the reference
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -785,14 +791,18 @@ impl World {
 
     /// Buildability class at a local mm point (Open if outside the grid, or if there is no grid at all).
     pub fn classify(&self, x_mm: i64, y_mm: i64) -> u8 {
-        if self.build_cell_mm == 0 {
+        Self::classify_at(&self.build_lookup, self.build_cell_mm, x_mm, y_mm)
+    }
+
+    /// The same lookup, PARAMETERISED on the grid — so a caller already holding `&mut world.lines` (the
+    /// bound-path bind in dispatch) can classify through a DISJOINT `&world.build_lookup` borrow rather than
+    /// re-borrowing all of `self`. `classify` delegates here.
+    fn classify_at(build_lookup: &rustc_hash::FxHashMap<(i32, i32), u8>, build_cell_mm: i64, x_mm: i64, y_mm: i64) -> u8 {
+        if build_cell_mm == 0 {
             return crate::city::class::OPEN; // no buildability grid (transit / synthetic worlds) ⇒ all open
         }
-        let key = (
-            x_mm.div_euclid(self.build_cell_mm) as i32,
-            y_mm.div_euclid(self.build_cell_mm) as i32,
-        );
-        self.build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN)
+        let key = (x_mm.div_euclid(build_cell_mm) as i32, y_mm.div_euclid(build_cell_mm) as i32);
+        build_lookup.get(&key).copied().unwrap_or(crate::city::class::OPEN)
     }
 
     /// Per-segment (disruption, surface-water flag, TRACK capital) for a line's current
@@ -1614,9 +1624,28 @@ impl World {
             // The grid one-bend router's terrain cost (single source — same fn the raiders route with).
             let cost = |cell: crate::hexgrid::Axial| -> i64 { self.terrain_cost(cell) };
             p.rebuild(&pts, &span_points, gcm, &cost);
+            Self::apply_grade_caps(&self.build_lookup, self.build_cell_mm, &mut p);
             new_paths.push(p);
         }
         self.lines[idx].paths = new_paths;
+    }
+
+    /// #15 Effect B — uphill SPEED cap, applied POST-HOC to a freshly (re)built path. PARAMETERISED on the
+    /// grid (no `&self`) so it serves BOTH callers: rebuild_line_geometry (continuous lines, self in scope)
+    /// AND the bound-path bind in dispatch (grid lines — the bind concatenates segment polylines and
+    /// recomputes the tables, wiping any earlier cap, so it is re-applied there via a disjoint borrow). Each
+    /// vertex CLIMBED into from a lower band has its speed_cap scaled down (−GRADE_PCT_PER_BAND %/band, floored
+    /// at GRADE_FLOOR_PCT %), via `.min` (only ever LOWERS). climb == 0 ⇒ untouched ⇒ flat byte-identical.
+    pub(crate) fn apply_grade_caps(build_lookup: &rustc_hash::FxHashMap<(i32, i32), u8>, build_cell_mm: i64, p: &mut crate::line::Path) {
+        for i in 1..p.polyline.len() {
+            let prev = Self::height_band(Self::classify_at(build_lookup, build_cell_mm, p.polyline[i - 1].x_mm, p.polyline[i - 1].y_mm));
+            let climb = (Self::height_band(Self::classify_at(build_lookup, build_cell_mm, p.polyline[i].x_mm, p.polyline[i].y_mm)) - prev).max(0);
+            if climb > 0 {
+                let drop = (GRADE_PCT_PER_BAND * climb).min(100 - GRADE_FLOOR_PCT);
+                let grade_cap = RAIL_REF_SPEED_MM_S * (100 - drop) / 100;
+                p.speed_cap_mm_s[i] = p.speed_cap_mm_s[i].min(grade_cap);
+            }
+        }
     }
 
     /// TTD L3 C1 — rebuild the AUTHORITATIVE, HASHED segment slab from the current lines, in the apply

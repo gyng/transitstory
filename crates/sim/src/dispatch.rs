@@ -589,6 +589,11 @@ pub(crate) fn bind_path_segments(world: &mut World) {
     // polyline. A path bound to NO segments (continuous / non-grid) keeps its own `rebuild` geometry.
     let seg_polys: Vec<Vec<crate::geo_local::PointMm>> =
         world.track_graph.segments.iter().map(|s| s.polyline.clone()).collect();
+    // #15 Effect B for BOUND (grid) lines: the recompute below re-derives speed_cap from the concatenated
+    // polyline, wiping the uphill grade caps rebuild_line_geometry applied — so re-apply them here. Captured
+    // as a DISJOINT `&world.build_lookup` borrow (world.lines is borrowed mutably in the loop) ⇒ no &self.
+    let build_lookup = &world.build_lookup;
+    let build_cell_mm = world.build_cell_mm;
     for line in world.lines.iter_mut() {
         if line.removed {
             continue;
@@ -616,6 +621,7 @@ pub(crate) fn bind_path_segments(world: &mut World) {
             if ok && poly.len() == path.polyline.len() {
                 path.polyline = poly;
                 path.recompute_tables_from_polyline();
+                crate::world::World::apply_grade_caps(build_lookup, build_cell_mm, path); // #15 re-apply uphill caps
             }
         }
     }

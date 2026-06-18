@@ -10,7 +10,7 @@ use sim::*;
 /// Capital cost of a straight line laid across a corridor whose cells (q = 0..bands.len() at r ∈ {-1,0,1}) are
 /// tagged by `bands` (empty ⇒ no grid ⇒ OPEN/band 0). Per-cell biomes ⇒ the straight line CLIMBS between
 /// bands. "transit" ruleset so the polyline runs straight through the tagged cells (mirrors build_economy.rs).
-fn corridor_capital(bands: &[u8]) -> i64 {
+fn corridor_world(bands: &[u8]) -> World {
     let mut cells = Vec::new();
     for (q, &c) in bands.iter().enumerate() {
         for r in -1..=1i64 {
@@ -32,7 +32,16 @@ fn corridor_capital(bands: &[u8]) -> i64 {
     w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
     w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
-    w.lines[0].capital_cost
+    w
+}
+
+fn corridor_capital(bands: &[u8]) -> i64 {
+    corridor_world(bands).lines[0].capital_cost
+}
+
+/// The SLOWEST per-vertex speed cap on the line — the climb's grade cap if any span climbs (Effect B).
+fn corridor_min_speed_cap(bands: &[u8]) -> i64 {
+    corridor_world(bands).lines[0].paths[0].speed_cap_mm_s.iter().copied().min().unwrap_or(i64::MAX)
 }
 
 #[test]
@@ -57,4 +66,17 @@ fn climbing_a_ridge_never_costs_less_than_the_plain() {
         biome::PLAIN, biome::PLAIN, biome::HILL, biome::MOUNTAIN, biome::HILL, biome::PLAIN,
     ]);
     assert!(ridge > plain, "crossing a ridge must cost MORE than the flat route (ridge {ridge} vs plain {plain})");
+}
+
+#[test]
+fn climbing_caps_speed_below_the_flat_route() {
+    use sim::city::biome;
+    // Effect B: a line climbing PLAIN→HILL→MOUNTAIN has its ascent spans speed-capped, so its slowest span is
+    // slower than a flat PLAIN line's. The route-for-speed lever: a valley line runs faster than one over the
+    // ridge. (Flat stays uncapped ⇒ golden-neutral.)
+    let flat = corridor_min_speed_cap(&[biome::PLAIN; 6]);
+    let climb = corridor_min_speed_cap(&[
+        biome::PLAIN, biome::PLAIN, biome::HILL, biome::MOUNTAIN, biome::MOUNTAIN, biome::MOUNTAIN,
+    ]);
+    assert!(climb < flat, "climbing into the mountains must cap speed BELOW the flat route (climb {climb} vs flat {flat})");
 }
