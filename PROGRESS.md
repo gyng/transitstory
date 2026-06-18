@@ -3217,3 +3217,44 @@ hardware-WebGL Chrome (RTX 3080) on `?city=tokyo&network=1` (77 lines / 497 stat
 - Deferred (logged): the `vehicle::advance` per-tick scratch-Vec hoist — byte-identical but a churny
   borrow-checker refactor for ~nil player-visible gain on a 200×-real-time path; not worth the risk now.
   LineRow `React.memo` — Fix #1 alone flattened the freeze, so the memo is unneeded until a far larger roster.
+
+### Wave 2 — VISUALS
+
+- **Top bar → one flat solid strip (`84eece5`).** It was three floating graphite console islands
+  (resources · alerts · clock+controls) with gradient faces + heavy bevel elevation. Scoped CSS gives
+  the `[data-region="top"]` strip one opaque `--ot-con-solid` face + a bottom edge, and flattens the
+  per-island `.ot-console` faces inside it; the raised `.ot-key` Build/Run/speed controls keep their
+  tactile look. Pure CSS, every data-testid intact. Verified on Tokyo + Arcadia.
+- **One scene sun-light (`68a6d63`).** The lowpoly meshes (trains/wagons/cargo/legions/trees) carried
+  phong `material` but rode deck's flat camera-relative DEFAULT light. Attach ONE `LightingEffect`
+  (soft ambient + a fixed warm directional sun) to the MapboxOverlay at construction (stable effects
+  identity, never per-frame) — meshes now read with consistent directional form (most visible in
+  arcadia's tilted view: trees/terrain gained lit + shadowed faces). **Shadows** (DirectionalLight
+  `_shadow`, arcadia-only) were TRIED and reverted — severe white shadow-map artifacts in the
+  `interleaved:false` overlay; real shadows need an interleaved-mode rework (large/risky) → deferred
+  as not cost-effective. **SSAO** skipped (no luma 9.3.3 pass; the overlay can't read basemap depth).
+  **ACES** deferred (custom ShaderPass; the muted palette + CB-safe line hues make it marginal).
+
+### Wave 3 — JUICE
+
+- **Distinct audio cues (`accf3b0`).** The synth kit's richest beats reused place()/connect() or were
+  silent (the most under-built juice surface). Added asset-free `milestone()` (a bright rising arpeggio),
+  `day()` (a low page-turn chime), `conquer()` (a weighted swell), wired to the Beats milestone toast /
+  day rollover / the conquest boom (once per beat). Gentle master + existing mute/unlock unchanged.
+- Deferred (logged): milestone confetti burst, crowding tint on packed trains, `prefers-reduced-motion`
+  compliance across the canvas FX + sky (an a11y follow-up) — prioritised the concrete onboarding/cutscene.
+
+### Wave 4 — ONBOARDING + CUTSCENE
+
+- **Isekai prologue cutscene (`bdb9269`).** New `<Cutscene>` mounts as a `pendingStart` phase BETWEEN
+  the menu and `boot()`, gated to the "Against the Dark" campaign + once per browser (localStorage). Three
+  terse beats over a breathing portal void (~7 s), always skippable, reduced-motion aware. Pure #ui chrome
+  (runs before GameProvider). Deep-links call startBoot directly → e2e never sees it. Verified end-to-end.
+- **Guided first-line-with-siding tutorial (`fc43aa9`).** A "Tutorial" checkbox on the fantasy CTA (default
+  ON for newcomers) drives a stepped `TutorialCoach`: ① draw a line (lineCount>0) → ② add a siding — a block
+  signal on a single-track span, the fantasy passing place (placedSignals>0) → ③ run it (running). Each step
+  advances as the player acts on the real controls; '✓ done' then retires + sets a done-flag. Pure #ui chrome,
+  reads snapshots only. Verified: each step advanced on a driven action through the full menu→cutscene→boot flow.
+
+**All four waves: 8 commits, every tier green** (cargo determinism gate byte-identical incl. the binary-search
+swap; app vitest 27/27; prod build clean each wave; live-verified with screenshots on Tokyo + Arcadia).
