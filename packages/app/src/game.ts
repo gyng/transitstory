@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -97,9 +97,9 @@ const DEFAULT_SERVICE_TRAINS = 2;
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "rival-intent", "armies", "legion-names", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "rival-hosts", "rival-host-badges", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "rival-intent", "rival-build-ghost", "armies", "legion-names", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "rival-hosts", "rival-host-badges", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
-  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "legion-names", "rival-intent", "rival-hosts", "rival-host-badges", "ambient-traders"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "legion-names", "rival-intent", "rival-build-ghost", "rival-hosts", "rival-host-badges", "ambient-traders"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
@@ -3079,6 +3079,23 @@ export class Game {
     return arcs.length > 0 ? rivalIntentLayer(arcs, Math.max(0.4, Math.min(1, 7 / arcs.length))) : null;
   }
 
+  /** #13 P2 telegraph — a faint crimson spur from the rival's rail-head toward your capital, ANNOUNCING where
+   *  its track creeps next (the build intent, before it commits — the owner's pillar). Null until the rival
+   *  has laid rail (its crimson line), or once the rail has reached your doorstep. */
+  rivalBuildGhostAt(): Layer | null {
+    const rail = this.bridge.linesView().find((l) => (l.color & 0xffffff) === 0xbe3737 && !l.removed && l.stops.length > 0);
+    if (!rail) return null;
+    const cap = this.towns.find((t) => t.kind === "capital");
+    if (!cap) return null;
+    const sv = this.bridge.stationsView();
+    const head = sv[rail.stops[rail.stops.length - 1]];
+    if (!head || head.removed) return null;
+    const [hlng, hlat] = mmToLngLat([head.xMm, head.yMm]);
+    if (Math.hypot(cap.lng - hlng, cap.lat - hlat) < 0.02) return null; // at the doorstep — no more expansion
+    const f = 0.22; // a short spur toward the capital — the immediate next reach
+    return rivalBuildGhostLayer([hlng, hlat], [hlng + (cap.lng - hlng) * f, hlat + (cap.lat - hlat) * f]);
+  }
+
   /** Spell-flash bursts (fantasy, S11 — the spell arm). `[x_m,y_m,kind,alpha,...]` → lng/lat objects.
    *  Null when nothing's casting (transit always; arcadia until SPELLCRAFT + a cast). */
   spellFlashLayerAt(): Layer | null {
@@ -3123,6 +3140,8 @@ export class Game {
     const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rot's marauders, above legions
     const rIvIntent = this.rivalIntentLayerAt();
     const rivalIntentArcs = rIvIntent ? [rIvIntent] : []; // #13: rival host→captured-town intent (the telegraph)
+    const rGhost = this.rivalBuildGhostAt();
+    const rivalGhost = rGhost ? [rGhost] : []; // #13 P2: the rival's expansion ghost (where its rail creeps next)
     const rivalHost = this.rivalHostLayerAt(); // [crimson dot, ⚔ badge] — the RIVAL's mustered legions
     const flash = this.spellFlashLayerAt();
     const spells = flash ? [flash] : []; // spell bursts on top (the magic reads over everything)
@@ -3180,7 +3199,7 @@ export class Game {
     const nightGlow = this.ruleset === "arcadia" && detail ? nightGlowLayers(this.towns, this.resources, this.nightFactor) : [];
     // Train headlamps: a warm glow under each running train at night, beneath the loco mesh.
     const vehGlow = this.ruleset === "arcadia" && detail ? vehicleNightGlow(vehicles, this.nightFactor) : [];
-    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...rivalIntentArcs, ...armyL, ...raider, ...rivalHost, ...spells, ...peep, ...above];
+    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...rivalGhost, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...rivalIntentArcs, ...armyL, ...raider, ...rivalHost, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

@@ -1698,6 +1698,24 @@ export function rivalIntentLayer(arcs: IntentArc[], alpha = 1): Layer {
   });
 }
 
+/** #13 P2 telegraph — the rival's EXPANSION GHOST: a faint, provisional crimson spur from its rail-head
+ *  toward your capital, showing where its track is creeping NEXT (the build intent, ANNOUNCED — the owner's
+ *  pillar). Low-alpha + thin so it reads as planned-not-laid, distinct from the solid committed rail. */
+export function rivalBuildGhostLayer(from: [number, number], to: [number, number]): Layer {
+  return new PathLayer({
+    id: "rival-build-ghost",
+    data: [{ from, to }],
+    getPath: (d: { from: [number, number]; to: [number, number] }) => [d.from, d.to],
+    getColor: [205, 70, 70, 120], // faint crimson — provisional
+    getWidth: 2.5,
+    widthUnits: "pixels",
+    widthMinPixels: 2,
+    capRounded: true,
+    jointRounded: true,
+    updateTriggers: { getPath: [from, to] },
+  });
+}
+
 /** Entity BADGE glyphs (fantasy #10): a small symbol pinned on each moving unit so legions (⚔) + raider
  *  marauders (☣) read as what they are at a glance, not just coloured dots. `positions` are lng/lat (tiny
  *  counts → a plain array). characterSet seeds the atlas. Trains already carry their load ring; peeps stay
