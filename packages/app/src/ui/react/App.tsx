@@ -27,6 +27,7 @@ import { Settings } from "./Settings";
 import { StatsDashboard } from "./StatsDashboard";
 import { BuildHud } from "./BuildHud";
 import { Menu } from "./Menu";
+import { Cutscene, cutsceneSeen } from "./Cutscene";
 import { StatsBar } from "./StatsBar";
 import { Inspector } from "./Inspector";
 import { Outliner } from "./Outliner";
@@ -195,6 +196,9 @@ export function App() {
   const [world, setWorld] = useState<BootedWorld | null>(null);
   const [booting, setBooting] = useState(false);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
+  // A start awaiting the isekai prologue: set (instead of booting straight) when the fantasy campaign
+  // is chosen and the cutscene hasn't played; the Cutscene's onDone then boots it. Null otherwise.
+  const [pendingStart, setPendingStart] = useState<{ manifest: string; withNet: boolean; scenario: string | null } | null>(null);
   // Dashboard + settings modal open flags live here (App level) so the modals render as shell siblings
   // at #ui-level z, above the grid shell's stacking context — opened from the bottom-left CornerCluster.
   const [dashOpen, setDashOpen] = useState(false);
@@ -296,6 +300,18 @@ export function App() {
 
   if (!world) {
     if (booting) return null; // map is being built; chrome appears once the world is ready
+    if (pendingStart) {
+      // The isekai prologue plays over the still-menu, then boots the chosen fantasy campaign.
+      const ps = pendingStart;
+      return (
+        <Cutscene
+          onDone={() => {
+            setPendingStart(null);
+            startBoot(ps.manifest, ps.withNet, ps.scenario);
+          }}
+        />
+      );
+    }
     return (
       <Menu
         onStart={(c: CityEntry, withNet: boolean, scenario: string | null) => {
@@ -305,7 +321,14 @@ export function App() {
           if (withNet) q.set("network", "1");
           if (scenario) q.set("scenario", scenario);
           history.replaceState(null, "", `?${q.toString()}`);
-          startBoot(c.manifest, c.id === "globe" || withNet, scenario);
+          const wantNet = c.id === "globe" || withNet;
+          // Play the isekai prologue before the fantasy CAMPAIGN only (the "Against the Dark" scenario),
+          // once per browser. Everything else — sandbox, real cities, deep-links — boots straight in.
+          if (scenario === "arcadia-conquest" && !cutsceneSeen()) {
+            setPendingStart({ manifest: c.manifest, withNet: wantNet, scenario });
+          } else {
+            startBoot(c.manifest, wantNet, scenario);
+          }
         }}
         onResume={startResume}
       />
