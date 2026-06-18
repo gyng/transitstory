@@ -3269,10 +3269,13 @@ touch — verified transit boots with updateLighting=false / nightFactor=0, unto
   film grain (the "subtle noise texturing" on terrain/objects) + a gentle vignette. Authored to luma's exact
   contract (a `filter` pass calls `<name>_filterColor`, std140 uniform block matching `uniformTypes`). Visible
   grain texture on the flat lowpoly terrain.
-- **SSAO — NOT feasible, honestly.** deck's `PostProcessEffect` only receives the COLOR texture (no
-  depth/normal G-buffer), and `interleaved:false` can't read the basemap depth — true screen-space AO can't be
-  built here without an interleaved-mode rework. The grain + the directional sun's shading stand in; a
-  vertex-baked AO (darkened mesh undersides) remains a clean future option.
+- **SSAO — true screen-space NOT feasible; vertex-baked AO instead (`<this>`).** deck's `PostProcessEffect`
+  only receives the COLOR texture (no depth/normal G-buffer) and `interleaved:false` can't read basemap depth,
+  so real SSAO needs an interleaved-mode rework. The cost-effective stand-in landed: `render/meshAO.ts` bakes a
+  per-vertex AO (z-height: bases sink into shadow; + downward face normals darker) into a `COLOR_0` attribute
+  on all five lowpoly geometries. SimpleMeshLayer MULTIPLIES mesh `COLOR_0 × instance getColor` in its vertex
+  shader, so it darkens the line colour per-vertex — free at render, no pass, baked once. The pines now read
+  with real volume (dark tiers → lit crowns); trains/legions gain grounded crevice depth.
 - **Day/night sun (`c75b359`).** `setLightingHour()` swings the SAME sun+ambient objects by sim hour (bright
   warm midday → dim cool night, amber dawn/dusk), mutated in place (deck reads lights per render via
   `getProjectedLight`) on the 3 Hz sim-hour slice — never rAF. Returns a 0..1 nightFactor.
