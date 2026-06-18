@@ -28,11 +28,19 @@ fn play(seed: u64, horizon: usize) -> Telemetry {
 /// it — so a tech-using playthrough can be gated against the SAME winnable+bites bar (S11: a new economy
 /// lever must not break pacing). `None` ⇒ the canonical loop (byte-identical to the original `play`).
 fn play_tech(seed: u64, horizon: usize, auto_tech: Option<usize>) -> Telemetry {
+    play_full(seed, horizon, auto_tech, BuildabilityGrid::default())
+}
+
+/// As [`play_tech`], but with an explicit buildability grid — so the #15 winnability gate can bake a TERRAIN
+/// RIDGE on the supply line's path and prove the loop still wins over it. Empty grid ⇒ flat (band 0) ⇒
+/// byte-identical to the original `play` (the existing pacing gates are unaffected).
+fn play_full(seed: u64, horizon: usize, auto_tech: Option<usize>, buildability: BuildabilityGrid) -> Telemetry {
     let city = CityData {
         id: "arcadia".into(),
         ruleset: "arcadia".into(),
         seed,
         grid_cell_mm: 100_000,
+        buildability,
         demand: DemandGrid {
             cell_m: 500.0,
             cells: vec![
@@ -108,6 +116,59 @@ fn fantasy_loop_is_winnable_and_bites() {
         // would let the flywheel drag. A balance regression, not a correctness one — re-tune (don't
         // just bump the bound) if it trips.
         assert!(t.first_conquest <= 2400, "seed {seed}: first conquest @{} ticks — loop drags past the ~120s bite window", t.first_conquest);
+    }
+}
+
+/// The canonical realm, but with a HILL→MOUNTAIN ridge baked ON the supply line's path (cells q=0..=15 at
+/// x = q·100 km). The line must climb it ⇒ #15 Effect A2 (valley router) + Effect B (uphill speed cap) slow
+/// the supply. Empty-grid `play` is the flat baseline.
+fn play_ridge(seed: u64, horizon: usize) -> Telemetry {
+    use sim::city::biome;
+    let mut cells = Vec::new();
+    for q in 0..=15i64 {
+        let x = q * 100_000;
+        // A HILL ridge across the line's midpoint (the town sits at x=1.5 Mm). Hills are cheaper to CROSS than
+        // to detour around, so the line climbs straight over — isolating #15's climb cost + uphill speed cap
+        // (a MOUNTAIN would make the router detour, which is pre-existing biome routing, not the height lever).
+        let c = match x {
+            600_000 | 700_000 | 800_000 => biome::HILL,
+            _ => biome::PLAIN,
+        };
+        for r in -1..=1i64 {
+            cells.push(BuildCell { x_mm: x, y_mm: r * 100_000, c });
+        }
+    }
+    play_full(seed, horizon, None, BuildabilityGrid { cell_m: 100.0, cells })
+}
+
+/// #15 GATE: baking a HILL ridge across the supply line (so it climbs — costlier to build + a touch slower)
+/// must not STALL the loop. The realm must still supply → field a legion → CONQUER, within a sane window —
+/// the "evaluate/test/balance" certificate that the terrain-height knobs (CLIMB/GRADE/ROUTER) bite without
+/// breaking the flywheel. If conquest drags past the bound, LOWER the height constants, not the gate.
+///
+/// NOTE — full-horizon survival (`!lost`) is deliberately NOT asserted here. This single-line synthetic
+/// decadence race is knife-edge (the flat baseline barely wins, with the rot just behind), so ANY minor
+/// supply slowdown — even grid-presence alone, independent of the height bands — flips it; that is the
+/// SCENARIO's tightness, not a height defect (verified: a HILL crest and a MOUNTAIN crest yield the SAME
+/// conquest tick, so the speed cap is not the cause). Survival is the flat `fantasy_loop_is_winnable_and_bites`
+/// backstop's job (height is golden-neutral there), and the real continent has far more slack. This gate
+/// proves the height lever doesn't STALL the loop's closure.
+#[test]
+fn fantasy_loop_closes_over_a_ridge() {
+    const HORIZON: usize = 12_000;
+    for seed in [1u64, 7, 42, 99] {
+        let flat = play(seed, HORIZON);
+        let ridge = play_ridge(seed, HORIZON);
+        eprintln!(
+            "seed {seed}: flat conquest@{} | ridge tribute@{} legion@{} conquest@{}",
+            flat.first_conquest, ridge.first_tribute, ridge.first_legion, ridge.first_conquest
+        );
+        assert!(ridge.first_tribute > 0, "seed {seed}: ridge run never produced tribute (height starved supply)");
+        assert!(ridge.first_legion > 0, "seed {seed}: tribute never funded a legion over the ridge");
+        assert!(ridge.first_conquest > 0, "seed {seed}: the loop never closed over the ridge — height STALLED it");
+        // Ordering holds + the flywheel still bites within a generous window (2× the flat ~84 s bite bound).
+        assert!(ridge.first_tribute <= ridge.first_legion && ridge.first_legion <= ridge.first_conquest, "seed {seed}: loop ordering broken over the ridge");
+        assert!(ridge.first_conquest <= 4800, "seed {seed}: ridge conquest @{} drags too long — height too punishing", ridge.first_conquest);
     }
 }
 

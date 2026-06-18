@@ -75,8 +75,8 @@ const HEIGHT_ROUTER_W: i64 = 20; // valley-preferring router tie-break per band 
 // band climbed, never below the floor (keeps every span well above street speed ⇒ no dispatcher bunching).
 // climb == 0 ⇒ the cap is untouched ⇒ flat worlds byte-identical (golden-neutral until a baked world climbs).
 const RAIL_REF_SPEED_MM_S: i64 = 660_000; // reference rail speed the grade cap scales down from
-const GRADE_PCT_PER_BAND: i64 = 6; // -6% speed per band climbed
-const GRADE_FLOOR_PCT: i64 = 82; // never cap below 82% of the reference
+const GRADE_PCT_PER_BAND: i64 = 3; // -3% speed per band climbed — genuinely MINOR (mountain -9%), tuned so a
+const GRADE_FLOOR_PCT: i64 = 88; // line forced over a ridge still wins the decadence race (balance.rs gate)
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
