@@ -3258,3 +3258,25 @@ hardware-WebGL Chrome (RTX 3080) on `?city=tokyo&network=1` (77 lines / 497 stat
 
 **All four waves: 8 commits, every tier green** (cargo determinism gate byte-identical incl. the binary-search
 swap; app vitest 27/27; prod build clean each wave; live-verified with screenshots on Tokyo + Arcadia).
+
+### Wave 5 — ATMOSPHERE (revisit deferred visuals; user opted in)
+
+All ARCADIA-scoped (its whole scene is deck-drawn; transit's ground is MapLibre tiles the overlay can't
+touch — verified transit boots with updateLighting=false / nightFactor=0, untouched).
+
+- **ACES + grain + vignette (`c75b359`).** A custom luma 9.3.3 ShaderPass (`map/postfx.ts`) run as ONE
+  fullscreen `PostProcessEffect` over the deck canvas — Narkowicz ACES filmic curve + a whisper of static
+  film grain (the "subtle noise texturing" on terrain/objects) + a gentle vignette. Authored to luma's exact
+  contract (a `filter` pass calls `<name>_filterColor`, std140 uniform block matching `uniformTypes`). Visible
+  grain texture on the flat lowpoly terrain.
+- **SSAO — NOT feasible, honestly.** deck's `PostProcessEffect` only receives the COLOR texture (no
+  depth/normal G-buffer), and `interleaved:false` can't read the basemap depth — true screen-space AO can't be
+  built here without an interleaved-mode rework. The grain + the directional sun's shading stand in; a
+  vertex-baked AO (darkened mesh undersides) remains a clean future option.
+- **Day/night sun (`c75b359`).** `setLightingHour()` swings the SAME sun+ambient objects by sim hour (bright
+  warm midday → dim cool night, amber dawn/dusk), mutated in place (deck reads lights per render via
+  `getProjectedLight`) on the 3 Hz sim-hour slice — never rAF. Returns a 0..1 nightFactor.
+- **Night-lights (`c75b359` towns/resources, `<this>` trains).** `nightGlowLayers()` warm pixel-radius glow
+  halos (faint bloom + mid + hot core) at the capital + towns + resource camps; `vehicleNightGlow()` a warm
+  headlamp under each running train. Both fade in with nightFactor, depthTest:false, arcadia + zoomed-in only,
+  empty (zero cost) by day. Live-verified at forced night: warm settlement + train glows over the cool dark.
