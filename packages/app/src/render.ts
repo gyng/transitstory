@@ -330,7 +330,7 @@ function resourceColor(kind: string): [number, number, number] {
  *  WHAT each node is at a glance, not just its colour. BMP symbols (wide font coverage); the explicit
  *  NODE_CHARSET below seeds deck's TextLayer atlas so they render. Drawn OVER the coloured dots, which stay
  *  as the colour-blind-safe channel. */
-function resourceGlyph(kind: string): string {
+export function resourceGlyph(kind: string): string {
   switch (kind) {
     case "ore": return "⛏";
     case "grain": return "✿";
@@ -340,7 +340,7 @@ function resourceGlyph(kind: string): string {
     default: return "◆";
   }
 }
-function townGlyph(kind: string): string {
+export function townGlyph(kind: string): string {
   if (kind === "capital") return "★"; // the citadel — the seat
   if (kind === "starter") return "✪"; // your first hold
   return "⌂"; // a neutral town
@@ -1261,11 +1261,15 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         getColor: [238, 240, 244, 255],
         getPixelOffset: [0, -20], // float the plate above the node glyph
         background: true,
-        getBackgroundColor: [18, 22, 26, 205],
-        backgroundPadding: [6, 3],
+        getBackgroundColor: [20, 24, 30, 218],
+        backgroundPadding: [8, 4],
+        // A thin gilt border turns the dark box into a game-like PLAQUE (#22) — reads as a placard, not a
+        // debug label. Uniform low-alpha gold pairs with the icon-prefixed title.
+        getBorderColor: [196, 170, 110, 150],
+        getBorderWidth: 1,
         getTextAnchor: "middle",
         getAlignmentBaseline: "bottom",
-        lineHeight: 1.15,
+        lineHeight: 1.2,
         fontFamily: '"Segoe UI Symbol", system-ui, sans-serif',
         characterSet: "auto",
         fontSettings: { sdf: true },

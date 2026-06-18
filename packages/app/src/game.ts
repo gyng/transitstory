@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, resourceGlyph, townGlyph, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -2256,14 +2256,17 @@ export class Game {
     };
     for (const t of this.towns) {
       const needs = t.chain === "bread" ? "needs grain+fuel" : t.chain === "arms" ? "needs ore+aether" : "";
-      const title = nameAt(t.lng, t.lat) || (t.kind === "capital" ? "The Capital" : t.kind === "starter" ? "Your Hold" : "Town");
-      // The capital is your seat (its conquest "value" is 0); other towns show their worth + what to supply.
+      const name = nameAt(t.lng, t.lat) || (t.kind === "capital" ? "The Capital" : t.kind === "starter" ? "Your Hold" : "Town");
+      // #22: a RANK glyph leads the plaque (★ capital · ✪ your hold · ⌂ neutral town) so a town's standing
+      // reads at a glance. The capital is your seat (conquest "value" 0); others show worth + what to supply.
+      const title = `${townGlyph(t.kind)} ${name}`;
       const sub = t.kind === "capital" ? "the realm's seat" : `⚜${t.value.toLocaleString()}${needs ? ` · ${needs}` : ""}`;
       out.push({ lng: t.lng, lat: t.lat, title, sub });
     }
     for (const r of this.resources) {
-      const title = nameAt(r.lng, r.lat) || r.kind;
-      out.push({ lng: r.lng, lat: r.lat, title, sub: `yield ${r.yield}` }); // title already names the good
+      const name = nameAt(r.lng, r.lat) || r.kind;
+      // #22: lead the plaque with the resource glyph (⛏ ore · ✿ grain · ♣ fuel · ✦ aether · ⚒ forge).
+      out.push({ lng: r.lng, lat: r.lat, title: `${resourceGlyph(r.kind)} ${name}`, sub: `yield ${r.yield}` });
     }
     return out;
   }
