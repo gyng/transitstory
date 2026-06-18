@@ -53,6 +53,21 @@ type Puff = {
   lift: number; // #3d: px to raise the emission so steam leaves the 3D model's CHIMNEY, not its wheels
 };
 
+// A one-shot CELEBRATION particle — a coloured spark that flies out radially under gravity, then fades.
+// Bounded + short-lived (a milestone payoff: "you beat the real network"). Screen-space velocity so it
+// reads the same at any zoom; anchored to lng/lat so the origin tracks pan.
+type Particle = {
+  lng: number;
+  lat: number;
+  born: number;
+  ttl: number;
+  vx: number; // px/s screen velocity
+  vy: number;
+  g: number; // px/s² downward gravity
+  size: number;
+  rgb: string;
+};
+
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t) * (1 - t); // cubic ease-out
 
 export class Effects {
@@ -63,10 +78,22 @@ export class Effects {
   private throbs: Throb[] = []; // continuous (starved stations) — replaced wholesale per stats tick
   private floats: Float[] = []; // rising combat/economy text
   private puffs: Puff[] = []; // train steam/dust trail
+  private particles: Particle[] = []; // milestone celebration spray
   private dpr = 1;
   private wasActive = false; // so an idle canvas is a true no-op (no per-frame clear when nothing's live)
+  // a11y: honour prefers-reduced-motion — skip CONTINUOUS/ambient motion (the breathing throbs + the
+  // perpetual steam trail) and trade the celebration spray for a single static-ish ack. One-shot
+  // acknowledgements (rings/floats/booms, all sub-second) stay so the player never loses feedback.
+  private reduce = false;
 
   constructor(private map: MlMap) {
+    try {
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      this.reduce = mq.matches;
+      mq.addEventListener?.("change", (e) => (this.reduce = e.matches));
+    } catch {
+      /* matchMedia unavailable — default to full motion */
+    }
     this.canvas = document.createElement("canvas");
     this.canvas.setAttribute("data-ot-fx", "");
     Object.assign(this.canvas.style, {
@@ -137,10 +164,41 @@ export class Effects {
   /** A steam/dust puff at a train — a one-shot blob that expands, drifts up, and fades (leaves a trail).
    *  `lift` raises the emission point (px) so steam leaves the 3D model's chimney, not its wheels. */
   puff(lng: number, lat: number, lift = 0): void {
+    if (this.reduce) return; // a perpetual steam trail is exactly the continuous motion reduced-motion avoids
     // jitter via a cheap born-derived pseudo-random (no Math.random needed for this client-only FX, but it's
     // fine here — purely cosmetic, never in the deterministic core).
     const j = (Math.random() - 0.5) * 10;
     this.puffs.push({ lng, lat, born: performance.now(), ttl: 1100, r0: 2.5, r1: 11, drift: 16, jitter: j, lift });
+  }
+
+  /** A milestone CELEBRATION — a radial spray of short-lived coloured sparks under gravity (a rider/
+   *  coverage record, "you beat the real network"). Bounded + brief; one-shot. Under reduced-motion it
+   *  degrades to a single `boom` (an instant ack, no flying confetti). Anchored to lng/lat so the burst
+   *  origin tracks pan; screen-space velocities so it reads identically at any zoom. */
+  celebrate(lng: number, lat: number, rgb = "245,200,90"): void {
+    if (this.reduce) {
+      this.boom(lng, lat, rgb);
+      return;
+    }
+    const now = performance.now();
+    const palette = [rgb, "70,208,140", "56,198,220", "255,236,170"]; // the win + a few festive accents
+    const N = 26;
+    for (let i = 0; i < N; i++) {
+      const ang = (i / N) * Math.PI * 2 + Math.random() * 0.4;
+      const spd = 60 + Math.random() * 120; // px/s
+      this.particles.push({
+        lng,
+        lat,
+        born: now,
+        ttl: 850 + Math.random() * 450,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 70, // bias upward so it bursts up then rains down
+        g: 280,
+        size: 2 + Math.random() * 2.5,
+        rgb: palette[i % palette.length],
+      });
+    }
+    this.boom(lng, lat, rgb); // a shockwave ring under the spray
   }
 
   /** Replace the continuously-throbbing set (e.g. starved stations) — called on the stats tick. */
@@ -154,6 +212,7 @@ export class Effects {
     this.throbs = [];
     this.floats = [];
     this.puffs = [];
+    this.particles = [];
   }
 
   // --- per-frame draw (called from GameLoop.frame with the rAF timestamp) ---------------------
@@ -167,7 +226,8 @@ export class Effects {
       this.flashes.length === 0 &&
       this.throbs.length === 0 &&
       this.floats.length === 0 &&
-      this.puffs.length === 0
+      this.puffs.length === 0 &&
+      this.particles.length === 0
     ) {
       if (this.wasActive) {
         cx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -182,6 +242,7 @@ export class Effects {
     this.drawPuffs(now); // smoke under everything
     this.drawThrobs(now);
     this.drawRings(now);
+    this.drawParticles(now); // celebration sparks
     this.drawFlashes(now);
     this.drawFloats(now); // text on top
   }
@@ -189,8 +250,9 @@ export class Effects {
   private drawThrobs(now: number): void {
     if (this.throbs.length === 0) return;
     const cx = this.cx;
-    // Gentle shared sine breath (~1.4 s) — a living "fix me" without a per-frame layer rebuild.
-    const s = 0.5 + 0.5 * Math.sin((now / 1400) * Math.PI * 2);
+    // Gentle shared sine breath (~1.4 s) — a living "fix me" without a per-frame layer rebuild. Under
+    // reduced-motion, hold a STATIC mid-breath ring (the "fix me" channel stays, the perpetual pulse stops).
+    const s = this.reduce ? 0.5 : 0.5 + 0.5 * Math.sin((now / 1400) * Math.PI * 2);
     const r = 11 + s * 5;
     const a = 0.22 + s * 0.33;
     for (const th of this.throbs) {
@@ -304,6 +366,27 @@ export class Effects {
       cx.fill();
     }
     this.puffs = live;
+  }
+
+  private drawParticles(now: number): void {
+    if (this.particles.length === 0) return;
+    const cx = this.cx;
+    const live: Particle[] = [];
+    for (const e of this.particles) {
+      const t = (now - e.born) / e.ttl;
+      if (t >= 1) continue;
+      live.push(e);
+      const s = (now - e.born) / 1000; // seconds aloft
+      const p = this.map.project([e.lng, e.lat]);
+      const x = p.x + e.vx * s;
+      const y = p.y + e.vy * s + 0.5 * e.g * s * s; // parabolic: out + up, then gravity rains it down
+      const a = (1 - t * t) * 0.95; // hold bright, fade out late
+      cx.fillStyle = `rgba(${e.rgb},${a.toFixed(3)})`;
+      cx.beginPath();
+      cx.arc(x, y, e.size, 0, Math.PI * 2);
+      cx.fill();
+    }
+    this.particles = live;
   }
 
   /** Point at arc-length fraction `f` (0..1) along a projected polyline. */

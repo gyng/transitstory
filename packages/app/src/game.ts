@@ -2337,6 +2337,28 @@ export class Game {
   /** 0 = full day, 1 = deep night — fades the warm town/train glows in. Updated on the 3 Hz hour. */
   nightFactor = 0;
 
+  /** A milestone was crossed (rider/coverage record, "you beat the real network") — spray a celebration
+   *  at the busiest station (the network's beating heart), or the map centre if nothing's moving yet.
+   *  Client-only juice: no Command, no sim read beyond the last snapshot; reduced-motion degrades it to a
+   *  single ack inside effects.celebrate. Called from the Beats milestone toast. */
+  celebrateMilestone(): void {
+    const ps = this.lastStats?.perStation ?? [];
+    let bestId = -1;
+    let bestB = -1;
+    for (const s of ps) {
+      if (s.boardings > bestB) {
+        bestB = s.boardings;
+        bestId = s.stationId;
+      }
+    }
+    const ll = bestId >= 0 ? this.stationLngLat(bestId) : null;
+    if (ll) this.effects.celebrate(ll[0], ll[1]);
+    else {
+      const c = this.map.getCenter();
+      this.effects.celebrate(c.lng, c.lat);
+    }
+  }
+
   setStats(s: Stats): void {
     this.lastStats = s;
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));

@@ -1365,6 +1365,18 @@ function yawOf(angle: number): [number, number, number] {
   return [0, (angle * 180) / Math.PI, 0];
 }
 
+/** Packed trains run HOT: above ~0.7 load factor, blend the line colour toward a warm crowding red so a
+ *  full train reads at a glance (capacity is one of the two player levers). Subtle below the knee, clear
+ *  when jammed. A per-frame accessor — the vehicle data is rebuilt each frame, so this re-evaluates live. */
+function crowdTint(rgb: Rgb, load: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, (load - 0.7) / 0.3)) * 0.55;
+  return [
+    Math.round(rgb[0] + (255 - rgb[0]) * t),
+    Math.round(rgb[1] + (96 - rgb[1]) * t),
+    Math.round(rgb[2] + (64 - rgb[2]) * t),
+  ];
+}
+
 export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = [], scale: number = VEHICLE_SCALE_DEFAULT): Layer[] {
   // #3d-vehicles + #multi-car: real instanced 3D models on the world. A rail train is a LOCOMOTIVE (the
   // boxy cab, line-coloured) PULLING a string of cargo WAGONS that curve behind it along the track — each
@@ -1384,7 +1396,7 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = [], scale: 
       data: dots,
       mesh: vehicleMesh(),
       getPosition: (d) => [d.lng, d.lat],
-      getColor: (d) => d.color,
+      getColor: (d) => crowdTint(d.color, d.load), // line colour, running hot when packed
       getOrientation: (d) => yawOf(d.angle),
       getScale: [scale, scale, scale],
       sizeScale: 1,

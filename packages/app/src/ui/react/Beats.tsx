@@ -7,7 +7,7 @@
 // the world).
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { useStats } from "./GameContext";
+import { useGame, useStats } from "./GameContext";
 import { audio } from "../../fx/audio";
 import { cityById, recordBest } from "../../sim/cities";
 
@@ -140,6 +140,7 @@ const RIDER_MILESTONES = [100, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000,
  *  city's real-network anchor is the headline beat. */
 export function Milestones() {
   const s = useStats();
+  const game = useGame();
   const run = useRef(bootRun());
   const nextRider = useRef<number | null>(null);
   const lastCovStep = useRef<number | null>(null);
@@ -176,6 +177,7 @@ export function Milestones() {
     if (!showing && queue.current.length > 0) {
       setShowing(queue.current.shift() ?? null);
       audio.milestone(); // a brighter arpeggio than `connect` — the achievement reads as one
+      game.celebrateMilestone(); // a celebration spray at the busiest station (reduced-motion → a single ack)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s, showing]);
