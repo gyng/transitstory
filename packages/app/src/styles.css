@@ -175,6 +175,23 @@ body {
   color: var(--ot-con-ink);
 }
 
+/* Top strip — ONE flat solid bar (work order: "solid panel, no background" → declutter). The three
+   floating console islands (resources · alerts · clock+controls) merge into a single opaque graphite
+   strip: the strip itself carries the face, and the per-island `.ot-console` faces inside it flatten to
+   bare content (no gradient, border, radius or heavy elevation). The raised `.ot-key` controls
+   (Build/Run/speed) keep their tactile look ON the flat bar. Every data-testid is unchanged. */
+[data-region="top"] {
+  background: var(--ot-con-solid);
+  border-bottom: 1px solid var(--ot-con-edge);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+[data-region="top"] .ot-console {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* A raised physical KEY (tool/speed/run buttons). Etched label; presses down (global :active handles motion). */
 .ot-key {
   background: linear-gradient(180deg, #3a414c 0%, #2c323b 100%);
