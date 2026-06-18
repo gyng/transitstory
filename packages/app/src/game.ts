@@ -177,6 +177,9 @@ export class Game {
   /** #23 TG1 cosmetic town sprawl: small ring-cell buildings around each town (capital biggest) so a town
    *  reads as a MULTI-CELL settlement. Built once at load from the towns + terrain (render-only). */
   townSprawl: TreeInstance[] = [];
+  /** #23 TG1b — the joined per-town sizes the current `townSprawl` was built for; gates the 3 Hz rebuild so
+   *  the sprawl layer keeps stable identity until a town actually grows. */
+  private sprawlToken = "";
   /** Baked fantasy resource nodes (lng/lat + kind + yield) — the supply-chain sources. Set once at load
    *  from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity across frames. */
   resources: ResourceMarker[] = [];
@@ -2473,6 +2476,7 @@ export class Game {
     this.lastStats = s;
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
     this.perLineById = new Map(s.perLine.map((l) => [l.lineId, l]));
+    this.buildTownSprawl(); // #23 TG1b — grow the sprawl with each town's size (gated; the refresh() below picks it up)
     // Day/night: swing the scene sun + ambient by sim hour (two-clocks: rides this 3 Hz slice, not rAF)
     // BEFORE refresh() so the night-glow layers pick up the fresh nightFactor this pass.
     if (this.updateLighting) this.nightFactor = this.updateLighting(s.simHour);
@@ -2838,12 +2842,26 @@ export class Game {
    *  MULTI-CELL settlement (the capital biggest — 2 rings; other towns 1). Buildings land only on passable
    *  land (water/mountain cells skipped). Built once at load (arcadia only); render-only, so the placement
    *  never touches the deterministic core. Static size for TG1 — dynamic growth-with-prosperity is TG1b. */
-  buildTownSprawl(): void {
-    this.townSprawl = [];
+  buildTownSprawl(): boolean {
     const cm = this.cellMm;
-    if (this.ruleset !== "arcadia" || cm <= 0 || this.towns.length === 0) return;
-    for (const t of this.towns) {
-      const rings = t.kind === "capital" ? 2 : 1; // the capital's seat sprawls wider
+    if (this.ruleset !== "arcadia" || cm <= 0 || this.towns.length === 0) {
+      this.townSprawl = [];
+      return false;
+    }
+    // #23 TG1b — each town's LIVE size (grown by supply delivered, read off the per-station stats) drives how
+    // far it sprawls. Gate the rebuild on a sizes TOKEN so the layer keeps STABLE identity between size changes
+    // (this runs on the 3 Hz slice, but only rebuilds when a town actually grows — AGENTS: never per-frame).
+    const sizes = this.towns.map((t) => this.townSizeOf(t));
+    const token = sizes.join(",");
+    if (token === this.sprawlToken) return false; // sizes unchanged ⇒ keep the existing sprawl + its layer identity
+    this.sprawlToken = token;
+    const next: TreeInstance[] = [];
+    for (let i = 0; i < this.towns.length; i++) {
+      const t = this.towns[i];
+      const size = sizes[i];
+      // 1 ring at size 0–1, +1 per ~⅓ of MAX_SIZE (=5, mirrors crates/sim); the capital seats one ring wider.
+      const rings = 1 + Math.floor(size / (5 / 3)) + (t.kind === "capital" ? 1 : 0);
+      const grow = 1 + size * 0.05; // a prosperous town's buildings stand a touch taller too
       const [cx, cy] = lngLatToMm([t.lng, t.lat]);
       for (let r = 1; r <= rings; r++) {
         const dist = r * cm * 0.92; // hug the centre, just inside the neighbour pitch
@@ -2852,10 +2870,29 @@ export class Game {
           const [lng, lat] = mmToLngLat([cx + dist * Math.cos(ang), cy + dist * Math.sin(ang)]);
           const b = this.biomeCodeAt(lng, lat);
           if (b === 4 || b === 6) continue; // skip WATER / MOUNTAIN (no depot in the sea / on a cliff)
-          this.townSprawl.push({ lng, lat, scale: r === 1 ? 96 : 78, yaw: (k * 60 + r * 30) % 360, shade: (k % 3) / 3, z: reliefM(b ?? 0) });
+          next.push({ lng, lat, scale: (r === 1 ? 96 : 78) * grow, yaw: (k * 60 + r * 30) % 360, shade: (k % 3) / 3, z: reliefM(b ?? 0) });
         }
       }
     }
+    this.townSprawl = next;
+    return true;
+  }
+
+  /** #23 TG1b — a town's current SIZE (0..5) from the per-station stats (the nearest station to its centre). */
+  private townSizeOf(t: TownMarker): number {
+    const [tx, ty] = lngLatToMm([t.lng, t.lat]);
+    const tol2 = (this.terrainCellM * 1000 || 250_000) ** 2;
+    let best = tol2;
+    let sid = -1;
+    for (const s of this.bridge.stationsView()) {
+      if (s.removed) continue;
+      const d = (s.xMm - tx) ** 2 + (s.yMm - ty) ** 2;
+      if (d <= best) {
+        best = d;
+        sid = s.id;
+      }
+    }
+    return sid >= 0 ? this.perStationById.get(sid)?.townSize ?? 0 : 0;
   }
 
   /** Cargo a trade good reads as — a glyph + a tint so you can SEE what each cart hauls. Keyed by resource
