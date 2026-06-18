@@ -2487,6 +2487,7 @@ export class Game {
 
     // Conquest: a town just fell — boom + "⚔ Conquered!" at each newly-captured holding (once each).
     if (s.townsCaptured > prev.towns) {
+      let conquered = false;
       for (const ps of s.perStation) {
         if (ps.captured && !this.celebratedTowns.has(ps.stationId)) {
           this.celebratedTowns.add(ps.stationId);
@@ -2494,9 +2495,11 @@ export class Game {
           if (p) {
             this.effects.boom(p.lng, p.lat, "235,180,70");
             this.effects.floatText(p.lng, p.lat, "⚔ Conquered!", "245,200,90", { rise: 40, size: 16, ttl: 2100 });
+            conquered = true;
           }
         }
       }
+      if (conquered) audio.conquer(); // one triumphant swell per conquest beat (not per town)
     }
     // Territory front (#war): a holding the rival RE-CONTESTED — a reclaimer re-garrisoned a town you took
     // but didn't hold (rail to it / ward it to keep it). Flash "⚔ Lost!" once + FORGET it, so re-taking

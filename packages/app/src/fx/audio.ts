@@ -114,6 +114,33 @@ class AudioKit {
   toggle(running: boolean): void {
     this.play([{ freq: running ? 440 : 392, dur: 0.1, type: "triangle", gain: 0.11, glideTo: running ? 587.33 : 329.63 }]);
   }
+  /** A milestone crossed (rider/coverage record, "you beat the real network") — a bright rising
+   *  arpeggio, distinctly more triumphant than `connect` so the achievement reads as an achievement.
+   *  Caller rate-limits (milestones are rare); keep it gentle so it celebrates, never blares. */
+  milestone(): void {
+    this.play([
+      { freq: 523.25, dur: 0.12, type: "triangle", gain: 0.13 }, // C5
+      { freq: 659.25, dur: 0.12, type: "triangle", gain: 0.13, delay: 0.08 }, // E5
+      { freq: 783.99, dur: 0.14, type: "triangle", gain: 0.14, delay: 0.16 }, // G5
+      { freq: 1046.5, dur: 0.22, type: "sine", gain: 0.13, delay: 0.24 }, // C6 — the lift
+    ]);
+  }
+  /** A new day rolls over — a soft low two-note chime (a page turning), under the day report card. */
+  day(): void {
+    this.play([
+      { freq: 293.66, dur: 0.2, type: "sine", gain: 0.1 }, // D4
+      { freq: 440, dur: 0.26, type: "sine", gain: 0.1, delay: 0.12 }, // A4
+    ]);
+  }
+  /** A town conquered (fantasy) — a low, brief triumphant swell with a hair of weight (the drum of
+   *  the legion arriving). Distinct from `connect`; fired on the conquest beat, not per tick. */
+  conquer(): void {
+    this.play([
+      { freq: 110, dur: 0.22, type: "sawtooth", gain: 0.09 }, // A2 — the weight
+      { freq: 196, dur: 0.16, type: "triangle", gain: 0.12, glideTo: 261.63 }, // G3 → C4 lift
+      { freq: 392, dur: 0.24, type: "sine", gain: 0.11, delay: 0.1 }, // G4 — the flourish
+    ]);
+  }
 }
 
 export const audio = new AudioKit();

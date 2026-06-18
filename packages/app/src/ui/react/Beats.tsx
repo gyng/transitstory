@@ -99,7 +99,7 @@ export function DayReport() {
         fares: s.fareRevenue - d.fares,
         economyOn: s.economyEnabled,
       });
-      audio.place(); // a soft beat, not the celebratory connect chime
+      audio.day(); // the day-rollover chime (a page turning) under the report card
       prevDay.current = s.simDay;
       dayStart.current = snap();
     }
@@ -175,7 +175,7 @@ export function Milestones() {
     }
     if (!showing && queue.current.length > 0) {
       setShowing(queue.current.shift() ?? null);
-      audio.connect();
+      audio.milestone(); // a brighter arpeggio than `connect` — the achievement reads as one
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s, showing]);
