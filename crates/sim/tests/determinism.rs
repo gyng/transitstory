@@ -91,7 +91,13 @@ fn replay_equality() {
 //                           (player-placed `Signal`s) appended LAST. Transit places NO signal ⇒ a length-0
 //                           slice ⇒ a PURE EMPTY-SLICE SHIFT. The position fingerprint is UNCHANGED
 //                           (signals don't re-key occupancy until L5b), proving only serialization moved.
-const GOLDEN_TRANSIT_HASH: u64 = 0x9d4e_09ab_b4ea_9d7a;
+//   0x99cd_1932_184c_c156 — 2026-06 economy ÷1000 rescale (legible $k/$M HUD, not absurd $B). `line.capital_cost`
+//                           is hashed via `Canonical.lines`, and it is built from the per-km capital constants
+//                           + RAIL_COST[0], all of which were divided by 1000 together. So the sample line's
+//                           capital_cost shrank ×1000 and the hash moved by DESIGN — a VALUE change, not a
+//                           determinism break (replay-equality still holds; position fingerprints UNCHANGED, as
+//                           capital is not a position). An intentional re-pin, reviewed.
+const GOLDEN_TRANSIT_HASH: u64 = 0x99cd_1932_184c_c156;
 
 #[test]
 fn golden_transit_hash_pinned() {

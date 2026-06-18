@@ -17,10 +17,11 @@ fn rail_roster_default_is_byte_identical_to_the_shipped_metro() {
     assert_eq!(def.decel_mm_s2, metro.decel_mm_s2);
     assert_eq!(def.dwell_ms, metro.dwell_ms);
     assert_eq!(def.length_mm, metro.length_mm);
-    // RAIL_COST[0] must equal the flat per-train cost so default capital is byte-identical.
-    assert_eq!(trainset::train_cost(tmode::RAIL, 0, 15_000_000), 15_000_000);
+    // RAIL_COST[0] must equal the flat per-train cost so default capital is byte-identical (post-2026-06
+    // ÷1000 economy rescale: $15k, was $15M — RAIL_COST[0] and TRAIN_COST stay locked together).
+    assert_eq!(trainset::train_cost(tmode::RAIL, 0, 15_000), 15_000);
     // …and every other mode keeps the flat cost regardless of spec id.
-    assert_eq!(trainset::train_cost(tmode::HEAVY, 2, 15_000_000), 15_000_000);
+    assert_eq!(trainset::train_cost(tmode::HEAVY, 2, 15_000), 15_000);
 }
 
 #[test]
@@ -34,9 +35,9 @@ fn the_three_rail_models_are_a_real_tradeoff() {
     assert!(heavy.v_max_mm_s < std.v_max_mm_s, "Heavy is slower");
     assert!(express.v_max_mm_s > std.v_max_mm_s, "Express is faster");
     assert!(express.capacity < std.capacity, "Express is lighter");
-    // Cost tracks the tradeoff: Heavy pricier, Express cheaper.
-    assert!(trainset::train_cost(tmode::RAIL, 1, 15_000_000) > 15_000_000, "Heavy costs more to buy");
-    assert!(trainset::train_cost(tmode::RAIL, 2, 15_000_000) < 15_000_000, "Express costs less");
+    // Cost tracks the tradeoff: Heavy pricier, Express cheaper (vs the $15k Standard, post ÷1000 rescale).
+    assert!(trainset::train_cost(tmode::RAIL, 1, 15_000) > 15_000, "Heavy costs more to buy");
+    assert!(trainset::train_cost(tmode::RAIL, 2, 15_000) < 15_000, "Express costs less");
     // Out-of-range spec ids clamp (never panic).
     assert_eq!(trainset::spec_for(tmode::RAIL, 99).capacity, express.capacity);
 }
@@ -64,9 +65,9 @@ fn choosing_a_model_changes_the_lines_build_cost() {
     let std = line_capital_with_model(0);
     let heavy = line_capital_with_model(1);
     let express = line_capital_with_model(2);
-    // Heavy's 2 trains cost 2×(27−15)=24M more than Standard; Express 2×(15−11)=8M less. Track cost is shared.
-    assert_eq!(heavy - std, 2 * (27_000_000 - 15_000_000), "Heavy rolling stock costs more");
-    assert_eq!(std - express, 2 * (15_000_000 - 11_000_000), "Express rolling stock costs less");
+    // Heavy's 2 trains cost 2×(27−15)=24k more than Standard; Express 2×(15−11)=8k less. Track cost is shared.
+    assert_eq!(heavy - std, 2 * (27_000 - 15_000), "Heavy rolling stock costs more");
+    assert_eq!(std - express, 2 * (15_000 - 11_000), "Express rolling stock costs less");
 }
 
 #[test]

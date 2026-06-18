@@ -258,7 +258,12 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // TTD L5a re-pin (0x94e8_209e_3424_d550): `Canonical` gains the player-placed `signals` store, appended
 // LAST. The arcadia fixture places NO signal ⇒ a length-0 slice ⇒ a PURE EMPTY-SLICE SHIFT; the position
 // fingerprint is UNCHANGED (signals don't re-key occupancy until L5b). Prior: 0xbc3c_87c3_28ba_0d70.
-const GOLDEN_ARCADIA_HASH: u64 = 0x94e8_209e_3424_d550;
+// 2026-06 economy ÷1000 rescale re-pin (0x58ef_2f8b_f079_1c77): the fixture's GRID line has a hashed
+// `capital_cost` (Canonical.lines), built from the per-km capital constants + RAIL_COST[0] — all ÷1000.
+// So capital_cost shrank ×1000 and the hash moved by DESIGN. Gold spend is UNCHANGED (build_gold_divisor
+// scaled in lockstep, so build_gold_cost = capital/divisor is identical); the position fingerprint is
+// UNCHANGED (capital is not a position). A VALUE change, not a determinism break. Prior: 0x94e8_209e_3424_d550.
+const GOLDEN_ARCADIA_HASH: u64 = 0x58ef_2f8b_f079_1c77;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

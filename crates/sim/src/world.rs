@@ -29,32 +29,37 @@ pub const DEFAULT_HEADWAY_MS: i64 = 10_000; // 5 clock-min
 
 // Economy (optional, NIMBY-style). Dollars. Construction is a one-time capital cost; fares
 // accrue per boarding. The disruption metric feeds the surface land-taking premium.
-pub const START_BUDGET: i64 = 2_000_000_000;
+// SCALE (2026-06): the whole $ family is in THOUSANDS of dollars (a metro line is ~$125k, not
+// $125M) — a deliberate, legible game scale so the HUD reads in $k/$M rather than absurd $B. All
+// capital/opex/budget constants were rescaled ÷1000 together (and the arcadia build_gold_divisor in
+// fantasy_world.json with them, so gold prices are unchanged); FARE stays $2, which now makes payback
+// actually reachable. line.capital_cost is hashed, so this re-pins the transit golden by design.
+pub const START_BUDGET: i64 = 2_000_000;
 pub const FARE: i64 = 2; // $ per boarding
 /// GOLD to post a bounty (fantasy/arcadia, V3 — steering the legions costs the realm's treasury). A flat
 /// decree cost; clearing a bounty (amount 0) is free. The bounty `amount` is the steering WEIGHT, not gold.
 const BOUNTY_COST: i64 = 10;
-const PER_KM_SURFACE: i64 = 8_000_000;
-const PER_KM_ELEVATED: i64 = 30_000_000;
-const PER_KM_TUNNEL: i64 = 90_000_000;
+const PER_KM_SURFACE: i64 = 8_000;
+const PER_KM_ELEVATED: i64 = 30_000;
+const PER_KM_TUNNEL: i64 = 90_000;
 // Heavy / high-speed rail needs dedicated, grade-separated right-of-way: far pricier per km.
-const PER_KM_HSR_SURFACE: i64 = 24_000_000;
-const PER_KM_HSR_ELEVATED: i64 = 60_000_000;
-const PER_KM_HSR_TUNNEL: i64 = 180_000_000;
-const TAKING_PER_KM_BUILT: i64 = 6_000_000;
+const PER_KM_HSR_SURFACE: i64 = 24_000;
+const PER_KM_HSR_ELEVATED: i64 = 60_000;
+const PER_KM_HSR_TUNNEL: i64 = 180_000;
+const TAKING_PER_KM_BUILT: i64 = 6_000;
 /// P2: single track costs this percent of double-track per-km capital (one rail pair, not two).
 const SINGLE_TRACK_PCT: i64 = 55;
-const TRAIN_COST: i64 = 15_000_000;
+const TRAIN_COST: i64 = 15_000;
 // TTD L5d: capital per player-placed block signal (~¼ km of surface track). A signal raises a
 // single-track span's same-direction throughput, so it's a cheaper alternative to double-tracking
 // (which adds ~45% of PER_KM_SURFACE per km) — but it's not free, so signalling is an economic
 // tradeoff in the fantasy economy. 0 signals ⇒ 0 added ⇒ the goldens (no signals) stay byte-identical.
-const SIGNAL_COST: i64 = 2_000_000;
+const SIGNAL_COST: i64 = 2_000;
 // Recurring maintenance (opex), accrued only while the economy is ON and running. A slow drain
 // that fares must outrun — the second pressure axis alongside waiting. Tunable game balance.
 const DAY_MS: i64 = 86_400_000;
-const OPEX_PER_TRAIN_DAY: i64 = 200_000;
-const OPEX_PER_KM_DAY: i64 = 50_000;
+const OPEX_PER_TRAIN_DAY: i64 = 200;
+const OPEX_PER_KM_DAY: i64 = 50;
 /// Fantasy gold UPKEEP (#economy): a train costs this many KM-equivalents of upkeep (rolling stock is
 /// pricier to keep than track). Daily gold drain = `(track_km + trains×this) × gold_upkeep_per_day /
 /// GOLD_UPKEEP_DIVISOR`. Tunable; 0 baked rate disables it (golden-neutral default).
@@ -772,9 +777,9 @@ impl World {
             // Capital per metre by transport mode (rail/heavy also by build-mode).
             let per_km = match tm {
                 // Buses ride the existing ROAD network for free; off-road they build a busway.
-                tmode::BUS => if c == class::ROAD { 0 } else { 3_000_000 },
+                tmode::BUS => if c == class::ROAD { 0 } else { 3_000 },
                 // Ferries cross open WATER for free (just terminals); forced over land they'd dig.
-                tmode::FERRY => if c == class::WATER { 0 } else { 5_000_000 },
+                tmode::FERRY => if c == class::WATER { 0 } else { 5_000 },
                 // Air builds NO right-of-way — you buy aircraft (capital, added separately) and burn
                 // fuel (opex). A per-km track charge would be astronomical at globe distances.
                 tmode::AIR => 0,

@@ -111,7 +111,7 @@ pub const RAIL_ROSTER: &[TrainsetSpec] = &[
 /// Per-RAIL-model build cost ($/vehicle), parallel to `RAIL_ROSTER`. Index 0 MUST equal the global
 /// `TRAIN_COST` (world.rs) so a default route's capital — and the goldens — are byte-identical. Heavy
 /// costs more (you pay for the haul), Express less (light stock). Read by `recompute_line_buildability`.
-pub const RAIL_COST: &[i64] = &[15_000_000, 27_000_000, 11_000_000];
+pub const RAIL_COST: &[i64] = &[15_000, 27_000, 11_000];
 
 /// Build cost ($/vehicle) for a line's chosen model. RAIL reads its roster; every other mode keeps the
 /// flat `TRAIN_COST` (byte-identical — `default_train_cost` 15M passed by the caller). Out-of-range

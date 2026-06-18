@@ -141,12 +141,12 @@ PRODUCTION_MICRO = 10
 
 # Fantasy BUILD ECONOMY (#economy): building rail/trains SPENDS gold from the realm treasury, so a build is
 # an ROI decision (route around the costly ridge, don't over-extend). gold price = line capital ($-scale,
-# terrain-aware) / BUILD_GOLD_DIVISOR. The continent's lines span tens of km (~hundreds of M$ capital), so a
-# 15M divisor prices a typical line at ~20-50 gold. INITIAL_GOLD seeds the treasury (CityData.initial_gold →
-# world.tribute) — generous enough to lay the bootstrap chains, then deliveries fund expansion. Both are
-# per-city knobs; 0 (the native/golden default) ⇒ free building, byte-identical (golden-neutral). Balance
-# knobs — tightened once winnability is re-certified end-to-end.
-BUILD_GOLD_DIVISOR = 15_000_000
+# terrain-aware) / BUILD_GOLD_DIVISOR. The continent's lines span tens of km; after the 2026-06 ÷1000
+# transit-$ rescale that capital is ~hundreds of k$, so a 15k divisor (also ÷1000) keeps a typical line at
+# the SAME ~20-50 gold. INITIAL_GOLD seeds the treasury (CityData.initial_gold → world.tribute) — generous
+# enough to lay the bootstrap chains, then deliveries fund expansion. Both are per-city knobs; 0 (the
+# native/golden default) ⇒ free building, byte-identical (golden-neutral). Balance knobs.
+BUILD_GOLD_DIVISOR = 15_000
 INITIAL_GOLD = 150
 # Fantasy gold UPKEEP (#economy opex): per-in-game-day drain = (track_km + trains×4) × this / 100, charged
 # on the day rollover. Makes a sprawling network a tradeoff — you must keep DELIVERING to cover what you run
