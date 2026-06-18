@@ -5,7 +5,7 @@
 // (AssignTrainset). No sim mutation here, no per-frame work — the load bar tracks the snapshot, not rAF.
 import { useState } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { RAIL_ROSTER, hex, modeIcon } from "./shared";
+import { RAIL_ROSTER, fmtMoney, hex, modeIcon } from "./shared";
 import type { PerLine } from "../../types";
 
 // The FLEET panel face — a brushed-graphite console (.ot-console owns bg/border/shadow/radius/text).
@@ -74,7 +74,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
               key={m.name}
               data-testid={`fleet-model-${l.lineId}-${i}`}
               className={`ot-key ${spec === i ? "on" : ""}`}
-              title={`${m.name} — ${m.capacity} cap · ${m.kmh} km/h · $${m.costM}M`}
+              title={`${m.name} — ${m.capacity} cap · ${m.kmh} km/h · ${fmtMoney(m.cost)}`}
               onClick={() => game.setAircraft(l.lineId, i)}
               style={{
                 flex: 1,

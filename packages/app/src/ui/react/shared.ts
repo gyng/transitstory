@@ -71,19 +71,20 @@ export const AIR_ROSTER: AircraftDef[] = [
 /** Hand-mirror of the sim's RAIL_ROSTER (trainset.rs) — index IS the `AssignTrainset.spec` id (the depot
  *  rework's train-model catalog). A non-dominated capacity ⇄ speed ⇄ cost ladder: Standard is the metro,
  *  Heavy hauls far more but is slower + pricier, Express is fast + cheap but light. Keep in lockstep with
- *  the Rust roster + RAIL_COST. `costM` = build $ per train (millions); drives the "buy a model" tradeoff. */
+ *  the Rust roster + RAIL_COST. `cost` = build $ per train (RAW dollars, mirrors RAIL_COST post the 2026-06
+ *  ÷1000 rescale: $15k/$27k/$11k); drives the "buy a model" tradeoff. Formatted with fmtMoney at the readout. */
 export interface TrainModelDef {
   name: string;
   capacity: number;
   /** Top speed in km per CLOCK hour (v_max_mm_s / 660_000 × 80 — the metro's 660_000 reads as 80). */
   kmh: number;
-  costM: number;
+  cost: number;
   blurb: string;
 }
 export const RAIL_ROSTER: TrainModelDef[] = [
-  { name: "Standard", capacity: 7, kmh: 80, costM: 15, blurb: "the all-round workhorse" },
-  { name: "Heavy", capacity: 15, kmh: 58, costM: 27, blurb: "bulk hauler — twice the load, slower + pricier" },
-  { name: "Express", capacity: 4, kmh: 109, costM: 11, blurb: "fast + cheap, but light — rush a thin route" },
+  { name: "Standard", capacity: 7, kmh: 80, cost: 15_000, blurb: "the all-round workhorse" },
+  { name: "Heavy", capacity: 15, kmh: 58, cost: 27_000, blurb: "bulk hauler — twice the load, slower + pricier" },
+  { name: "Express", capacity: 4, kmh: 109, cost: 11_000, blurb: "fast + cheap, but light — rush a thin route" },
 ];
 
 /** Cargo-WAGON count a rail train of `capacity` pulls (#multi-car) — the consist length the player picks by

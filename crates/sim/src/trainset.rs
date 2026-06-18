@@ -114,7 +114,7 @@ pub const RAIL_ROSTER: &[TrainsetSpec] = &[
 pub const RAIL_COST: &[i64] = &[15_000, 27_000, 11_000];
 
 /// Build cost ($/vehicle) for a line's chosen model. RAIL reads its roster; every other mode keeps the
-/// flat `TRAIN_COST` (byte-identical — `default_train_cost` 15M passed by the caller). Out-of-range
+/// flat `TRAIN_COST` (byte-identical — `default_train_cost` = TRAIN_COST = 15_000 ($15k) passed by the caller). Out-of-range
 /// spec ids clamp to the last entry (never panics).
 #[inline]
 pub fn train_cost(mode: u8, spec_id: u8, default_train_cost: i64) -> i64 {

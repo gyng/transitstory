@@ -5,6 +5,7 @@
 // so it updates with the cursor without widening the shared UI snapshot.
 import { useEffect, useReducer } from "react";
 import { useGame, useGameUI } from "./GameContext";
+import { fmtMoney } from "./shared";
 
 export function BuildHud() {
   const game = useGame();
@@ -25,11 +26,11 @@ export function BuildHud() {
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
   // Fantasy gold build economy prices in gold (⬢); transit prices in $. goldShort > 0 ⇒ unaffordable.
   const inGold = p.goldCost > 0;
-  const cost = inGold ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
+  const cost = inGold ? `${p.goldCost}⬢` : fmtMoney(p.cost); // range-aware ($850 / $3.4k / $47M) — not a stale "$0M"
   const unaffordable = p.invalid || p.goldShort > 0;
   // Bill of materials: per-terrain cell count + cost share (fantasy grid; the work the track entails).
-  const total = inGold ? p.goldCost : Math.round(p.costM);
-  const unit = inGold ? "⬢" : "M";
+  // Pass the RAW total ($ or gold); each share is formatted per-unit below.
+  const total = inGold ? p.goldCost : p.cost;
   const bom = p.stops >= 2 ? game.draftBom(total) : [];
 
   return (
@@ -62,7 +63,7 @@ export function BuildHud() {
         <span data-testid="build-hud-stops">{p.stops} stop{p.stops === 1 ? "" : "s"}</span>
         <span style={{ opacity: 0.55 }}>·</span>
         <span>~{km} km</span>
-        {(p.costM > 0 || p.goldCost > 0) && (
+        {(p.cost > 0 || p.goldCost > 0) && (
           <>
             <span style={{ opacity: 0.55 }}>·</span>
             <span data-testid="build-hud-cost">{cost}</span>
@@ -108,7 +109,7 @@ export function BuildHud() {
               {/* per-terrain identity tint — keep its hue */}
               <span style={{ width: 8, height: 8, borderRadius: 2, background: `rgb(${b.tint})`, flex: "0 0 auto" }} />
               {b.count}× {b.kind}
-              {b.cost > 0 && <span style={{ color: "var(--ot-con-ink-dim)" }}>{b.cost}{unit}</span>}
+              {b.cost > 0 && <span style={{ color: "var(--ot-con-ink-dim)" }}>{inGold ? `${b.cost}⬢` : fmtMoney(b.cost)}</span>}
             </span>
           ))}
         </div>

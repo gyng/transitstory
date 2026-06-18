@@ -143,7 +143,8 @@ PRODUCTION_MICRO = 10
 # an ROI decision (route around the costly ridge, don't over-extend). gold price = line capital ($-scale,
 # terrain-aware) / BUILD_GOLD_DIVISOR. The continent's lines span tens of km; after the 2026-06 ÷1000
 # transit-$ rescale that capital is ~hundreds of k$, so a 15k divisor (also ÷1000) keeps a typical line at
-# the SAME ~20-50 gold. INITIAL_GOLD seeds the treasury (CityData.initial_gold → world.tribute) — generous
+# ~20-50 gold (within ±1 gold of the old scale — capital is recomputed per-segment at the coarser scale, so
+# integer truncation can shave at most ~1 gold/line; not exactly identical). INITIAL_GOLD seeds the treasury
 # enough to lay the bootstrap chains, then deliveries fund expansion. Both are per-city knobs; 0 (the
 # native/golden default) ⇒ free building, byte-identical (golden-neutral). Balance knobs.
 BUILD_GOLD_DIVISOR = 15_000

@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PerLine, Stats } from "../../types";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { AIR_ROSTER, RAIL_ROSTER, railCarCount, PANEL_STYLE, SIM_MS_PER_CLOCK_MIN, hex, loadPip, modeIcon } from "./shared";
+import { AIR_ROSTER, RAIL_ROSTER, railCarCount, PANEL_STYLE, SIM_MS_PER_CLOCK_MIN, fmtMoney, hex, loadPip, modeIcon } from "./shared";
 import { linePnl, lineSatisfaction, fmtSignedMoney, fmtCount, shortLineName, swatchInk } from "./lineEconomics";
 
 // cssText token → React style object, so PANEL_STYLE stays the single source of truth (no
@@ -427,7 +427,7 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
                   }}
                 >
                   <span>{sel ? "✓ " : ""}{m.name}</span>
-                  <span style={{ color: "var(--ot-con-ink-dim)", fontWeight: 400 }}>{railCarCount(m.capacity)} cars · {m.capacity} cap · {m.kmh} km/h · ${m.costM}M</span>
+                  <span style={{ color: "var(--ot-con-ink-dim)", fontWeight: 400 }}>{railCarCount(m.capacity)} cars · {m.capacity} cap · {m.kmh} km/h · {fmtMoney(m.cost)}</span>
                 </button>
               );
             })}

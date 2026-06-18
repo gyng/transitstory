@@ -427,7 +427,10 @@ export class Effects {
   }
 
   private drawFlows(now: number): void {
-    if (this.flows.length === 0) return;
+    // Mirror the sibling continuous effects (drawThrobs/drawNightLights): read this.reduce INLINE so a
+    // mid-session prefers-reduced-motion toggle stops the march on the very next frame, not only after the
+    // next 3 Hz setFlows([]). (setFlows already drops them too — this is the immediate path.)
+    if (this.reduce || this.flows.length === 0) return;
     const cx = this.cx;
     for (const fl of this.flows) {
       const scr = fl.pts.map((ll) => this.map.project(ll));

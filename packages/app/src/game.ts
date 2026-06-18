@@ -16,7 +16,7 @@ import { BUILD, Buildability } from "./sim/buildability";
 import { axialOf, centerOf, lineCosted, type Axial } from "./sim/hexgrid";
 import type { SimBridge } from "./sim/SimBridge";
 import type { Event, PerLine, PerStation, Stats } from "./types";
-import { lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
+import { fmtMoney, lineTipHtml, MODE_SPECS, MODES, modeIcon, SIM_MS_PER_CLOCK_MIN, stationTipHtml, vehicleTipHtml, type LineTip, type StationTip, type VehicleTip } from "./ui/react/shared";
 import { meanStopQueue } from "./ui/react/lineEconomics";
 
 /** Compact number for floating juice text — "1.2M" / "45k" / "678" (the caller adds any $/⬢/sign). */
@@ -1369,8 +1369,8 @@ export class Game {
         this.refresh();
         return;
       }
-      if (p.shortM > 0) {
-        this.notice = `Not enough money — $${Math.ceil(p.shortM)}M short`;
+      if (p.short > 0) {
+        this.notice = `Not enough money — ${fmtMoney(p.short)} short`;
         audio.alert();
         this.refresh();
         return;
@@ -1687,7 +1687,7 @@ export class Game {
   /** Live preview of the in-progress route for the build HUD (client-side geometry; the $ cost
    *  is filled in by the sim cost-preview query). Length ≈ straight-segment sum through the
    *  drafted stations plus the live cursor leg (the committed line is curve-smoothed). */
-  draftPreview(): { stops: number; lengthKm: number; costM: number; invalid: boolean; shortM: number; goldCost: number; goldShort: number } {
+  draftPreview(): { stops: number; lengthKm: number; cost: number; invalid: boolean; short: number; goldCost: number; goldShort: number } {
     const len = (pts: [number, number][]) => {
       let mm = 0;
       for (let i = 1; i < pts.length; i++) mm += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
@@ -1705,13 +1705,13 @@ export class Game {
     // Affordability pre-flight (economy on only): how far the draft overshoots the balance, in $M.
     // The core's afford-gate is still the authority at commit — this is the early warning.
     const s = this.lastStats;
-    const shortM = s?.economyEnabled ? Math.max(0, (cost - s.balance) / 1e6) : 0;
+    const short = s?.economyEnabled ? Math.max(0, cost - s.balance) : 0; // raw $ overshoot (formatted by the HUD)
     // Fantasy gold build economy (#economy): price the draft in gold + how far it overshoots the treasury.
     // The core afford-gate is still the authority at commit; this is the early warning the player draws against.
     const div = s?.buildGoldDivisor ?? 0;
     const goldCost = div > 0 ? Math.round(cost / div) : 0;
     const goldShort = div > 0 ? Math.max(0, goldCost - (s?.tribute ?? 0)) : 0;
-    return { stops: this.draft.length, lengthKm: bent / 1_000_000, costM: cost / 1e6, invalid: this.draftInvalid(), shortM, goldCost, goldShort };
+    return { stops: this.draft.length, lengthKm: bent / 1_000_000, cost, invalid: this.draftInvalid(), short, goldCost, goldShort };
   }
 
   /** Bill-of-materials for the in-progress draft (fantasy grid): how many lattice cells of each terrain
@@ -1807,7 +1807,7 @@ export class Game {
    *  sunk — undo restores it, demolish doesn't refund it). */
   private demolishEcho(name: string, at: [number, number] | null, capitalCost = 0): void {
     if (at) this.effects.ripple(at[0], at[1], "214,40,40");
-    const sunk = this.lastStats.economyEnabled && capitalCost > 0 ? ` — $${Math.round(capitalCost / 1e6)}M build cost written off` : "";
+    const sunk = this.lastStats.economyEnabled && capitalCost > 0 ? ` — ${fmtMoney(capitalCost)} build cost written off` : "";
     this.notice = `Demolished ${name}${sunk}`;
   }
 

@@ -8,6 +8,7 @@
 import { useEffect, useReducer } from "react";
 import { mmToLngLat } from "../../coords/geo";
 import { useGame, useGameUI } from "./GameContext";
+import { fmtMoney } from "./shared";
 
 export function DraftControls() {
   const game = useGame();
@@ -33,8 +34,8 @@ export function DraftControls() {
 
   const p = game.draftPreview();
   const km = p.lengthKm < 10 ? p.lengthKm.toFixed(1) : Math.round(p.lengthKm).toString();
-  const cost = p.goldCost > 0 ? `${p.goldCost}⬢` : p.costM >= 1000 ? `$${(p.costM / 1000).toFixed(1)}B` : `$${Math.round(p.costM)}M`;
-  const short = p.shortM > 0 || p.goldShort > 0;
+  const cost = p.goldCost > 0 ? `${p.goldCost}⬢` : fmtMoney(p.cost); // range-aware ($850 / $3.4k / $47M)
+  const short = p.short > 0 || p.goldShort > 0;
   const ready = game.draft.length >= 2 && !p.invalid && !short;
   // Extending a committed line: the seed terminus isn't a NEW stop — count and label accordingly.
   const extending = game.extendTarget !== null;
@@ -81,14 +82,14 @@ export function DraftControls() {
         </span>
         <span style={{ opacity: 0.5 }}>·</span>
         <span>~{km} km</span>
-        {p.costM > 0 && (
+        {p.cost > 0 && (
           <>
             <span style={{ opacity: 0.5 }}>·</span>
             <span data-testid="draft-cost">{cost}</span>
           </>
         )}
         {p.invalid && <span style={{ marginLeft: 2 }}>⚠ over water</span>}
-        {!p.invalid && short && <span data-testid="draft-short" style={{ marginLeft: 2 }}>⚠ ${Math.ceil(p.shortM)}M short</span>}
+        {!p.invalid && short && <span data-testid="draft-short" style={{ marginLeft: 2 }}>⚠ {fmtMoney(p.short)} short</span>}
       </div>
 
       {/* Confirm / cancel — the discoverable commit (double-click / Enter still work). */}
@@ -106,7 +107,7 @@ export function DraftControls() {
               : p.invalid
                 ? "Route crosses water — elevate, tunnel, or use a ferry"
                 : short
-                  ? `Not enough money — $${Math.ceil(p.shortM)}M short`
+                  ? `Not enough money — ${fmtMoney(p.short)} short`
                   : extending
                     ? "Chain at least 1 new stop"
                     : "Add at least 2 stops"
