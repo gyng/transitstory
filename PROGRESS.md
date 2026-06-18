@@ -3318,3 +3318,37 @@ Then a stats/motion map (`map-stats-and-motion` workflow, 3 readers) drove:
 
 **Remaining mapped (not built, lower value):** supply-flow pips marching along served lines; resource-extraction
 shimmer; night-window flicker on settlements (in-world polish). All outer-ring.
+
+### Playtest pass + day/night legion rework (2026-06-18, rapid-feedback session)
+
+In-world FX (`027fe8a`): supply-flow pips marching served-line polylines, night-window flicker on settlements,
+resource-extraction shimmer — all FX-canvas, 3 Hz state + per-frame march, reduced-motion + LOD aware.
+
+Number rationalization (`6ae144a`,`2ea9b8e`): shared fmtMoney/fmtCount/fmtSignedMoney made full-range + sign-first
+(no more "$0k"); StatsBar/day-report/line-tip abbreviate (5.7k, 14k, −$45.2B).
+
+Economy ÷1000 rescale (`bf127dc`): the whole transit-$ family ÷1000 (legible $k/$M, not $B); RAIL_COST + arcadia
+build_gold_divisor scaled in lockstep; 3 state-hash goldens re-pinned BY DESIGN (line.capital_cost is hashed). A
+13-agent adversarial review (`4e84b4a`) caught the draft-HUD "$0M" miss (it formatted /1e6) — routed through fmtMoney.
+
+Playtest quick wins (`969469c`,`33ecf6e`): gentler decadence (growthPerS 6→3, initialDecadence 3990→2200; runtime
+JSON, no re-pin); MIDDLE-drag pan (left stays build/select, right stays inspect); legible resource icons (dark SDF
+outline; all kinds already had glyphs); the fantasy demand overlay relabelled "🌡 Supply" (supply-chain, not commuter).
+
+DAY/NIGHT LEGIONS (the big one — 6 commits, all determinism-clean: goldens byte-identical since their runs are short
+daylight windows; the winnability gate now runs >1 full day/night cycle WITH all of it + still wins):
+- March by day / camp at night (`70436f3`): `tod::is_daylight` (integer 06:00–20:00) gates the WALKING advance —
+  foot-marchers camp through the dark, rail-borne legions ride on. CAMPED legions bank to an ember tint + a campfire
+  glow. `tod` unit test pins the boundary (`a56ea1e`).
+- Multi-front fan-out (`6c3af68`): the "one long line" fix — no-bounty legions round-robin the route's uncaptured
+  towns (different fronts); bounty-steering still wins.
+- Dusk teaching beat (`a3de104`): one-shot "🌙 your legions make camp…" the first night they camp.
+- Supply-coupling (`cf47061`): legion MANPOWER upkeep (CityData knob, mirrors gold upkeep) — a standing army eats
+  supply, so rail load scales with the host; baked at 2, certified winnable WITH it. (The literal "trains deliver to
+  a moving camp" was rejected as invasive — legions aren't stations.)
+
+3D STATION DEPOTS (`f3b8851`): stations stand up as a lowpoly platform + pitched-roof house (SimpleMeshLayer + baked
+AO), arcadia + LOD-gated; the existing train dwell + peeps read as the "working berth". Pure render.
+
+**Remaining big:** symmetric enemy AI (#13 — an enemy that builds track + plays by the player's rules; a major
+sim+AI project to scope as a phased design first). Near-term aggro already tuned down.
