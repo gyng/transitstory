@@ -795,8 +795,14 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       data: view.shed,
       diskResolution: 6, // hexagon
       extruded: false, // flat fill
-      radius: hexRadius(view.roadCellM), // the shed cells ARE buildability cells → road-grid pitch
+      // #19 align the catchment to the terrain hex lattice: in arcadia the reachable shed cells ARE the
+      // terrain hex cells, so the shed hexagons MUST match the terrain's hexagon geometry — same
+      // circumradius (terrainCellM*1.04) AND pointy-top orientation (angle:30). Sizing by the road pitch
+      // (hexRadius) + the default flat-top angle left them undersized + rotated 30° off the lattice
+      // (the misalignment). Transit (no hex lattice) keeps the road-grid pitch + deck's default angle.
+      radius: view.terrainCellM > 0 ? view.terrainCellM * 1.04 : hexRadius(view.roadCellM),
       radiusUnits: "meters",
+      angle: view.terrainCellM > 0 ? 30 : 0,
       getPosition: (d: ShedHex) => [d.lng, d.lat],
       getFillColor: (d: ShedHex) => [0, 114, 178, Math.round(48 + Math.min(1, d.intensity) * 120)],
       filled: true,
