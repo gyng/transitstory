@@ -3193,3 +3193,27 @@ tsc + vitest 27/27 green throughout.
   GSG-inspired mode with events*. Future scope, well beyond the thin slice. Noted, not built (guard the loop).
   The command-sourced deterministic core is mode-agnostic, so a future "mode" is a new outer-ring layer +
   Command/Event variants, not a core rewrite.
+
+## Perf + juice + onboarding work order (2026-06-18) — Wave 1: PERF
+
+Measured first (no FPS instrumentation existed). Backend benched native-release; frontend traced in
+hardware-WebGL Chrome (RTX 3080) on `?city=tokyo&network=1` (77 lines / 497 stations), trains on every line.
+
+- **Frontend was NOT per-frame-bound** — median rAF frame 13.9 ms (72 fps). The pathology was ~150 ms
+  main-thread **freezes 3×/second**. Bisected (rAF-freeze / display:none / canvas-hide / refresh()-noop /
+  CPU profile) to the 3 Hz React HUD: the roster's `lineQueue(id)` decoded ALL lines via
+  `bridge.linesView()` **once per row** (O(lines²)), and the vehicle path decoded `linesView()` twice per
+  frame. Fix: **cache `linesView`/`stationsView` in SimBridge, invalidate on apply/rebuild** — both are
+  pure topology (command-only writes, verified bounty/platform_count). Result: **p90 145.8 → 7.1 ms,
+  >100 ms freezes 9/4s → 0.** (`68ee532`)
+- **Backend was already ~200× real-time** — steady-state 0.065 ms/tick, move-phase @720 veh 0.148 ms/tick.
+  So no steady-state problem; landed the specifically-deferred lever (commit 90854e7's reverted
+  binary-search) properly: new `crate::geom` (partition_point) replaces the per-train per-tick linear
+  arclen/stop-arclen scans in `Path::{span_of,speed_cap_at,point_at,heading_at}` + `next_stop_index`, with
+  `tests/geom_search.rs` proving bit-identical equivalence to verbatim linear refs over adversarial arrays
+  (negative / equal-adjacent / len 0-2) + exhaustive queries. Determinism gate (55 binaries, transit+arcadia
+  goldens + position fingerprints) **byte-identical**. Result: **move-phase −41% (0.1475 → 0.0873 ms/tick),
+  steady-state −12%.** (`22afd2a`)
+- Deferred (logged): the `vehicle::advance` per-tick scratch-Vec hoist — byte-identical but a churny
+  borrow-checker refactor for ~nil player-visible gain on a 200×-real-time path; not worth the risk now.
+  LineRow `React.memo` — Fix #1 alone flattened the freeze, so the memo is unneeded until a far larger roster.
