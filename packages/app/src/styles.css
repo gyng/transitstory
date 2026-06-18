@@ -316,6 +316,27 @@ body {
   }
 }
 
+/* Thin, subtle scrollbars inside the chrome panels (the bottom dock's roster + ticker would otherwise show
+   chunky default bars in their cramped 92px — #17). Scoped to #ui so the map/page is untouched. */
+#ui ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+#ui ::-webkit-scrollbar-track {
+  background: transparent;
+}
+#ui ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+}
+#ui ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+#ui * {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
 /* Accessibility: respect a reduced-motion preference — kill the chrome's animation/transition. */
 @media (prefers-reduced-motion: reduce) {
   #ui *,

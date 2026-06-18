@@ -103,9 +103,9 @@ const FLYOUT_STYLE: CSSProperties = {
   flexDirection: "column",
   gap: 4,
   padding: "8px 10px",
-  // Wide enough that the 4 tools pack onto ONE row and the (transit) 5-mode segment fits on one row
-  // too — so the flyout is two short button rows + the one-line hint (~110px), not four wrapped rows.
-  width: "min(560px,80vw)",
+  // Narrowed so the flyout's right edge clears the top-centre alert cluster (it was overrunning "N
+  // contested towns" — #16). The tool + mode segments flex-wrap, so the only cost is an extra wrapped row.
+  width: "min(440px,62vw)",
   pointerEvents: "auto",
 };
 

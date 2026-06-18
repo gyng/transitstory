@@ -77,9 +77,12 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     // town/train glows in. Mutates the same light objects the overlay holds (stable effects array).
     game.updateLighting = (h) => setLightingHour(sun, ambient, h);
     // #3d-trees diorama: tilt the camera so the lowpoly pines (+ terrain) read as a TTD-style 3D scene.
-    // A modest pitch keeps the strategic overview legible; the player can still pan/zoom freely.
+    // A modest pitch keeps the strategic overview legible; the player can still pan/zoom freely. A small
+    // default BEARING gives the classic corner-on ISOMETRIC angle (the diorama reads as a 3D scene viewed
+    // from a corner, not a tilted flat map) — #iso-view. North isn't sacred on a fantasy continent.
     map.setMaxPitch(60);
     map.setPitch(45);
+    map.setBearing(22);
   }
   game.demandHeat = city.demandHeat; // travel-demand heat overlay source
   game.demandCellM = city.demandCellM; // sizes the demand-heat hexagons to the grid pitch
