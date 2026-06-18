@@ -26,6 +26,8 @@ export interface StationDot {
   bounty?: number;
   /** #13 faction — 0 = player, 1 = rival realm (the enemy AI's nodes render crimson). */
   faction?: number;
+  /** #15 Phase 4 — terrain relief (m) of the station's hex, so the 3D depot sits ON the extruded top. */
+  z?: number;
 }
 export interface LinePath {
   id: number;
@@ -130,6 +132,7 @@ export interface TreeInstance {
   scale: number; // height in map-metres (sizeScale ×1 mesh unit)
   yaw: number; // facing, degrees
   shade: number; // 0..1 → green tint lerp (darker valley pines → lighter highland)
+  z?: number; // #15 Phase 4 — terrain relief (m) of the underlying hex, so the mesh sits ON the extruded top
 }
 
 /** Living-world (#living): one ambient ox-cart / trader trundling a baked trade route between towns,
@@ -365,6 +368,20 @@ function terrainColor(c: number): [number, number, number, number] {
   }
 }
 
+/** #15 Phase 4 — terrain RELIEF height (metres) by biome code: the VISIBLE companion to the gameplay height
+ *  band (crates/sim height_band). Mountains stand tall, hills rise, forest is a gentle swell; PLAIN + WATER
+ *  + every transit class sit at 0. Kept subtle (≪ the ~250 m hex) so the iso-tilted diorama reads as rolling
+ *  country while the flat network (lines/vehicles at z=0, on the low ground it occupies) doesn't float badly. */
+export function reliefM(c: number): number {
+  switch (c) {
+    case 6: return 130; // MOUNTAIN — the high ridge
+    case 7: return 64; // HILL — rising ground
+    case 9: return 50; // LEY — raised arcane ground
+    case 8: return 34; // FOREST — a gentle swell
+    default: return 0; // PLAIN / WATER / open — sea level
+  }
+}
+
 /** STRUCTURAL congestion % (50 jammed … 100 flowing) at a given in-game hour + local built-up
  *  density — mirrors the time + density terms of sim `tod::congestion_at` (keep in sync). The third
  *  term, self-induced bus traffic, is dynamic and read off the buses slowing, not this static
@@ -524,7 +541,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "terrain",
       data: view.terrain,
       diskResolution: 6, // hexagon
-      extruded: false, // flat fill on the ground
+      // #15 Phase 4 — EXTRUDE each hex to its biome RELIEF (mountains tall, hills rise, plains flat at 0), so
+      // the iso-tilted map reads as rolling country instead of a flat plane. The diorama meshes (trees/depots/
+      // sprawl) are z-raised to match (sit on the hex top). PLAIN/transit ⇒ elevation 0 ⇒ flat (no-op there).
+      extruded: true,
+      getElevation: (d: TerrainCell) => reliefM(d.c),
       // circumradius = hex size (×1.04 to kill sub-pixel seams; opaque back layer, overlap is benign).
       // angle:30 rotates deck's default flat-top hexagon to POINTY-TOP, matching the axial lattice
       // (centers spaced √3·size apart) so the honeycomb tiles edge-to-edge with no gaps.
@@ -535,7 +556,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getFillColor: (d: TerrainCell) => terrainColor(d.c),
       filled: true,
       stroked: false,
-      updateTriggers: { getFillColor: view.terrain.length },
+      updateTriggers: { getFillColor: view.terrain.length, getElevation: view.terrain.length },
     }),
     // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain
     // (under the network/POIs). Empty for transit / at overview (LOD), so it's a no-op there.
@@ -1365,7 +1386,7 @@ export function stationMeshLayer(stations: StationDot[]): Layer {
     id: "station-depots",
     data: stations,
     mesh: stationMesh(),
-    getPosition: (d) => [d.lng, d.lat],
+    getPosition: (d) => [d.lng, d.lat, d.z ?? 0], // #15 sit on the extruded terrain top
     // #13: a rival depot (faction 1) is crimson stone — the enemy realm's hold reads as hostile in 3D too.
     getColor: (d) => (d.faction === 1 ? [188, 96, 84] : d.serving > 0 ? [224, 212, 190] : [156, 152, 144]),
     getOrientation: [0, 0, 0],
@@ -1386,7 +1407,7 @@ export function townSprawlLayer(buildings: TreeInstance[]): Layer {
     id: "town-sprawl",
     data: buildings,
     mesh: stationMesh(),
-    getPosition: (d) => [d.lng, d.lat],
+    getPosition: (d) => [d.lng, d.lat, d.z ?? 0], // #15 sit on the extruded terrain top
     getColor: (d) => {
       const v = Math.round(188 + d.shade * 34); // warm stone, varied per building
       return [v, Math.round(v * 0.92), Math.round(v * 0.82)];
@@ -1405,7 +1426,7 @@ export function treeLayer(trees: TreeInstance[]): Layer {
     id: "trees",
     data: trees,
     mesh: pineGeometry(),
-    getPosition: (d) => [d.lng, d.lat],
+    getPosition: (d) => [d.lng, d.lat, d.z ?? 0], // #15 sit on the extruded forest hex top
     getColor: (d) => {
       // valley pine (deep green) → highland fir (cooler, lighter); a touch of per-tree variation via shade.
       const g = Math.round(86 + d.shade * 46);

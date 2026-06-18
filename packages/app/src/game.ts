@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, resourceGlyph, townGlyph, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, resourceGlyph, townGlyph, reliefM, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -2103,6 +2103,7 @@ export class Game {
           serving: ps?.serving ?? 0, // 0 = orphaned → muted fill
           bounty: s.bounty, // fantasy: >0 → a ⚑ marker (the steering lever's visual feedback)
           faction: s.faction ?? 0, // #13: 1 = rival realm → crimson tint
+          z: reliefM(this.biomeCodeAt(lng, lat) ?? 0), // #15 sit the depot on the extruded terrain top
         };
       });
 
@@ -2828,7 +2829,7 @@ export class Game {
       const k = 1 + (Math.random() < 0.6 ? 1 : 0);
       for (let j = 0; j < k && this.trees.length < CAP; j++) {
         const [lng, lat] = mmToLngLat([mx + (Math.random() * 2 - 1) * jitterMm, my + (Math.random() * 2 - 1) * jitterMm]);
-        this.trees.push({ lng, lat, scale: 120 + Math.random() * 110, yaw: Math.random() * 360, shade: Math.random() });
+        this.trees.push({ lng, lat, scale: 120 + Math.random() * 110, yaw: Math.random() * 360, shade: Math.random(), z: reliefM(c.c) });
       }
     }
   }
@@ -2851,7 +2852,7 @@ export class Game {
           const [lng, lat] = mmToLngLat([cx + dist * Math.cos(ang), cy + dist * Math.sin(ang)]);
           const b = this.biomeCodeAt(lng, lat);
           if (b === 4 || b === 6) continue; // skip WATER / MOUNTAIN (no depot in the sea / on a cliff)
-          this.townSprawl.push({ lng, lat, scale: r === 1 ? 96 : 78, yaw: (k * 60 + r * 30) % 360, shade: (k % 3) / 3 });
+          this.townSprawl.push({ lng, lat, scale: r === 1 ? 96 : 78, yaw: (k * 60 + r * 30) % 360, shade: (k % 3) / 3, z: reliefM(b ?? 0) });
         }
       }
     }
