@@ -83,6 +83,8 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
   const capital = s.capitalSpent;
   const opex = s.opexSpent;
   const balance = s.balance;
+  // Network RUNNING cost / in-game day = the sum of the per-line opex rates (which bucket the global drain).
+  const opexPerDay = lines.reduce((a, l) => a + (l.opexPerDay ?? 0), 0);
 
   const topRidership = [...lines]
     .filter((l) => l.ridership > 0)
@@ -179,6 +181,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
               <LedgerRow label="Balance" amount={balance} sign="=" />
               <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginTop: 6 }}>
                 Avg journey {fmtMins(s.avgJourneyMs)} · avg wait {fmtMins(s.avgWaitMs)} · load {Math.round(s.avgLoadFactor * 100)}%
+                {opexPerDay > 0 && <> · running {fmtMoney(opexPerDay)}/day</>}
               </div>
             </div>
 
@@ -203,7 +206,12 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
                   <div key={l.lineId} style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", color: "var(--ot-con-ink)" }}>
                     <span style={{ width: 10, height: 10, borderRadius: 3, flex: "0 0 auto", background: hex(l.color) }} />
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || `Line ${l.lineId + 1}`}</span>
-                    <b style={{ color: p.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)" }}>{fmtSignedMoney(p.net)}</b>
+                    {p.opexPerDay > 0 && (
+                      <span title="running cost / in-game day" style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, fontFamily: "var(--ot-readout-font)", flex: "0 0 auto" }}>
+                        −{fmtMoney(p.opexPerDay)}/d
+                      </span>
+                    )}
+                    <b style={{ color: p.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)", flex: "0 0 auto", marginLeft: 8 }}>{fmtSignedMoney(p.net)}</b>
                   </div>
                 ))
               )}

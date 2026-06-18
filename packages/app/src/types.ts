@@ -124,6 +124,9 @@ export interface PerLine {
   capitalCost: number;
   /** Mean load factor (onboard/capacity) across this line's vehicles; 0 with no vehicles. */
   loadFactor: number;
+  /** Running cost ($/in-game-day): this line's trains×OPEX_PER_TRAIN_DAY + track-km×OPEX_PER_KM_DAY
+   *  (the network opex drain bucketed per line). For a true operating P&L, not just lifetime payback. */
+  opexPerDay: number;
 }
 
 export interface Stats {

@@ -1315,6 +1315,10 @@ impl World {
                     crosses_water: l.crosses_water_surface,
                     capital_cost: l.capital_cost as f64,
                     load_factor: if line_load_n[i] > 0 { line_load_sum[i] / line_load_n[i] as f32 } else { 0.0 },
+                    // Running cost/day = this line's share of the global opex drain (accrue_opex), bucketed:
+                    // its trains × per-train + its track-km × per-km. Per-line buckets sum to the network rate.
+                    opex_per_day: (l.trainset.map(|t| t.count as i64).unwrap_or(0) * OPEX_PER_TRAIN_DAY
+                        + (l.length_mm() / 1_000_000) * OPEX_PER_KM_DAY) as f64,
                 }
             })
             .collect();

@@ -3,10 +3,10 @@
 // roster, the editor, and the stats dashboard all read one source of truth and can't drift.
 //
 // Why frontend-derived: revenue and capital are *exact* from the snapshot (fares are a flat
-// per-boarding charge; capital is per-line). Opex is a single global drain the snapshot doesn't
-// split per line, so per-line P&L here is fares − capital (lifetime payback); the ledger shows
-// total opex. Satisfaction is a service-quality score from the two per-line levers the snapshot
-// exposes: crowding (load factor) and wait (headway/2).
+// per-boarding charge; capital is per-line). The sim now ALSO exposes a per-line running-cost rate
+// (LineStat.opexPerDay — its trains + track-km bucketed from the global opex drain), so `net` is the
+// lifetime fares − capital payback AND `opexPerDay` is the operating burn. Satisfaction is a
+// service-quality score from the two per-line levers the snapshot exposes: crowding + wait.
 import type { PerLine, Stats } from "../../types";
 import { SIM_MS_PER_CLOCK_MIN } from "./shared";
 
@@ -24,15 +24,19 @@ export interface LinePnl {
   /** revenue − capital: lifetime P&L — is the line in the black on its build cost yet? */
   net: number;
   inBlack: boolean;
+  /** Running cost ($/in-game-day) — this line's share of the network opex drain (trains + track-km).
+   *  The operating burn, distinct from the one-time capital: a line in the black on its build can
+   *  still cost more to RUN than it earns. 0 with no trains / no track. */
+  opexPerDay: number;
 }
 
-/** Per-line profit/loss. Revenue is exact; capital is exact; opex (a global drain) is excluded —
- *  see the file header. `net` is the "has this line earned back what it cost to build" signal. */
+/** Per-line profit/loss. Revenue + capital are exact; `net` is lifetime payback (fares − capital);
+ *  `opexPerDay` is the operating burn the sim now buckets per line (see the file header). */
 export function linePnl(l: PerLine, s: Stats): LinePnl {
   const revenue = l.ridership * effectiveFare(s);
   const capital = l.capitalCost;
   const net = revenue - capital;
-  return { revenue, capital, net, inBlack: net >= 0 };
+  return { revenue, capital, net, inBlack: net >= 0, opexPerDay: l.opexPerDay ?? 0 };
 }
 
 export interface Satisfaction {

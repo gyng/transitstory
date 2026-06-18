@@ -169,6 +169,11 @@ pub struct LineStat {
     /// strain readout — distinct from `ridership` (throughput): a line can move many riders and
     /// still be uncrowded, or move few and be at crush load. 0 when the line has no vehicles.
     pub load_factor: f32,
+    /// This line's RUNNING cost ($/in-game-day): its trains × OPEX_PER_TRAIN_DAY + its track-km ×
+    /// OPEX_PER_KM_DAY — the global opex drain bucketed per line (the per-line buckets sum to the
+    /// network opex). Lets the UI show a TRUE operating P&L (is this line worth RUNNING?), not just
+    /// the lifetime fares − capital payback. Derived readout (un-hashed); 0 when economy is off-relevant.
+    pub opex_per_day: f64,
 }
 
 /// One OD "desire line" from a selected origin station to a destination it draws riders toward
