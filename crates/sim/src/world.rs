@@ -65,14 +65,7 @@ const OPEX_PER_KM_DAY: i64 = 50;
 /// GOLD_UPKEEP_DIVISOR`. Tunable; 0 baked rate disables it (golden-neutral default).
 const GOLD_UPKEEP_TRAIN_KM: i64 = 4;
 const GOLD_UPKEEP_DIVISOR: i64 = 100;
-/// #13 — the rival realm's opening manpower war-chest (it fields legions from this until its own supply
-/// economy comes online in a later phase). A few legions' worth (LAUNCH_COST 8). Only seeded when a baked
-/// rival exists (rival_enabled), so transit + the goldens are unaffected.
-const RIVAL_START_MANPOWER: i64 = 40;
-/// #13 P2 — the rival realm's opening TRACK-BUILD budget (gold). The rival creeps its rail toward the
-/// player's capital, spending this per extension (`rival::BUILD_COST`); when it runs dry it stops expanding
-/// (its own supply economy comes later). Only seeded for a baked rival ⇒ transit + the goldens unaffected.
-const RIVAL_START_TRIBUTE: i64 = 400;
+// (The rival's opening manpower + track-build budgets are per-difficulty — see `rival::RivalProfile`.)
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -780,8 +773,9 @@ impl World {
         if self.stations.len() > before {
             self.stations[before].faction = 1; // flip the just-placed capital to the rival
         }
-        self.rival_manpower = RIVAL_START_MANPOWER; // a war-chest so the rival can field legions (P1d)
-        self.rival_tribute = RIVAL_START_TRIBUTE; // a budget so the rival can build rail toward you (P2)
+        let prof = crate::rival::profile_for(self.city.rival_difficulty);
+        self.rival_manpower = prof.start_manpower; // war-chest for legions (P1d) — scaled by AI difficulty
+        self.rival_tribute = prof.start_tribute; // budget for rail-building (P2) — scaled by AI difficulty
     }
 
     /// Buildability class at a local mm point (Open if outside the grid, or if there is no grid at all).

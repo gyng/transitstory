@@ -126,6 +126,12 @@ pub struct CityData {
     /// byte-identical (default off; only the baked continent opts in). See docs/symmetric-enemy-ai.md.
     #[serde(default)]
     pub rival_enabled: bool,
+    /// #13 — the rival AI DIFFICULTY: 0 = easy, 1 = moderate (the default + the shipped pace), 2 = hard.
+    /// Scales the rival's `RivalProfile` (cadences + opening budgets + live-host cap) — never the fairness
+    /// rules. serde-default 1 (moderate) so the baked continent is moderate unless it opts otherwise; the
+    /// `Default`-derive 0 (easy) only matters where no rival is seeded (goldens/balance) ⇒ no behaviour change.
+    #[serde(default = "default_rival_difficulty")]
+    pub rival_difficulty: u8,
     /// Fantasy (arcadia) #11 — the OFF-RAIL goods BACKSTOP rate (µ-units of each recipe input walked into a
     /// town per ms, when the realm holds a source of it). Peeps haul goods on foot when no railway serves a
     /// town, so it never FULLY starves — but the trickle is a fraction of a rail load, so the railway is
@@ -169,6 +175,11 @@ pub struct CityData {
 /// Default transit-adjacent demand growth: +2.5% per in-game day (ambient = a third of this).
 fn default_growth_bp() -> i64 {
     250
+}
+
+/// #13 — a city that omits `rival_difficulty` gets MODERATE (1), the shipped rival pace.
+fn default_rival_difficulty() -> u8 {
+    1
 }
 
 /// The ruleset a city JSON selects when it omits `ruleset` — the classic transit game. Shared by

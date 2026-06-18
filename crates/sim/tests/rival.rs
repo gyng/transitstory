@@ -20,7 +20,7 @@ use sim::world::World;
 /// A world with a rival hold (faction-1 barracks, id 0) and a CAPTURED town (id 1, `town_value == 0`).
 /// `defended` rails a one-stop player line onto the town so the network's cordon covers it.
 fn world_with_rival(hold: (i64, i64), town: (i64, i64), defended: bool) -> World {
-    let mut w = World::new(7, CityData { ruleset: "arcadia".into(), ..Default::default() });
+    let mut w = World::new(7, CityData { ruleset: "arcadia".into(), rival_difficulty: 1, ..Default::default() });
     // The rival hold — a faction-1 barracks.
     w.stations.push(Station::new(PointMm::new(hold.0, hold.1), "Rival Hold".into()));
     w.stations[0].faction = 1;
@@ -67,6 +67,22 @@ fn rival_spares_a_defended_captured_town() {
 }
 
 #[test]
+fn rival_difficulty_scales_the_muster_cadence() {
+    // Synthetic difficulty check (#13): identical setup, only `rival_difficulty` differs. HARD's muster
+    // cadence (45 s) fires inside a 60 s window; EASY's (180 s) does not — so the same window yields a hard
+    // host but no easy one. Cadence/funding scale by difficulty; the FAIRNESS rules (undefended-only
+    // re-garrison, the monotonic Standing) are unchanged and hold at EVERY difficulty (the tests above).
+    let mut easy = world_with_rival((10_000_000, 0), (2_000_000, 0), false);
+    easy.city.rival_difficulty = 0; // EASY — 180 s muster cadence
+    let mut hard = world_with_rival((10_000_000, 0), (2_000_000, 0), false);
+    hard.city.rival_difficulty = 2; // HARD — 45 s muster cadence
+    run(&mut easy, 1200); // 60 s of sim
+    run(&mut hard, 1200);
+    assert!(hard.rival_hosts.len() >= 1, "HARD (45 s cadence) should muster a host within 60 s");
+    assert_eq!(easy.rival_hosts.len(), 0, "EASY (180 s cadence) should NOT muster within 60 s");
+}
+
+#[test]
 fn rival_regarrison_preserves_the_monotonic_standing() {
     // P1e keystone: the rival re-contests captured ground (raising town_value ⇒ a re-siege), but must NEVER
     // lower the cumulative Standing (`towns_captured`). That gauge is monotonic by design — a strictly-better
@@ -82,7 +98,7 @@ fn rival_regarrison_preserves_the_monotonic_standing() {
 /// A world with a rival hold (faction-1 barracks) far from the capital (origin) + a build budget, so the
 /// rival's track-builder (P2) has something to creep toward.
 fn world_with_rival_builder(hold: (i64, i64), tribute: i64) -> World {
-    let mut w = World::new(9, CityData { ruleset: "arcadia".into(), ..Default::default() });
+    let mut w = World::new(9, CityData { ruleset: "arcadia".into(), rival_difficulty: 1, ..Default::default() });
     w.stations.push(Station::new(PointMm::new(hold.0, hold.1), "Rival Hold".into()));
     w.stations[0].faction = 1;
     w.is_barracks = vec![true];

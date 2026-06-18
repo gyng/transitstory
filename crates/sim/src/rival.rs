@@ -19,17 +19,37 @@ use crate::world::World;
 pub const MARCHING: u8 = 0;
 pub const DONE: u8 = 1; // arrived (re-garrisoned, or cut down at a defended town) — slot recyclable
 
-/// Hard cap on rival-host SLOTS (DONE slots recycle ⇒ bounded, no sawtooth). Small: a focused threat, not a
-/// swarm (the rot's raiders are the swarm; the rival is a deliberate adversary).
-const MAX_HOSTS: usize = 8;
+/// Hard SoA ceiling on rival-host SLOTS (DONE slots recycle ⇒ bounded, no sawtooth). The per-difficulty
+/// SOFT cap on LIVE hosts is `RivalProfile.max_hosts` (≤ this); this is just the allocation backstop.
+const MAX_HOSTS: usize = 12;
 /// Host march pace (mm/s) — a touch faster than the rot's raiders (a purposeful army, not creeping marauders).
 const HOST_SPEED_MM_S: i64 = 110_000;
 /// `rival_manpower` to muster one host (mirrors the player's `army::LAUNCH_COST` — the rival pays the same
 /// price the player does: symmetry). Saved up between musters when the treasury is short.
 const MUSTER_COST: i64 = 8;
-/// Muster cadence (ms): a host every ~90 sim-s while the rival can afford one AND there is captured ground to
-/// re-contest. Authoritative (gates the next muster) ⇒ hashed.
-const MUSTER_PERIOD_MS: i64 = 90_000;
+/// #13 difficulty PROFILE — the knobs that scale the rival's AGGRESSION by difficulty (cadences + opening
+/// budgets + the live-host soft cap). This struct is the SEAM for a future PERSONALITY axis: a personality
+/// is just a different knob-set (add a second param to `profile_for`). It scales pace/funding ONLY — never
+/// the FAIRNESS rules (undefended-only re-garrison, the monotonic Standing), which hold at every difficulty.
+#[derive(Clone, Copy)]
+pub struct RivalProfile {
+    pub muster_period_ms: i64,
+    pub build_period_ms: i64,
+    pub max_hosts: usize,
+    pub start_manpower: i64,
+    pub start_tribute: i64,
+}
+
+/// The profile for a rival difficulty: 0 = EASY (slow, shallow-pocketed), 1 = MODERATE (the default + the
+/// shipped values), 2 = HARD (fast + well-funded). Any other value falls back to MODERATE. Personality space
+/// is left open — a later axis tints these knobs (e.g. a builder vs a raider rival) without new plumbing.
+pub fn profile_for(difficulty: u8) -> RivalProfile {
+    match difficulty {
+        0 => RivalProfile { muster_period_ms: 180_000, build_period_ms: 240_000, max_hosts: 4, start_manpower: 24, start_tribute: 200 },
+        2 => RivalProfile { muster_period_ms: 45_000, build_period_ms: 60_000, max_hosts: 10, start_manpower: 96, start_tribute: 900 },
+        _ => RivalProfile { muster_period_ms: 90_000, build_period_ms: 120_000, max_hosts: 8, start_manpower: 40, start_tribute: 400 },
+    }
+}
 /// Within this range (mm) of the target town counts as ARRIVED (re-garrison + despawn).
 const ARRIVE_MM: i64 = 2_000_000;
 /// Re-garrison HP a host restores to a re-contested captured town — a LIGHT re-contest (mirrors the
@@ -41,9 +61,7 @@ const REGARRISON: i64 = 500;
 /// `rival_tribute` spent per track EXTENSION. When the budget (seeded at SeedRival) runs dry the rival stops
 /// expanding — its own supply economy (minting more) comes in a later phase.
 const BUILD_COST: i64 = 50;
-/// Build cadence (ms): a deliberate extension every ~2 sim-min (slower than musters — laying rail is a
-/// commitment). Authoritative (gates the next build) ⇒ hashed.
-const BUILD_PERIOD_MS: i64 = 120_000;
+/// (Build cadence is per-difficulty — see `RivalProfile.build_period_ms`.)
 /// How far each extension reaches toward the capital (mm) — snapped to a hex-cell centre (a valid node).
 const BUILD_STEP_MM: i64 = 8_000_000;
 /// Stop extending when the rail-head is within this of the capital (mm) — the rival creeps to your doorstep,
@@ -129,9 +147,13 @@ fn muster(world: &mut World, dt_ms: i64) {
     let Some((hx, hy)) = rival_hold(world) else {
         return; // no rival realm ⇒ never musters (golden-neutral)
     };
+    let prof = profile_for(world.city.rival_difficulty);
     world.rival_muster_accum_ms = world.rival_muster_accum_ms.saturating_add(dt_ms.max(0));
-    if world.rival_muster_accum_ms < MUSTER_PERIOD_MS || world.rival_manpower < MUSTER_COST {
+    if world.rival_muster_accum_ms < prof.muster_period_ms || world.rival_manpower < MUSTER_COST {
         return; // not yet, or can't afford — the timer/treasury saves up
+    }
+    if world.rival_hosts.live() >= prof.max_hosts {
+        return; // at the per-difficulty live-host cap — wait for one to resolve
     }
     let Some((_, tx, ty)) = crate::raider::nearest_captured_town(world, hx, hy) else {
         return; // no captured ground to re-contest yet (early game) — hold the muster
@@ -225,7 +247,7 @@ fn resolve(world: &mut World) {
 fn build(world: &mut World, dt_ms: i64) {
     let Some(hold) = rival_hold_id(world) else { return };
     world.rival_build_accum_ms = world.rival_build_accum_ms.saturating_add(dt_ms.max(0));
-    if world.rival_build_accum_ms < BUILD_PERIOD_MS || world.rival_tribute < BUILD_COST {
+    if world.rival_build_accum_ms < profile_for(world.city.rival_difficulty).build_period_ms || world.rival_tribute < BUILD_COST {
         return; // not yet, or the build budget is spent (the rival's expansion has run its course)
     }
     let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
