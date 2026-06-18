@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -2994,7 +2994,9 @@ export class Game {
     // falls (game.nightFactor, set on the 3 Hz sim-hour slice). Above the terrain/towns, below the
     // vehicles. Arcadia + zoomed-in only; an empty array by day (nightFactor≈0) → zero cost.
     const nightGlow = this.ruleset === "arcadia" && detail ? nightGlowLayers(this.towns, this.resources, this.nightFactor) : [];
-    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
+    // Train headlamps: a warm glow under each running train at night, beneath the loco mesh.
+    const vehGlow = this.ruleset === "arcadia" && detail ? vehicleNightGlow(vehicles, this.nightFactor) : [];
+    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

@@ -1795,3 +1795,25 @@ export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[]
     disc("night-core", 5.5, 3.6, [255, 236, 184], 235, 230), // bright hot core
   ];
 }
+
+/** Warm headlamp glow under each train at night (fades in with `night`), so a running line reads as
+ *  lit carriages crossing the dark. A single soft pixel-radius disc beneath the loco mesh — bounded by
+ *  the vehicle count, rides the per-frame compose like the vehicle layers themselves. */
+export function vehicleNightGlow(vehicles: VehicleDot[], night: number): Layer[] {
+  if (night <= 0.02 || vehicles.length === 0) return [];
+  return [
+    new ScatterplotLayer<VehicleDot>({
+      id: "vehicle-night-glow",
+      data: vehicles,
+      getPosition: (d: VehicleDot) => [d.lng, d.lat],
+      radiusUnits: "pixels",
+      getRadius: 11,
+      radiusMinPixels: 4,
+      getFillColor: [255, 214, 140, Math.round(72 * night)],
+      stroked: false,
+      pickable: false,
+      parameters: { depthTest: false },
+      updateTriggers: { getFillColor: Math.round(night * 20) },
+    }),
+  ];
+}
