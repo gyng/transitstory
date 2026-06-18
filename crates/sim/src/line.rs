@@ -415,6 +415,11 @@ pub struct Line {
     /// dispatcher, routing, cost/opex sums, and views. Determinism-safe (in state_hash).
     #[serde(default)]
     pub removed: bool,
+    /// #13 faction ownership: 0 = the PLAYER, 1 = the rival realm (symmetric enemy AI). Hashed state.
+    /// **Default 0 ⇒ byte-identical to single-faction** (every existing line is player-owned); a rival
+    /// line appears only once a baked rival realm / the AI builder creates it. See docs/symmetric-enemy-ai.md.
+    #[serde(default)]
+    pub faction: u8,
 }
 
 impl Line {
@@ -443,6 +448,7 @@ impl Line {
             crosses_water_surface: false,
             capital_cost: 0,
             removed: false,
+            faction: 0,
         }
     }
 

@@ -97,7 +97,12 @@ fn replay_equality() {
 //                           capital_cost shrank ×1000 and the hash moved by DESIGN — a VALUE change, not a
 //                           determinism break (replay-equality still holds; position fingerprints UNCHANGED, as
 //                           capital is not a position). An intentional re-pin, reviewed.
-const GOLDEN_TRANSIT_HASH: u64 = 0x99cd_1932_184c_c156;
+//   0x326c_4c30_8762_0686 — #13 faction ownership: `Station` + `Line` gain a `faction: u8` (0 = player, 1 = the
+//                           rival realm of the symmetric enemy AI), hashed via `Canonical`. Every node here is
+//                           player-owned ⇒ a PURE APPEND-ZEROS shift (every faction reads 0); the position
+//                           fingerprint is UNCHANGED (faction is not a position). Schema landed ahead of the
+//                           rival; an intentional re-pin, reviewed. See docs/symmetric-enemy-ai.md.
+const GOLDEN_TRANSIT_HASH: u64 = 0x326c_4c30_8762_0686;
 
 #[test]
 fn golden_transit_hash_pinned() {

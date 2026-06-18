@@ -27,10 +27,16 @@ pub struct Station {
     /// `Command::BuildPlatforms`, clamped to `[1, MAX_PLATFORMS]`.
     #[serde(default = "default_platform_count")]
     pub platform_count: u8,
+    /// #13 faction ownership: 0 = the PLAYER (the only builder today), 1 = the rival realm (the symmetric
+    /// enemy AI). Hashed state. **Default 0 ⇒ byte-identical to single-faction** — transit + every existing
+    /// fixture deserialize to player-owned, so the rival is purely additive (faction-1 nodes appear only
+    /// once a baked rival realm / the AI builder creates them). See docs/symmetric-enemy-ai.md.
+    #[serde(default)]
+    pub faction: u8,
 }
 
 impl Station {
     pub fn new(pos: PointMm, name: String) -> Self {
-        Self { pos, name, removed: false, platform_count: 1 }
+        Self { pos, name, removed: false, platform_count: 1, faction: 0 }
     }
 }

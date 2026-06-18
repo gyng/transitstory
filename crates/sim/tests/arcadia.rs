@@ -263,7 +263,10 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // So capital_cost shrank ×1000 and the hash moved by DESIGN. Gold spend is UNCHANGED (build_gold_divisor
 // scaled in lockstep, so build_gold_cost = capital/divisor is identical); the position fingerprint is
 // UNCHANGED (capital is not a position). A VALUE change, not a determinism break. Prior: 0x94e8_209e_3424_d550.
-const GOLDEN_ARCADIA_HASH: u64 = 0x58ef_2f8b_f079_1c77;
+// #13 faction-ownership re-pin (0x0db1_d474_08b7_2759): Station + Line gain a hashed `faction: u8`. The
+// fixture is all player-owned (faction 0) ⇒ a PURE APPEND-ZEROS shift; the position fingerprint is UNCHANGED
+// (faction is not a position). Schema landed ahead of the rival realm. Prior: 0x58ef_2f8b_f079_1c77.
+const GOLDEN_ARCADIA_HASH: u64 = 0x0db1_d474_08b7_2759;
 
 #[test]
 fn golden_arcadia_hash_pinned() {
