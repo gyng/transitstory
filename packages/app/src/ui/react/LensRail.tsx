@@ -42,10 +42,16 @@ export function LensRail() {
   return (
     <div data-testid="lens-rail" className="ot-console" style={RAIL_STYLE}>
       <Button
-        label="🌡 Demand"
+        label={arcadia ? "🌡 Supply" : "🌡 Demand"}
         testid="layer-demand"
         disabled={game.lensHides("demand")}
-        title={game.lensHides("demand") ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.` : "Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."}
+        title={
+          game.lensHides("demand")
+            ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.`
+            : arcadia
+              ? "Supply demand: which TOWNS still need cargo, and how much is UNMET. 🟪 cold-violet = an unmet need — run rail to it and the hex cools as your carts deliver. (Resources produce, towns consume; this is the supply-chain heat, not commuter trips.)"
+              : "Travel-demand heat: 🟧 warm = unserved (build here) · 🟦 cool = covered. Homes start trips, jobs pull them. Pin a station to see where its riders go."
+        }
         onClick={() => game.setShowDemand(!ui.showDemand)}
         on={ui.showDemand}
         compact
