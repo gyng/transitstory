@@ -174,6 +174,9 @@ export class Game {
   /** Fantasy 3D diorama (#3d-trees): lowpoly pines instanced on the forest hexes. Built once at load from
    *  the terrain (arcadia only; empty for transit). Stable identity (no per-frame rebuild). */
   trees: TreeInstance[] = [];
+  /** #23 TG1 cosmetic town sprawl: small ring-cell buildings around each town (capital biggest) so a town
+   *  reads as a MULTI-CELL settlement. Built once at load from the towns + terrain (render-only). */
+  townSprawl: TreeInstance[] = [];
   /** Baked fantasy resource nodes (lng/lat + kind + yield) — the supply-chain sources. Set once at load
    *  from the manifest's supplyGraph (fantasy only; empty for transit). Stable identity across frames. */
   resources: ResourceMarker[] = [];
@@ -1379,9 +1382,11 @@ export class Game {
 
   /** The terrain biome name at a ground point (arcadia only; null off-map / transit). O(1) via a lazily
    *  built cell→biome map (keyed like the nameplate lookup), so it costs nothing per mousemove. */
-  private biomeAt(lng: number, lat: number): string | null {
+  /** The raw biome CODE at a ground point (or undefined off-map / transit), O(1) via a lazily built
+   *  cell→biome map. Shared by the hover readout (#21) + the town-sprawl placement (#23). */
+  private biomeCodeAt(lng: number, lat: number): number | undefined {
     const cm = this.cellMm;
-    if (cm <= 0 || this.terrain.length === 0) return null;
+    if (cm <= 0 || this.terrain.length === 0) return undefined;
     if (!this.hoverBiomeByCell) {
       this.hoverBiomeByCell = new Map();
       for (const c of this.terrain) {
@@ -1390,7 +1395,11 @@ export class Game {
       }
     }
     const [x, y] = lngLatToMm([lng, lat]);
-    const c = this.hoverBiomeByCell.get(`${Math.floor(x / cm)},${Math.floor(y / cm)}`);
+    return this.hoverBiomeByCell.get(`${Math.floor(x / cm)},${Math.floor(y / cm)}`);
+  }
+
+  private biomeAt(lng: number, lat: number): string | null {
+    const c = this.biomeCodeAt(lng, lat);
     if (c === undefined) return null;
     // biome codes: WATER 4 · MOUNTAIN 6 · HILL 7 · FOREST 8 · LEY 9 · PLAIN 10 (crates/sim/src/city.rs).
     switch (c) {
@@ -2299,6 +2308,7 @@ export class Game {
       terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
       terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
       trees: this.ruleset === "arcadia" ? this.trees : [], // 3D diorama pines; LOD-dropped at overview in composeAndSet
+      townSprawl: this.ruleset === "arcadia" ? this.townSprawl : [], // #23 TG1 multi-cell town buildings; LOD-dropped at overview
       tideCells: this.decadenceTideAt(), // fantasy S10c: the cold decadence creep (read on each refresh)
       tidePulse: this.nextTidePulse(), // tide-frontier ring alpha, advanced per ~3 Hz recompose (not per frame)
       arcadia: this.ruleset === "arcadia", // cold-violet demand overlay + arcadia LOD
@@ -2823,6 +2833,30 @@ export class Game {
     }
   }
 
+  /** #23 TG1 — cosmetic town SPRAWL: ring(s) of small buildings around each town's centre so it reads as a
+   *  MULTI-CELL settlement (the capital biggest — 2 rings; other towns 1). Buildings land only on passable
+   *  land (water/mountain cells skipped). Built once at load (arcadia only); render-only, so the placement
+   *  never touches the deterministic core. Static size for TG1 — dynamic growth-with-prosperity is TG1b. */
+  buildTownSprawl(): void {
+    this.townSprawl = [];
+    const cm = this.cellMm;
+    if (this.ruleset !== "arcadia" || cm <= 0 || this.towns.length === 0) return;
+    for (const t of this.towns) {
+      const rings = t.kind === "capital" ? 2 : 1; // the capital's seat sprawls wider
+      const [cx, cy] = lngLatToMm([t.lng, t.lat]);
+      for (let r = 1; r <= rings; r++) {
+        const dist = r * cm * 0.92; // hug the centre, just inside the neighbour pitch
+        for (let k = 0; k < 6; k++) {
+          const ang = ((k * 60 + r * 30) * Math.PI) / 180; // 6 per ring; alternate rings offset 30°
+          const [lng, lat] = mmToLngLat([cx + dist * Math.cos(ang), cy + dist * Math.sin(ang)]);
+          const b = this.biomeCodeAt(lng, lat);
+          if (b === 4 || b === 6) continue; // skip WATER / MOUNTAIN (no depot in the sea / on a cliff)
+          this.townSprawl.push({ lng, lat, scale: r === 1 ? 96 : 78, yaw: (k * 60 + r * 30) % 360, shade: (k % 3) / 3 });
+        }
+      }
+    }
+  }
+
   /** Cargo a trade good reads as — a glyph + a tint so you can SEE what each cart hauls. Keyed by resource
    *  kind (ore/grain/fuel/aether) or a town's demand chain (bread/arms); a plain crate is the fallback. */
   private cargoOf(kind: string): { glyph: string; tint: [number, number, number] } {
@@ -3266,7 +3300,7 @@ export class Game {
     // + the tide WASH always stay too.) Same cheap id-filter, no rebuild.
     const below =
       this.ruleset === "arcadia" && !detail
-        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "trees" && l.id !== "station-depots")
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "trees" && l.id !== "station-depots" && l.id !== "town-sprawl")
         : this.below;
     // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
     // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only, and only

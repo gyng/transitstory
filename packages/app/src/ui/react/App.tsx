@@ -122,6 +122,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
       return { from: [flng, flat] as [number, number], to: [tlng, tlat] as [number, number], wclass: rv.wclass, ford: rv.ford };
     });
     game.buildTrees(); // #3d-trees — scatter lowpoly pines on the forest hexes for the 3D diorama
+    game.buildTownSprawl(); // #23 TG1 — cluster buildings around towns so they read as multi-cell settlements
   }
   const loop = new GameLoop(game);
   attachPointer(game);

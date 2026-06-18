@@ -417,6 +417,7 @@ export interface RenderView {
   terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
   terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
   trees: TreeInstance[]; // fantasy 3D diorama: lowpoly pines on forest hexes (empty for transit / at overview)
+  townSprawl: TreeInstance[]; // #23 TG1: ring-cell buildings around towns (multi-cell settlements; empty for transit / at overview)
   tideCells: TideCell[]; // fantasy S10c: corrupted decadence-CA hexes (the cold creep) — empty for transit
   tidePulse?: number; // fantasy: tide-frontier ring alpha (150..230), advanced on the ~3 Hz recompose (NOT per frame)
   arcadia?: boolean; // fantasy ruleset → cold-violet demand overlay + arcadia LOD (warmth stays the empire's)
@@ -539,6 +540,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain
     // (under the network/POIs). Empty for transit / at overview (LOD), so it's a no-op there.
     treeLayer(view.trees),
+    // #23 TG1 town SPRAWL: ring-cell buildings around towns so a settlement reads as MULTI-CELL (the capital
+    // biggest). Under the depots/POIs; arcadia only; LOD-dropped at overview in composeAndSet.
+    townSprawlLayer(view.townSprawl),
     // FANTASY 3D STATION DEPOTS (#3d-stations): the player's network nodes as lowpoly platforms + houses,
     // on the terrain under the network/POIs. Arcadia only; LOD-dropped at overview in composeAndSet.
     stationMeshLayer(view.arcadia ? view.stations : []),
@@ -1370,6 +1374,29 @@ export function stationMeshLayer(stations: StationDot[]): Layer {
     pickable: false,
     material: { ambient: 0.6, diffuse: 0.72, shininess: 18, specularColor: [60, 55, 48] },
     updateTriggers: { getColor: stations.map((d) => `${d.faction ?? 0}:${d.serving > 0 ? 1 : 0}`).join("") },
+  });
+}
+
+/** #23 TG1 — town SPRAWL: small depot buildings clustered on the ring cells around a town's centre, so a
+ *  prosperous town reads as a MULTI-CELL settlement (the capital the biggest) rather than one lone depot.
+ *  Reuses the depot mesh at a smaller scale; warm stone with slight per-building variation. Render-only
+ *  (cosmetic, #23 TG1), arcadia + LOD-gated like the depots. Reuses TreeInstance's {lng,lat,scale,yaw,shade}. */
+export function townSprawlLayer(buildings: TreeInstance[]): Layer {
+  return new SimpleMeshLayer<TreeInstance>({
+    id: "town-sprawl",
+    data: buildings,
+    mesh: stationMesh(),
+    getPosition: (d) => [d.lng, d.lat],
+    getColor: (d) => {
+      const v = Math.round(188 + d.shade * 34); // warm stone, varied per building
+      return [v, Math.round(v * 0.92), Math.round(v * 0.82)];
+    },
+    getOrientation: (d) => [0, d.yaw, 0],
+    getScale: (d) => [d.scale, d.scale, d.scale],
+    sizeScale: 1,
+    pickable: false,
+    material: { ambient: 0.6, diffuse: 0.72, shininess: 18, specularColor: [60, 55, 48] },
+    updateTriggers: { getColor: buildings.length, getScale: buildings.length },
   });
 }
 
