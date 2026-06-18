@@ -67,6 +67,19 @@ fn rival_spares_a_defended_captured_town() {
 }
 
 #[test]
+fn rival_regarrison_preserves_the_monotonic_standing() {
+    // P1e keystone: the rival re-contests captured ground (raising town_value ⇒ a re-siege), but must NEVER
+    // lower the cumulative Standing (`towns_captured`). That gauge is monotonic by design — a strictly-better
+    // network never scores lower — so the rival can ADD work but can't make the game unwinnable by erasing
+    // progress. (Combined with "only undefended towns" + a light re-garrison, the rival stays fair.)
+    let mut w = world_with_rival((10_000_000, 0), (2_000_000, 0), false);
+    w.towns_captured = 3; // the player has conquered 3 towns
+    run(&mut w, 6000);
+    assert!(w.town_value[1] > 0, "precondition: the re-garrison path was exercised");
+    assert_eq!(w.towns_captured, 3, "the rival's re-garrison must NOT lower the monotonic Standing");
+}
+
+#[test]
 fn rival_host_state_is_deterministic() {
     // Two identical runs ⇒ identical state_hash (the host SoA + muster accumulator are hashed; the logic is
     // integer + index-ordered + rng-free).
