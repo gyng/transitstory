@@ -71,23 +71,11 @@ impl VehicleSoA {
 }
 
 /// Index of the next stop in the travel direction (the end index if past the last stop,
-/// which triggers a reversal in `advance`).
+/// which triggers a reversal in `advance`). Binary search over the monotone stop arclengths —
+/// see `geom::next_stop_index` (proven bit-identical to the former linear scan).
+#[inline]
 fn next_stop_index(arc: &[i64], s: i64, dir: i64) -> usize {
-    if dir > 0 {
-        for i in 0..arc.len() {
-            if arc[i] > s + 1 {
-                return i;
-            }
-        }
-        arc.len().saturating_sub(1)
-    } else {
-        for i in (0..arc.len()).rev() {
-            if arc[i] < s - 1 {
-                return i;
-            }
-        }
-        0
-    }
+    crate::geom::next_stop_index(arc, s, dir)
 }
 
 /// Advance every vehicle one fixed step along its line (trapezoidal speed + dwell + reverse

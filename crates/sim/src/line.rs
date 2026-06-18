@@ -144,32 +144,25 @@ impl Path {
         }
     }
 
-    /// Span index (inter-stop segment) containing forward arc-length `s_mm`.
+    /// Span index (inter-stop segment) containing forward arc-length `s_mm`. Binary search over the
+    /// monotone `stop_arclen_mm` (strict upper gate) — see `geom::span_index`.
     pub fn span_of(&self, s_mm: i64) -> usize {
-        if self.stop_arclen_mm.len() < 2 {
-            return 0;
-        }
-        for j in 1..self.stop_arclen_mm.len() {
-            if s_mm < self.stop_arclen_mm[j] {
-                return j - 1;
-            }
-        }
-        self.stop_arclen_mm.len() - 2
+        crate::geom::span_index(&self.stop_arclen_mm, s_mm)
     }
 
     /// Curve speed cap (mm/s) at forward arc-length `s_mm` (the tighter of the bracketing
-    /// vertices). i64::MAX where the track is straight.
+    /// vertices). i64::MAX where the track is straight. Binary search over `arclen_mm`.
     pub fn speed_cap_at(&self, s_mm: i64) -> i64 {
         if self.speed_cap_mm_s.len() < 2 {
             return i64::MAX;
         }
         let s = s_mm.clamp(0, self.length_mm());
-        for i in 1..self.arclen_mm.len() {
-            if s <= self.arclen_mm[i] {
-                return self.speed_cap_mm_s[i - 1].min(self.speed_cap_mm_s[i]);
-            }
+        let i = crate::geom::upper_bracket(&self.arclen_mm, s);
+        if i >= self.arclen_mm.len() {
+            *self.speed_cap_mm_s.last().unwrap_or(&i64::MAX)
+        } else {
+            self.speed_cap_mm_s[i - 1].min(self.speed_cap_mm_s[i])
         }
-        *self.speed_cap_mm_s.last().unwrap_or(&i64::MAX)
     }
 
     /// One-way length of the smoothed path in mm.
@@ -185,21 +178,20 @@ impl Path {
             _ => {}
         }
         let s = s_mm.clamp(0, self.length_mm());
-        for i in 1..self.arclen_mm.len() {
-            if s <= self.arclen_mm[i] {
-                let seg_start = self.arclen_mm[i - 1];
-                let seg_len = self.arclen_mm[i] - seg_start;
-                let a = self.polyline[i - 1];
-                let b = self.polyline[i];
-                if seg_len <= 0 {
-                    return (a.x_mm, a.y_mm);
-                }
-                let t = s - seg_start;
-                return (
-                    a.x_mm + (b.x_mm - a.x_mm) * t / seg_len,
-                    a.y_mm + (b.y_mm - a.y_mm) * t / seg_len,
-                );
+        let i = crate::geom::upper_bracket(&self.arclen_mm, s);
+        if i < self.arclen_mm.len() {
+            let seg_start = self.arclen_mm[i - 1];
+            let seg_len = self.arclen_mm[i] - seg_start;
+            let a = self.polyline[i - 1];
+            let b = self.polyline[i];
+            if seg_len <= 0 {
+                return (a.x_mm, a.y_mm);
             }
+            let t = s - seg_start;
+            return (
+                a.x_mm + (b.x_mm - a.x_mm) * t / seg_len,
+                a.y_mm + (b.y_mm - a.y_mm) * t / seg_len,
+            );
         }
         let last = self.polyline[self.polyline.len() - 1];
         (last.x_mm, last.y_mm)
@@ -211,12 +203,11 @@ impl Path {
             return 0.0;
         }
         let s = s_mm.clamp(0, self.length_mm());
-        for i in 1..self.arclen_mm.len() {
-            if s <= self.arclen_mm[i] {
-                let a = self.polyline[i - 1];
-                let b = self.polyline[i];
-                return ((b.y_mm - a.y_mm) as f32).atan2((b.x_mm - a.x_mm) as f32);
-            }
+        let i = crate::geom::upper_bracket(&self.arclen_mm, s);
+        if i < self.arclen_mm.len() {
+            let a = self.polyline[i - 1];
+            let b = self.polyline[i];
+            return ((b.y_mm - a.y_mm) as f32).atan2((b.x_mm - a.x_mm) as f32);
         }
         0.0
     }

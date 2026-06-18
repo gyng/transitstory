@@ -16,6 +16,7 @@ mod demand;
 mod dispatch;
 pub mod forge;
 pub mod geo_local;
+pub mod geom;
 pub mod hash;
 pub mod hexgrid;
 pub mod ids;
