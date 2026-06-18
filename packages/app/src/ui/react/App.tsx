@@ -31,7 +31,7 @@ import { Cutscene, cutsceneSeen } from "./Cutscene";
 import { StatsBar } from "./StatsBar";
 import { Inspector } from "./Inspector";
 import { Outliner } from "./Outliner";
-import { OnboardingCoach } from "./Onboarding";
+import { OnboardingCoach, TutorialCoach } from "./Onboarding";
 import { DraftControls } from "./DraftControls";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
@@ -199,6 +199,8 @@ export function App() {
   // A start awaiting the isekai prologue: set (instead of booting straight) when the fantasy campaign
   // is chosen and the cutscene hasn't played; the Cutscene's onDone then boots it. Null otherwise.
   const [pendingStart, setPendingStart] = useState<{ manifest: string; withNet: boolean; scenario: string | null } | null>(null);
+  // The guided first-line-with-siding tutorial, opted into from the Menu checkbox (fantasy campaign).
+  const [tutorial, setTutorial] = useState(false);
   // Dashboard + settings modal open flags live here (App level) so the modals render as shell siblings
   // at #ui-level z, above the grid shell's stacking context — opened from the bottom-left CornerCluster.
   const [dashOpen, setDashOpen] = useState(false);
@@ -314,13 +316,14 @@ export function App() {
     }
     return (
       <Menu
-        onStart={(c: CityEntry, withNet: boolean, scenario: string | null) => {
+        onStart={(c: CityEntry, withNet: boolean, scenario: string | null, wantTutorial = false) => {
           // Mirror the start into the URL (the same deep-link the e2e uses) so a refresh — and
           // the objectives' "Retry challenge" reload — re-boots this exact setup, not the menu.
           const q = new URLSearchParams({ city: c.id });
           if (withNet) q.set("network", "1");
           if (scenario) q.set("scenario", scenario);
           history.replaceState(null, "", `?${q.toString()}`);
+          setTutorial(wantTutorial); // the guided coach is opt-in from the fantasy CTA's checkbox
           const wantNet = c.id === "globe" || withNet;
           // Play the isekai prologue before the fantasy CAMPAIGN only (the "Against the Dark" scenario),
           // once per browser. Everything else — sandbox, real cities, deep-links — boots straight in.
@@ -404,7 +407,7 @@ export function App() {
           Outliner (stage 6), the editor to the right Inspector (stage 7), and the title into the
           top-strip L cell (folded in with the resource strip so they can't overlap — item 1). */}
       <NoticeAutoDismiss />
-      <OnboardingCoach />
+      {tutorial && world.game.ruleset === "arcadia" ? <TutorialCoach /> : <OnboardingCoach />}
       <DraftControls />
       <CommuterCard />
       <FollowCard />

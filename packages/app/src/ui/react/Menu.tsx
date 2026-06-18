@@ -14,6 +14,7 @@ import { CITIES, personalBest, realmsSaved, type CityEntry } from "../../sim/cit
 import { withBase } from "../../config";
 import { readSave, type SaveBlob } from "../../sim/save";
 import { SCENARIOS } from "../../objectives";
+import { tutorialDone } from "./Onboarding";
 
 const SUBTITLE_COUNT = 53;
 const MASCOT_LINES = [
@@ -172,7 +173,7 @@ export function Menu({
   onStart,
   onResume,
 }: {
-  onStart: (city: CityEntry, withNetwork: boolean, scenario: string | null) => void;
+  onStart: (city: CityEntry, withNetwork: boolean, scenario: string | null, tutorial?: boolean) => void;
   onResume?: (save: SaveBlob) => void;
 }) {
   // Hero subtitle: start on a random one (frontend chrome RNG, not the sim); click to cycle.
@@ -193,6 +194,8 @@ export function Menu({
   const [scenario, setScenario] = useState<string | null>(null);
   // A resumable autosave, read once at mount (frontend-only; not the sim).
   const [save] = useState<SaveBlob | null>(() => readSave());
+  // The guided first-line-with-siding tutorial: default ON for newcomers, OFF once completed.
+  const [tutorial, setTutorial] = useState(() => !tutorialDone());
   const saved = realmsSaved();
   const mascotRef = useRef<HTMLButtonElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -265,7 +268,7 @@ export function Menu({
             className="ot-primary"
             data-testid="mode-fantasy"
             title="Begin the Arcadia campaign"
-            onClick={() => fantasyEntry && onStart(fantasyEntry, false, "arcadia-conquest")}
+            onClick={() => fantasyEntry && onStart(fantasyEntry, false, "arcadia-conquest", tutorial)}
           >
             <span className="ot-badge">{saved > 0 ? `⚜ ${saved} saved` : "New campaign"}</span>
             <h2>⚔️ Arcadia — Fantasy Campaign</h2>
@@ -275,6 +278,17 @@ export function Menu({
             </p>
             <span className="ot-cta">▶ Begin — Against the Dark</span>
           </button>
+
+          {/* Opt-in guided first line: a stepped coach (draw a line → add a siding → run) for the
+              campaign. Defaults ON for newcomers, off once completed. Its own row so the click never
+              triggers the CTA above. */}
+          <label
+            data-testid="tutorial-toggle"
+            style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 2px 0", cursor: "pointer", font: "13px system-ui", color: "var(--ot-con-ink, #d9dee7)" }}
+          >
+            <input type="checkbox" checked={tutorial} onChange={(e) => setTutorial(e.target.checked)} style={{ accentColor: "#c9a24a", width: 15, height: 15, cursor: "pointer" }} />
+            <span>Tutorial — guide me through my first line (with a siding)</span>
+          </label>
 
           {/* The no-objective sandbox realm (the hand-authored Arcadia) for free building. */}
           {arcadiaEntry && (
