@@ -56,7 +56,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   // gate) — the baked fantasy/arcadia continent is non-OSM, so it carries no (false) OSM credit.
   const ruleset = city.raw.ruleset ?? "transit";
   const map = createMap("map", city.raw.center, city.raw.zoom, ruleset);
-  const overlay = createOverlay();
+  const overlay = createOverlay(); // carries the scene sun-light (see map/overlay.ts)
   map.addControl(overlay);
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
