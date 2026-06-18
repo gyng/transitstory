@@ -53,6 +53,10 @@ impl Ruleset for ArcadiaRuleset {
         // rail network, breaching the lose meter if they get through. Runs BEFORE the tide is re-derived so
         // a breach lands the same tick. Inert (no reservoir) for transit/demo ⇒ golden-neutral.
         crate::raider::step(world, dt_ms);
+        // #13 P1d The RIVAL HOSTS: the symmetric enemy AI musters legions from its hold (funded by its OWN
+        // treasury, not the decadence clock) that re-contest the player's captured towns — distinct from the
+        // rot's raiders above. Inert without a rival hold (the goldens) ⇒ the empty-SoA re-pin only.
+        crate::rival::step(world, dt_ms);
         // Decadence — the lose meter (S9/S10). A baked world (a non-empty CA board) runs the SPATIAL
         // tide CA, which derives `decadence` from how far the front has crept toward the capital, pushed
         // back by the rail network's PURGE (S10b-2). A world without baked terrain (the demo / native

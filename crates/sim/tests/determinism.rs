@@ -105,7 +105,10 @@ fn replay_equality() {
 //   0x3b6f_1e4b_abdd_4f82 — #13 rival treasuries: `Canonical` gains `rival_tribute/mana/manpower` (the rival
 //                           realm's own pools), appended LAST. 0 until a rival exists ⇒ another PURE
 //                           APPEND-ZEROS shift; behaviour byte-identical. Intentional re-pin, reviewed.
-const GOLDEN_TRANSIT_HASH: u64 = 0x3b6f_1e4b_abdd_4f82;
+//   0x12f9_431d_a327_3ff2 — #13 P1d rival hosts: `Canonical` gains the rival-host march SoA (x/y/state/tx/ty)
+//                           + the muster accumulator, appended LAST. EMPTY/0 with no rival hold (transit) ⇒
+//                           an appended-empty/zero shift; behaviour byte-identical. Intentional re-pin.
+const GOLDEN_TRANSIT_HASH: u64 = 0x12f9_431d_a327_3ff2;
 
 #[test]
 fn golden_transit_hash_pinned() {

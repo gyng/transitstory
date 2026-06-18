@@ -164,6 +164,12 @@ pub struct World {
     /// The RIVAL (fantasy, S11): decadence raiders — a separate hashed SoA (free 2-D off-rail position),
     /// fielded from the reservoir, marching the capital. Empty for transit/demo (no reservoir).
     pub raiders: crate::raider::RaiderSoA,
+    /// #13 The symmetric enemy AI's mustered HOSTS (fantasy, P1d) — a separate hashed SoA (free 2-D off-rail
+    /// position) fielded from the RIVAL HOLD (funded by `rival_manpower`), re-contesting the player's
+    /// captured towns. Distinct from the rot's `raiders`. Empty until a rival realm exists. See [`crate::rival`].
+    pub rival_hosts: crate::rival::RivalHostSoA,
+    /// Rival-host muster-cadence accumulator (ms) — hashed (gameplay-causal), no rng. 0 without a rival.
+    pub rival_muster_accum_ms: i64,
     /// Raider spawn-cadence accumulator (ms) + the reservoir cursor — hashed (gameplay-causal), but no rng:
     /// a fixed accumulator + a cycling counter keep the rival deterministic. 0 for transit/demo.
     pub raider_spawn_accum_ms: i64,
@@ -537,6 +543,15 @@ struct Canonical<'a> {
     rival_tribute: i64,
     rival_mana: i64,
     rival_manpower: i64,
+    /// #13 P1d the rival's mustered HOSTS — free 2-D march state (authoritative, off-rail) + the muster
+    /// accumulator. Appended LAST — EMPTY/0 until a rival hold exists (transit + the goldens), so the re-pin
+    /// is appended-empty slices + a zero, behaviour byte-identical.
+    rival_host_x_mm: &'a [i64],
+    rival_host_y_mm: &'a [i64],
+    rival_host_state: &'a [u8],
+    rival_host_tx_mm: &'a [i64],
+    rival_host_ty_mm: &'a [i64],
+    rival_muster_accum_ms: i64,
 }
 
 /// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
@@ -629,7 +644,7 @@ impl World {
         // from the baked terrain. Empty unless a baked world supplies buildability + a capital, so this
         // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
         let decadence_field = crate::decadence_field::DecadenceField::build(&city);
-        let mut w = World {
+        World {
             decadence_cells: Vec::new(),
             decadence_gain_accum: 0,
             seed,
@@ -654,6 +669,8 @@ impl World {
             walk_accum: Vec::new(),
             armies: crate::army::ArmySoA::default(),
             raiders: crate::raider::RaiderSoA::default(),
+            rival_hosts: crate::rival::RivalHostSoA::default(),
+            rival_muster_accum_ms: 0,
             raider_spawn_accum_ms: 0,
             raider_cursor: 0,
             raider_breach: 0,
@@ -715,8 +732,7 @@ impl World {
             population: None,
             cell_station_dirty: true,
             recent_alight: std::collections::VecDeque::new(),
-        };
-        w
+        }
     }
 
     /// #13 P1c: stand up the rival realm's SEAT — a faction-1 capital/barracks on the far edge, with a
@@ -2213,6 +2229,12 @@ impl World {
             rival_tribute: self.rival_tribute,
             rival_mana: self.rival_mana,
             rival_manpower: self.rival_manpower,
+            rival_host_x_mm: &self.rival_hosts.x_mm,
+            rival_host_y_mm: &self.rival_hosts.y_mm,
+            rival_host_state: &self.rival_hosts.state,
+            rival_host_tx_mm: &self.rival_hosts.tx_mm,
+            rival_host_ty_mm: &self.rival_hosts.ty_mm,
+            rival_muster_accum_ms: self.rival_muster_accum_ms,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

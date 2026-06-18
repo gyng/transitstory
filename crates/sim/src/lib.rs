@@ -25,6 +25,7 @@ pub mod line;
 pub mod pax;
 pub mod raider;
 pub mod render_buf;
+pub mod rival;
 pub mod roadnav;
 pub mod routing;
 pub mod ruleset;

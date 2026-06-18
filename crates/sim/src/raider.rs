@@ -37,7 +37,7 @@ const RAIDER_DAMAGE: i64 = 300;
 /// arrival rates. (A sub-unit accumulator carries the remainder so a slow heal isn't truncated to 0.)
 const BREACH_HEAL_PER_S: i64 = 6;
 /// A raider within this range (mm) of a station ON A BUILT LINE is cut down (coverage = defence).
-const DEFENSE_RANGE_MM: i64 = 4_000_000;
+pub(crate) const DEFENSE_RANGE_MM: i64 = 4_000_000;
 /// Rail-attack (#war): a raider that slips the station cordon and reaches an OPERATIONAL line's TRACK
 /// within this range (mm of the stop-to-stop polyline) CUTS it — freezing its trains for `RAIL_DISABLE_MS`
 /// — and spends itself (despawn). Strictly SMALLER than `DEFENSE_RANGE_MM`, so a defended station always
@@ -216,7 +216,7 @@ fn nearest_seam(world: &World, x: i64, y: i64) -> Option<(i64, i64)> {
 /// Front targeting (#war): the nearest CAPTURED town (`town_value == 0`, the conquest-flip signal) to
 /// `(x, y)`, as `(station index, x, y)`. A reclaimer aims here to re-garrison it. Index-ordered, lowest-
 /// index tiebreak ⇒ deterministic. `None` if the realm holds no captured ground yet (early game).
-fn nearest_captured_town(world: &World, x: i64, y: i64) -> Option<(usize, i64, i64)> {
+pub(crate) fn nearest_captured_town(world: &World, x: i64, y: i64) -> Option<(usize, i64, i64)> {
     let mut best: Option<(i128, usize, i64, i64)> = None;
     for s in 0..world.stations.len() {
         if world.town_value.get(s).copied() != Some(0) || world.stations[s].removed {
@@ -360,7 +360,7 @@ fn resolve(world: &mut World) {
 
 /// True iff a station ON A BUILT LINE sits within `def2` (squared mm) of `(x, y)` — the rail network's
 /// defensive reach. Mirrors the PURGE rule (only railed stations count, not unconnected baked nodes).
-fn intercepted(world: &World, x: i64, y: i64, def2: i64) -> bool {
+pub(crate) fn intercepted(world: &World, x: i64, y: i64, def2: i64) -> bool {
     for line in &world.lines {
         if line.removed {
             continue;
