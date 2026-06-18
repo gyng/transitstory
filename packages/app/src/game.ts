@@ -260,6 +260,9 @@ export class Game {
   readonly sky: Sky;
   /** Per-station boardings from the previous stats snapshot — to emit a board-burst on the delta. */
   private prevBoardings: Map<number, number> = new Map();
+  /** Last-snapshot per-node buffer fill (0..1) — so a RISE between 3 Hz snapshots reads as "this forge is
+   *  working" (a source stockpiling) or "supply just landed" (a sink receiving). See emitWorldJuice. */
+  private prevBufferFill: Map<number, number> = new Map();
   /** Per-station ALIGHTINGS from the previous snapshot — fantasy income floats at the delivery (earning)
    *  spots: tribute lands where cargo alights at a sink, so the gold floats where it was actually earned. */
   private prevAlightings: Map<number, number> = new Map();
@@ -2367,6 +2370,7 @@ export class Game {
     // BEFORE refresh() so the night-glow layers pick up the fresh nightFactor this pass.
     if (this.updateLighting) this.nightFactor = this.updateLighting(s.simHour);
     if (s.running) this.emitStatsJuice(s);
+    if (s.running) this.emitWorldJuice(s); // working smoke at forges + delivery pops (arcadia, detail-gated)
     this.renderTip(); // an open inspector tooltip re-reads the fresh snapshot (no frozen numbers)
     this.refresh();
   }
@@ -2574,6 +2578,57 @@ export class Game {
       this.effects.puff(lng, lat, lift);
     }
     this.puffCursor = (this.puffCursor + PER_TICK) % n;
+  }
+
+  /** Make the supply economy VISIBLY alive (#living-supply): a node's buffer fill RISING between 3 Hz
+   *  snapshots means it's working — a SOURCE (demandOrigin>demandDest) is producing → a grey chimney-lifted
+   *  smoke wisp; a SINK (a town) just RECEIVED a delivery → a warm deposit pop + "+⬢". Pure outer-ring (the
+   *  bufferFill / demand fields are already in the snapshot), pure FX-canvas (no deck rebuild, no sim tick).
+   *  Arcadia + zoomed-IN only (the strategic overview stays a clean network read); keeps prevBufferFill
+   *  current while gated so re-entering detail doesn't fire a backlog. */
+  private emitWorldJuice(s: Stats): void {
+    const detail = this.ruleset === "arcadia" && this.map.getZoom() >= DETAIL_ZOOM;
+    const producing: number[] = [];
+    const delivered: { id: number; d: number }[] = [];
+    for (const ps of s.perStation) {
+      const prev = this.prevBufferFill.get(ps.stationId) ?? ps.bufferFill;
+      const d = ps.bufferFill - prev; // change since the last 3 Hz snapshot
+      this.prevBufferFill.set(ps.stationId, ps.bufferFill);
+      if (!detail) continue;
+      const isSource = ps.demandOrigin > ps.demandDest * 1.5 + 0.5; // a net-source forge/resource
+      if (isSource) {
+        // A net-source produces into its stockpile every tick UNTIL it's capped (full = idle). The per-
+        // snapshot rise is sub-noise, so gate on "has headroom" (bufferFill<0.97) rather than the delta,
+        // and fire a smoke wisp probabilistically so the world's forges puff gently + variably rather than
+        // all at once (Math.random is render-only — never the deterministic core).
+        if (ps.bufferFill < 0.97 && Math.random() < 0.14) producing.push(ps.stationId);
+      } else if (d > 0.01) {
+        // A SINK whose buffer JUMPED → a cargo train just delivered supply here (a discrete event).
+        delivered.push({ id: ps.stationId, d });
+      }
+    }
+    if (producing.length === 0 && delivered.length === 0) return;
+    const sv = this.bridge.stationsView(); // cached topology — cheap
+    const at = (id: number): { lng: number; lat: number } | null => {
+      const v = sv[id];
+      if (!v || v.removed) return null;
+      const [lng, lat] = mmToLngLat([v.xMm, v.yMm]);
+      return { lng, lat };
+    };
+    // a modest chimney lift so the smoke leaves the node's roof, not the ground (cheap zoom-derived px).
+    const lift = Math.min(22, 64 / ((156543.03 * Math.max(0.01, Math.cos((this.map.getCenter().lat * Math.PI) / 180))) / 2 ** this.map.getZoom()));
+    for (const id of producing.slice(0, 8)) {
+      const p = at(id);
+      if (p) this.effects.puff(p.lng, p.lat, lift); // working smoke at the forge/source
+    }
+    delivered.sort((a, b) => b.d - a.d);
+    for (const { id } of delivered.slice(0, 5)) {
+      const p = at(id);
+      if (p) {
+        this.effects.burst(p.lng, p.lat, "235,200,120"); // a warm "supply landed" deposit ring at the sink
+        this.effects.floatText(p.lng, p.lat, "+⬢", "245,210,140", { rise: 22, size: 13, ttl: 1000 });
+      }
+    }
   }
 
   /** Living-world (#living): build the ambient trade graph from the baked nodes — the capital trades with
