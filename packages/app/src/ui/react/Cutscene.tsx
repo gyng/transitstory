@@ -49,23 +49,25 @@ export function Cutscene({ onDone }: { onDone: () => void }) {
     window.setTimeout(onDone, reduce ? 0 : 420);
   };
 
-  // Auto-advance the beats, then finish. Reduced motion shows everything at once (no timer churn).
+  // Auto-advance the beats (a PURE updater — just step + cap). Reduced motion shows everything at once.
   useEffect(() => {
     if (reduce) return;
     audio.unlock(); // the menu click already unlocked WebAudio; this is belt-and-suspenders
     const id = window.setInterval(() => {
-      setI((prev: number) => {
-        if (prev >= BEATS.length - 1) {
-          window.clearInterval(id);
-          window.setTimeout(finish, BEAT_MS);
-          return prev;
-        }
-        return prev + 1;
-      });
+      setI((prev: number) => (prev >= BEATS.length - 1 ? prev : prev + 1));
     }, BEAT_MS);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reduce]);
+
+  // Once the LAST beat is showing, hold it a beat, then hand off to boot. A separate effect (not a side
+  // effect inside the updater) so the hand-off timer ties to the effect lifecycle — StrictMode-safe.
+  useEffect(() => {
+    if (reduce || i < BEATS.length - 1) return;
+    const t = window.setTimeout(finish, BEAT_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [i, reduce]);
 
   // Enter / Space / click-through also advances past the prologue immediately.
   useEffect(() => {

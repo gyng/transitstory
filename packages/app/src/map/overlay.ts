@@ -72,7 +72,13 @@ export function setLightingHour(sun: DirectionalLight, ambient: AmbientLight, ho
   const sunCol = mix3([120, 150, 220], [255, 247, 230], day); // cool night → warm day
   sun.color = mix3(sunCol, [255, 170, 110], ember * 0.5); // amber kiss at dawn/dusk
   sun.intensity = lerp(0.18, 1.4, day);
-  sun.direction = [-0.6, -1, -(0.35 + 0.65 * day)]; // raking at dawn/dusk, steep at noon
+  // NORMALIZE before assigning: DirectionalLight only unit-normalizes in its constructor, so a raw write
+  // here would leave |direction|≠1 and the phong/gouraud shader scales the diffuse term by |direction|
+  // (coupling brightness to this elevation lerp and over-brightening). Keep it unit so brightness is
+  // governed by sun.intensity alone.
+  const dz = -(0.35 + 0.65 * day); // raking at dawn/dusk, steep at noon
+  const dl = Math.hypot(-0.6, -1, dz) || 1;
+  sun.direction = [-0.6 / dl, -1 / dl, dz / dl];
   ambient.color = mix3([130, 150, 195], [255, 255, 255], day);
   ambient.intensity = lerp(0.5, 1.05, day);
   return 1 - day;
