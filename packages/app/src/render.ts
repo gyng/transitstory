@@ -670,16 +670,21 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       updateTriggers: { getFillColor: view.resources.length },
     }),
     // RESOURCE ICONS (#4): a glyph per kind over the coloured source dots (⛏ ore / ✿ grain / ♣ fuel /
-    // ✦ aether / ⚒ forge). White for contrast on the dot. characterSet seeds the atlas so symbols render.
+    // ✦ aether / ⚒ forge). A white glyph with a dark SDF OUTLINE so it reads on ANY dot colour — a plain
+    // white glyph vanished on the light gold grain dot. Bumped a touch (13→15px) for legibility; the
+    // characterSet seeds the atlas so the symbols render (an omitted glyph would silently draw nothing).
     new TextLayer({
       id: "resource-icons",
       data: view.resources,
       getPosition: (d: ResourceMarker) => [d.lng, d.lat],
       getText: (d: ResourceMarker) => resourceGlyph(d.kind),
-      getSize: 13,
+      getSize: 15,
       sizeUnits: "pixels",
-      getColor: [250, 250, 250, 240],
+      getColor: [252, 252, 252, 255],
       fontFamily: '"Segoe UI Symbol","Noto Sans Symbols2","Apple Symbols","DejaVu Sans",sans-serif',
+      fontSettings: { sdf: true },
+      outlineWidth: 2,
+      outlineColor: [20, 23, 28, 235],
       characterSet: NODE_CHARSET,
       getTextAnchor: "middle",
       getAlignmentBaseline: "center",

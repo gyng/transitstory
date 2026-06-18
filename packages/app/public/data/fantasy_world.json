@@ -559,8 +559,8 @@
           "yMm": 44625000
         }
       ],
-      "initialDecadence": 3990,
-      "growthPerS": 6,
+      "initialDecadence": 2200,
+      "growthPerS": 3,
       "armySpeedMmS": 200000,
       "creepPerS": 20,
       "productionMicro": 10,

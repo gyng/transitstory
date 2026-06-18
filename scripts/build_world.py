@@ -118,7 +118,9 @@ RESERVOIR_ANCHORS = 5      # far-edge coastal cells = the tide origin + raider s
 # BASE_GROWTH): the continent is large (long supply lines, slow two-chain Liebig tribute), so the lose meter
 # (threshold 20000) must fill over ~thousands of sim-sec to leave room to ramp up. Balance knob; the headless
 # probe (e2e fantasy-conquest) certifies winnable. One captured town (pushback 300/s) then crushes the rot.
-DECADENCE_GROWTH_PER_S = 6
+# 2026-06 playtest: halved 6->3 (and initialDecadence hand-tuned 3990->2200 in fantasy_world.json) — the
+# realm fell too fast / the rot felt "too aggro". This ~doubles the lose-meter runway + cuts the head start.
+DECADENCE_GROWTH_PER_S = 3
 # Legion MARCH speed (mm per sim-second) on the baked continent — FAR faster than the demo's 50 000 (army.rs
 # ARMY_SPEED_MM_S). The continent's towns sit 60+ km from the capital; at the demo pace a legion takes ~21
 # sim-min to reach the nearest town (just past a playable window), so conquest never lands. 200 000 (200 m/s)

@@ -28,6 +28,31 @@ export function createMap(
     pitchWithRotate: false,
   });
 
+  // MIDDLE-mouse drag pans the camera, in addition to MapLibre's default left-drag (DragPanHandler is
+  // left-only). Lets the player keep the LEFT button for build/select/inspect gestures and the RIGHT
+  // button for the inspect/context menu, while still grabbing the map with the middle button — a common
+  // pro-tool convention. Listeners on window so a drag that leaves the canvas keeps tracking; panBy with
+  // the inverted delta so the map content follows the cursor (grab-and-drag).
+  {
+    const el = map.getCanvasContainer();
+    let panning = false;
+    let last = { x: 0, y: 0 };
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 1) return; // middle button only
+      panning = true;
+      last = { x: e.clientX, y: e.clientY };
+      e.preventDefault(); // suppress the browser's middle-click autoscroll
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!panning) return;
+      map.panBy([last.x - e.clientX, last.y - e.clientY], { duration: 0 });
+      last = { x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener("mouseup", (e) => {
+      if (e.button === 1) panning = false;
+    });
+  }
+
   // The hosted CARTO style already declares "© CARTO, © OpenStreetMap contributors" on its
   // sources — adding a customAttribution on top rendered the same credit twice. The control
   // (the ODbL release gate) stays mounted; the text comes from the style. The demo fallback
