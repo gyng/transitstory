@@ -10,7 +10,7 @@
 import type { CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats } from "./GameContext";
-import { SIM_MS_PER_CLOCK_MIN, fmtMoney, loadPip } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, fmtCount, fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
 import { cashTrend, channelRates, decadenceTrend } from "./statsHistory";
@@ -88,12 +88,12 @@ function FantasyStatsBar({ s }: { s: Stats }) {
   return (
     <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
       <div data-testid="tribute" title="Gold — every town you supply pays this; it funds bounties and building.">
-        ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{tribute}</b> gold
+        ⚜ <b style={{ fontSize: "16px", fontVariantNumeric: "tabular-nums" }}>{fmtCount(tribute)}</b> gold
         <RatePill rate={rates?.gold} color="var(--ot-con-ink)" />
       </div>
       {mana > 0 && (
         <div data-testid="mana" title="Mana — minted by aether/fuel supply chains; the sole tech resource AND your spell fuel." style={{ color: "#b69bef" }}>
-          ✦ <b style={{ fontVariantNumeric: "tabular-nums" }}>{mana}</b> mana
+          ✦ <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCount(mana)}</b> mana
           <RatePill rate={rates?.mana} color="#b69bef" />
         </div>
       )}
@@ -105,7 +105,7 @@ function FantasyStatsBar({ s }: { s: Stats }) {
           title={`Manpower — minted by grain/arms supply chains; each legion costs ~${LEGION_COST} to field from a barracks.${manpower < LEGION_COST ? " STARVED: too little to field a legion — supply more grain/arms." : ""}`}
           style={{ color: manpower < LEGION_COST ? "var(--ot-gauge-bad)" : "#d39a5c", fontWeight: manpower < LEGION_COST ? 700 : undefined }}
         >
-          ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{manpower}</b> manpower{manpower < LEGION_COST ? " ⚠" : ""}
+          ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCount(manpower)}</b> manpower{manpower < LEGION_COST ? " ⚠" : ""}
           <RatePill rate={rates?.manpower} color="#d39a5c" />
         </div>
       )}
@@ -186,8 +186,8 @@ export function StatsBar() {
   const s = useStats();
   // Rolling headline counters — the value eases toward each new ~3 Hz snapshot instead of snapping
   // (juice). Ref-owned textContent, so these <b> carry NO JSX child (React must not clobber them).
-  const ridershipRef = useTweenedNumber(s.ridershipTotal, fmtInt);
-  const coverageRef = useTweenedNumber(s.coverageScore, fmtInt);
+  const ridershipRef = useTweenedNumber(s.ridershipTotal, fmtCount); // abbreviate the headline (5.7k, not 5747)
+  const coverageRef = useTweenedNumber(s.coverageScore, fmtInt); // 0..100 — no abbreviation
 
   // Mode-aware: the fantasy campaign shows its own supply/conquest/decadence readout.
   if (s.ruleset === "arcadia") return <FantasyStatsBar s={s} />;
@@ -203,7 +203,7 @@ export function StatsBar() {
   // "gave up" count is the visible pressure; the full-train denial count is in the tooltip.
   const waitTip =
     `Avg wait ~${avgWaitMin.toFixed(1)} min · Avg trip ~${avgTripMin.toFixed(1)} min` +
-    (denied > 0 ? ` · ${denied} passed by full trains` : "");
+    (denied > 0 ? ` · ${fmtCount(denied)} passed by full trains` : "");
 
   // Bar fills left→right. Coverage is a progression dial (it starts near 0 on a fresh map), so
   // the low band is neutral — not failure-red — and the hue only turns good once it's earned.
@@ -256,10 +256,10 @@ export function StatsBar() {
         <b ref={coverageRef} data-testid="coverage" style={{ width: "26px", textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
       </div>
       <div style={{ color: "var(--ot-con-ink-dim)", cursor: "help" }} title={waitTip}>
-        <span data-testid="waiting">{w}</span> waiting
+        <span data-testid="waiting">{fmtCount(w)}</span> waiting
         {lost > 0 && (
           <span data-testid="left-behind" style={{ color: "var(--ot-gauge-bad)", marginLeft: "6px" }}>
-            · {lost} gave up
+            · {fmtCount(lost)} gave up
           </span>
         )}
       </div>

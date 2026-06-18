@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useGame, useStats } from "./GameContext";
+import { fmtCount, fmtMoney } from "./shared";
 import { audio } from "../../fx/audio";
 import { cityById, recordBest } from "../../sim/cities";
 
@@ -121,13 +122,13 @@ export function DayReport() {
         <b style={{ fontSize: 14, color: "var(--ot-con-ink)" }}>🌅 Day {report.day} complete</b>
         <span style={{ marginLeft: "auto", color: "var(--ot-con-ink-dim)", fontSize: 11 }}>click to dismiss</span>
       </div>
-      <Row label="Riders carried" value={sign(Math.round(report.riders))} tone="var(--ot-con-accent)" />
+      <Row label="Riders carried" value={`+${fmtCount(report.riders)}`} tone="var(--ot-con-accent)" />
       <Row label="Coverage" value={`${report.coverage}${report.coverageDelta !== 0 ? ` (${sign(report.coverageDelta)})` : ""}`} />
-      {report.gaveUp > 0 && <Row label="Gave up waiting" value={sign(Math.round(report.gaveUp))} tone="var(--ot-gauge-bad,#d62828)" />}
+      {report.gaveUp > 0 && <Row label="Gave up waiting" value={`+${fmtCount(report.gaveUp)}`} tone="var(--ot-gauge-bad,#d62828)" />}
       {report.grewPct >= 0.5 && (
         <Row label="🏙 The city grew" value={`+${report.grewPct.toFixed(1)}% demand`} tone="var(--ot-gauge-good,#009e73)" />
       )}
-      {report.economyOn && <Row label="Fares" value={`+$${Math.round(report.fares / 1e6)}M`} />}
+      {report.economyOn && <Row label="Fares" value={`+${fmtMoney(report.fares)}`} />}
     </div>
   );
 }

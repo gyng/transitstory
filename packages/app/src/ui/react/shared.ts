@@ -278,16 +278,33 @@ export function lineTipHtml(t: LineTip): string {
     `<div data-testid="line-tip" style="font:12px system-ui;min-width:150px">` +
     `<b data-testid="line-tip-name">${swatch}${esc(t.name)}</b> ` +
     `<span style="color:#7a818a">${t.modeIcon} ${esc(t.modeName)}</span>` +
-    `<div style="margin-top:4px;color:#5a626b"><b data-testid="line-tip-ridership">${Math.round(t.ridership)}</b> riders · ` +
+    `<div style="margin-top:4px;color:#5a626b"><b data-testid="line-tip-ridership">${fmtCount(t.ridership)}</b> riders · ` +
     `<span style="color:${pip.color};font-weight:700">${pip.glyph} ${pip.word} ${pip.pct}%</span></div>` +
     `<div style="color:#7a818a;margin-top:2px">${t.stops} stops · ${t.trains} trains · every ${t.headwayMin} min</div></div>`
   );
 }
 
-/** Money formatter: $1.23B / $45M / $678k. */
+/** Money formatter — full-range + sign-first so big AND small read cleanly: −$45.2B / $1.2M / $45M /
+ *  $3.4k / $850. Never the old "$0k" for sub-thousand values. One decimal under 10 of a unit (keeps
+ *  precision where it reads), rounded above; B keeps 2 dp under 10B then 1 (so the headline isn't fussy). */
 export function fmtMoney(d: number): string {
+  const sign = d < 0 ? "−" : "";
   const a = Math.abs(d);
-  return a >= 1e9 ? `$${(d / 1e9).toFixed(2)}B` : a >= 1e6 ? `$${Math.round(d / 1e6)}M` : `$${Math.round(d / 1e3)}k`;
+  const unit = (v: number, suf: string) => `${sign}$${v < 10 ? v.toFixed(1) : Math.round(v)}${suf}`;
+  if (a < 1000) return `${sign}$${Math.round(a)}`;
+  if (a < 1e6) return unit(a / 1e3, "k");
+  if (a < 1e9) return unit(a / 1e6, "M");
+  const b = a / 1e9;
+  return `${sign}$${b < 10 ? b.toFixed(2) : b.toFixed(1)}B`;
+}
+
+/** Count formatter (riders, waiting, etc.) — same abbreviation discipline as fmtMoney so the chrome
+ *  reads consistently everywhere: 847 / 5.7k / 14k / 1.2M (one decimal under 10k for the live roll). */
+export function fmtCount(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${a / 1e3 < 10 ? (v / 1e3).toFixed(1) : Math.round(v / 1e3)}k`;
+  return `${Math.round(v)}`;
 }
 
 // Shared inline-style fragments (token-driven; mirror the old vanilla chrome 1:1).
