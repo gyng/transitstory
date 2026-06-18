@@ -214,6 +214,13 @@ pub struct World {
     /// no aether/ingot (the demo arcadia golden ⇒ appended-zero re-pin, behaviour byte-identical).
     pub mana: i64,
     pub manpower: i64,
+    /// #13 the RIVAL realm's own treasuries (the symmetric enemy AI) — its gold/mana/manpower, EARNED +
+    /// SPENT by faction-1 nodes exactly as the player's are by faction-0. ADDITIVE (the player's pools are
+    /// untouched), so the single-faction game is unaffected. **Hashed** (in `Canonical`, appended last); 0
+    /// until a rival realm exists ⇒ append-zero re-pin, behaviour byte-identical. See docs/symmetric-enemy-ai.md.
+    pub rival_tribute: i64,
+    pub rival_mana: i64,
+    pub rival_manpower: i64,
     /// Cumulative SPELLS cast (fantasy, S11 — the mana spell arm). Hashed (deterministic counter); 0 for
     /// transit + any realm without SPELLCRAFT. The HUD reads it; `spell::step` increments it on each cast.
     pub spells_cast: u32,
@@ -521,6 +528,11 @@ struct Canonical<'a> {
     /// then byte-identical; motion is unaffected in L5a (the position fingerprint proves it). Kept sorted+
     /// deduped at the apply boundary ⇒ command-order-independent, integer-only ⇒ determinism-safe.
     signals: &'a [Signal],
+    /// #13 the RIVAL realm's treasuries (gold/mana/manpower). Appended LAST — 0 until a rival exists (every
+    /// current world is single-faction), so the re-pin is appended zeros, behaviour byte-identical.
+    rival_tribute: i64,
+    rival_mana: i64,
+    rival_manpower: i64,
 }
 
 /// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
@@ -653,6 +665,9 @@ impl World {
             tribute: city_initial_gold,
             mana: 0,
             manpower: 0,
+            rival_tribute: 0,
+            rival_mana: 0,
+            rival_manpower: 0,
             spells_cast: 0,
             spell_flashes: Vec::new(),
             signal_occupancy: Vec::new(),
@@ -2147,6 +2162,9 @@ impl World {
             raider_ty_mm: &self.raiders.ty_mm,
             track_segments: CanonSegments(&self.track_graph),
             signals: &self.signals,
+            rival_tribute: self.rival_tribute,
+            rival_mana: self.rival_mana,
+            rival_manpower: self.rival_manpower,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

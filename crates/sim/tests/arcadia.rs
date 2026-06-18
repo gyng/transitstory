@@ -266,7 +266,9 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // #13 faction-ownership re-pin (0x0db1_d474_08b7_2759): Station + Line gain a hashed `faction: u8`. The
 // fixture is all player-owned (faction 0) ⇒ a PURE APPEND-ZEROS shift; the position fingerprint is UNCHANGED
 // (faction is not a position). Schema landed ahead of the rival realm. Prior: 0x58ef_2f8b_f079_1c77.
-const GOLDEN_ARCADIA_HASH: u64 = 0x0db1_d474_08b7_2759;
+// #13 rival-treasuries re-pin (0xdd13_8709_70b0_9673): Canonical gains rival_tribute/mana/manpower, appended
+// LAST; 0 (no rival in the fixture) ⇒ another PURE APPEND-ZEROS shift. Prior: 0x0db1_d474_08b7_2759.
+const GOLDEN_ARCADIA_HASH: u64 = 0xdd13_8709_70b0_9673;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

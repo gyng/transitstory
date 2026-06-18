@@ -102,7 +102,10 @@ fn replay_equality() {
 //                           player-owned ⇒ a PURE APPEND-ZEROS shift (every faction reads 0); the position
 //                           fingerprint is UNCHANGED (faction is not a position). Schema landed ahead of the
 //                           rival; an intentional re-pin, reviewed. See docs/symmetric-enemy-ai.md.
-const GOLDEN_TRANSIT_HASH: u64 = 0x326c_4c30_8762_0686;
+//   0x3b6f_1e4b_abdd_4f82 — #13 rival treasuries: `Canonical` gains `rival_tribute/mana/manpower` (the rival
+//                           realm's own pools), appended LAST. 0 until a rival exists ⇒ another PURE
+//                           APPEND-ZEROS shift; behaviour byte-identical. Intentional re-pin, reviewed.
+const GOLDEN_TRANSIT_HASH: u64 = 0x3b6f_1e4b_abdd_4f82;
 
 #[test]
 fn golden_transit_hash_pinned() {
