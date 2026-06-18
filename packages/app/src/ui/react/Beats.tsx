@@ -146,6 +146,7 @@ export function Milestones() {
   const nextRider = useRef<number | null>(null);
   const lastCovStep = useRef<number | null>(null);
   const beatAnchor = useRef(false);
+  const dayNightBeat = useRef(false); // #daynight: teach the march/camp mechanic once, the first night legions camp
   const queue = useRef<string[]>([]);
   const [showing, setShowing] = useState<string | null>(null);
 
@@ -174,6 +175,13 @@ export function Milestones() {
         beatAnchor.current = true;
         queue.current.push(`🏆 You beat the real ${run.current.cityName} network (${run.current.anchor})!`);
       }
+    }
+    // #daynight: teach the march/camp rule the first time legions are afield AND it's night — they hold
+    // camp till dawn (your rail keeps moving), so the player learns to expect the cyclic advance.
+    const afield = s.armyAfield ?? s.armyCount ?? 0;
+    if (!dayNightBeat.current && afield > 0 && !(s.simHour >= 6 && s.simHour < 20)) {
+      dayNightBeat.current = true;
+      queue.current.push("🌙 Your legions make camp for the night — they march on at dawn (your rail runs all night)");
     }
     if (!showing && queue.current.length > 0) {
       setShowing(queue.current.shift() ?? null);
