@@ -3283,3 +3283,29 @@ touch — verified transit boots with updateLighting=false / nightFactor=0, unto
   halos (faint bloom + mid + hot core) at the capital + towns + resource camps; `vehicleNightGlow()` a warm
   headlamp under each running train. Both fade in with nightFactor, depthTest:false, arcadia + zoomed-in only,
   empty (zero cost) by day. Live-verified at forced night: warm settlement + train glows over the cool dark.
+
+### Enrichment pass (2026-06-18, after an adversarial review of the session diff)
+
+Review (`review-session-diff` workflow, 4 dimensions + verify): 2 confirmed fixes (`e4113ce`) — the day/night
+`sun.direction` was non-unit (deck only normalizes in the ctor → shader scaled the diffuse term by
+|direction|, over-bright 22–54% + coupled to the elevation lerp; now normalized); the Cutscene `setI`
+updater ran side effects (split to a pure updater + a terminal effect). 2 refuted. Perf re-validated:
+arcadia night with the FULL stack (post-fx + glows + AO + train) holds ~100 fps, 0 freezes.
+
+Then a stats/motion map (`map-stats-and-motion` workflow, 3 readers) drove:
+- **Deferred polish (`5bdfed8`).** prefers-reduced-motion in the FX engine (skip the perpetual steam + the
+  breathing throbs; keep one-shot acks); a milestone CELEBRATION particle spray (`effects.celebrate` →
+  parabolic sparks, reduced-motion → a single boom) fired at the busiest station; a crowding TINT (loco
+  getColor runs hot above ~0.7 load).
+- **Living supply economy (`de39d00`).** `emitWorldJuice` (3 Hz, arcadia + detail): a net-source with buffer
+  headroom puffs working SMOKE (probabilistic, the "things moving when processing" gap); a sink whose
+  bufferFill JUMPS gets a "supply landed" deposit pop. Pure outer-ring (bufferFill/demand already in the
+  snapshot), pure FX-canvas. Verified: 56 puffs/4s, smoke at the Ore/Fuel forges.
+- **Richer dashboard (`8098853`).** A DualSparkline income-vs-opex CASH-FLOW chart (differentiated from the
+  cumulative samples already recorded); a STATION ledger (busiest + most-starved, by name); +3 trend
+  sparklines (avg wait/load/opex). All pure outer-ring. Verified on Tokyo (88 riders): the flow curve + named
+  station bars render.
+- **Better peeps (`<this>`).** `render_buf::peep_tint` gives each peep a stable seed-derived ±brightness +
+  warm/cool nudge so a crowd reads as INDIVIDUALS, not a uniform fizz (riders keep their line hue, waiters
+  stay greyish). Render-only (`fill_peeps` excluded from `Canonical`) → determinism gate byte-identical
+  (position fingerprints pinned); needs the wasm rebuilt.

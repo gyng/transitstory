@@ -340,7 +340,8 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>, Ve
             }
             let seed = peep_seed(pax);
             let (jx, jy) = jitter(seed, RIDE_M);
-            push!(vx + jx, vy + jy, lr, lg, lb, 235, pax.citizen_id);
+            let (tr, tg, tb) = peep_tint(seed, lr, lg, lb);
+            push!(vx + jx, vy + jy, tr, tg, tb, 235, pax.citizen_id);
         }
     }
 
@@ -366,10 +367,12 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>, Ve
                 let (dx, dy) = walk_dir(w, pax.citizen_id, |c| c.home_cell, (sx, sy), seed);
                 let back = STUB_M * (1.0 - prog);
                 let (jx, jy) = jitter(seed, FAN_M * 0.5);
-                push!(sx - dx * back + jx, sy - dy * back + jy, 92, 102, 116, (140.0 + 90.0 * prog) as u8, pax.citizen_id);
+                let (tr, tg, tb) = peep_tint(seed, 92, 102, 116);
+                push!(sx - dx * back + jx, sy - dy * back + jy, tr, tg, tb, (140.0 + 90.0 * prog) as u8, pax.citizen_id);
             } else {
                 let (jx, jy) = jitter(seed, FAN_M);
-                push!(sx + jx, sy + jy, 74, 84, 100, 220, pax.citizen_id);
+                let (tr, tg, tb) = peep_tint(seed, 74, 84, 100);
+                push!(sx + jx, sy + jy, tr, tg, tb, 220, pax.citizen_id);
             }
         }
     }
@@ -388,8 +391,10 @@ pub fn fill_peeps(w: &World, alpha: f32, tick_ms: f32) -> (Vec<f32>, Vec<u8>, Ve
         let sy = mm_to_m(st.pos.y_mm);
         let (dx, dy) = walk_dir(w, r.citizen, |c| c.work_cell, (sx, sy), r.citizen ^ r.station);
         let fwd = STUB_M * prog;
-        let (jx, jy) = jitter(r.citizen ^ (r.station << 8), FAN_M * 0.5);
-        push!(sx + dx * fwd + jx, sy + dy * fwd + jy, 120, 130, 144, ((1.0 - prog) * 200.0) as u8, r.citizen);
+        let tseed = r.citizen ^ (r.station << 8);
+        let (jx, jy) = jitter(tseed, FAN_M * 0.5);
+        let (tr, tg, tb) = peep_tint(tseed, 120, 130, 144);
+        push!(sx + dx * fwd + jx, sy + dy * fwd + jy, tr, tg, tb, ((1.0 - prog) * 200.0) as u8, r.citizen);
     }
 
     (xy, col, cit)
@@ -404,6 +409,19 @@ fn peep_seed(pax: &crate::pax::Pax) -> u32 {
     } else {
         (pax.t_spawn_ms as u64 as u32).wrapping_mul(2_654_435_761)
     }
+}
+
+/// Cosmetic per-peep TINT: nudge an (r,g,b) by a small seed-derived amount so a crowd reads as distinct
+/// INDIVIDUALS, not a uniform fizz of identical dots. Keeps the base identity (riders stay their line
+/// colour, waiters stay greyish) — just a ±brightness and a faint warm/cool shift, stable per peep via
+/// the seed. Render-only: `fill_peeps` is excluded from `Canonical`, so this never touches determinism.
+#[inline]
+fn peep_tint(seed: u32, r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+    let h = seed.wrapping_mul(2_654_435_761);
+    let bright = ((h >> 27) as i32) - 16; // -16..15 brightness jitter
+    let warm = (((h >> 21) & 0x1f) as i32) - 16; // -16..15 warm(+r/-b) ↔ cool(-r/+b)
+    let cl = |v: i32| v.clamp(0, 255) as u8;
+    (cl(r as i32 + bright + warm / 2), cl(g as i32 + bright), cl(b as i32 + bright - warm / 2))
 }
 
 /// Interleaved current positions `[x0,y0, x1,y1, ...]` in metres. On a GRID map (#curved-track) the train
