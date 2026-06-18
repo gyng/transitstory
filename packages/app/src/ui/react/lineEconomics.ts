@@ -79,14 +79,18 @@ export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | n
   return { score, glyph: "😟", color: "var(--ot-gauge-bad,#d62828)", word: "unhappy" };
 }
 
-/** Compact signed-money formatter for the roster (tight columns): +$1.2M / −$340k / +$980. */
+/** Compact signed-money for the roster (tight columns): +$1.2M / −$340k / +$980. Same abbreviation
+ *  discipline as shared.fmtMoney (1 dp under 10 of a unit, rounded above — so round values aren't the
+ *  fussy "$15.0M") but ALWAYS sign-prefixed (+/−), which is the roster's "is this line up or down" read. */
 export function fmtSignedMoney(d: number): string {
   const sign = d < 0 ? "−" : "+";
   const a = Math.abs(d);
-  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(2)}B`;
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}k`;
-  return `${sign}$${Math.round(a)}`;
+  const unit = (v: number, suf: string) => `${sign}$${v < 10 ? v.toFixed(1) : Math.round(v)}${suf}`;
+  if (a < 1000) return `${sign}$${Math.round(a)}`;
+  if (a < 1e6) return unit(a / 1e3, "k");
+  if (a < 1e9) return unit(a / 1e6, "M");
+  const b = a / 1e9;
+  return `${sign}$${b < 10 ? b.toFixed(2) : b.toFixed(1)}B`;
 }
 
 /** Compact count for the roster's number column: 847 / 12.3k / 1.2M. */
