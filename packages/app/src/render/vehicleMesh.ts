@@ -4,6 +4,7 @@
 // heading); Z is up (altitude). ~1 unit long; the layer scales it to map-metres. Tinted per-instance via
 // getColor (the mesh itself is white-ish so the line colour reads). Mirrors render/treeMesh.ts.
 import { Geometry } from "@luma.gl/engine";
+import { bakeAO } from "./meshAO";
 
 type V3 = [number, number, number];
 
@@ -58,6 +59,7 @@ export function vehicleMesh(): Geometry {
     attributes: {
       POSITION: { size: 3, value: new Float32Array(pos) },
       NORMAL: { size: 3, value: new Float32Array(nrm) },
+      COLOR_0: { size: 3, value: bakeAO(pos, nrm) }, // baked AO: bases/undersides sink into shadow
     },
   });
   return cached;
@@ -84,6 +86,7 @@ export function wagonMesh(): Geometry {
     attributes: {
       POSITION: { size: 3, value: new Float32Array(pos) },
       NORMAL: { size: 3, value: new Float32Array(nrm) },
+      COLOR_0: { size: 3, value: bakeAO(pos, nrm) }, // baked AO: bases/undersides sink into shadow
     },
   });
   return wagonCached;
@@ -114,6 +117,7 @@ export function legionMesh(): Geometry {
     attributes: {
       POSITION: { size: 3, value: new Float32Array(pos) },
       NORMAL: { size: 3, value: new Float32Array(nrm) },
+      COLOR_0: { size: 3, value: bakeAO(pos, nrm) }, // baked AO: bases/undersides sink into shadow
     },
   });
   return legionCached;
@@ -133,6 +137,7 @@ export function cargoMesh(): Geometry {
     attributes: {
       POSITION: { size: 3, value: new Float32Array(pos) },
       NORMAL: { size: 3, value: new Float32Array(nrm) },
+      COLOR_0: { size: 3, value: bakeAO(pos, nrm) }, // baked AO: bases/undersides sink into shadow
     },
   });
   return cargoCached;

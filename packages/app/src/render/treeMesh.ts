@@ -4,6 +4,7 @@
 // scaled to map-metres by the layer's sizeScale. Per-face normals give the faceted lowpoly read under
 // the deck lighting. Tinted per-instance via the layer's getColor (so the mesh itself is white-ish).
 import { Geometry } from "@luma.gl/engine";
+import { bakeAO } from "./meshAO";
 
 type V3 = [number, number, number];
 
@@ -61,6 +62,8 @@ export function pineGeometry(): Geometry {
     attributes: {
       POSITION: { size: 3, value: new Float32Array(pos) },
       NORMAL: { size: 3, value: new Float32Array(nrm) },
+      // Baked AO: the trunk/base sinks into shadow, the crown stays lit → real evergreen volume.
+      COLOR_0: { size: 3, value: bakeAO(pos, nrm, { floor: 0.5 }) },
     },
   });
   return cached;
