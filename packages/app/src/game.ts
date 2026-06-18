@@ -216,6 +216,12 @@ export class Game {
   /** Pre-commit snap candidate: the station the next click would chain (line tool) or demolish
    *  (bulldozer). Set by the pointer per mousemove; rendered as a ring BEFORE the click commits. */
   snapStation: number | null = null;
+  /** #21 the brief label of whatever is under the cursor (a node, else the terrain biome), set by the
+   *  pointer per mousemove + shown in the HoverReadout bar. `onHover` is a DEDICATED subscription (NOT the
+   *  ui slice) so a hover change re-renders ONLY the readout, never the rest of the chrome. */
+  hoverLabel: string | null = null;
+  onHover?: (label: string | null) => void;
+  private hoverBiomeByCell: Map<string, number> | null = null;
   /** TTD L5c pre-commit signal candidate: what a click would do near the SELECTED line's track in build
    *  mode. `remove` carries an existing placed signal's address (the post the click would delete);
    *  `place` carries the spot + derived `(line, path, span, atMm)` the click would drop a new signal at.
@@ -1337,6 +1343,64 @@ export class Game {
       this.flyTo(lng, lat);
     } else {
       this.flyToCapital();
+    }
+  }
+
+  /** #21 set the hover label, notifying the readout ONLY on a change (gates per-mousemove churn). */
+  setHoverLabel(label: string | null): void {
+    if (label === this.hoverLabel) return;
+    this.hoverLabel = label;
+    this.onHover?.(label);
+  }
+
+  /** #21 what's under the cursor: a node's brief label (town/resource/rival/station), else the terrain
+   *  biome at the cell. `px/py` are screen pixels (node hit-test), `lng/lat` the ground point (biome). */
+  hoverLabelAt(px: number, py: number, lng: number, lat: number): string | null {
+    const sid = this.nearestStation(px, py);
+    if (sid !== null) {
+      const sv = this.bridge.stationsView()[sid];
+      if (sv && !sv.removed) {
+        const poi = this.stationPoi(sid);
+        if (poi?.town) {
+          const t = poi.town;
+          const nm = sv.name || (t.kind === "capital" ? "The Capital" : t.kind === "starter" ? "Your Hold" : "Town");
+          const tail = t.kind === "capital" ? "the realm's seat" : `⚜${t.value.toLocaleString()}${t.chain === "bread" ? " · grain+fuel" : t.chain === "arms" ? " · ore+aether" : ""}`;
+          return `${townGlyph(t.kind)} ${nm} — ${tail}`;
+        }
+        if (poi?.resource) {
+          const r = poi.resource;
+          return `${resourceGlyph(r.kind)} ${sv.name || r.kind} — yield ${r.yield}`;
+        }
+        return `${sv.faction === 1 ? "⚔ Rival " : ""}${sv.name || "Station"}`;
+      }
+    }
+    return this.biomeAt(lng, lat);
+  }
+
+  /** The terrain biome name at a ground point (arcadia only; null off-map / transit). O(1) via a lazily
+   *  built cell→biome map (keyed like the nameplate lookup), so it costs nothing per mousemove. */
+  private biomeAt(lng: number, lat: number): string | null {
+    const cm = this.cellMm;
+    if (cm <= 0 || this.terrain.length === 0) return null;
+    if (!this.hoverBiomeByCell) {
+      this.hoverBiomeByCell = new Map();
+      for (const c of this.terrain) {
+        const [x, y] = lngLatToMm([c.lng, c.lat]);
+        this.hoverBiomeByCell.set(`${Math.floor(x / cm)},${Math.floor(y / cm)}`, c.c);
+      }
+    }
+    const [x, y] = lngLatToMm([lng, lat]);
+    const c = this.hoverBiomeByCell.get(`${Math.floor(x / cm)},${Math.floor(y / cm)}`);
+    if (c === undefined) return null;
+    // biome codes: WATER 4 · MOUNTAIN 6 · HILL 7 · FOREST 8 · LEY 9 · PLAIN 10 (crates/sim/src/city.rs).
+    switch (c) {
+      case 4: return "≈ Water";
+      case 6: return "⛰ Mountains";
+      case 7: return "⌃ Hills";
+      case 8: return "♣ Forest";
+      case 9: return "✦ Ley line";
+      case 10: return "Plains";
+      default: return "Open ground";
     }
   }
 

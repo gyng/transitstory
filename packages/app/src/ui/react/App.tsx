@@ -33,6 +33,7 @@ import { Inspector } from "./Inspector";
 import { Outliner } from "./Outliner";
 import { OnboardingCoach, TutorialCoach } from "./Onboarding";
 import { DraftControls } from "./DraftControls";
+import { HoverReadout } from "./HoverReadout";
 import { CommuterCard } from "./CommuterCard";
 import { FollowCard } from "./FollowCard";
 import { StatsRecorder } from "./statsHistory";
@@ -420,6 +421,7 @@ export function App() {
           top-strip L cell (folded in with the resource strip so they can't overlap — item 1). */}
       <NoticeAutoDismiss />
       {tutorial && world.game.ruleset === "arcadia" ? <TutorialCoach /> : <OnboardingCoach />}
+      <HoverReadout />
       <DraftControls />
       <CommuterCard />
       <FollowCard />

@@ -167,6 +167,11 @@ export function attachPointer(game: Game): void {
     const snapChanged = snap !== game.snapStation;
     game.snapStation = snap;
 
+    // #21 hover readout: what's under the cursor (a node, else the terrain biome) — every mode, gated on
+    // change so it never churns the DOM per-frame. Computed before the drag/draw early-returns so it stays
+    // live while drawing too.
+    game.setHoverLabel(game.hoverLabelAt(e.point.x, e.point.y, e.lngLat.lng, e.lngLat.lat));
+
     // Bending a control point: move it under the cursor (sub-100 ms, client-side).
     if (dragging === "handle") {
       game.dragHandle(e.lngLat.lng, e.lngLat.lat);
