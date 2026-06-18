@@ -82,6 +82,10 @@ const GRADE_FLOOR_PCT: i64 = 88; // line forced over a ridge still wins the deca
 // window, ~5 only over the full horizon), never instant. CityData can override UNITS_PER_SIZE (0 ⇒ default).
 const MAX_SIZE: i64 = 5; // 0 = village … 5 = metropolis (maps to the FE sprawl ring count)
 const UNITS_PER_SIZE: i64 = 1_200; // delivered units per size step
+// #23 TG2 — a grown town fortifies: each size step adds GARRISON_PER_SIZE siege HP to its town_value (so
+// feeding a town makes it a harder — but richer, via the conquest bounty — prize). town_value is sized by
+// siege() on tick 1 (size 0), so growth is what actually adds the HP, tracked here as the town grows.
+const GARRISON_PER_SIZE: i64 = 150;
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -1267,7 +1271,9 @@ impl World {
     /// UNITS_PER_SIZE (capped at MAX_SIZE). FREEZES on capture (town_value==0 ⇒ a captured town never grows,
     /// so its size can't shift a banked input under your feet). Integer + saturating + index-ordered ⇒
     /// deterministic; called from the forge consume so growth tracks SUPPLY DELIVERED, the player's own act.
-    pub(crate) fn grow_town(&mut self, s: usize, delivered: i64) {
+    /// `pub` (not `pub(crate)`) only so the integration tests can drive a size step directly; not on the
+    /// wasm facade, so the frontend can't reach it — growth stays a supply side-effect in production.
+    pub fn grow_town(&mut self, s: usize, delivered: i64) {
         if delivered <= 0 || self.town_value.get(s) == Some(&0) {
             return; // nothing delivered, or captured (FREEZE)
         }
@@ -1278,7 +1284,13 @@ impl World {
         let grown = self.town_growth_accum[s] / UNITS_PER_SIZE;
         if grown > 0 {
             self.town_growth_accum[s] -= grown * UNITS_PER_SIZE;
-            self.town_size[s] = (self.town_size[s] + grown).min(MAX_SIZE);
+            let before = self.town_size[s];
+            self.town_size[s] = (before + grown).min(MAX_SIZE);
+            // #23 TG2 — fortify by the ACTUAL (capped) size gained: the garrison HP rises with the town.
+            let gained = self.town_size[s] - before;
+            if gained > 0 && s < self.town_value.len() {
+                self.town_value[s] = self.town_value[s].saturating_add(GARRISON_PER_SIZE * gained);
+            }
         }
     }
 
@@ -1440,7 +1452,8 @@ impl World {
                 // the ⚔ spawn-node badge). garrison_resistance is the depth-scaled full HP; only meaningful
                 // for towns (a sink with resistance), 0 elsewhere; both are pure render readouts.
                 garrison_max: if self.captured_dest.get(s).copied().unwrap_or(0.0) > self.captured_origin.get(s).copied().unwrap_or(0.0) {
-                    crate::army::garrison_resistance(self, s) as f64
+                    // #23 TG2 — include the size garrison so the siege-progress ring matches the fortified HP.
+                    (crate::army::garrison_resistance(self, s) + GARRISON_PER_SIZE * self.town_size.get(s).copied().unwrap_or(0)) as f64
                 } else {
                     0.0
                 },

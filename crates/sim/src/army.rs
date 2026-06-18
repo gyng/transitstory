@@ -34,6 +34,12 @@ const RESISTANCE: i64 = 500;
 /// distance-to-capital gradient — no mobile AI ⇒ none of the rival's livelock/sawtooth gate-blind risk).
 /// 0 when there is no decadence field (transit + demo arcadia) ⇒ flat `RESISTANCE` ⇒ golden-neutral.
 const GARRISON_MAX: i64 = 500;
+/// #23 TG2 — the one-time CONQUEST BOUNTY by a captured town's SIZE: a bigger town is a richer prize (tribute
+/// to bank + manpower to refuel the next legion), so a bigger siege pays for itself. Computed from the size
+/// AT capture and FROZEN (a captured town never grows). 0 for a fresh frontier town (size 0).
+const BOUNTY_GOLD_PER_SIZE: i64 = 400; // tribute per size (size-5 ≈ 2000)
+const BOUNTY_MANPOWER_BASE: i64 = 4; // manpower for any capture
+const BOUNTY_MANPOWER_PER_SIZE: i64 = 8; // + per size (size-5 = 4+40 ≈ 5 legions at LAUNCH_COST 8)
 /// Hard cap on concurrent legions — bounds the separate SoA (a runaway-launch backstop; the proper
 /// per-tick bench gate is S10). Launches past this are skipped (logged-by-omission).
 const MAX_ARMIES: usize = 256;
@@ -484,6 +490,11 @@ pub(crate) fn siege(world: &mut World) {
             if world.town_value[t] == 0 {
                 // The town falls — counted ONCE, on the grind→flip transition.
                 world.towns_captured = world.towns_captured.saturating_add(1);
+                // #23 TG2 — mint the one-time CONQUEST BOUNTY from the town's SIZE at capture (frozen: the town
+                // stops growing now). A bigger prize banks more tribute + manpower to fund the next legion.
+                let sz = world.town_size.get(t).copied().unwrap_or(0);
+                world.tribute = world.tribute.saturating_add(BOUNTY_GOLD_PER_SIZE.saturating_mul(sz));
+                world.manpower = world.manpower.saturating_add(BOUNTY_MANPOWER_BASE + BOUNTY_MANPOWER_PER_SIZE.saturating_mul(sz));
                 world.armies.state[i] = DONE;
             }
         } else {
