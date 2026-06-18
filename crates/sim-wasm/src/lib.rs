@@ -136,6 +136,20 @@ impl Sim {
         sim::render_buf::raider_targets_m(&self.world)
     }
 
+    /// Interleaved RIVAL HOST positions `[x0,y0,...]` in metres (#13 P1d — the symmetric AI's mustered
+    /// legions). Empty without a rival realm. Read each frame like raider positions; bounded.
+    #[wasm_bindgen(js_name = rivalHostPositions)]
+    pub fn rival_host_positions(&self) -> Vec<f32> {
+        sim::render_buf::rival_host_positions_m(&self.world)
+    }
+
+    /// Interleaved RIVAL HOST TARGET positions `[tx0,ty0,...]` in metres (#13 — the rival's intent, the
+    /// telegraph), aligned with `rivalHostPositions`: the captured town each host marches to re-contest.
+    #[wasm_bindgen(js_name = rivalHostTargets)]
+    pub fn rival_host_targets(&self) -> Vec<f32> {
+        sim::render_buf::rival_host_targets_m(&self.world)
+    }
+
     /// RAIDER ROLE per raider `[role0, ...]` (#war), aligned with `raiderPositions`: 0 breacher / 1 saboteur
     /// / 2 reclaimer. Lets the UI badge the three rival roles apart. Empty for transit.
     #[wasm_bindgen(js_name = raiderRoles)]

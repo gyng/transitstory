@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -97,9 +97,9 @@ const DEFAULT_SERVICE_TRAINS = 2;
  *  never hidden). "supply" dims the war + the rot; "military" dims the supply detail; "decadence" dims both
  *  supply detail + the legions, leaving the tide + raiders. */
 const LENS_HIDE: Record<"supply" | "military" | "decadence", Set<string>> = {
-  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "armies", "legion-names", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "spells"]),
+  supply: new Set(["decadence-tide", "tide-front", "decadence-anchors", "army-intent", "raider-intent", "rival-intent", "armies", "legion-names", "raiders", "raider-badges-0", "raider-badges-1", "raider-badges-2", "rival-hosts", "rival-host-badges", "spells"]),
   military: new Set(["rivers", "resources", "resource-icons", "demand", "ambient-traders"]),
-  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "legion-names", "ambient-traders"]),
+  decadence: new Set(["rivers", "resources", "resource-icons", "demand", "army-intent", "armies", "legion-names", "rival-intent", "rival-hosts", "rival-host-badges", "ambient-traders"]),
 };
 
 /** Standard bounty posted per click of the bounty tool — baits AI legions toward that town. */
@@ -3049,6 +3049,36 @@ export class Game {
     return layers;
   }
 
+  /** #13 P1d — the RIVAL's mustered HOSTS (crimson dots) + a ⚔ badge so they read as LEGIONS, not marauders.
+   *  Empty when none march (transit always; arcadia until the rival musters one). */
+  rivalHostLayerAt(): Layer[] {
+    const xy = this.bridge.rivalHostPositions();
+    const count = xy.length >> 1;
+    if (count === 0) return [];
+    const badge: [number, number][] = [];
+    for (let i = 0; i < xy.length; i += 2) {
+      metersToLngLatInto(xy[i], xy[i + 1], xy, i);
+      badge.push([xy[i], xy[i + 1]]);
+    }
+    return [rivalHostLayer(xy, count), entityBadgeLayer("rival-host-badges", badge, "⚔", [255, 225, 170, 240])];
+  }
+
+  /** #13 — the RIVAL's INTENT (the telegraph): a crimson arc from each marching host to the captured town it's
+   *  coming to re-contest, so the threat is READABLE before it lands. Null when none march. */
+  rivalIntentLayerAt(): Layer | null {
+    const pos = this.bridge.rivalHostPositions();
+    const tgt = this.bridge.rivalHostTargets();
+    const count = Math.min(pos.length, tgt.length) >> 1;
+    if (count === 0) return null;
+    const arcs: IntentArc[] = [];
+    for (let i = 0; i < count; i++) {
+      const [flng, flat] = metersToLngLat([pos[i * 2], pos[i * 2 + 1]]);
+      const [tlng, tlat] = metersToLngLat([tgt[i * 2], tgt[i * 2 + 1]]);
+      arcs.push({ from: [flng, flat], to: [tlng, tlat] });
+    }
+    return arcs.length > 0 ? rivalIntentLayer(arcs, Math.max(0.4, Math.min(1, 7 / arcs.length))) : null;
+  }
+
   /** Spell-flash bursts (fantasy, S11 — the spell arm). `[x_m,y_m,kind,alpha,...]` → lng/lat objects.
    *  Null when nothing's casting (transit always; arcadia until SPELLCRAFT + a cast). */
   spellFlashLayerAt(): Layer | null {
@@ -3090,7 +3120,10 @@ export class Game {
     const rIntent = this.raiderIntentLayerAt();
     const raiderIntentArcs = rIntent ? [rIntent] : []; // #war: smart-raider→target intent (your rail / unheld towns)
     const army = this.armyLayerAt(); // [dot, ⚔ badge] — legions above carts, below peeps/labels (z-order)
-    const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rival's marauders, above legions
+    const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rot's marauders, above legions
+    const rIvIntent = this.rivalIntentLayerAt();
+    const rivalIntentArcs = rIvIntent ? [rIvIntent] : []; // #13: rival host→captured-town intent (the telegraph)
+    const rivalHost = this.rivalHostLayerAt(); // [crimson dot, ⚔ badge] — the RIVAL's mustered legions
     const flash = this.spellFlashLayerAt();
     const spells = flash ? [flash] : []; // spell bursts on top (the magic reads over everything)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
@@ -3147,7 +3180,7 @@ export class Game {
     const nightGlow = this.ruleset === "arcadia" && detail ? nightGlowLayers(this.towns, this.resources, this.nightFactor) : [];
     // Train headlamps: a warm glow under each running train at night, beneath the loco mesh.
     const vehGlow = this.ruleset === "arcadia" && detail ? vehicleNightGlow(vehicles, this.nightFactor) : [];
-    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
+    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...rivalIntentArcs, ...armyL, ...raider, ...rivalHost, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

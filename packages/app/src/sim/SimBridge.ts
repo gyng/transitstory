@@ -153,6 +153,18 @@ export class SimBridge {
     return this.sim.raiderRoles();
   }
 
+  /** #13 P1d — interleaved RIVAL HOST positions `[x0,y0,...]` in metres (the symmetric AI's mustered legions).
+   *  Empty without a rival realm. */
+  rivalHostPositions(): Float32Array {
+    return this.sim.rivalHostPositions();
+  }
+
+  /** #13 — interleaved RIVAL HOST TARGET positions `[tx0,ty0,...]` in metres (the rival's intent, the telegraph),
+   *  aligned with rivalHostPositions: the captured town each host marches to re-contest. */
+  rivalHostTargets(): Float32Array {
+    return this.sim.rivalHostTargets();
+  }
+
   /** Legion STATE per legion `[state0,...]` (#war), aligned with armyPositions: 0 marching/1 besieging/2 done. */
   armyStates(): Float32Array {
     return this.sim.armyStates();

@@ -1660,6 +1660,44 @@ export function raiderLayer(positionsLngLat: Float32Array, count: number): Layer
   });
 }
 
+/** #13 P1d — the RIVAL's mustered HOSTS (the symmetric AI's legions): crimson dots marching overland at your
+ *  captured towns. Crimson = the rival realm's hue (matches its hold), DISTINCT from the rot's toxic-green
+ *  raiders — so the player reads "the RIVAL is on the move", not "the rot is seeping". */
+export function rivalHostLayer(positionsLngLat: Float32Array, count: number): Layer {
+  return new ScatterplotLayer({
+    id: "rival-hosts",
+    data: { length: count, attributes: { getPosition: { value: positionsLngLat, size: 2 } } },
+    getFillColor: [190, 55, 55],
+    getLineColor: [255, 220, 150],
+    stroked: true,
+    lineWidthMinPixels: 1.5,
+    getRadius: 6,
+    radiusUnits: "pixels",
+    radiusMinPixels: 5,
+    radiusMaxPixels: 11,
+  });
+}
+
+/** #13 — the RIVAL's INTENT (the telegraph, the owner's #1 pillar): a crimson arc from each marching host to
+ *  the captured town it's coming to re-contest, so you SEE the threat forming and can rail-to / defend it
+ *  BEFORE it lands. Crimson (the rival's hue), distinct from the raiders' toxic-green intent. Alpha scales
+ *  down with density (clutter fix), like the army/raider arcs. */
+export function rivalIntentLayer(arcs: IntentArc[], alpha = 1): Layer {
+  return new ArcLayer({
+    id: "rival-intent",
+    data: arcs,
+    getSourcePosition: (d: IntentArc) => d.from,
+    getTargetPosition: (d: IntentArc) => d.to,
+    getSourceColor: [150, 40, 40, Math.round(45 * alpha)], // faint at the host
+    getTargetColor: [210, 60, 60, Math.round(185 * alpha)], // stronger at the town it's coming for
+    getWidth: 2,
+    widthUnits: "pixels",
+    widthMinPixels: 1.5,
+    getHeight: 0.35,
+    updateTriggers: { getSourceColor: alpha, getTargetColor: alpha },
+  });
+}
+
 /** Entity BADGE glyphs (fantasy #10): a small symbol pinned on each moving unit so legions (⚔) + raider
  *  marauders (☣) read as what they are at a glance, not just coloured dots. `positions` are lng/lat (tiny
  *  counts → a plain array). characterSet seeds the atlas. Trains already carry their load ring; peeps stay

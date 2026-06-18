@@ -662,6 +662,38 @@ pub fn raider_targets_m(w: &World) -> Vec<f32> {
     out
 }
 
+/// Interleaved RIVAL HOST positions `[x0_m, y0_m, ...]` in metres (#13 P1d). Like raiders, the symmetric
+/// AI's hosts march free 2-D (the position is the authoritative hashed state), so this is a direct copy-out
+/// of the MARCHING hosts. Empty without a rival realm.
+pub fn rival_host_positions_m(w: &World) -> Vec<f32> {
+    let h = &w.rival_hosts;
+    let mut out = Vec::with_capacity(h.live() * 2);
+    for i in 0..h.len() {
+        if h.state[i] != crate::rival::MARCHING {
+            continue;
+        }
+        out.push(mm_to_m(h.x_mm[i]));
+        out.push(mm_to_m(h.y_mm[i]));
+    }
+    out
+}
+
+/// Interleaved RIVAL HOST TARGET positions `[tx0,ty0,...]` in metres (#13 — the rival's intent, the
+/// TELEGRAPH), aligned 1:1 with `rival_host_positions_m`. Each entry is the captured town the host is
+/// marching to re-contest, so the UI draws a crimson intent arc — the threat is readable before it lands.
+pub fn rival_host_targets_m(w: &World) -> Vec<f32> {
+    let h = &w.rival_hosts;
+    let mut out = Vec::with_capacity(h.live() * 2);
+    for i in 0..h.len() {
+        if h.state[i] != crate::rival::MARCHING {
+            continue;
+        }
+        out.push(mm_to_m(h.tx_mm[i]));
+        out.push(mm_to_m(h.ty_mm[i]));
+    }
+    out
+}
+
 /// RAIDER ROLE per marching raider (#war), aligned 1:1 with `raider_positions_m` — 0 BREACHER (capital),
 /// 1 SABOTEUR (rail seam), 2 RECLAIMER (captured town). DERIVED from the raider's exact target position (a
 /// render-only classification, so it needs no hashed role byte / re-pin): target == the capital ⇒ breacher
