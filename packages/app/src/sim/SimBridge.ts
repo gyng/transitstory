@@ -27,10 +27,25 @@ export class SimBridge {
   private redoStack: Command[] = [];
   private replayingRedo = false;
 
+  // Render-side cache for the TOPOLOGY snapshots (lines/stations). Both `LineView` (geometry,
+  // stops, colour, modes, span/track types) and `StationView` (position, name, bounty,
+  // platform count) change ONLY on a Command — every field is written exclusively in an `apply`
+  // handler, never during `tick()` (verified: bounty/platform_count are command-only writes).
+  // So a fresh wasm decode per call is pure waste: the roster used to decode ALL lines once PER
+  // ROW (O(lines²), the measured 3 Hz freeze) and the vehicle path decoded `linesView()` twice
+  // per rAF frame. Cache here, invalidate on every write. READ-ONLY for callers (they already are).
+  private _linesView: LineView[] | null = null;
+  private _stationsView: StationView[] | null = null;
+  private invalidateViews(): void {
+    this._linesView = null;
+    this._stationsView = null;
+  }
+
   /** The single write path. Returns the sim's events (assigned ids, auto-names, rejections). */
   apply(command: Command): Event[] {
     if (!this.replayingRedo) this.redoStack.length = 0; // a fresh command forks history
     const events = this.sim.applyCommandJson(encodeCommand(command)) as Event[];
+    this.invalidateViews(); // topology may have changed
     this.log.push(command);
     this.onCommit?.();
     return events;
@@ -39,6 +54,7 @@ export class SimBridge {
   /** Reconstruct the Sim from seed + the current log (never splice state). The basis for both
    *  undo and load — replays through the same applyCommandJson path the log recorded. */
   private rebuild(): void {
+    this.invalidateViews(); // topology rebuilt from scratch
     this.sim.free();
     this.sim = new Sim(this.seed, this.cityJson);
     for (const c of this.log.all()) this.sim.applyCommandJson(encodeCommand(c));
@@ -218,12 +234,16 @@ export class SimBridge {
     return this.sim.stats() as Stats;
   }
 
+  /** Topology snapshot of all stations — cached until the next Command (apply/rebuild). The
+   *  returned array is READ-ONLY (callers .find/.filter/.map/index it; none mutate it). */
   stationsView(): StationView[] {
-    return this.sim.stationsView() as StationView[];
+    return (this._stationsView ??= this.sim.stationsView() as StationView[]);
   }
 
+  /** Topology snapshot of all lines — cached until the next Command (apply/rebuild). READ-ONLY
+   *  (see `stationsView`). Collapses the roster's former O(lines²) per-row decode to O(lines). */
   linesView(): LineView[] {
-    return this.sim.linesView() as LineView[];
+    return (this._linesView ??= this.sim.linesView() as LineView[]);
   }
 
   /** OD "desire lines" for a selected station — its top destinations by gravity pull (read-only,
