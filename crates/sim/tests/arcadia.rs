@@ -208,6 +208,44 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
     assert!(after >= before, "serving another town never lowers the gauge ({before} -> {after})");
 }
 
+/// #23 TG2 belt-and-braces for the LOCKED monotonicity invariant: town SIZE is deliberately kept OUT of the
+/// coverage gauge, so growing a town must NEVER move it. This guards against a future change wiring size into
+/// the gauge and silently breaking "a strictly-better network never lowers it" (the design's load-bearing rule).
+#[test]
+fn arcadia_town_growth_never_moves_the_gauge() {
+    let city = CityData {
+        id: "arcadia".into(),
+        ruleset: "arcadia".into(),
+        seed: 7,
+        grid_cell_mm: 100_000,
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: 0 }, // source
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // town
+            ],
+        },
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None });
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None });
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..200 {
+        w.tick(50); // sizes town_size + town_value, registers supply on the gauge
+    }
+    let before = w.stats_snapshot().coverage_score;
+    // Grow the town to the cap (and fortify it) — size feeds garrison + bounty, NOT the gauge. No ticks
+    // between the two reads, so the only variable is the growth itself.
+    w.grow_town(1, 100_000);
+    let after = w.stats_snapshot().coverage_score;
+    assert_eq!(before, after, "town SIZE growth must NOT move the coverage gauge ({before} -> {after}) — size is out of the gauge by design");
+}
+
 /// The FANTASY golden pin (separate from the transit pin): the exact `state_hash` of the arcadia
 /// slice today. Guards the arcadia path against a uniform hash shift the `run()==run()` self-equality
 /// can't see — the same role `GOLDEN_TRANSIT_HASH` plays for transit. Re-pinned at every arcadia
