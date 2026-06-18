@@ -79,6 +79,44 @@ fn rival_regarrison_preserves_the_monotonic_standing() {
     assert_eq!(w.towns_captured, 3, "the rival's re-garrison must NOT lower the monotonic Standing");
 }
 
+/// A world with a rival hold (faction-1 barracks) far from the capital (origin) + a build budget, so the
+/// rival's track-builder (P2) has something to creep toward.
+fn world_with_rival_builder(hold: (i64, i64), tribute: i64) -> World {
+    let mut w = World::new(9, CityData { ruleset: "arcadia".into(), ..Default::default() });
+    w.stations.push(Station::new(PointMm::new(hold.0, hold.1), "Rival Hold".into()));
+    w.stations[0].faction = 1;
+    w.is_barracks = vec![true];
+    w.rival_tribute = tribute; // the P2 build budget (capital sits at the CityData-default origin)
+    w
+}
+
+#[test]
+fn rival_builds_rail_toward_the_capital() {
+    // P2 — the literal "the enemy builds tracks": the rival lays a faction-1 crimson line that creeps from
+    // its far hold toward the player's capital (the CityData-default origin), one segment per cadence,
+    // spending its build budget.
+    let mut w = world_with_rival_builder((40_000_000, 0), 400);
+    run(&mut w, 13000); // several build cadences (120_000 ms = 2400 ticks each)
+    let rival_lines: Vec<_> = w.lines.iter().filter(|l| l.faction == 1 && !l.removed).collect();
+    assert_eq!(rival_lines.len(), 1, "the rival should have laid exactly ONE rail line");
+    assert!(rival_lines[0].stops.len() >= 3, "the rival line should have grown several stops (got {})", rival_lines[0].stops.len());
+    let head = w.stations[rival_lines[0].stops.last().unwrap().index()].pos;
+    assert!(head.x_mm < 40_000_000, "the rail-head must have advanced toward the capital (origin)");
+    assert!(w.rival_tribute < 400, "building must spend rival_tribute");
+    assert!(w.stations.iter().filter(|s| s.faction == 1).count() >= 3, "each extension is a new faction-1 node");
+}
+
+#[test]
+fn rival_build_is_deterministic() {
+    // The build (new faction-1 stations/lines + the cadence accumulator) is hashed; integer + no rng ⇒ two
+    // identical runs reach an identical state_hash.
+    let mut a = world_with_rival_builder((40_000_000, 0), 400);
+    let mut b = world_with_rival_builder((40_000_000, 0), 400);
+    run(&mut a, 8000);
+    run(&mut b, 8000);
+    assert_eq!(a.state_hash(), b.state_hash(), "rival track-building diverged across two identical runs");
+}
+
 #[test]
 fn rival_host_state_is_deterministic() {
     // Two identical runs ⇒ identical state_hash (the host SoA + muster accumulator are hashed; the logic is

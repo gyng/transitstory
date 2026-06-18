@@ -270,7 +270,9 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
 // LAST; 0 (no rival in the fixture) ⇒ another PURE APPEND-ZEROS shift. Prior: 0x0db1_d474_08b7_2759.
 // #13 P1d rival-hosts re-pin (0x29a5_3e3e_c4f1_719b): Canonical gains the rival-host march SoA + muster
 // accumulator, appended LAST; EMPTY/0 (no rival hold in the fixture) ⇒ appended-empty shift. Prior: 0xdd13_8709_70b0_9673.
-const GOLDEN_ARCADIA_HASH: u64 = 0x29a5_3e3e_c4f1_719b;
+// #13 P2 rival-builder re-pin (0xb53a_5fa8_a644_0a61): Canonical gains the rival track-build cadence
+// accumulator, appended LAST; 0 (no rival in the fixture) ⇒ appended-zero shift. Prior: 0x29a5_3e3e_c4f1_719b.
+const GOLDEN_ARCADIA_HASH: u64 = 0xb53a_5fa8_a644_0a61;
 
 #[test]
 fn golden_arcadia_hash_pinned() {

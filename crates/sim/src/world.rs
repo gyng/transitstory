@@ -69,6 +69,10 @@ const GOLD_UPKEEP_DIVISOR: i64 = 100;
 /// economy comes online in a later phase). A few legions' worth (LAUNCH_COST 8). Only seeded when a baked
 /// rival exists (rival_enabled), so transit + the goldens are unaffected.
 const RIVAL_START_MANPOWER: i64 = 40;
+/// #13 P2 — the rival realm's opening TRACK-BUILD budget (gold). The rival creeps its rail toward the
+/// player's capital, spending this per extension (`rival::BUILD_COST`); when it runs dry it stops expanding
+/// (its own supply economy comes later). Only seeded for a baked rival ⇒ transit + the goldens unaffected.
+const RIVAL_START_TRIBUTE: i64 = 400;
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -170,6 +174,9 @@ pub struct World {
     pub rival_hosts: crate::rival::RivalHostSoA,
     /// Rival-host muster-cadence accumulator (ms) — hashed (gameplay-causal), no rng. 0 without a rival.
     pub rival_muster_accum_ms: i64,
+    /// #13 P2 — rival TRACK-BUILD cadence accumulator (ms) — gates how often the rival extends its rail
+    /// toward the player's capital. Hashed (gameplay-causal), no rng. 0 without a rival.
+    pub rival_build_accum_ms: i64,
     /// Raider spawn-cadence accumulator (ms) + the reservoir cursor — hashed (gameplay-causal), but no rng:
     /// a fixed accumulator + a cycling counter keep the rival deterministic. 0 for transit/demo.
     pub raider_spawn_accum_ms: i64,
@@ -552,6 +559,8 @@ struct Canonical<'a> {
     rival_host_tx_mm: &'a [i64],
     rival_host_ty_mm: &'a [i64],
     rival_muster_accum_ms: i64,
+    /// #13 P2 rival track-build cadence accumulator. Appended LAST — 0 without a rival ⇒ appended-zero shift.
+    rival_build_accum_ms: i64,
 }
 
 /// TTD L3 C1 — the hashed projection of the authoritative segment slab. Hand-written `Serialize` so the
@@ -671,6 +680,7 @@ impl World {
             raiders: crate::raider::RaiderSoA::default(),
             rival_hosts: crate::rival::RivalHostSoA::default(),
             rival_muster_accum_ms: 0,
+            rival_build_accum_ms: 0,
             raider_spawn_accum_ms: 0,
             raider_cursor: 0,
             raider_breach: 0,
@@ -771,10 +781,14 @@ impl World {
             self.stations[before].faction = 1; // flip the just-placed capital to the rival
         }
         self.rival_manpower = RIVAL_START_MANPOWER; // a war-chest so the rival can field legions (P1d)
+        self.rival_tribute = RIVAL_START_TRIBUTE; // a budget so the rival can build rail toward you (P2)
     }
 
-    /// Buildability class at a local mm point (Open if outside the grid).
+    /// Buildability class at a local mm point (Open if outside the grid, or if there is no grid at all).
     pub fn classify(&self, x_mm: i64, y_mm: i64) -> u8 {
+        if self.build_cell_mm == 0 {
+            return crate::city::class::OPEN; // no buildability grid (transit / synthetic worlds) ⇒ all open
+        }
         let key = (
             x_mm.div_euclid(self.build_cell_mm) as i32,
             y_mm.div_euclid(self.build_cell_mm) as i32,
@@ -894,7 +908,7 @@ impl World {
     /// Recompute a line's disruption + water flag + capital from the buildability grid and its
     /// per-span build modes. Cheap (one pass over the polyline vertices); called on a geometry
     /// or mode change.
-    fn recompute_line_buildability(&mut self, line: LineId) {
+    pub(crate) fn recompute_line_buildability(&mut self, line: LineId) {
         let idx = line.index();
         if idx >= self.lines.len() {
             return;
@@ -2235,6 +2249,7 @@ impl World {
             rival_host_tx_mm: &self.rival_hosts.tx_mm,
             rival_host_ty_mm: &self.rival_hosts.ty_mm,
             rival_muster_accum_ms: self.rival_muster_accum_ms,
+            rival_build_accum_ms: self.rival_build_accum_ms,
         };
         let bytes = postcard::to_allocvec(&canon).expect("canonical state serializes");
         fnv1a(&bytes)

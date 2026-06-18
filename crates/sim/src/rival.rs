@@ -37,6 +37,21 @@ const ARRIVE_MM: i64 = 2_000_000;
 /// is NOT touched (cumulative ⇒ the monotonic Standing gauge is safe).
 const REGARRISON: i64 = 500;
 
+// --- P2: the rival BUILDS its own rail toward the player's capital (the literal "build tracks, same rules") ---
+/// `rival_tribute` spent per track EXTENSION. When the budget (seeded at SeedRival) runs dry the rival stops
+/// expanding — its own supply economy (minting more) comes in a later phase.
+const BUILD_COST: i64 = 50;
+/// Build cadence (ms): a deliberate extension every ~2 sim-min (slower than musters — laying rail is a
+/// commitment). Authoritative (gates the next build) ⇒ hashed.
+const BUILD_PERIOD_MS: i64 = 120_000;
+/// How far each extension reaches toward the capital (mm) — snapped to a hex-cell centre (a valid node).
+const BUILD_STEP_MM: i64 = 8_000_000;
+/// Stop extending when the rail-head is within this of the capital (mm) — the rival creeps to your doorstep,
+/// it does not build ONTO your seat (taking the capital is a win-condition concern for a later phase).
+const BUILD_STOP_MM: i64 = 6_000_000;
+/// The rival line's colour (u32 RGB) — crimson, matching the hold + the host dots (the rival realm's hue).
+const RIVAL_LINE_COLOR: u32 = 0x00be_3737;
+
 /// Authoritative (hashed) free 2-D march state. `tx/ty` is the target town's position (set at muster).
 #[derive(Clone, Default)]
 pub struct RivalHostSoA {
@@ -87,11 +102,25 @@ fn rival_hold(world: &World) -> Option<(i64, i64)> {
     })
 }
 
-/// One rival-host tick: muster → march → resolve. A no-op (beyond the empty-SoA hash) without a rival hold.
+/// One rival tick: muster → march → resolve (the hosts, P1d) → build (extend its rail, P2). A no-op (beyond
+/// the empty-SoA hash) without a rival hold.
 pub fn step(world: &mut World, dt_ms: i64) {
     muster(world, dt_ms);
     march(world, dt_ms);
     resolve(world);
+    build(world, dt_ms);
+}
+
+/// The rival hold's STATION INDEX (the first faction-1 barracks), or None.
+fn rival_hold_id(world: &World) -> Option<usize> {
+    world.stations.iter().enumerate().find_map(|(i, s)| {
+        (s.faction == 1 && !s.removed && world.is_barracks.get(i).copied().unwrap_or(false)).then_some(i)
+    })
+}
+
+/// The rival's LINE (the first faction-1, non-removed line), or None (no rail laid yet).
+fn rival_line(world: &World) -> Option<usize> {
+    world.lines.iter().position(|l| l.faction == 1 && !l.removed)
 }
 
 /// MUSTER: while the rival hold can afford a host AND the player holds captured ground, field one from the
@@ -185,4 +214,74 @@ fn resolve(world: &mut World) {
         }
         world.rival_hosts.state[i] = DONE;
     }
+}
+
+/// BUILD (P2): the rival creeps its rail ONE segment toward the player's capital — funded by `rival_tribute`,
+/// at a deliberate cadence. The literal "the enemy builds tracks, by the SAME rules": a new faction-1 station
+/// is placed via the player's own `PlaceStation` path (so the per-station arrays grow correctly), then the
+/// rival's line is extended onto it (the first build roots a crimson line at the hold). Deterministic: a
+/// fixed cadence + a capital-ward step snapped to the hex grid, no rng. Stops on a dry budget, at the
+/// capital's doorstep, or against impassable terrain (the player's coast/range is a natural wall).
+fn build(world: &mut World, dt_ms: i64) {
+    let Some(hold) = rival_hold_id(world) else { return };
+    world.rival_build_accum_ms = world.rival_build_accum_ms.saturating_add(dt_ms.max(0));
+    if world.rival_build_accum_ms < BUILD_PERIOD_MS || world.rival_tribute < BUILD_COST {
+        return; // not yet, or the build budget is spent (the rival's expansion has run its course)
+    }
+    let (cx, cy) = (world.city.capital_x_mm, world.city.capital_y_mm);
+    // The rail-head: the rival line's last stop, else the hold (the first build roots the line at the hold).
+    let line = rival_line(world);
+    let head_id = match line {
+        Some(lid) => world.lines[lid].stops.last().copied().map(|s| s.index()).unwrap_or(hold),
+        None => hold,
+    };
+    let head = world.stations[head_id].pos;
+    let (dx, dy) = (cx - head.x_mm, cy - head.y_mm);
+    let dist = dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy)).isqrt();
+    if dist <= BUILD_STOP_MM {
+        return; // the rail-head has reached the player's doorstep — stop (don't build onto the capital)
+    }
+    // Step one segment toward the capital, snapped to a hex-cell centre (a valid track node).
+    let step = dist.min(BUILD_STEP_MM);
+    let gcm = world.city.grid_cell_mm.max(1);
+    let raw = crate::geo_local::PointMm::new(head.x_mm + dx.saturating_mul(step) / dist, head.y_mm + dy.saturating_mul(step) / dist);
+    let cell = crate::hexgrid::center_of(crate::hexgrid::axial_of(raw, gcm), gcm);
+    // Terrain-bound: never plant a station on WATER/MOUNTAIN (a depot in the sea / on a cliff). The TRACK
+    // between stops still routes AROUND water (recompute → line_costed); only the node must sit on land.
+    let c = world.classify(cell.x_mm, cell.y_mm);
+    if c == crate::city::class::WATER || c == crate::city::biome::MOUNTAIN {
+        return; // halted against terrain — re-attempts next cadence (harmless), budget unspent
+    }
+    // Lay the new rail node via the player's command path (grows the per-station arrays), then flip it rival.
+    let before = world.stations.len();
+    world.apply(&crate::command::Command::PlaceStation { x_mm: cell.x_mm, y_mm: cell.y_mm, name: Some("Rival Rail".into()) });
+    if world.stations.len() == before {
+        return; // placement refused (shouldn't happen on passable land) — don't spend
+    }
+    world.stations[before].faction = 1;
+    let new_sid = crate::ids::StationId(before as u32);
+    let lid = match line {
+        Some(lid) => {
+            world.lines[lid].stops.push(new_sid);
+            lid
+        }
+        None => {
+            // First build: create the rival's crimson rail line, rooted at the hold, onto the new node.
+            world.apply(&crate::command::Command::CreateLine {
+                color: RIVAL_LINE_COLOR,
+                name: Some("Rival Rail".into()),
+                loop_line: false,
+                mode: 0,
+                literal: false,
+            });
+            let lid = world.lines.len() - 1;
+            world.lines[lid].faction = 1;
+            world.lines[lid].stops = vec![crate::ids::StationId(hold as u32), new_sid];
+            lid
+        }
+    };
+    world.recompute_line_buildability(crate::ids::LineId(lid as u32));
+    world.demand_dirty = true;
+    world.rival_tribute -= BUILD_COST;
+    world.rival_build_accum_ms = 0;
 }

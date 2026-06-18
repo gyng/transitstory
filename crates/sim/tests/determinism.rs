@@ -108,7 +108,10 @@ fn replay_equality() {
 //   0x12f9_431d_a327_3ff2 — #13 P1d rival hosts: `Canonical` gains the rival-host march SoA (x/y/state/tx/ty)
 //                           + the muster accumulator, appended LAST. EMPTY/0 with no rival hold (transit) ⇒
 //                           an appended-empty/zero shift; behaviour byte-identical. Intentional re-pin.
-const GOLDEN_TRANSIT_HASH: u64 = 0x12f9_431d_a327_3ff2;
+//   0x64cc_fd5c_3bb1_a836 — #13 P2 rival builder: `Canonical` gains the rival track-build cadence
+//                           accumulator, appended LAST. 0 with no rival (transit) ⇒ an appended-zero shift;
+//                           behaviour byte-identical. Intentional re-pin.
+const GOLDEN_TRANSIT_HASH: u64 = 0x64cc_fd5c_3bb1_a836;
 
 #[test]
 fn golden_transit_hash_pinned() {
