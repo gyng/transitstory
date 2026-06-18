@@ -280,6 +280,13 @@ pub(crate) fn army_travel_step(world: &mut World, dt_ms: i64) {
                     world.armies.state[i] = DONE;
                     continue;
                 };
+                // March by DAY, make CAMP by night (#daynight): an overland foot-march holds position
+                // through the dark and resumes at dawn. Rail-borne legions (RIDING) ride on — your rail is
+                // the 24/7 logistics; only the foot-march rests. Integer day-phase ⇒ deterministic. The
+                // render reads this same hold (WALKING + night) to pitch a campfire.
+                if !crate::tod::is_daylight(clock) {
+                    continue; // camped until dawn — no advance
+                }
                 let dir = world.armies.dir[i] as i64;
                 let ns = world.armies.s_mm[i] + dir * walk_step;
                 let reached = (dir >= 0 && ns >= t_arc) || (dir < 0 && ns <= t_arc);

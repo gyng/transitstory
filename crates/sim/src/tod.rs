@@ -50,11 +50,24 @@ pub fn work_bias(hour: f64) -> f32 {
     (0.5 + 0.5 * am - 0.5 * pm).clamp(0.0, 1.0) as f32
 }
 
+/// In-game hour [0,24) as a pure INTEGER — the HASHABLE form (never the f64 `hour_of_day`, which is for
+/// render/demand floats only). The one place clock→hour lives for integer (state-affecting) callers.
+pub fn hour_int(clock_ms: i64) -> i64 {
+    (6 + clock_ms.div_euclid(HOUR_MS)).rem_euclid(24)
+}
+
+/// Is it DAYLIGHT (06:00–20:00) vs night? Pure integer ⇒ safe to gate HASHED legion movement
+/// (`army_travel_step`) without f64 drift: a foot-marching legion advances by day and makes CAMP at
+/// night (rail-borne legions ride on — your rail is the 24/7 logistics; only the overland march rests).
+pub fn is_daylight(clock_ms: i64) -> bool {
+    (6..20).contains(&hour_int(clock_ms))
+}
+
 /// Time-of-day congestion penalty (%) — how much rush-hour traffic alone slows a road, before
 /// local density. INTEGER step over the in-game hour (pure integer — never the f64 multiplier — so
 /// it can scale HASHED vehicle motion without float drift). 0 overnight, worst at the peaks.
 fn time_penalty(clock_ms: i64) -> i64 {
-    let hour = (6 + clock_ms.div_euclid(HOUR_MS)).rem_euclid(24);
+    let hour = hour_int(clock_ms);
     match hour {
         7 | 8 | 9 | 17 | 18 | 19 => 35, // AM/PM rush — heavy
         10..=16 => 15,                  // daytime — moderate

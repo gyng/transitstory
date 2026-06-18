@@ -1545,25 +1545,46 @@ export interface LegionDot {
   heading: number;
   name: string;
   besieging: boolean;
+  camped: boolean; // #daynight: holding camp through the night (a foot-march rests at dark) — pitches a campfire
 }
 
 const LEGION_SCALE = 150; // diorama scale (a touch larger than a train — an army is a notable force)
 
 /** The legion HOST as a real 3D model (replaces the flat crimson dot): a banner standard yawed to its
- *  march direction, crimson (besieging hosts a muted brick so "advancing" vs "holding" reads). */
+ *  march direction. Crimson advancing; muted brick besieging; a banked ember when CAMPED for the night
+ *  (so "advancing" vs "holding" vs "resting" all read at a glance). */
 export function legionLayer(legions: LegionDot[]): Layer {
   return new SimpleMeshLayer<LegionDot>({
     id: "armies",
     data: legions,
     mesh: legionMesh(),
     getPosition: (d) => [d.lng, d.lat],
-    getColor: (d) => (d.besieging ? [150, 70, 56] : [176, 26, 26]),
+    getColor: (d) => (d.camped ? [126, 66, 44] : d.besieging ? [150, 70, 56] : [176, 26, 26]),
     getOrientation: (d) => yawOf(d.heading),
     getScale: [LEGION_SCALE, LEGION_SCALE, LEGION_SCALE],
     sizeScale: 1,
     pickable: false,
     material: { ambient: 0.66, diffuse: 0.7, shininess: 20, specularColor: [80, 60, 60] },
-    updateTriggers: { getOrientation: legions.length, getColor: legions.map((d) => (d.besieging ? 1 : 0)).join("") },
+    updateTriggers: { getOrientation: legions.length, getColor: legions.map((d) => (d.camped ? 2 : d.besieging ? 1 : 0)).join("") },
+  });
+}
+
+/** Campfires under the CAMPED legions (#daynight): a warm ember glow so a foot-march resting through the
+ *  night reads as a lit camp, not a stalled dot. Drawn UNDER the standards; empty (zero cost) by day or
+ *  with no camped host. Pixel-radius so it reads at any zoom; depthTest off to sit on the dark ground. */
+export function legionCampfireLayer(camped: LegionDot[]): Layer {
+  return new ScatterplotLayer<LegionDot>({
+    id: "legion-campfires",
+    data: camped,
+    getPosition: (d) => [d.lng, d.lat],
+    getRadius: 7,
+    radiusUnits: "pixels",
+    radiusMinPixels: 5,
+    radiusMaxPixels: 11,
+    getFillColor: [255, 154, 62, 150],
+    stroked: false,
+    parameters: { depthTest: false },
+    updateTriggers: { getFillColor: camped.length },
   });
 }
 
