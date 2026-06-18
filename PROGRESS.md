@@ -3352,3 +3352,50 @@ AO), arcadia + LOD-gated; the existing train dwell + peeps read as the "working 
 
 **Remaining big:** symmetric enemy AI (#13 — an enemy that builds track + plays by the player's rules; a major
 sim+AI project to scope as a phased design first). Near-term aggro already tuned down.
+
+### Symmetric enemy AI — #13 (2026-06-18→19, scoped → built Phase 1 + Phase 2 core)
+
+Scoped first (`docs/symmetric-enemy-ai.md`): the crux is that the old enemy is the ENVIRONMENT (decadence rot +
+spawned raiders) on a single-faction `World`, so a rules-symmetric rival is effectively a 2nd faction. Built
+as phased, each a verified commit; the OWNER PILLAR throughout: **the AI's intent is telegraphed** (no hidden
+/instant moves). Determinism held at every step — each hashed addition is appended-last in `Canonical`, so the
+goldens re-pin by an append-zeros/empty shift (provenance logged in determinism.rs/arcadia.rs); the fixtures
+carry no rival ⇒ behaviour byte-identical.
+
+- **P1a faction ownership** (`a7fecfd`): `Station`+`Line` gain a hashed `faction: u8` (0 player / 1 rival).
+- **P1b rival treasuries** (`02577d2`): `World` gains additive `rival_tribute/mana/manpower`.
+- **P1c visible rival realm** (`7e3664f`): a new `Command::SeedRival` seats a faction-1 "Rival Hold" on the
+  far edge (the reservoir cell most ISOLATED from the player's towns, fired at boot after the network), a
+  starting manpower + build budget; renders crimson (station dot + 3D depot + the P1c faction forks).
+  Browser-verified.
+- **P1d sim core** (`92c5a50`): `sim::rival` — the hold musters HOSTS (rival_manpower-funded) that march
+  overland and RE-GARRISON the player's captured towns (the territory re-contest), but only UNDEFENDED ones
+  (railed ground is safe — the "too aggro" antidote), never touching `towns_captured`. Hashed host SoA.
+- **P1d render** (`2c71863`): crimson host markers + a ⚔ badge + a crimson `rivalIntentLayer` arc (the
+  telegraph) — render_buf→wasm→bridge→layers, lens-aware. Plumbing browser-verified (new exports callable,
+  zero console errors).
+- **P1e winnability** (`3a5ab81`): a test pins the keystone — re-garrison never lowers the monotonic Standing.
+- **P2 build core** (`129442c`): `rival::build` — the rival LAYS ITS OWN RAIL, creeping a crimson line from
+  the hold toward the player's capital (rival_tribute-funded, one segment/cadence, terrain-bound), through
+  the player's own PlaceStation/CreateLine path then flipped to faction 1. The literal "the enemy builds
+  tracks". Browser-verified live: ran the sim forward → the rival laid an 8-stop crimson rail toward the
+  capital, zero console errors.
+
+Tested: `crates/sim/tests/rival.rs` (6 tests — muster/re-garrison, defended-spared, monotonic-Standing,
+build-grows-toward-capital, two determinism checks); full sim suite green (62 binaries). Browser verification
+done by driving headless chromium directly (the session's browser MCP was disconnected — see below).
+
+**Remaining (polish, not core):** the P2 dashed *expansion-ghost* (announce the next build before it commits)
++ a muster beat — refinements of the telegraph; the visibly-creeping crimson rail + the legion intent arcs
+already make the rival legible. A future P3 would add win-conditions/territory + a difficulty knob + a rival
+supply economy (so it mints its own tribute/manpower instead of a seeded war-chest).
+
+**Tooling note (2026-06-19):** the browser MCP (playwright/chrome-devtools) disconnected mid-session; the
+servers stayed healthy (`claude mcp list` ✔) but the session's tool access dropped (a `/mcp` reconnect, not
+restartable from a tool). Verification proceeded by driving the project's installed Playwright/chromium
+directly via Bash (`/tmp/ot-verify.cjs`), which also surfaced + fixed a stale-wasm dev server (vite cached an
+old build; kill 5173 + clear `node_modules/.vite` + restart picks up `pnpm build:wasm`).
+
+Also: terrain-height plan scoped (`docs/terrain-height.md`, #15) — a per-cell HeightGrid with 4 effects
+(gradient cost + speed, both hashed; 3D relief + DEM rivers, render-only); recommends T1→T2 (field + relief)
+before the hashed cost/speed.
