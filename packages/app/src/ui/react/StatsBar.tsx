@@ -102,7 +102,7 @@ function FantasyStatsBar({ s }: { s: Stats }) {
       {(manpower > 0 || armies > 0) && (
         <div
           data-testid="manpower"
-          title={`Manpower — minted by grain/arms supply chains; each legion costs ~${LEGION_COST} to field from a barracks.${manpower < LEGION_COST ? " STARVED: too little to field a legion — supply more grain/arms." : ""}`}
+          title={`Manpower — minted by grain/arms supply chains; each legion costs ~${LEGION_COST} to field, then EATS a little upkeep per day while afield (a standing army needs feeding — keep the arms/ingot flowing).${manpower < LEGION_COST ? " STARVED: too little to field a legion — supply more grain/arms." : ""}`}
           style={{ color: manpower < LEGION_COST ? "var(--ot-gauge-bad)" : "#d39a5c", fontWeight: manpower < LEGION_COST ? 700 : undefined }}
         >
           ⚔ <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmtCount(manpower)}</b> manpower{manpower < LEGION_COST ? " ⚠" : ""}

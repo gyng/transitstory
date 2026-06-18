@@ -111,6 +111,15 @@ pub struct CityData {
     /// `tribute`, gated off by default, and the day cursor is an un-hashed deterministic accumulator).
     #[serde(default)]
     pub gold_upkeep_per_day: i64,
+    /// Fantasy (arcadia) #daynight — per-in-game-DAY MANPOWER upkeep PER legion afield: a standing army eats
+    /// supply, so a larger or longer-marching host demands a steady arms/ingot delivery (rail load scales with
+    /// your army; a slow night-march costs more upkeep-days, so daylight conquest pays). Daily drain =
+    /// `legions_afield × this`, charged on the day rollover alongside the gold upkeep, floored at 0 (no
+    /// manpower debt — starving just stalls NEW legions). A per-city knob baked by `scripts/build_world.py`.
+    /// **0 (serde + `Default`) ⇒ NO upkeep (the shipped behaviour)** — transit + the arcadia golden + native
+    /// tests byte-identical (golden-neutral; gated off by default, only mutates the already-hashed `manpower`).
+    #[serde(default)]
+    pub manpower_upkeep_per_legion_day: i64,
     /// Fantasy (arcadia) #11 — the OFF-RAIL goods BACKSTOP rate (µ-units of each recipe input walked into a
     /// town per ms, when the realm holds a source of it). Peeps haul goods on foot when no railway serves a
     /// town, so it never FULLY starves — but the trickle is a fraction of a rail load, so the railway is

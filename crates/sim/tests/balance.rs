@@ -184,6 +184,7 @@ fn play_continent(army_speed_mm_s: i64, with_conquest: bool, horizon: usize) -> 
         grid_cell_mm: 250_000,         // the baked hex pitch
         initial_decadence: 5345,       // the certified seed-12 starting corruption
         decadence_growth_per_s: 6,     // the baked gentle lose-meter rate (froze under the old truncation)
+        manpower_upkeep_per_legion_day: 2, // #daynight: a standing army eats supply — must still be winnable WITH it
         army_speed_mm_s,
         demand: DemandGrid {
             cell_m: 500.0,

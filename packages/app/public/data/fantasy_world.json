@@ -570,6 +570,7 @@
       "initialGold": 150,
       "buildGoldDivisor": 15000,
       "goldUpkeepPerDay": 15,
+      "manpowerUpkeepPerLegionDay": 2,
       "walkBackstopMicro": 40
     }
   },

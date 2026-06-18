@@ -1184,8 +1184,12 @@ impl World {
     /// only ever mutates the already-hashed `tribute` — golden-neutral. The current daily figure is read
     /// back for the HUD via `gold_upkeep_daily()`.
     fn accrue_gold_upkeep(&mut self) {
-        let rate = self.city.gold_upkeep_per_day;
-        if rate <= 0 || crate::ruleset::canon(&self.city.ruleset) != "arcadia" {
+        if crate::ruleset::canon(&self.city.ruleset) != "arcadia" {
+            return;
+        }
+        let gold_rate = self.city.gold_upkeep_per_day;
+        let mp_rate = self.city.manpower_upkeep_per_legion_day;
+        if gold_rate <= 0 && mp_rate <= 0 {
             return;
         }
         let day = self.clock_ms / (24 * crate::tod::HOUR_MS);
@@ -1195,8 +1199,19 @@ impl World {
         // Charge every day boundary crossed since the last charge (catches a multi-day tick step).
         let days = day - self.last_upkeep_day;
         self.last_upkeep_day = day;
-        let owed = self.gold_upkeep_daily().saturating_mul(days);
-        self.tribute = (self.tribute - owed).max(0);
+        if gold_rate > 0 {
+            let owed = self.gold_upkeep_daily().saturating_mul(days);
+            self.tribute = (self.tribute - owed).max(0);
+        }
+        // #daynight LEGION UPKEEP: a standing army eats supply — each legion AFIELD (not DONE) drains
+        // manpower/day, so sustaining or growing the host demands a steady arms/ingot supply (rail load
+        // scales with your army; a host that camps its way slowly across the dark racks up more upkeep-days
+        // than one that conquers in daylight). Floored at 0 (no debt — starving just stalls NEW legions).
+        if mp_rate > 0 {
+            let afield = self.armies.state.iter().filter(|&&s| s != crate::army::DONE).count() as i64;
+            let owed = afield.saturating_mul(mp_rate).saturating_mul(days);
+            self.manpower = (self.manpower - owed).max(0);
+        }
     }
 
     /// The per-in-game-day gold upkeep the current network owes (track-km + rolling stock × the baked

@@ -156,6 +156,11 @@ INITIAL_GOLD = 150
 # (don't over-build). Gentle (a mid network owes ~30-50 gold/day vs hundreds earned) so it bites without
 # bankrupting. 0 (native/golden default) ⇒ free to run, byte-identical. Balance knob; tuned for winnability.
 GOLD_UPKEEP_PER_DAY = 15
+# Fantasy #daynight LEGION MANPOWER upkeep: manpower drained PER legion AFIELD per in-game day, charged on the
+# day rollover. A standing army eats supply — so a larger/longer-marching host demands a steady arms/ingot
+# delivery (rail load scales with the army; a slow camp-by-night march racks up more upkeep-days than a fast
+# daylight conquest). Floored at 0 (no debt). 0 ⇒ free. Balance knob; certified winnable WITH it (balance.rs).
+MANPOWER_UPKEEP_PER_LEGION_DAY = 2
 # Fantasy OFF-RAIL goods BACKSTOP (#11): µ-units of each recipe input peeps WALK into a CAPTURED town per ms
 # (when the realm sources it) so conquered ground never fully starves without rail — but a fraction of a rail
 # load, so the railway still wins (it industrialises the slow walking trade). Gentle (a captured town trickles
@@ -617,7 +622,7 @@ def seed_decadence(biome, capital, towns):
             "productionMicro": PRODUCTION_MICRO, "influenceHops": influence_hops,
             "capitalXMm": int(cap_x_mm), "capitalYMm": int(cap_y_mm),
             "initialGold": INITIAL_GOLD, "buildGoldDivisor": BUILD_GOLD_DIVISOR,
-            "goldUpkeepPerDay": GOLD_UPKEEP_PER_DAY, "walkBackstopMicro": WALK_BACKSTOP_MICRO}
+            "goldUpkeepPerDay": GOLD_UPKEEP_PER_DAY, "manpowerUpkeepPerLegionDay": MANPOWER_UPKEEP_PER_LEGION_DAY, "walkBackstopMicro": WALK_BACKSTOP_MICRO}
 
 
 def validate(biome, capital, fields, relax=None):
