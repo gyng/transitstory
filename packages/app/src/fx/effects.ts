@@ -68,6 +68,17 @@ type Particle = {
   rgb: string;
 };
 
+// A FLOW stream: small pips marching along a served line's polyline by arc-length — the artery visibly
+// "pumping" (denser + faster = busier). Replaced wholesale on the 3 Hz stats slice; the march itself is
+// per-frame wall-clock, pure canvas (no deck rebuild, no sim tick). Dropped entirely under reduced-motion.
+export type Flow = { pts: [number, number][]; rgb: string; n: number; periodMs: number; alpha: number; r: number };
+
+// A NIGHT LIGHT: a small warm settlement glint that TWINKLES (per-point seeded flicker) so towns read as
+// inhabited at night — a sharp lit-window core sitting over the deck night-glow halo. Replaced wholesale on
+// the 3 Hz nightFactor slice; holds a static mid-brightness under reduced-motion (the channel stays, the
+// flicker stops).
+export type NightLight = { lng: number; lat: number; rgb: string; r: number; base: number; seed: number };
+
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t) * (1 - t); // cubic ease-out
 
 export class Effects {
@@ -79,6 +90,8 @@ export class Effects {
   private floats: Float[] = []; // rising combat/economy text
   private puffs: Puff[] = []; // train steam/dust trail
   private particles: Particle[] = []; // milestone celebration spray
+  private flows: Flow[] = []; // marching supply-flow pips along served lines (replaced per 3 Hz slice)
+  private nightLights: NightLight[] = []; // twinkling settlement windows at night (replaced per 3 Hz slice)
   private dpr = 1;
   private wasActive = false; // so an idle canvas is a true no-op (no per-frame clear when nothing's live)
   // a11y: honour prefers-reduced-motion — skip CONTINUOUS/ambient motion (the breathing throbs + the
@@ -206,6 +219,24 @@ export class Effects {
     this.throbs = points.map((p) => ({ lng: p.lng, lat: p.lat, rgb }));
   }
 
+  /** Replace the supply-FLOW streams (served lines pumping cargo/riders) — called on the 3 Hz stats slice.
+   *  Under reduced-motion the marching pips (pure continuous motion) are dropped entirely. */
+  setFlows(flows: Flow[]): void {
+    this.flows = this.reduce ? [] : flows;
+  }
+
+  /** Replace the night-LIGHT set (twinkling settlement windows) — called on the 3 Hz nightFactor slice. */
+  setNightLights(lights: NightLight[]): void {
+    this.nightLights = lights;
+  }
+
+  /** A tiny extraction SHIMMER — a faint coloured glint where a raw resource is being worked (a one-shot,
+   *  sub-second sparkle, reusing the ring system at a small radius). Skipped under reduced-motion (ambient). */
+  shimmer(lng: number, lat: number, rgb = "255,238,170"): void {
+    if (this.reduce) return;
+    this.rings.push({ lng, lat, born: performance.now(), ttl: 720, rgb, r0: 0.5, r1: 5.5, w0: 1.5, alpha: 0.5 });
+  }
+
   clear(): void {
     this.rings = [];
     this.flashes = [];
@@ -213,6 +244,8 @@ export class Effects {
     this.floats = [];
     this.puffs = [];
     this.particles = [];
+    this.flows = [];
+    this.nightLights = [];
   }
 
   // --- per-frame draw (called from GameLoop.frame with the rAF timestamp) ---------------------
@@ -227,7 +260,9 @@ export class Effects {
       this.throbs.length === 0 &&
       this.floats.length === 0 &&
       this.puffs.length === 0 &&
-      this.particles.length === 0
+      this.particles.length === 0 &&
+      this.flows.length === 0 &&
+      this.nightLights.length === 0
     ) {
       if (this.wasActive) {
         cx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -239,6 +274,8 @@ export class Effects {
     cx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     cx.clearRect(0, 0, this.canvas.width / this.dpr, this.canvas.height / this.dpr);
 
+    this.drawFlows(now); // flowing arteries — under the smoke/dots (ground texture along the network)
+    this.drawNightLights(now); // settlement window twinkle
     this.drawPuffs(now); // smoke under everything
     this.drawThrobs(now);
     this.drawRings(now);
@@ -387,6 +424,47 @@ export class Effects {
       cx.fill();
     }
     this.particles = live;
+  }
+
+  private drawFlows(now: number): void {
+    if (this.flows.length === 0) return;
+    const cx = this.cx;
+    for (const fl of this.flows) {
+      const scr = fl.pts.map((ll) => this.map.project(ll));
+      // Evenly-spaced pips advancing along the arc by wall-clock — busier lines (shorter periodMs, more
+      // pips) visibly pump faster/denser. Each pip fades in/out near the ends so it never pops at a stop.
+      const phase = (now / fl.periodMs) % 1;
+      for (let i = 0; i < fl.n; i++) {
+        const f = (phase + i / fl.n) % 1;
+        const pt = this.pointAtFrac(scr, f);
+        if (!pt) continue;
+        const edge = Math.min(1, Math.min(f, 1 - f) * 6); // soft fade at the line's two ends
+        cx.fillStyle = `rgba(${fl.rgb},${(fl.alpha * edge).toFixed(3)})`;
+        cx.beginPath();
+        cx.arc(pt.x, pt.y, fl.r, 0, Math.PI * 2);
+        cx.fill();
+      }
+    }
+  }
+
+  private drawNightLights(now: number): void {
+    if (this.nightLights.length === 0) return;
+    const cx = this.cx;
+    for (const nl of this.nightLights) {
+      // Per-point seeded twinkle (two slow sines beat together so windows wink independently) — a static
+      // mid-brightness under reduced-motion (the lit-window channel stays, the flicker stops).
+      const tw = this.reduce ? 0.7 : 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 540 + nl.seed)) * (0.6 + 0.4 * Math.sin(now / 190 + nl.seed * 2.3));
+      const a = nl.base * tw;
+      if (a < 0.02) continue;
+      const p = this.map.project([nl.lng, nl.lat]);
+      const grad = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, nl.r);
+      grad.addColorStop(0, `rgba(${nl.rgb},${a.toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${nl.rgb},0)`);
+      cx.fillStyle = grad;
+      cx.beginPath();
+      cx.arc(p.x, p.y, nl.r, 0, Math.PI * 2);
+      cx.fill();
+    }
   }
 
   /** Point at arc-length fraction `f` (0..1) along a projected polyline. */

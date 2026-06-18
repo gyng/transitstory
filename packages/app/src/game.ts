@@ -9,7 +9,7 @@ import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./co
 import { cmd } from "./commands/codec";
 import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
-import { Effects } from "./fx/effects";
+import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
 import { WHOLE_LINE } from "./commands/codec";
 import { BUILD, Buildability } from "./sim/buildability";
@@ -2371,6 +2371,9 @@ export class Game {
     if (this.updateLighting) this.nightFactor = this.updateLighting(s.simHour);
     if (s.running) this.emitStatsJuice(s);
     if (s.running) this.emitWorldJuice(s); // working smoke at forges + delivery pops (arcadia, detail-gated)
+    this.updateSupplyFlow(s); // marching cargo pips along busy served lines (arcadia, detail, running)
+    this.updateNightLights(); // twinkling settlement windows at night (arcadia, detail)
+    if (s.running) this.emitResourceShimmer(); // faint extraction glints at raw resource camps
     this.renderTip(); // an open inspector tooltip re-reads the fresh snapshot (no frozen numbers)
     this.refresh();
   }
@@ -2628,6 +2631,71 @@ export class Game {
         this.effects.burst(p.lng, p.lat, "235,200,120"); // a warm "supply landed" deposit ring at the sink
         this.effects.floatText(p.lng, p.lat, "+⬢", "245,210,140", { rise: 22, size: 13, ttl: 1000 });
       }
+    }
+  }
+
+  /** Supply-FLOW pips (#living): small pips march along each busy served line's polyline so the arteries
+   *  visibly PUMP (denser + faster = busier) — throughput at a glance, distinct from the discrete trains.
+   *  Built from the 3 Hz per-line snapshot (ridership + load); the march itself is per-frame on the FX
+   *  canvas (no deck rebuild). Arcadia + zoomed-IN + running only; replaced wholesale each slice. */
+  private updateSupplyFlow(s: Stats): void {
+    const detail = this.ruleset === "arcadia" && this.map.getZoom() >= DETAIL_ZOOM;
+    if (!detail || !s.running) {
+      this.effects.setFlows([]);
+      return;
+    }
+    const lv = this.bridge.linesView();
+    const active = [...this.perLineById.values()]
+      .filter((l) => l.trains > 0 && l.ridership > 0)
+      .sort((a, b) => b.ridership - a.ridership)
+      .slice(0, 8); // cap so the per-frame polyline projection stays bounded
+    const flows: Flow[] = [];
+    for (const pl of active) {
+      const l = lv[pl.lineId];
+      if (!l || l.removed || l.polylineMm.length < 2) continue;
+      const pts = l.polylineMm.map(([x, y]) => mmToLngLat([x, y]) as [number, number]);
+      const intensity = Math.min(1, pl.loadFactor + 0.2); // busier (fuller) ⇒ denser + faster flow
+      flows.push({
+        pts,
+        rgb: colorToRgb(l.color).join(","),
+        n: Math.round(3 + intensity * 6),
+        periodMs: 5200 - intensity * 2800, // busier ⇒ shorter period ⇒ faster march
+        alpha: 0.3 + intensity * 0.22,
+        r: 2.1,
+      });
+    }
+    this.effects.setFlows(flows);
+  }
+
+  /** Night-window flicker (#5e): a warm, TWINKLING lit-window core at each settlement + resource camp,
+   *  fading in with nightFactor — towns read as INHABITED at night, sitting over the steady deck night-glow
+   *  halo. Built on the 3 Hz nightFactor slice; the twinkle is per-frame on the FX canvas. Arcadia + detail. */
+  private updateNightLights(): void {
+    const detail = this.ruleset === "arcadia" && this.map.getZoom() >= DETAIL_ZOOM;
+    if (!detail || this.nightFactor <= 0.04) {
+      this.effects.setNightLights([]);
+      return;
+    }
+    const nf = this.nightFactor;
+    const lights: NightLight[] = [];
+    let seed = 1;
+    for (const t of this.towns) {
+      const cap = t.kind === "capital";
+      lights.push({ lng: t.lng, lat: t.lat, rgb: cap ? "255,226,150" : "255,210,138", r: cap ? 7 : 5, base: nf * (cap ? 0.85 : 0.6), seed: seed++ });
+    }
+    for (const r of this.resources) {
+      lights.push({ lng: r.lng, lat: r.lat, rgb: "255,198,124", r: 4, base: nf * 0.5, seed: seed++ });
+    }
+    this.effects.setNightLights(lights);
+  }
+
+  /** Extraction SHIMMER (#living): faint commodity-tinted glints at the raw resource camps (the deposits
+   *  being worked) — distinct from the forge PROCESSING smoke in emitWorldJuice. A few per slice, fired
+   *  probabilistically (render-only Math.random, never the deterministic core). Arcadia + zoomed-in only. */
+  private emitResourceShimmer(): void {
+    if (this.ruleset !== "arcadia" || this.map.getZoom() < DETAIL_ZOOM || this.resources.length === 0) return;
+    for (const r of this.resources) {
+      if (Math.random() < 0.07) this.effects.shimmer(r.lng, r.lat, this.cargoOf(r.kind).tint.join(","));
     }
   }
 
