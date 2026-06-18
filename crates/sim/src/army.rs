@@ -152,19 +152,40 @@ pub(crate) fn maybe_launch(world: &mut World) {
             let b_arc = path.stop_arclen_mm.get(b_idx).copied().unwrap_or(0);
             // The barracks station's position (#war legibility: the LAUNCH burst fires here).
             let b_pos = world.stations.get(l.stops[b_idx].index()).map(|s| (s.pos.x_mm, s.pos.y_mm)).unwrap_or((0, 0));
-            // TARGET (Majesty steering): the highest-bounty UNCAPTURED town on this route, excluding the
-            // barracks itself (tiebreak: lowest StationId, deterministic). No bounty anywhere ⇒ the route's
-            // far-end town (the default conquest direction).
-            let target = l
+            // Legions already afield on this line (deterministic count): the fairness sort key AND the
+            // fan-out cursor below.
+            let load = world.armies.line.iter().filter(|&&l| l == LineId(li as u32)).count();
+            // TARGET. The player's MAJESTY steering wins: the highest-bounty UNCAPTURED town on the route
+            // (tiebreak lowest StationId, deterministic). With NO bounty, FAN OUT instead of conga-lining —
+            // round-robin the route's uncaptured TOWNS by `load`, so successive legions open DIFFERENT
+            // fronts rather than all marching the same corridor to the far end (the "one long line" fix). No
+            // town on the route ⇒ the far-end stop (a resource spur's default direction). Index-ordered +
+            // integer ⇒ deterministic.
+            let bounty_target = l
                 .stops
                 .iter()
                 .filter(|s| !world.is_barracks.get(s.index()).copied().unwrap_or(false))
                 .filter(|s| world.bounty.get(s.index()).copied().unwrap_or(0) > 0)
                 .filter(|s| world.town_value.get(s.index()).map(|&v| v > 0).unwrap_or(true))
                 .max_by_key(|s| (world.bounty.get(s.index()).copied().unwrap_or(0), core::cmp::Reverse(s.0)))
-                .map(|s| s.0)
-                .or_else(|| l.stops.last().map(|s| s.0))?;
-            let load = world.armies.line.iter().filter(|&&l| l == LineId(li as u32)).count();
+                .map(|s| s.0);
+            let target = match bounty_target {
+                Some(t) => t,
+                None => {
+                    let towns: Vec<u32> = l
+                        .stops
+                        .iter()
+                        .filter(|s| !world.is_barracks.get(s.index()).copied().unwrap_or(false))
+                        .filter(|s| world.town_value.get(s.index()).map(|&v| v > 0).unwrap_or(false))
+                        .map(|s| s.0)
+                        .collect();
+                    if towns.is_empty() {
+                        l.stops.last().map(|s| s.0)?
+                    } else {
+                        towns[load % towns.len()]
+                    }
+                }
+            };
             Some((load, li, b_arc, target, b_pos))
         })
         .collect::<Vec<(usize, usize, i64, u32, (i64, i64))>>();
