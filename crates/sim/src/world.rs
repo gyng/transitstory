@@ -66,6 +66,11 @@ const OPEX_PER_KM_DAY: i64 = 50;
 const GOLD_UPKEEP_TRAIN_KM: i64 = 4;
 const GOLD_UPKEEP_DIVISOR: i64 = 100;
 // (The rival's opening manpower + track-build budgets are per-difficulty — see `rival::RivalProfile`.)
+// #15 terrain-HEIGHT balance knobs (docs/terrain-height.md) — tuned for an interesting route-for-speed-vs-
+// directness choice that stays winnable. Band 0 (flat + every transit class) ⇒ climb == 0 ⇒ every term is
+// +0 / ×100 ⇒ exact integer identity ⇒ golden-neutral (no re-pin) until a baked world climbs.
+const CLIMB_PCT_PER_BAND: i64 = 12; // +12% of a segment's base capital per band CLIMBED (ascent spans only)
+const HEIGHT_ROUTER_W: i64 = 20; // valley-preferring router tie-break per band (atop the biome cost; never reorders it)
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -890,6 +895,11 @@ impl World {
             // so existing cities + the golden fixtures (no biome codes ≥ 6) are byte-identical (golden-neutral).
             let terrain_pct = Self::terrain_capital_pct(c);
             capital += per_km * track_pct / 100 * terrain_pct / 100 * seg_m / 1000;
+            // #15 Effect A — CLIMB surcharge: laying rail UPHILL (into a higher band) costs extra, on the
+            // ascent span only (descents free). climb == 0 on flat/transit ⇒ +0 exact identity (golden-neutral).
+            let prev_band = Self::height_band(self.classify(path.polyline[vi - 1].x_mm, path.polyline[vi - 1].y_mm));
+            let climb = (Self::height_band(c) - prev_band).max(0);
+            capital += per_km * track_pct / 100 * (CLIMB_PCT_PER_BAND * climb) / 100 * seg_m / 1000;
                 // Surface track through built-up land takes land (rail + heavy rail).
                 if (tm == tmode::RAIL || tm == tmode::HEAVY) && c == class::BUILT && m == mode::SURFACE {
                     capital += TAKING_PER_KM_BUILT * seg_m / 1000;
@@ -1210,6 +1220,20 @@ impl World {
         }
     }
 
+    /// #15 — discrete terrain HEIGHT band (0..3) by biome code, derived from the baked biome byte already in
+    /// `build_lookup` (no heightmap, no regen, no new RNG). Drives the CLIMB cost surcharge + the valley-
+    /// preferring router + the uphill speed cap. Band 0 for PLAIN/OPEN/WATER and EVERY transit cost-class ⇒
+    /// `climb == 0` everywhere on flat worlds ⇒ exact integer identity ⇒ golden-neutral.
+    fn height_band(c: u8) -> i64 {
+        use crate::city::biome;
+        match c {
+            biome::MOUNTAIN => 3, // the high ridge
+            biome::HILL | biome::LEY => 2, // rising / unstable ground
+            biome::FOREST => 1, // gentle rise
+            _ => 0, // PLAIN / OPEN / WATER + every transit class — sea level
+        }
+    }
+
     /// The GOLD price of a capital delta under the fantasy build economy: `delta / build_gold_divisor`,
     /// or 0 when off (not arcadia, divisor 0, or capital didn't rise). The shared transit cost formula
     /// ($-scale, now terrain-aware) divided down to the small-integer gold scale.
@@ -1515,14 +1539,20 @@ impl World {
             return 100;
         }
         let pt = crate::hexgrid::center_of(cell, self.city.grid_cell_mm);
-        match self.build_lookup.get(&(pt.x_mm.div_euclid(bcm) as i32, pt.y_mm.div_euclid(bcm) as i32)).copied().unwrap_or(0u8) {
+        let c = self.build_lookup.get(&(pt.x_mm.div_euclid(bcm) as i32, pt.y_mm.div_euclid(bcm) as i32)).copied().unwrap_or(0u8);
+        let base = match c {
             biome::WATER => 800,    // under-water tunnelling — very dear; route around it
             biome::MOUNTAIN => 320, // blast/tunnel a ridge
             biome::HILL => 190,
             biome::FOREST => 140,
             biome::LEY => 130,
             _ => 100, // plain / open
-        }
+        };
+        // #15 Effect A2 — valley-preferring tie-break: higher ground costs the router a little MORE, so a path
+        // prefers the flat detour when otherwise close (never reorders the biome base). Band 0 ⇒ +0 ⇒ flat +
+        // transit unchanged. Per-cell (no neighbour context) ⇒ the Fn(Axial)->i64 closure that raider/rival
+        // routing shares is UNCHANGED — they inherit valley-preference for free.
+        base + HEIGHT_ROUTER_W * Self::height_band(c)
     }
 
     fn rebuild_line_geometry(&mut self, line: LineId) {
