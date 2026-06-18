@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, spellFlashLayer, colorToRgb, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -2331,10 +2331,19 @@ export class Game {
   }
 
   /** Push a fresh stats snapshot (called on the ~3 Hz UI throttle) and re-render halos. */
+  /** Day/night driver, set in boot (arcadia): mutate the scene sun/ambient by sim hour, return the
+   *  0..1 night factor. Kept as a callback so the core game stays decoupled from deck's light types. */
+  updateLighting: ((hour: number) => number) | null = null;
+  /** 0 = full day, 1 = deep night — fades the warm town/train glows in. Updated on the 3 Hz hour. */
+  nightFactor = 0;
+
   setStats(s: Stats): void {
     this.lastStats = s;
     this.perStationById = new Map(s.perStation.map((ps) => [ps.stationId, ps]));
     this.perLineById = new Map(s.perLine.map((l) => [l.lineId, l]));
+    // Day/night: swing the scene sun + ambient by sim hour (two-clocks: rides this 3 Hz slice, not rAF)
+    // BEFORE refresh() so the night-glow layers pick up the fresh nightFactor this pass.
+    if (this.updateLighting) this.nightFactor = this.updateLighting(s.simHour);
     if (s.running) this.emitStatsJuice(s);
     this.renderTip(); // an open inspector tooltip re-reads the fresh snapshot (no frozen numbers)
     this.refresh();
@@ -2981,7 +2990,11 @@ export class Game {
     const placedSig = this.placedSignalLayersCache;
     // Legion NAMEPLATES drop at the strategic overview (label clutter); the 3D hosts stay so the force reads.
     const armyL = detail ? army : army.filter((l) => l.id !== "legion-names");
-    let layers = [...below, ...ambient, ...signals, ...placedSig, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
+    // Night LIGHTS (#5e): warm glows at the capital + towns + resource camps that fade in as night
+    // falls (game.nightFactor, set on the 3 Hz sim-hour slice). Above the terrain/towns, below the
+    // vehicles. Arcadia + zoomed-in only; an empty array by day (nightFactor≈0) → zero cost.
+    const nightGlow = this.ruleset === "arcadia" && detail ? nightGlowLayers(this.towns, this.resources, this.nightFactor) : [];
+    let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...armyL, ...raider, ...spells, ...peep, ...above];
     // Map LENS (#5): emphasise one reading of the busy arcadia map by HIDING the layers that belong to the
     // other readings (the terrain + the player's network/vehicles always stay). Cheap id-filter, no rebuild.
     if (this.ruleset === "arcadia" && this.lens !== "realm") {

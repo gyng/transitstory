@@ -1753,3 +1753,45 @@ export function placedSignalLayers(placed: PlacedSignalMarker[], ghost: SignalGh
   }
   return out;
 }
+
+interface GlowPoint {
+  position: [number, number];
+  cap: boolean;
+}
+
+/** Warm NIGHT-LIGHT glows at the settled places (capital + towns + resource camps), fading in with the
+ *  0..1 `night` factor — lit windows / hearth-fires against the cool dark. Two stacked discs per point:
+ *  a soft metre-radius bloom + a small pixel hot-core. Arcadia only; the caller skips it by day
+ *  (night≈0) and at the strategic overview. Bounded (~50 points) — cheap, `depthTest:false` so the glow
+ *  reads over the tilted terrain. Rides the per-frame compose like the other motion layers. */
+export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[], night: number): Layer[] {
+  if (night <= 0.02) return [];
+  const pts: GlowPoint[] = [
+    ...towns.map((t) => ({ position: [t.lng, t.lat] as [number, number], cap: t.kind === "capital" })),
+    ...resources.map((r) => ({ position: [r.lng, r.lat] as [number, number], cap: false })),
+  ];
+  if (pts.length === 0) return [];
+  const trig = Math.round(night * 20); // quantize so the updateTrigger only bumps on a real change
+  // Pixel radii (not metres) so a glow reads as a compact LIGHT halo at any zoom, never a terrain-wide
+  // wash. Three stacked translucent discs fake a soft radial falloff: a faint wide bloom, a mid ring,
+  // a bright hot core. Bounded; depthTest:false so they read over the tilted terrain.
+  const disc = (id: string, capPx: number, px: number, rgb: [number, number, number], capA: number, a: number) =>
+    new ScatterplotLayer<GlowPoint>({
+      id,
+      data: pts,
+      getPosition: (d: GlowPoint) => d.position,
+      radiusUnits: "pixels",
+      getRadius: (d: GlowPoint) => (d.cap ? capPx : px),
+      radiusMinPixels: 1.5,
+      getFillColor: (d: GlowPoint) => [rgb[0], rgb[1], rgb[2], Math.round((d.cap ? capA : a) * night)],
+      stroked: false,
+      pickable: false,
+      parameters: { depthTest: false },
+      updateTriggers: { getFillColor: trig, getRadius: 0 },
+    });
+  return [
+    disc("night-bloom", 46, 30, [255, 188, 92], 30, 22), // faint wide bloom
+    disc("night-mid", 22, 14, [255, 206, 120], 46, 36), // warmer mid
+    disc("night-core", 5.5, 3.6, [255, 236, 184], 235, 230), // bright hot core
+  ];
+}

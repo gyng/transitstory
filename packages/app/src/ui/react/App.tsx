@@ -4,7 +4,7 @@
 // rAF loop runs entirely outside React (AGENTS render-hot-path / two-clocks rules).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyArcadiaBasemap, createMap } from "../../map/basemap";
-import { createOverlay } from "../../map/overlay";
+import { createOverlay, setLightingHour } from "../../map/overlay";
 import { loadCity } from "../../sim/city";
 import { mmToLngLat } from "../../coords/geo";
 import { loadNetwork, networkFromSupplyGraph } from "../../sim/network";
@@ -57,7 +57,9 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
   // gate) — the baked fantasy/arcadia continent is non-OSM, so it carries no (false) OSM credit.
   const ruleset = city.raw.ruleset ?? "transit";
   const map = createMap("map", city.raw.center, city.raw.zoom, ruleset);
-  const overlay = createOverlay(); // carries the scene sun-light (see map/overlay.ts)
+  // The overlay carries the scene sun-light always; arcadia additionally gets the ACES+grain
+  // post-process (its whole scene is deck-drawn). `sun`/`ambient` are the day/night handles.
+  const { overlay, sun, ambient } = createOverlay(ruleset === "arcadia");
   map.addControl(overlay);
 
   const bridge = new SimBridge(city.seed, city.coreCityJson);
@@ -70,6 +72,10 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     game.enabledModes = new Set([0, 4]);
     applyArcadiaBasemap(map); // dead ash-grey void under the baked continent (figure-ground)
     game.sky.setEnabled(false); // no day/night hue wash in the value-not-hue fantasy world
+    // …but DO swing the 3D scene's sun/ambient by sim hour (a value cycle, not a hue wash): bright warm
+    // midday → dim cool night, lighting the lowpoly diorama. The returned nightFactor fades the warm
+    // town/train glows in. Mutates the same light objects the overlay holds (stable effects array).
+    game.updateLighting = (h) => setLightingHour(sun, ambient, h);
     // #3d-trees diorama: tilt the camera so the lowpoly pines (+ terrain) read as a TTD-style 3D scene.
     // A modest pitch keeps the strategic overview legible; the player can still pan/zoom freely.
     map.setMaxPitch(60);
