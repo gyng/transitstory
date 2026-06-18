@@ -65,6 +65,10 @@ const OPEX_PER_KM_DAY: i64 = 50;
 /// GOLD_UPKEEP_DIVISOR`. Tunable; 0 baked rate disables it (golden-neutral default).
 const GOLD_UPKEEP_TRAIN_KM: i64 = 4;
 const GOLD_UPKEEP_DIVISOR: i64 = 100;
+/// #13 — the rival realm's opening manpower war-chest (it fields legions from this until its own supply
+/// economy comes online in a later phase). A few legions' worth (LAUNCH_COST 8). Only seeded when a baked
+/// rival exists (rival_enabled), so transit + the goldens are unaffected.
+const RIVAL_START_MANPOWER: i64 = 40;
 
 /// One TTD-style SIGNAL marker (render-only): the state of a single-track span (or the gate a held cart
 /// waits at). `status`: 1 = OCCUPIED (a cart is in the span — red), 2 = WAITING (a cart is held at this
@@ -625,7 +629,7 @@ impl World {
         // from the baked terrain. Empty unless a baked world supplies buildability + a capital, so this
         // is golden-neutral (un-hashed; transit / the golden fixture build an empty field).
         let decadence_field = crate::decadence_field::DecadenceField::build(&city);
-        World {
+        let mut w = World {
             decadence_cells: Vec::new(),
             decadence_gain_accum: 0,
             seed,
@@ -711,7 +715,46 @@ impl World {
             population: None,
             cell_station_dirty: true,
             recent_alight: std::collections::VecDeque::new(),
+        };
+        w
+    }
+
+    /// #13 P1c: stand up the rival realm's SEAT — a faction-1 capital/barracks on the far edge, with a
+    /// starting manpower war-chest. Fired by `Command::SeedRival` at boot AFTER the player's baked network
+    /// is placed, so it can choose the reservoir cell most ISOLATED from existing stations (its own clear
+    /// seat, never stacked on a town). Reuses the `PlaceBarracks` apply path (so the per-station arrays grow
+    /// correctly) then flips the new node to faction 1. The rival's line + legions + the AI builder grow
+    /// from this seat later. Deterministic: integer squared-distances, index-ordered tie-break. Idempotent.
+    fn seed_rival_realm(&mut self) {
+        if self.decadence_field.reservoir.is_empty() || self.stations.iter().any(|s| s.faction == 1) {
+            return; // no far-edge to seat on, or a rival already exists
         }
+        let cell_mm = self.city.grid_cell_mm.max(1);
+        // Among the far-edge reservoir cells, take the one whose NEAREST existing station is FARTHEST away —
+        // the most isolated far seat, so the rival never lands on a player town/resource.
+        let mut best: Option<(i64, crate::geo_local::PointMm)> = None;
+        for &cidx in &self.decadence_field.reservoir {
+            let Some(&axial) = self.decadence_field.cells.get(cidx as usize) else { continue };
+            let pos = crate::hexgrid::center_of(axial, cell_mm);
+            let mut nearest: i64 = i64::MAX;
+            for s in &self.stations {
+                if s.removed { continue; }
+                let dx = s.pos.x_mm - pos.x_mm;
+                let dy = s.pos.y_mm - pos.y_mm;
+                let d2 = dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy));
+                if d2 < nearest { nearest = d2; }
+            }
+            if best.is_none_or(|(bd, _)| nearest > bd) {
+                best = Some((nearest, pos));
+            }
+        }
+        let Some((_, pos)) = best else { return };
+        let before = self.stations.len();
+        self.apply(&crate::command::Command::PlaceBarracks { x_mm: pos.x_mm, y_mm: pos.y_mm, name: Some("Rival Hold".into()) });
+        if self.stations.len() > before {
+            self.stations[before].faction = 1; // flip the just-placed capital to the rival
+        }
+        self.rival_manpower = RIVAL_START_MANPOWER; // a war-chest so the rival can field legions (P1d)
     }
 
     /// Buildability class at a local mm point (Open if outside the grid).
@@ -1599,6 +1642,11 @@ impl World {
                     vec![Event::BountyPosted { station: *station, amount: self.bounty[s] }]
                 }
             }
+            Command::SeedRival {} => {
+                // #13: stand up the rival realm's seat (idempotent; a no-op without a far-edge reservoir).
+                self.seed_rival_realm();
+                vec![]
+            }
             Command::UnlockTech { tech } => {
                 // Buy a tech with MANA (the sole tech resource, S11). Validate id, refuse a repeat (bit set),
                 // require the PREREQ (tier gate), then afford-gate against mana — so the spend is exactly once
@@ -2183,6 +2231,7 @@ impl World {
                 removed: s.removed,
                 bounty: self.bounty.get(i).copied().unwrap_or(0) as f64,
                 platform_count: s.platform_count,
+                faction: s.faction,
             })
             .collect()
     }

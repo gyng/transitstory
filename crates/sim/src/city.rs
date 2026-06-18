@@ -120,6 +120,12 @@ pub struct CityData {
     /// tests byte-identical (golden-neutral; gated off by default, only mutates the already-hashed `manpower`).
     #[serde(default)]
     pub manpower_upkeep_per_legion_day: i64,
+    /// #13 — seed a baked RIVAL REALM (the symmetric enemy AI's seat: a faction-1 capital/barracks on the
+    /// far edge, near the decadence reservoir) at construction. A per-city knob baked by build_world.py.
+    /// **false (serde + `Default`) ⇒ NO rival** — transit + the arcadia golden + native/balance tests are
+    /// byte-identical (default off; only the baked continent opts in). See docs/symmetric-enemy-ai.md.
+    #[serde(default)]
+    pub rival_enabled: bool,
     /// Fantasy (arcadia) #11 — the OFF-RAIL goods BACKSTOP rate (µ-units of each recipe input walked into a
     /// town per ms, when the realm holds a source of it). Peeps haul goods on foot when no railway serves a
     /// town, so it never FULLY starves — but the trickle is a fraction of a rail load, so the railway is

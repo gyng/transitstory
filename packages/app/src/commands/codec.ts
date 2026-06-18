@@ -65,6 +65,9 @@ export const cmd = {
   castSpell: (kind: number): Command => ({ CastSpell: { kind } }),
   /** Fantasy/arcadia (S11): toggle autocast (on = the AI auto-fires spells each tick). Rejected in transit. */
   setAutocast: (enabled: boolean): Command => ({ SetAutocast: { enabled } }),
+  /** Fantasy/arcadia (#13): seed the rival realm's seat (faction-1 far-edge capital). Idempotent; fired once
+   *  at boot after the player network. Rejected in transit. */
+  seedRival: (): Command => ({ SeedRival: {} }),
   // TTD L2: set a station's platform berth count (k clamped to [1, MAX_PLATFORMS] in the core).
   buildPlatforms: (station: number, k: number): Command => ({ BuildPlatforms: { station, k } }),
   // TTD L5: place/remove a player block signal strictly inside span `span` of (line, path).

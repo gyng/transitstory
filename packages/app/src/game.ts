@@ -2001,6 +2001,7 @@ export class Game {
           boardings: ps?.boardings ?? 0, // throughput → dot radius
           serving: ps?.serving ?? 0, // 0 = orphaned → muted fill
           bounty: s.bounty, // fantasy: >0 → a ⚑ marker (the steering lever's visual feedback)
+          faction: s.faction ?? 0, // #13: 1 = rival realm → crimson tint
         };
       });
 
@@ -3251,6 +3252,14 @@ export class Game {
     this.legalizeWaterCrossings(net);
     this.selectedStation = null;
     this.selectedLine = null;
+    this.refresh();
+  }
+
+  /** #13 P1c: seed the rival realm's seat (a faction-1 far-edge capital). Fired ONCE at boot AFTER the
+   *  baked supply graph, so the core picks a reservoir cell clear of the player's towns. Through the command
+   *  path (joins the log ⇒ resumes/replays correctly); idempotent in the core. */
+  seedRival(): void {
+    this.bridge.apply(cmd.seedRival());
     this.refresh();
   }
 

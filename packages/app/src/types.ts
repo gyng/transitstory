@@ -38,6 +38,9 @@ export type Command =
   | { CastSpell: { kind: number } }
   // fantasy/arcadia (S11): toggle autocast — on = the AI auto-fires spells each tick. Rejected in transit.
   | { SetAutocast: { enabled: boolean } }
+  // fantasy/arcadia (#13): seed the rival realm's seat (faction-1 capital on the far edge). Fired once at
+  // boot after the player network. Idempotent. Rejected in transit.
+  | { SeedRival: Record<string, never> }
   // TTD L2: build a station's platform berths (k clamped to [1, MAX_PLATFORMS] in the core). k berths ⇒ k
   // parallel dwells, so followers stop piling up behind a dwelling train.
   | { BuildPlatforms: { station: number; k: number } }
@@ -219,6 +222,8 @@ export interface StationView {
   bounty: number;
   /** Platform berth count K (TTD L2) — the station panel shows/steps the buildable berths. */
   platformCount: number;
+  /** #13 faction — 0 = player, 1 = rival realm. The frontend tints a rival-owned node crimson. */
+  faction: number;
 }
 
 /** One OD "desire line" from a selected origin station to a destination it draws riders toward

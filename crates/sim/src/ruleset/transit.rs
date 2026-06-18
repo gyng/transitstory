@@ -27,7 +27,8 @@ impl Ruleset for TransitRuleset {
             | Command::PostBounty { .. }
             | Command::UnlockTech { .. }
             | Command::CastSpell { .. }
-            | Command::SetAutocast { .. } => {
+            | Command::SetAutocast { .. }
+            | Command::SeedRival { .. } => {
                 Err("that is a fantasy (arcadia) command, not valid in the transit game".into())
             }
             _ => Ok(()),

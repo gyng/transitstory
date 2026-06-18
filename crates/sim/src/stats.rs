@@ -228,6 +228,9 @@ pub struct StationView {
     pub bounty: f64,
     /// Platform berth count K (TTD L2) — the station panel reads it back to show/step the buildable berths.
     pub platform_count: u8,
+    /// #13 faction (0 = player, 1 = rival realm). Render read-out (not hashed) — the frontend tints a
+    /// rival-owned station crimson. 0 for transit + every player node.
+    pub faction: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

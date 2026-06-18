@@ -137,6 +137,9 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     // barracks). Place them via the command path; the player draws the rail connecting the chains. Not
     // gated on `withNetwork` — these are map features, not an optional starting metro.
     game.applyNetwork(networkFromSupplyGraph(city.raw.supplyGraph));
+    // #13: seed the symmetric enemy AI's rival realm AFTER the player network, so it takes a far-edge seat
+    // clear of the towns. Joins the same command log (resumes via the replay above, never double-seeds).
+    if (city.raw.supplyGraph.decadenceSeed?.rivalEnabled) game.seedRival();
   }
 
   // Autosave from the first PLAYER action onward — wiring onCommit after the pre-seeded network

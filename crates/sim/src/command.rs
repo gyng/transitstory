@@ -144,6 +144,11 @@ pub enum Command {
         station: StationId,
         amount: i64,
     },
+    /// #13 Seed the baked RIVAL REALM's seat — a faction-1 capital/barracks on the far edge (the symmetric
+    /// enemy AI). Fired once at boot AFTER the player's baked network, so the rival picks a reservoir cell
+    /// clear of player towns. Idempotent (a second SeedRival is a no-op). Command-sourced ⇒ in the save log,
+    /// replays deterministically. FANTASY-ONLY (transit has no reservoir ⇒ a no-op).
+    SeedRival {},
     /// Switch the demand model: `agents=true` swaps gravity flow for a seed-derived citizen
     /// population (home/work agents on a schedule); `false` restores gravity. Command-sourced so
     /// it lives in the save and replays deterministically (the population is regenerated from seed).

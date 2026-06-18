@@ -24,6 +24,8 @@ export interface StationDot {
   serving: number;
   /** Posted bounty (fantasy) — >0 draws a ⚑ marker so the player sees where they've baited legions. */
   bounty?: number;
+  /** #13 faction — 0 = player, 1 = rival realm (the enemy AI's nodes render crimson). */
+  faction?: number;
 }
 export interface LinePath {
   id: number;
@@ -997,14 +999,16 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // Selected fill = selection blue (ties to its blue catchment ring). Otherwise an ORPHANED
       // station (no operational line serving it) is muted grey and a SERVED one is near-black, so
       // stations visibly "light up" as you connect + run them (place→draw→assign cause→effect).
+      // #13: a RIVAL-owned node (faction 1) reads crimson — the enemy realm's holds stand out from the
+      // player's served/orphaned greys at a glance (selection still wins for the active object).
       getFillColor: (d: StationDot) =>
-        d.selected ? [0, 114, 178] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
+        d.selected ? [0, 114, 178] : d.faction === 1 ? [190, 55, 55] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
       stroked: true,
       getLineColor: [255, 255, 255, 230],
       lineWidthMinPixels: 1,
       pickable: true,
       updateTriggers: {
-        getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}`).join(","),
+        getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}:${s.faction ?? 0}`).join(","),
         getRadius: view.stations.map((s) => `${s.selected}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
       },
     }),
@@ -1348,13 +1352,14 @@ export function stationMeshLayer(stations: StationDot[]): Layer {
     data: stations,
     mesh: stationMesh(),
     getPosition: (d) => [d.lng, d.lat],
-    getColor: (d) => (d.serving > 0 ? [224, 212, 190] : [156, 152, 144]), // served = warm stone, idle = grey
+    // #13: a rival depot (faction 1) is crimson stone — the enemy realm's hold reads as hostile in 3D too.
+    getColor: (d) => (d.faction === 1 ? [188, 96, 84] : d.serving > 0 ? [224, 212, 190] : [156, 152, 144]),
     getOrientation: [0, 0, 0],
     getScale: [165, 165, 165],
     sizeScale: 1,
     pickable: false,
     material: { ambient: 0.6, diffuse: 0.72, shininess: 18, specularColor: [60, 55, 48] },
-    updateTriggers: { getColor: stations.map((d) => (d.serving > 0 ? 1 : 0)).join("") },
+    updateTriggers: { getColor: stations.map((d) => `${d.faction ?? 0}:${d.serving > 0 ? 1 : 0}`).join("") },
   });
 }
 

@@ -34,7 +34,7 @@ export interface RawCity {
     towns?: { kind: string; q: number; r: number; xMm: number; yMm: number; value: number; demands: string[]; decadence: number; recipe?: number[] }[];
     /** S4 decadence seed: the far-edge reservoir (tide origin + raider anchors), the clean grace radius,
      *  and the realm's baked STARTING decadence (seeded into world.decadence). */
-    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number; creepPerS?: number; productionMicro?: number; capitalXMm?: number; capitalYMm?: number; influenceHops?: number; initialGold?: number; buildGoldDivisor?: number; goldUpkeepPerDay?: number; manpowerUpkeepPerLegionDay?: number; walkBackstopMicro?: number };
+    decadenceSeed?: { capitalGraceHexes: number; reservoir: { q: number; r: number; xMm: number; yMm: number }[]; initialDecadence?: number; growthPerS?: number; armySpeedMmS?: number; creepPerS?: number; productionMicro?: number; capitalXMm?: number; capitalYMm?: number; influenceHops?: number; initialGold?: number; buildGoldDivisor?: number; goldUpkeepPerDay?: number; manpowerUpkeepPerLegionDay?: number; rivalEnabled?: boolean; walkBackstopMicro?: number };
   };
   /** Additive baked DRAINAGE topology (build_world.py flow-accumulation rivers) — render-only; never copied
    *  into the core city JSON (the sim never sees it). Each edge is a cell-centre→cell-centre segment (i64 mm
@@ -101,6 +101,7 @@ export function buildCoreCity(
   if (dec?.buildGoldDivisor) core.build_gold_divisor = dec.buildGoldDivisor; // baked gold build-cost scale (#economy)
   if (dec?.goldUpkeepPerDay) core.gold_upkeep_per_day = dec.goldUpkeepPerDay; // baked per-day gold upkeep (#economy opex)
   if (dec?.manpowerUpkeepPerLegionDay) core.manpower_upkeep_per_legion_day = dec.manpowerUpkeepPerLegionDay; // baked per-legion-day manpower upkeep (#daynight)
+  if (dec?.rivalEnabled) core.rival_enabled = dec.rivalEnabled; // #13: seed a baked rival realm at construction
   if (dec?.walkBackstopMicro) core.walk_backstop_micro = dec.walkBackstopMicro; // baked off-rail goods backstop (#11)
   if (buildability) {
     core.buildability = {
