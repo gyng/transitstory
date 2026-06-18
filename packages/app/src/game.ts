@@ -3299,18 +3299,23 @@ export class Game {
 
   composeAndSet(vehicles: VehicleDot[], cars: CargoCar[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
-    const intent = this.armyIntentLayerAt();
+    // #perf: the war / rival / spell motion builders each cross WASM EVERY frame (armyPositions, raider*,
+    // rivalHosts, spellFlashes, …). In a transit city there are none of these, so skip the whole block — the
+    // builders would only return null/[] there anyway, so this is behaviour-identical, ~10 fewer WASM round-
+    // trips per frame. (Arcadia runs them — the moving entities are real there.)
+    const fantasy = this.ruleset === "arcadia";
+    const intent = fantasy ? this.armyIntentLayerAt() : null;
     const intentArcs = intent ? [intent] : []; // legion→target intent, under the legion dots (over the network)
-    const rIntent = this.raiderIntentLayerAt();
+    const rIntent = fantasy ? this.raiderIntentLayerAt() : null;
     const raiderIntentArcs = rIntent ? [rIntent] : []; // #war: smart-raider→target intent (your rail / unheld towns)
-    const army = this.armyLayerAt(); // [dot, ⚔ badge] — legions above carts, below peeps/labels (z-order)
-    const raider = this.raiderLayerAt(); // [dot, ☣ badge] — the rot's marauders, above legions
-    const rIvIntent = this.rivalIntentLayerAt();
+    const army = fantasy ? this.armyLayerAt() : []; // [dot, ⚔ badge] — legions above carts, below peeps/labels (z-order)
+    const raider = fantasy ? this.raiderLayerAt() : []; // [dot, ☣ badge] — the rot's marauders, above legions
+    const rIvIntent = fantasy ? this.rivalIntentLayerAt() : null;
     const rivalIntentArcs = rIvIntent ? [rIvIntent] : []; // #13: rival host→captured-town intent (the telegraph)
-    const rGhost = this.rivalBuildGhostAt();
+    const rGhost = fantasy ? this.rivalBuildGhostAt() : null;
     const rivalGhost = rGhost ? [rGhost] : []; // #13 P2: the rival's expansion ghost (where its rail creeps next)
-    const rivalHost = this.rivalHostLayerAt(); // [crimson dot, ⚔ badge] — the RIVAL's mustered legions
-    const flash = this.spellFlashLayerAt();
+    const rivalHost = fantasy ? this.rivalHostLayerAt() : []; // [crimson dot, ⚔ badge] — the RIVAL's mustered legions
+    const flash = fantasy ? this.spellFlashLayerAt() : null;
     const spells = flash ? [flash] : []; // spell bursts on top (the magic reads over everything)
     // Level-of-detail (runs per frame on the live zoom): below DETAIL_ZOOM the city-overview shows
     // only the network — drop the per-station waiting halos, the pinned label, and the vehicle
