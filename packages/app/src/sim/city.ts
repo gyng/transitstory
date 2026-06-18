@@ -105,7 +105,8 @@ export function buildCoreCity(
   // #13 AI difficulty: 0 easy / 1 moderate (default) / 2 hard — the city's rivalDifficulty, overridable by a
   // ?rival=easy|moderate|hard URL param so you can pick the challenge without rebaking the world.
   const RIVAL_DIFF: Record<string, number> = { easy: 0, moderate: 1, hard: 2 };
-  const rivalParam = new URLSearchParams(location.search).get("rival");
+  // Guard `location` — buildCoreCity runs in node too (Vitest, any SSR/headless path), where it's undefined.
+  const rivalParam = typeof location !== "undefined" ? new URLSearchParams(location.search).get("rival") : null;
   core.rival_difficulty = rivalParam && rivalParam in RIVAL_DIFF ? RIVAL_DIFF[rivalParam] : dec?.rivalDifficulty ?? 1;
   if (dec?.walkBackstopMicro) core.walk_backstop_micro = dec.walkBackstopMicro; // baked off-rail goods backstop (#11)
   if (buildability) {
