@@ -6,6 +6,7 @@ import { ArcLayer, ColumnLayer, PathLayer, ScatterplotLayer, TextLayer } from "@
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { BUSY_WAITING, STARVED_WAITING } from "./config";
 import { pineGeometry } from "./render/treeMesh";
+import { stationMesh } from "./render/stationMesh";
 import { vehicleMesh, cargoMesh, wagonMesh, legionMesh } from "./render/vehicleMesh";
 import { SIM_MS_PER_CLOCK_MIN } from "./ui/react/shared";
 
@@ -536,6 +537,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
     // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain
     // (under the network/POIs). Empty for transit / at overview (LOD), so it's a no-op there.
     treeLayer(view.trees),
+    // FANTASY 3D STATION DEPOTS (#3d-stations): the player's network nodes as lowpoly platforms + houses,
+    // on the terrain under the network/POIs. Arcadia only; LOD-dropped at overview in composeAndSet.
+    stationMeshLayer(view.arcadia ? view.stations : []),
     // DECADENCE TIDE (fantasy S10c, over terrain, under everything else): the cold corruption creeping
     // from the far edge toward the warm capital. Value-not-hue per the art direction — a single
     // low-chroma cold violet, STRENGTH = ALPHA (faint at the front, opaque deep). Same pointy-top hex
@@ -1334,6 +1338,26 @@ export function ambientCargoLayer(carts: AmbientTrader[]): Layer {
  *  in Z so it reads under the tilted arcadia camera. Per-instance scale/yaw/tint for a varied stand; flat-
  *  shaded under deck's default lighting for the faceted lowpoly look. Static (baked once), so it rides the
  *  cached topo path — never rebuilt per frame. Empty for transit / when zoomed too far out (LOD). */
+/** 3D station DEPOTS (#3d-stations): a lowpoly platform + pitched-roof house standing on each of the
+ *  player's stations — the fantasy diorama's network nodes made solid (the trains + peeps already animate
+ *  at the platform, so the static depot reads as a working berth). Served stations are warm stone, idle
+ *  (no line) a cool grey. Fixed diorama scale (≈ a tree); empty for transit / at overview (LOD), a no-op. */
+export function stationMeshLayer(stations: StationDot[]): Layer {
+  return new SimpleMeshLayer<StationDot>({
+    id: "station-depots",
+    data: stations,
+    mesh: stationMesh(),
+    getPosition: (d) => [d.lng, d.lat],
+    getColor: (d) => (d.serving > 0 ? [224, 212, 190] : [156, 152, 144]), // served = warm stone, idle = grey
+    getOrientation: [0, 0, 0],
+    getScale: [165, 165, 165],
+    sizeScale: 1,
+    pickable: false,
+    material: { ambient: 0.6, diffuse: 0.72, shininess: 18, specularColor: [60, 55, 48] },
+    updateTriggers: { getColor: stations.map((d) => (d.serving > 0 ? 1 : 0)).join("") },
+  });
+}
+
 export function treeLayer(trees: TreeInstance[]): Layer {
   return new SimpleMeshLayer<TreeInstance>({
     id: "trees",

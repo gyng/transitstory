@@ -3118,7 +3118,7 @@ export class Game {
     // + the tide WASH always stay too.) Same cheap id-filter, no rebuild.
     const below =
       this.ruleset === "arcadia" && !detail
-        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "trees")
+        ? this.below.filter((l) => l.id !== "resources" && l.id !== "resource-icons" && l.id !== "trees" && l.id !== "station-depots")
         : this.below;
     // Living-world ambient trade carts (#living): ground texture under the player's network + vehicles.
     // Wall-clock animated, rebuilt per frame like the vehicle layer (small, cheap). Arcadia only, and only
