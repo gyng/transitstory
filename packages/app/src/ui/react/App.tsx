@@ -8,7 +8,7 @@ import { createOverlay, setLightingHour } from "../../map/overlay";
 import { loadCity } from "../../sim/city";
 import { mmToLngLat } from "../../coords/geo";
 import { loadNetwork, networkFromSupplyGraph } from "../../sim/network";
-import { cityById, type CityEntry } from "../../sim/cities";
+import { CITIES, type CityEntry } from "../../sim/cities";
 import { SimBridge } from "../../sim/SimBridge";
 import { Buildability } from "../../sim/buildability";
 import { writeSave, type SaveBlob } from "../../sim/save";
@@ -148,6 +148,12 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     if (city.raw.supplyGraph.decadenceSeed?.rivalEnabled) game.seedRival();
   }
 
+  // #25 fresh arcadia: arm SERVICE — the loop's real first act (rail a resource → a town) — instead of the
+  // default Station tool. All arcadia stations are baked, so a first click on Station only drops a redundant
+  // one; Service makes the first click do real work AND lets the OnboardingCoach read the affirmative
+  // "Rail a resource → a town" instead of apologising "Pick Service first". Resume keeps its saved tool.
+  if (game.ruleset === "arcadia" && !resume) game.tool = "service";
+
   // Autosave from the first PLAYER action onward — wiring onCommit after the pre-seeded network
   // / resume replay means we don't re-save the baseline; the log always holds the full state.
   bridge.onCommit = () =>
@@ -214,6 +220,9 @@ function Title({ name }: { name: string }) {
 export function App() {
   const [world, setWorld] = useState<BootedWorld | null>(null);
   const [booting, setBooting] = useState(false);
+  // #25 boot failure (a 404 manifest, malformed JSON, a corrupt resume log that throws in replay) — without
+  // this the component renders null forever (a permanent blank screen). Set it to surface a recoverable card.
+  const [bootError, setBootError] = useState<string | null>(null);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
   // A start awaiting the isekai prologue: set (instead of booting straight) when the fantasy campaign
   // is chosen and the cutscene hasn't played; the Cutscene's onDone then boots it. Null otherwise.
@@ -228,14 +237,24 @@ export function App() {
 
   const startBoot = useCallback((manifestPath: string, withNetwork: boolean, scenario: string | null = null) => {
     setScenarioId(scenario);
+    setBootError(null);
     setBooting(true);
-    void boot(manifestPath, withNetwork).then(setWorld);
+    void boot(manifestPath, withNetwork)
+      .then(setWorld)
+      .catch((e) => { setBootError(String((e as Error)?.message ?? e)); setBooting(false); }); // #25 surface, don't brick
   }, []);
 
   const startResume = useCallback((save: SaveBlob) => {
+    // #25 resolve EXPLICITLY — cityById silently falls back to CITIES[0], which would replay this save's command
+    // log (its own seed/coords/index space) into the WRONG city: a nonsensical network, or a mid-replay throw.
+    const entry = CITIES.find((c) => c.id === save.cityId);
     setScenarioId(null);
+    setBootError(null);
+    if (!entry) { setBootError(`Saved city "${save.cityId}" is no longer available.`); return; }
     setBooting(true);
-    void boot(cityById(save.cityId).manifest, false, save).then(setWorld);
+    void boot(entry.manifest, false, save)
+      .then(setWorld)
+      .catch((e) => { setBootError(String((e as Error)?.message ?? e)); setBooting(false); });
   }, []);
 
   // Deep-link / e2e: `?city=<id>&network=0|1&scenario=<id>` skips the menu.
@@ -245,7 +264,9 @@ export function App() {
     const params = new URLSearchParams(location.search);
     const cityParam = params.get("city");
     if (cityParam) {
-      const entry = cityById(cityParam);
+      // #25 EXACT match — a ?city=<typo> deep-link no longer silently boots Singapore (cityById's CITIES[0] fallback).
+      const entry = CITIES.find((c) => c.id === cityParam);
+      if (!entry) { setBootError(`City "${cityParam}" not found.`); return; }
       // The globe's "network" is its cities — always load it (the board is empty without them).
       startBoot(entry.manifest, entry.id === "globe" || params.get("network") === "1", params.get("scenario"));
     }
@@ -320,6 +341,26 @@ export function App() {
   }, [world]);
 
   if (!world) {
+    if (bootError) {
+      // #25 a boot failure used to render null forever (a permanent blank screen). Surface it as a recoverable
+      // card: the error + a way back to the menu, clearing the deep-link URL so a refresh doesn't re-trigger it.
+      return (
+        <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "#15181d" }}>
+          <div className="ot-console" data-testid="boot-error" style={{ maxWidth: 440, padding: 22, textAlign: "center", color: "var(--ot-con-ink)" }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>⚠ Couldn't load this world</div>
+            <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12, lineHeight: 1.45, margin: "0 0 16px", wordBreak: "break-word" }}>{bootError}</div>
+            <button
+              className="ot-key"
+              data-testid="boot-error-back"
+              onClick={() => { setBootError(null); setBooting(false); history.replaceState(null, "", location.pathname); }}
+              style={{ padding: "8px 16px", cursor: "pointer" }}
+            >
+              ← Back to menu
+            </button>
+          </div>
+        </div>
+      );
+    }
     if (booting) return null; // map is being built; chrome appears once the world is ready
     if (pendingStart) {
       // The isekai prologue plays over the still-menu, then boots the chosen fantasy campaign.
