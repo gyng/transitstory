@@ -359,10 +359,12 @@ const NODE_CHARSET = "⛏✿♣✦⚒◆★✪⌂⚔";
 function terrainColor(c: number): [number, number, number, number] {
   switch (c) {
     case 4: return [40, 88, 120, 255];    // WATER — coastal shelf, lighter than the deep-ocean void (shallow shore)
-    case 10: return [128, 128, 124, 255]; // PLAIN — pale ash (buildable lowland)
-    case 8: return [96, 100, 96, 255];    // FOREST — ~30 value below plain (fuel country), barely cooler
-    case 7: return [96, 94, 92, 255];     // HILL — mid grey (rising ground)
-    case 6: return [40, 38, 40, 255];     // MOUNTAIN — near-black ridge (impassable)
+    case 10: return [132, 132, 128, 255]; // PLAIN — pale ash (buildable lowland)
+    // #25 widen the value ramp so elevation reads as VALUE: FOREST clearly above HILL (were ~4 units apart),
+    // HILL distinctly darker than forest, MOUNTAIN lifted off near-black so its lit/shadowed slopes separate.
+    case 8: return [100, 108, 100, 255];  // FOREST — cool swell, a clear step above hill (fuel country)
+    case 7: return [86, 84, 82, 255];     // HILL — mid-dark grey (rising ground), darker than forest
+    case 6: return [56, 54, 58, 255];     // MOUNTAIN — dark ridge, off near-black so sun-raked faces read
     case 9: return [120, 96, 156, 255];   // LEY — faint violet (the arcane: the ONLY ground chroma)
     default: return [70, 70, 70, 255];
   }
@@ -515,7 +517,10 @@ function waitRing(count: number): { color: [number, number, number, number]; wid
   const band = waitBand(count);
   if (band === 2) return { color: [214, 40, 40, 235], width: 3.5 }; // starved — vermillion
   if (band === 1) return { color: [230, 159, 0, 225], width: 2 }; // busy — amber
-  return { color: [230, 159, 0, 130], width: 1.5 }; // a few waiting — faint amber
+  // #25 band 0 (a few waiting) is RECESSIVE — a hairline at low alpha — so it doesn't flood the map with amber
+  // halos that drown out genuine BUSY/STARVED pressure (the only difficulty lever). Nearly every served station
+  // has ≥1 waiting; that must read as background, not alarm.
+  return { color: [230, 159, 0, 70], width: 1 };
 }
 
 /** Accessibility band for the "Reach" isochrone: travel time (ms) from the selected station →
@@ -558,6 +563,10 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getFillColor: (d: TerrainCell) => terrainColor(d.c),
       filled: true,
       stroked: false,
+      // #25 a quiet matte material so the EXTRUDED hex faces catch the existing directional sun (overlay.ts) —
+      // sun-raked slopes get a lit/shadow split, giving the pitch-45 relief real light-and-shadow FORM instead
+      // of flat silhouette. No new light, no per-frame cost; the diorama meshes already carry phong materials.
+      material: { ambient: 0.65, diffuse: 0.85, shininess: 2, specularColor: [20, 20, 24] },
       updateTriggers: { getFillColor: view.terrain.length, getElevation: view.terrain.length },
     }),
     // #ocean SHORE FOAM: bright surf on the coast WATER hexes (those touching land), on the sea surface
@@ -570,17 +579,21 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       diskResolution: 6,
       extruded: true,
       getElevation: 3, // a few m proud of the water (≪ the relief scale) so depth-test puts foam ON the sea, not z-fighting it
-      radius: view.terrainCellM * 0.98,
+      // #25 a SMALL disc — buildCoast offsets each foam point toward its land neighbour, so a shrunk radius
+      // reads as breaking surf HUGGING the shoreline, not a centre-weighted shallow-water blob out in the sea.
+      radius: view.terrainCellM * 0.62,
       radiusUnits: "meters",
       angle: 30,
       getPosition: (d: TerrainCell) => [d.lng, d.lat],
       getFillColor: (d: TerrainCell) => {
         const s = Math.sin(d.lng * 91.7 + d.lat * 47.3) * 43758.5;
-        const h = s - Math.floor(s); // per-cell 0..1 hash → each shore cell its own surf phase
-        // LAP: each cell swells at its own offset (the per-cell hash), so the surf TRAVELS the coast as a
-        // shimmer rather than blinking in unison. Advanced on the ~3 Hz recompose (two-clocks; never per rAF).
-        const lap = 0.5 + 0.5 * Math.sin(((view.foamPhase ?? 0) / 24) * 6.2832 + h * 6.2832);
-        return [208, 238, 243, Math.round(50 + 60 * h + 95 * lap)];
+        const h = s - Math.floor(s); // per-cell 0..1 hash → a STABLE per-cell surf brightness (the foam line)
+        const s2 = Math.sin(d.lng * 53.1 + d.lat * 88.9) * 27183.2;
+        const h2 = s2 - Math.floor(s2); // a DECORRELATED hash for the lap phase, so neighbours don't pulse in step
+        // #25 a brighter constant foam line (70+70h) with a GENTLE travelling shimmer (45·lap) subordinate to
+        // it — surf that lives along the coast rather than the whole shore blinking in near-unison. ~3 Hz lap.
+        const lap = 0.5 + 0.5 * Math.sin(((view.foamPhase ?? 0) / 24) * 6.2832 + h2 * 6.2832);
+        return [210, 240, 245, Math.round(70 + 70 * h + 45 * lap)];
       },
       filled: true,
       stroked: false,
@@ -1074,7 +1087,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // #13/#25: a RIVAL-owned node (faction 1) reads as a HOT threat — a brighter, more-saturated crimson
       // so the enemy realm's holds stand out from the player's served/orphaned greys at a glance.
       getFillColor: (d: StationDot) =>
-        d.selected ? [0, 114, 178] : d.faction === 1 ? [228, 52, 44] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
+        // #25 orphaned fill cooled/darkened to [96,102,112] so a station on bare track (rail is [122,128,136])
+        // reads as a distinct bead on the rail — "track but no service" stays legible in the place→draw→assign chain.
+        d.selected ? [0, 114, 178] : d.faction === 1 ? [228, 52, 44] : d.serving > 0 ? [28, 32, 36] : [96, 102, 112],
       stroked: true,
       // #25 a hostile AMBER ring on rival holds (vs the player's white) — the enemy reads as menacing, not
       // just "another colour", and the warm ring pops the crimson off the grey terrain.
@@ -1135,7 +1150,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       getPosition: (d: WaitingDot) => [d.lng, d.lat],
       // Capped well below the old 8–24px: these only show zoomed-in now (LOD), so a tight 5–12px
       // ring is plenty to read the queue without ballooning into the dominant on-map mark.
-      getRadius: (d: WaitingDot) => 5 + Math.min(7, Math.sqrt(d.count) * 1.5),
+      getRadius: (d: WaitingDot) => (waitBand(d.count) === 0 ? 4 : 5 + Math.min(7, Math.sqrt(d.count) * 1.5)),
       radiusUnits: "pixels",
       stroked: true,
       filled: false,
@@ -1179,7 +1194,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "waiting-overview",
       data: view.waiting.filter((w) => w.count >= STARVED_WAITING),
       getPosition: (d: WaitingDot) => [d.lng, d.lat],
-      getRadius: (d: WaitingDot) => 5 + Math.min(7, Math.sqrt(d.count) * 1.5),
+      getRadius: (d: WaitingDot) => (waitBand(d.count) === 0 ? 4 : 5 + Math.min(7, Math.sqrt(d.count) * 1.5)),
       radiusUnits: "pixels",
       stroked: true,
       filled: false,

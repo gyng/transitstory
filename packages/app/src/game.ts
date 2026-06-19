@@ -1302,6 +1302,18 @@ export class Game {
   selectLine(id: number | null): void {
     this.selectedLine = id;
     this.selectedStation = null;
+    if (id !== null) {
+      // #25 echo the selection the way selectStation pulses — flash the line once along its length in its own
+      // colour, so selecting a line feels as acknowledged as a station (this also fires when you click bare grey
+      // track to assign stock, which the copy explicitly promises). Visual only — no Command, no chime.
+      const lv = this.bridge.linesView()[id];
+      if (lv && !lv.removed && lv.polylineMm.length >= 2) {
+        this.effects.connectFlash(
+          lv.polylineMm.map(([x, y]) => mmToLngLat([x, y])),
+          colorToRgb(lv.color).join(","),
+        );
+      }
+    }
     this.refresh();
   }
 
@@ -2965,18 +2977,29 @@ export class Game {
       if (c.c !== WATER) return;
       const [x, y] = mm[i];
       const gx = Math.floor(x / step), gy = Math.floor(y / step);
+      // accumulate the land-ward NORMAL: sum unit vectors to every nearby land cell, so the foam point can be
+      // pushed toward the shore (a coast-hugging rim) instead of sitting at the WATER hex centre out in the sea.
+      let lvx = 0, lvy = 0;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           const land = landByBucket.get(bkey(gx + dx, gy + dy));
           if (!land) continue;
           for (const [lx, ly] of land) {
-            if ((lx - x) ** 2 + (ly - y) ** 2 <= thr2) {
-              this.coast.push(c);
-              return; // this WATER cell is shore — done, next cell
+            const ddx = lx - x, ddy = ly - y, d2 = ddx * ddx + ddy * ddy;
+            if (d2 <= thr2 && d2 > 0) {
+              const d = Math.sqrt(d2);
+              lvx += ddx / d;
+              lvy += ddy / d;
             }
           }
         }
       }
+      const ln = Math.hypot(lvx, lvy);
+      if (ln === 0) return; // no land neighbour within reach ⇒ not shore
+      // push the foam ~0.4 of a lattice step toward land so the surf disc kisses the coastline (the small
+      // radius in render.ts then reads as breaking surf at the shore, not a tint blob centred out in the sea).
+      const [olng, olat] = mmToLngLat([x + (lvx / ln) * step * 0.4, y + (lvy / ln) * step * 0.4]);
+      this.coast.push({ lng: olng, lat: olat, c: WATER });
     });
   }
 
@@ -3262,7 +3285,9 @@ export class Game {
     for (let i = 0; i < count; i++) (byRole[roles[i] | 0] ?? byRole[0]).push([xy[i * 2], xy[i * 2 + 1]]);
     const layers: Layer[] = [raiderLayer(xy, count)];
     byRole.forEach((pos, r) => {
-      if (pos.length) layers.push(entityBadgeLayer(`raider-badges-${r}`, pos, RGLYPH[r], [40, 50, 30, 235]));
+      // #25 a PALE high-contrast glyph (like the legion ⚔) so ☣/✂/⚑ pop on the mid-green raider dot under the
+      // night wash — the three rival ROLES (the whole point of the split for threat reading) must read apart.
+      if (pos.length) layers.push(entityBadgeLayer(`raider-badges-${r}`, pos, RGLYPH[r], [235, 245, 225, 245]));
     });
     return layers;
   }

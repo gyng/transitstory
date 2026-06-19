@@ -46,9 +46,12 @@ export const LINE_PALETTE: number[] = [
 
 /** ARCADIA line palette — the empire is the ONLY warm thing on the ash world, so every line stays in the
  *  warm half (slot 0 = warm, never the cold selection-blue). CB strategy for an all-warm ramp (the hardest
- *  case): 6 tones ordered by INTERLEAVED lightness (copper↔oxblood↔orange↔rust↔ochre↔brick) so index-adjacent
+ *  case): 6 tones ordered by INTERLEAVED lightness (copper↔rust-brown↔orange↔rust↔ochre↔gold) so index-adjacent
  *  lines contrast in value AND hue-temperature, not red/green. Kept clear of capital-gold (0xebaf2d) so
- *  dominion-gold never reads as a player line. Used by `nextLineColor` only in the arcadia ruleset. */
+ *  dominion-gold never reads as a player line. CRITICAL: also kept OUT of the rival THREAT-crimson band
+ *  (rival rail [230,60,48], holds [228,52,44], hosts [190,55,55]) — the old oxblood/rust/brick slots
+ *  (7a2e1f/9c3b1f/a83232) read as an enemy host at a glance; every slot now has G well above the crimson
+ *  floor so a player line is never confusable with the enemy. Used by `nextLineColor`, arcadia ruleset only. */
 export const ARCADIA_LINE_PALETTE: number[] = [
-  0xd98c3a, 0x7a2e1f, 0xe07b2e, 0x9c3b1f, 0xc96a2c, 0xa83232,
+  0xd98c3a, 0x8a5a2b, 0xe07b2e, 0xb5651d, 0xc96a2c, 0xd9a441,
 ];
