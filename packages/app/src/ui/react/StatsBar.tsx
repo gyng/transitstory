@@ -10,7 +10,7 @@
 import type { CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats } from "./GameContext";
-import { SIM_MS_PER_CLOCK_MIN, coverageColor, fmtCount, fmtMoney, loadPip } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, coverageColor, fmtCount, fmtMoney, loadPip, modeIcon } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
 import { cashTrend, channelRates, decadenceTrend } from "./statsHistory";
@@ -227,6 +227,34 @@ export function StatsBar() {
   // Reuses the loadPip shape/colour language so "crush" reads the same here as on a train or line.
   const trains = s.vehicleCount;
   const netPip = loadPip(s.avgLoadFactor);
+  // #26 the worst-loaded MODE behind the fleet mean — a few crush metros + many empty feeders average to a bland
+  // "busy", hiding that one mode is at crush (the capacity lever's real signal). Weight each line's load by its
+  // trains, group by mode, surface the peak in the tooltip only when it's notably above the mean + multimodal.
+  let worstModeTip = "";
+  {
+    const byMode = new Map<number, { sum: number; tr: number }>();
+    for (const l of s.perLine) {
+      if (l.trains <= 0) continue;
+      const m = byMode.get(l.mode) ?? { sum: 0, tr: 0 };
+      m.sum += l.loadFactor * l.trains;
+      m.tr += l.trains;
+      byMode.set(l.mode, m);
+    }
+    if (byMode.size >= 2) {
+      let wMode = -1;
+      let wLoad = 0;
+      for (const [mode, { sum, tr }] of byMode) {
+        const avg = tr > 0 ? sum / tr : 0;
+        if (avg > wLoad) {
+          wLoad = avg;
+          wMode = mode;
+        }
+      }
+      if (wMode >= 0 && wLoad > s.avgLoadFactor + 0.08) {
+        worstModeTip = ` · ${modeIcon(wMode)} ${loadPip(wLoad).word} ${Math.round(wLoad * 100)}%`;
+      }
+    }
+  }
 
   return (
     <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
@@ -283,7 +311,7 @@ export function StatsBar() {
         <div
           data-testid="net-load"
           style={{ color: "var(--ot-con-ink-dim)", cursor: "help" }}
-          title={`${trains} train${trains === 1 ? "" : "s"} running · mean load ${netPip.pct}% (${netPip.word})`}
+          title={`${trains} train${trains === 1 ? "" : "s"} running · mean load ${netPip.pct}% (${netPip.word})${worstModeTip}`}
         >
           <span style={{ color: netPip.color, fontWeight: 700 }}>
             {netPip.glyph} {netPip.pct}%

@@ -16,7 +16,7 @@ import { Game } from "../../game";
 import { GameLoop } from "../../sim/GameLoop";
 import { attachPointer } from "../../tools/pointer";
 import { installTestHooks } from "../../testhooks";
-import { GameProvider, useGame, useGameUI } from "./GameContext";
+import { GameProvider, useGame, useGameUI, useStats } from "./GameContext";
 import { AppShell } from "./AppShell";
 import { TimeCluster } from "./TimeCluster";
 import { AlertCluster } from "./AlertCluster";
@@ -213,6 +213,36 @@ function Title({ name }: { name: string }) {
       }}
     >
       Transit Story · {name}
+    </div>
+  );
+}
+
+/** #25 Sandbox (no-scenario) arcadia has no objective banner, so when the realm falls the sim would tick a dead
+ *  realm forever (decadence pinned, raiders still spawning) with no signposted exit — an un-winnable limbo. This
+ *  terminal overlay gives a way out: retake it or start fresh. Gated to sandbox + arcadia + realmLost, so it can
+ *  never stack with the scenario win/lose banner (which only renders when a scenario IS set). Dismissible, so a
+ *  player who wants to keep looking at their fallen realm can. */
+function SandboxTerminal({ sandbox }: { sandbox: boolean }) {
+  const stats = useStats();
+  const ui = useGameUI();
+  const [dismissed, setDismissed] = useState(false);
+  if (!sandbox || ui.ruleset !== "arcadia" || !stats.realmLost || dismissed) return null;
+  return (
+    <div data-testid="sandbox-realm-fallen" style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "rgba(8,10,14,.72)", zIndex: 60, pointerEvents: "auto" }}>
+      <div className="ot-console" style={{ maxWidth: 420, padding: 24, textAlign: "center", color: "var(--ot-con-ink)" }}>
+        <div style={{ fontSize: 30, marginBottom: 4 }}>☠</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>The realm has fallen</div>
+        <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12, lineHeight: 1.45, marginBottom: 18 }}>
+          The Decadence reached your capital. This free realm has no victory to reach — start fresh, or retake it.
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button className="ot-key" data-testid="sandbox-retry" onClick={() => location.reload()} style={{ padding: "8px 16px", cursor: "pointer" }}>↻ Retry</button>
+          <button className="ot-key" data-testid="sandbox-menu" onClick={() => { history.replaceState(null, "", location.pathname); location.reload(); }} style={{ padding: "8px 16px", cursor: "pointer" }}>← Menu</button>
+        </div>
+        <button onClick={() => setDismissed(true)} data-testid="sandbox-dismiss" style={{ marginTop: 12, border: 0, background: "transparent", color: "var(--ot-con-ink-dim)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>
+          or keep looking at the realm
+        </button>
+      </div>
     </div>
   );
 }
@@ -481,6 +511,7 @@ export function App() {
           higher z) — triggered from the bottom-left CornerCluster. */}
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <StatsDashboard open={dashOpen} onClose={() => setDashOpen(false)} />
+      <SandboxTerminal sandbox={scenario == null} />
     </GameProvider>
   );
 }

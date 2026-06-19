@@ -160,9 +160,11 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
                   <div><Swatch rgb="rgb(196,96,46)" />unserved — build here</div>
                   {/* #25 covered swatch tracks the live demandColor served tone (slate, since the served-blue
                       nudge) so the legend doesn't lie about what the overlay paints. */}
-                  <div><Swatch rgb="rgb(120,124,132)" />covered by a station</div>
+                  <div><Swatch rgb="rgb(120,124,132)" />covered — within reach of a station</div>
                   <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 2 }}>
-                    Pin a station → arcs show where its riders travel.
+                    {/* #35 honest disclosure: the "covered" shading is a straight-line catchment estimate; the
+                        true walk-shed bends around water + gaps. Pinning a station shows its real reach. */}
+                    Estimate — pin a station for its true reach (it bends around water).
                   </div>
                 </div>
               )}
