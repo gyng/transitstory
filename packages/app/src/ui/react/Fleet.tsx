@@ -49,7 +49,15 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
           // Inline fleet-size editor — build/edit trainsets directly without opening the line.
           <span style={{ display: "flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}>
             <button data-testid={`fleet-dec-${l.lineId}`} className="ot-key" onClick={() => setCount(l.trains - 1)} style={stepBtn}>−</button>
-            <span data-testid={`fleet-count-${l.lineId}`} style={{ minWidth: 28, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{l.trains}🚆</span>
+            <span
+              data-testid={`fleet-count-${l.lineId}`}
+              style={{ minWidth: 28, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}
+              // #2 show running/assigned when the sim caps the dispatched fleet below the roster (a shared
+              // single-track block), so a line assigned 24 but running 2 reads honestly instead of a flat "24".
+              title={running && l.runningVehicles != null && l.runningVehicles < l.trains ? `${l.runningVehicles} of ${l.trains} running — a shared single-track block caps the rest` : undefined}
+            >
+              {running && l.runningVehicles != null && l.runningVehicles < l.trains ? `${l.runningVehicles}/${l.trains}` : l.trains}🚆
+            </span>
             <button data-testid={`fleet-inc-${l.lineId}`} className="ot-key" onClick={() => setCount(l.trains + 1)} style={stepBtn}>+</button>
           </span>
         ) : (

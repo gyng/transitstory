@@ -122,6 +122,9 @@ export interface PerLine {
   ridership: number;
   stops: number;
   trains: number;
+  /** #2 Vehicles actually DISPATCHED this tick (≤ `trains`; a shared single-track block caps the running fleet).
+   *  Optional so pre-field snapshots/mocks don't break; the UI shows "2/24" when it's below the assigned count. */
+  runningVehicles?: number;
   /** The assigned roster entry (AIR's aircraft ladder; 0 = the mode default). */
   trainsetSpec: number;
   headwayMs: number;

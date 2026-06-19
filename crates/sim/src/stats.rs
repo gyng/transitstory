@@ -166,6 +166,11 @@ pub struct LineStat {
     pub ridership: f64,
     pub stops: u32,
     pub trains: u32,
+    /// #2 Vehicles actually DISPATCHED this tick (the per-line dispatch count). On a shared single-track block
+    /// the running fleet is capped below `trains` (the assigned roster), so a line assigned 24 can run as few as
+    /// 1–0. Surfacing it lets the UI show "2/24" — the player can SEE why a fully-staffed line moves little.
+    /// Derived read; NOT hashed (golden-neutral), like `load_factor`.
+    pub running_vehicles: u32,
     /// The assigned roster entry (meaningful for AIR's aircraft ladder; 0 = the mode default).
     pub trainset_spec: u8,
     pub headway_ms: f64,

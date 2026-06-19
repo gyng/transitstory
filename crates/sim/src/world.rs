@@ -1068,10 +1068,13 @@ impl World {
     /// Fantasy (arcadia) progress gauge (S11): the realm's standing = SUPPLY REACH (town demand on an
     /// operational line) blended with CONQUEST (towns held), 0–100. The fantasy analog of the transit
     /// coverage gauge — it answers "how much of the realm am I supplying + holding?" rather than the
-    /// decadence gauge's "how close is the rot?". MONOTONIC by construction (the build plan's split-gauge
-    /// invariant, one channel each): a superset network serves ≥ the same town sinks (supply term
-    /// non-decreasing), and `towns_captured` only ever rises (conquest term non-decreasing) — so the
-    /// score never falls. A derived READ (f32, never hashed), like `coverage_score`.
+    /// decadence gauge's "how close is the rot?". The SUPPLY channel is monotone (a superset network serves ≥ the
+    /// same town sinks). The CONQUEST channel rises with `towns_captured`, but its denominator `town_sinks` is
+    /// network-dependent — PLACING an unserved net-sink station inflates it, which can dip the blended score: a
+    /// known monotonicity edge case (every station carries a positive garrison, so there's no clean per-station
+    /// "town" marker to exclude redundant placements). A correct fix needs a FIXED conquerable-town denominator
+    /// captured at init + a gauge rebalance + an uncovered-case property test — a tracked follow-up, NOT a drop-in
+    /// (any fixed denominator re-tunes the 0.35 conquest contribution). A derived READ (f32, never hashed).
     pub(crate) fn arcadia_coverage_score(&self) -> u8 {
         let total_dest: f32 = self.city.demand.cells.iter().map(|c| c.dest_w).sum();
         let span = (MAX_HEADWAY_MS - MIN_HEADWAY_MS).max(1) as f32;
@@ -1504,6 +1507,7 @@ impl World {
                     ridership: ridership as f64,
                     stops: l.stops.len() as u32,
                     trains: l.trainset.map(|t| t.count as u32).unwrap_or(0),
+                    running_vehicles: line_load_n[i], // #2 actually dispatched this tick (≤ trains on a shared single-track block)
                     trainset_spec: l.trainset.map(|t| t.spec).unwrap_or(0),
                     headway_ms: l.headway_ms as f64,
                     disruption: l.disruption_units as f64,
