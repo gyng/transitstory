@@ -1074,7 +1074,8 @@ impl World {
     /// score never falls. A derived READ (f32, never hashed), like `coverage_score`.
     pub(crate) fn arcadia_coverage_score(&self) -> u8 {
         let total_dest: f32 = self.city.demand.cells.iter().map(|c| c.dest_w).sum();
-        let mut served = 0.0f32; // town DEST demand on an operational line
+        let span = (MAX_HEADWAY_MS - MIN_HEADWAY_MS).max(1) as f32;
+        let mut served = 0.0f32; // town DEST demand on an operational line, scaled by headway QUALITY
         let mut town_sinks = 0i64; // sink (town) stations — the conquest denominator
         for s in 0..self.stations.len() {
             if self.stations[s].removed {
@@ -1084,8 +1085,14 @@ impl World {
             let co = self.captured_origin.get(s).copied().unwrap_or(0.0);
             if cd > co && cd > 0.0 {
                 town_sinks += 1;
-                if self.best_headway_at(s).is_some() {
-                    served += cd;
+                // #25 headway QUALITY (mirrors coverage_score): a tighter headway credits MORE of the town's
+                // supply, so the Headway slider — the supply lever in arcadia — actually moves the Standing gauge.
+                // Was binary `is_some()`: a 2 s line and a 120 s line scored identically, breaking the
+                // "raised-headway Command has a readable post-Play delta" rule in the mode where headway IS supply.
+                // Quality in [0.5, 1.0]; MONOTONIC (a shorter headway only raises it). Derived read → no golden re-pin.
+                if let Some(h) = self.best_headway_at(s) {
+                    let frac_h = ((h - MIN_HEADWAY_MS) as f32 / span).clamp(0.0, 1.0);
+                    served += cd * (1.0 - 0.5 * frac_h);
                 }
             }
         }
