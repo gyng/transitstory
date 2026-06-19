@@ -6,7 +6,7 @@
 //              stats churn (onChange also fires on each setStats) doesn't cause redundant renders.
 // React NEVER touches the rAF render loop or the deck.gl overlay — those stay imperative in
 // GameLoop/Game. Commands still flow only through Game methods (which wrap SimBridge).
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ContextMenuState, Game } from "../../game";
 import type { GameLoop } from "../../sim/GameLoop";
 import type { Stats } from "../../types";
@@ -83,14 +83,18 @@ function uiEqual(a: GameUI, b: GameUI): boolean {
   );
 }
 
-interface Ctx {
+// #3 THREE separate contexts on INDEPENDENT identities, so a consumer re-renders ONLY when ITS slice changes:
+// core {game,loop} is session-stable (useMemo); `ui` flips on game.onChange; `stats` flips on the ~3 Hz push.
+// The old single combined value was a fresh object every GameProvider render, so all ~28 consumers reconciled
+// 3×/sec regardless of the slice they actually read — the MEMORY-noted FE jank. Hook signatures are unchanged.
+interface Core {
   game: Game;
   loop: GameLoop;
-  ui: GameUI;
-  stats: Stats;
 }
 
-const GameCtx = createContext<Ctx | null>(null);
+const CoreCtx = createContext<Core | null>(null);
+const UICtx = createContext<GameUI | null>(null);
+const StatsCtx = createContext<Stats | null>(null);
 
 export function GameProvider({
   game,
@@ -146,28 +150,39 @@ export function GameProvider({
     };
   }, [game, loop]);
 
-  return <GameCtx.Provider value={{ game, loop, ui, stats }}>{children}</GameCtx.Provider>;
-}
-
-function useCtx(): Ctx {
-  const c = useContext(GameCtx);
-  if (!c) throw new Error("useGame* must be used within <GameProvider>");
-  return c;
+  // core is session-stable so useGame/useLoop consumers never re-render from this seam; stats + ui flip on their
+  // own cadences. Nesting order is irrelevant — each Provider's value identity is independent.
+  const core = useMemo<Core>(() => ({ game, loop }), [game, loop]);
+  return (
+    <CoreCtx.Provider value={core}>
+      <StatsCtx.Provider value={stats}>
+        <UICtx.Provider value={ui}>{children}</UICtx.Provider>
+      </StatsCtx.Provider>
+    </CoreCtx.Provider>
+  );
 }
 
 /** The Game instance — call its methods (the only write path) from event handlers. Stable. */
 export function useGame(): Game {
-  return useCtx().game;
+  const c = useContext(CoreCtx);
+  if (!c) throw new Error("useGame* must be used within <GameProvider>");
+  return c.game;
 }
 /** The GameLoop — for speed knobs (speed is a loop knob, never a Command). Stable. */
 export function useLoop(): GameLoop {
-  return useCtx().loop;
+  const c = useContext(CoreCtx);
+  if (!c) throw new Error("useGame* must be used within <GameProvider>");
+  return c.loop;
 }
-/** Immediate UI-state slice (selection/mode/tool/transport/enabledModes/showDemand). */
+/** Immediate UI-state slice (selection/mode/tool/transport/enabledModes/showDemand). Re-renders only on a UI change. */
 export function useGameUI(): GameUI {
-  return useCtx().ui;
+  const c = useContext(UICtx);
+  if (!c) throw new Error("useGame* must be used within <GameProvider>");
+  return c;
 }
-/** The ~3 Hz Stats snapshot (ridership, per-line, coverage, money, time-of-day, …). */
+/** The ~3 Hz Stats snapshot (ridership, per-line, coverage, money, time-of-day, …). Re-renders only on a stats push. */
 export function useStats(): Stats {
-  return useCtx().stats;
+  const c = useContext(StatsCtx);
+  if (!c) throw new Error("useGame* must be used within <GameProvider>");
+  return c;
 }

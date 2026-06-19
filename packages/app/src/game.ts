@@ -2176,6 +2176,29 @@ export class Game {
 
   // --- rendering ---
 
+  // #25 Projected lng/lat paths per line (trunk + branches), cached by the bridge's TOPOLOGY version. Line
+  // geometry (polylineMm/branchPolylinesMm) is written ONLY in an apply() handler — command-only, never in
+  // tick() — so re-projecting every point on every buildView (~3 Hz AND every edit) was pure waste (~17k
+  // allocs/sec on a London-size network). The projection stays HERE (coords/geo is the one crossing); SimBridge
+  // only supplies the invalidation signal. Keyed by line id so it survives the !removed filter + reordering.
+  private _linePaths: Map<number, [number, number][][]> | null = null;
+  private _linePathsVersion = -1;
+  private linePaths(): Map<number, [number, number][][]> {
+    const v = this.bridge.topoVersion;
+    if (this._linePaths && this._linePathsVersion === v) return this._linePaths;
+    const m = new Map<number, [number, number][][]>();
+    for (const l of this.bridge.linesView()) {
+      if (l.removed) continue;
+      const projected = [l.polylineMm, ...(l.branchPolylinesMm ?? [])]
+        .filter((p) => p.length >= 2)
+        .map((p) => p.map(([x, y]) => mmToLngLat([x, y])) as [number, number][]);
+      m.set(l.id, projected);
+    }
+    this._linePaths = m;
+    this._linePathsVersion = v;
+    return m;
+  }
+
   private buildView(): RenderView {
     const stationsV = this.bridge.stationsView();
     const linesV = this.bridge.linesView();
@@ -2231,6 +2254,7 @@ export class Game {
     // (not dispatched), so this is correct in Build mode too — a freshly-assigned line lights up at once. A
     // line absent from perLine (or with 0) is bare TRACK ⇒ rendered as grey infrastructure, not a service.
     const servicedLines = new Set(this.bridge.stats().perLine.filter((l) => l.trains > 0).map((l) => l.lineId));
+    const projByLine = this.linePaths(); // #25 cached projection (topology-versioned) — not re-projected per buildView
     const lines = linesV
       .filter((l) => !l.removed)
       .flatMap((l) => {
@@ -2248,10 +2272,8 @@ export class Game {
         const serviced = servicedLines.has(l.id); // false ⇒ bare track (grey infra), true ⇒ coloured service
         // The trunk, plus one path per branch (P3) — all the same id/colour so a Y-shaped line
         // (e.g. the Circle Line's Marina Bay spur) draws as one coloured service.
-        const paths = [l.polylineMm, ...(l.branchPolylinesMm ?? [])];
-        return paths
-          .filter((p) => p.length >= 2)
-          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided, serviced, faction: isRival ? 1 : 0 }));
+        // #25 read the cached projection (computed once per topology change) rather than re-projecting every point.
+        return (projByLine.get(l.id) ?? []).map((path) => ({ id: l.id, color, path, mode, raided, serviced, faction: isRival ? 1 : 0 }));
       });
 
     // Rail-attack (#war): a "⚔ RAIDED" badge + recovery countdown at each cut line's midpoint, so the

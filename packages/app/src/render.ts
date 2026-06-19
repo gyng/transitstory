@@ -1631,11 +1631,9 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = [], scale: 
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
-      updateTriggers: {
-        getScale: lumps.map((d) => Math.round(d.load * 12)).join(","),
-        getOrientation: lumps.length,
-        getColor: lumps.map((d) => d.cargo).join(","),
-      },
+      // #22 no updateTriggers — `lumps` is a BRAND-NEW array each frame, so deck re-runs the accessors on the
+      // data-identity change anyway; the old getScale/getColor .map().join() only burned CPU/GC per frame for
+      // nothing. (If a stable cargo array is ever introduced, reintroduce a numeric trigger, not a join.)
     }),
     // Bus/ferry/air carry their cargo block on their OWN bed (no wagons to pull). Same `vehicle-cargo` id
     // the LOD filter already drops at overview.
@@ -1651,11 +1649,8 @@ export function vehicleLayers(dots: VehicleDot[], cars: CargoCar[] = [], scale: 
       sizeScale: 1,
       pickable: false,
       material: { ambient: 0.7, diffuse: 0.66, shininess: 12, specularColor: [50, 50, 55] },
-      updateTriggers: {
-        getScale: bodyCargo.map((d) => Math.round(d.load * 12)).join(","),
-        getOrientation: bodyCargo.length,
-        getColor: bodyCargo.map((d) => d.cargo ?? 255).join(","),
-      },
+      // #22 no updateTriggers — `bodyCargo` is a BRAND-NEW array each frame (deck re-runs the accessors on the
+      // data-identity change anyway); the .map().join() triggers only burned CPU/GC per frame for nothing.
     }),
   ];
 }

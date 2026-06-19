@@ -40,11 +40,19 @@ export class SimBridge {
   // lines runs once per Command (~3 Hz) instead of 60×/sec. Invalidated with the views on every write.
   private _lineColors: number[] | null = null;
   private _linePulls: boolean[] | null = null;
+  // #25 topology version — bumped on every invalidate (apply/rebuild). The Game caches its PROJECTED line paths
+  // keyed by this, so it re-projects only when geometry actually changes (command-only) instead of every ~3 Hz
+  // buildView. The projection itself stays in Game (coords/geo is the one crossing) — this is just the signal.
+  private _topoVersion = 0;
+  get topoVersion(): number {
+    return this._topoVersion;
+  }
   private invalidateViews(): void {
     this._linesView = null;
     this._stationsView = null;
     this._lineColors = null;
     this._linePulls = null;
+    this._topoVersion++;
   }
 
   /** The single write path. Returns the sim's events (assigned ids, auto-names, rejections). */
