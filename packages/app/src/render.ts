@@ -358,7 +358,7 @@ const NODE_CHARSET = "⛏✿♣✦⚒◆★✪⌂⚔";
  *  Hue is reserved for the player's network; the dead world stays grey so figure-ground holds. */
 function terrainColor(c: number): [number, number, number, number] {
   switch (c) {
-    case 4: return [34, 40, 52, 255];     // WATER — near-neutral cold sea (slightly darker/deader than land)
+    case 4: return [40, 88, 120, 255];    // WATER — coastal shelf, lighter than the deep-ocean void (shallow shore)
     case 10: return [128, 128, 124, 255]; // PLAIN — pale ash (buildable lowland)
     case 8: return [96, 100, 96, 255];    // FOREST — ~30 value below plain (fuel country), barely cooler
     case 7: return [96, 94, 92, 255];     // HILL — mid grey (rising ground)
@@ -432,11 +432,13 @@ export interface RenderView {
   demandCellM: number; // demand-grid cell pitch (m) → sizes the demand hexagons to tile the grid
   roadCellM: number; // buildability cell pitch (m) → sizes the road hexagons to tile the grid
   terrain: TerrainCell[]; // baked fantasy terrain hexes (the map itself) — empty for transit cities
+  coast: TerrainCell[]; // #ocean: WATER hexes that touch land → the shore-foam edge (empty for transit)
   terrainCellM: number; // fantasy hex size (m, = gridCellMm/1000) → the hexagon circumradius
   trees: TreeInstance[]; // fantasy 3D diorama: lowpoly pines on forest hexes (empty for transit / at overview)
   townSprawl: TreeInstance[]; // #23 TG1: ring-cell buildings around towns (multi-cell settlements; empty for transit / at overview)
   tideCells: TideCell[]; // fantasy S10c: corrupted decadence-CA hexes (the cold creep) — empty for transit
   tidePulse?: number; // fantasy: tide-frontier ring alpha (150..230), advanced on the ~3 Hz recompose (NOT per frame)
+  foamPhase?: number; // #ocean: shore-foam lap phase (0..23), advanced on the ~3 Hz recompose (NOT per frame)
   arcadia?: boolean; // fantasy ruleset → cold-violet demand overlay + arcadia LOD (warmth stays the empire's)
   resources: ResourceMarker[]; // baked fantasy supply-chain source nodes (POI dots) — empty for transit
   towns: TownMarker[]; // baked fantasy towns (sinks + conquest targets) — empty for transit
@@ -557,6 +559,32 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       filled: true,
       stroked: false,
       updateTriggers: { getFillColor: view.terrain.length, getElevation: view.terrain.length },
+    }),
+    // #ocean SHORE FOAM: bright surf on the coast WATER hexes (those touching land), on the sea surface
+    // (z≈0, under the network). A tiny lift kills z-fighting with the flat water; semi-transparent so the
+    // sea shows through, and a per-cell hash breaks the ring into textured surf. Built once at load (stable
+    // identity); the wave SHIMMER is added per-frame by the foam shader in composeAndSet. Empty for transit.
+    new ColumnLayer({
+      id: "shore-foam",
+      data: view.coast,
+      diskResolution: 6,
+      extruded: true,
+      getElevation: 3, // a few m proud of the water (≪ the relief scale) so depth-test puts foam ON the sea, not z-fighting it
+      radius: view.terrainCellM * 0.98,
+      radiusUnits: "meters",
+      angle: 30,
+      getPosition: (d: TerrainCell) => [d.lng, d.lat],
+      getFillColor: (d: TerrainCell) => {
+        const s = Math.sin(d.lng * 91.7 + d.lat * 47.3) * 43758.5;
+        const h = s - Math.floor(s); // per-cell 0..1 hash → each shore cell its own surf phase
+        // LAP: each cell swells at its own offset (the per-cell hash), so the surf TRAVELS the coast as a
+        // shimmer rather than blinking in unison. Advanced on the ~3 Hz recompose (two-clocks; never per rAF).
+        const lap = 0.5 + 0.5 * Math.sin(((view.foamPhase ?? 0) / 24) * 6.2832 + h * 6.2832);
+        return [208, 238, 243, Math.round(50 + 60 * h + 95 * lap)];
+      },
+      filled: true,
+      stroked: false,
+      updateTriggers: { getFillColor: [view.coast.length, view.foamPhase ?? 0] },
     }),
     // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain
     // (under the network/POIs). Empty for transit / at overview (LOD), so it's a no-op there.

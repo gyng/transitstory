@@ -84,12 +84,17 @@ export function createMap(
  *  ids can drift, so every override is guarded; the background fallback alone guarantees no white sheet.
  *  Idempotent + style-reload safe via the `styledata` retry. Call once in boot for arcadia cities only. */
 const DEAD_VELLUM = "#2b2d31"; // darker than terrain PLAIN [128,128,124] and WATER [34,40,52]
+// The off-continent void IS open ocean (the baked island floats on real sea), so paint the whole basemap a
+// deep muted ocean — background, water AND land fills alike, since the real geography under a fantasy
+// continent is irrelevant: a uniform sea is the cleanest figure-ground backdrop. Deeper + bluer than the
+// terrain's coastal WATER hexes (render.ts ~[24,60,86]) so the shelf reads shallow→deep shore-to-horizon.
+const DEEP_OCEAN = "#1c4262"; // [28,66,98] — deep open water (muted, but clearly reads as sea not void)
 export function applyArcadiaBasemap(map: maplibregl.Map): void {
   let done = false;
   const apply = () => {
     if (done) return;
     try {
-      map.setPaintProperty("background", "background-color", DEAD_VELLUM);
+      map.setPaintProperty("background", "background-color", DEEP_OCEAN);
     } catch {
       /* style may have no 'background' layer — the fills below still dead the canvas */
     }
@@ -101,9 +106,9 @@ export function applyArcadiaBasemap(map: maplibregl.Map): void {
         if (layer.type === "symbol") {
           map.setLayoutProperty(id, "visibility", "none"); // basemap place labels off (deck TextLayer owns text)
         } else if (layer.type === "fill" && /water|ocean|sea|river|lake|bay/i.test(id)) {
-          map.setPaintProperty(id, "fill-color", "#26282c");
+          map.setPaintProperty(id, "fill-color", DEEP_OCEAN);
         } else if (layer.type === "fill") {
-          map.setPaintProperty(id, "fill-color", "#2f3135");
+          map.setPaintProperty(id, "fill-color", DEEP_OCEAN); // land fills → ocean too (uniform sea backdrop)
           map.setPaintProperty(id, "fill-opacity", 1);
         } else if (layer.type === "line") {
           map.setPaintProperty(id, "line-color", "#303236");

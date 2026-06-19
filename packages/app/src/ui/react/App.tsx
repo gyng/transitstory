@@ -123,6 +123,7 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
     });
     game.buildTrees(); // #3d-trees — scatter lowpoly pines on the forest hexes for the 3D diorama
     game.buildTownSprawl(); // #23 TG1 — cluster buildings around towns so they read as multi-cell settlements
+    game.buildCoast(); // #ocean — detect the shoreline (WATER hexes touching land) for the surf-foam edge
   }
   const loop = new GameLoop(game);
   attachPointer(game);
@@ -165,12 +166,16 @@ async function boot(manifestPath: string, withNetwork: boolean, resume?: SaveBlo
       const wide = (city.raw.zoom ?? 10) - 2;
       const near = (city.raw.zoom ?? 10) + 3; // past DETAIL_ZOOM → the capital's detailed seat (icons/nodes show)
       const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      // #25 framing: start at the seat but BIAS the centre toward the continent's centroid, so the landmass
+      // fills the view instead of leaving the ocean-side ~40% empty (the playtest's camera-framing note).
+      const ctr = (city.raw.center as [number, number] | undefined) ?? [cap.lng, cap.lat];
+      const seat: [number, number] = [cap.lng + (ctr[0] - cap.lng) * 0.4, cap.lat + (ctr[1] - cap.lat) * 0.4];
       map.once("load", () => {
         if (reduce) {
-          map.jumpTo({ center: [cap.lng, cap.lat], zoom: near });
+          map.jumpTo({ center: seat, zoom: near });
         } else {
-          map.jumpTo({ center: city.raw.center, zoom: wide }); // full-continent establishing shot
-          map.flyTo({ center: [cap.lng, cap.lat], zoom: near, duration: 2600, essential: true });
+          map.jumpTo({ center: ctr, zoom: wide }); // full-continent establishing shot
+          map.flyTo({ center: seat, zoom: near, duration: 2600, essential: true });
         }
       });
     }

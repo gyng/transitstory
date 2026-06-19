@@ -171,6 +171,9 @@ export class Game {
    *  stable across frames (no per-frame rebuild). `terrainCellM` = the hex circumradius in metres. */
   terrain: TerrainCell[] = [];
   terrainCellM = 0;
+  /** #ocean: the WATER hexes that touch land — the shoreline ring, for the foam edge. Built once at load
+   *  (buildCoast) with stable identity (no per-frame rebuild); empty for transit cities. */
+  coast: TerrainCell[] = [];
   /** Fantasy 3D diorama (#3d-trees): lowpoly pines instanced on the forest hexes. Built once at load from
    *  the terrain (arcadia only; empty for transit). Stable identity (no per-frame rebuild). */
   trees: TreeInstance[] = [];
@@ -2310,11 +2313,13 @@ export class Game {
       demandCellM: this.demandCellM,
       roadCellM: this.build.cellMm / 1000, // mm → m (the buildability grid pitch)
       terrain: this.terrain, // baked fantasy terrain hexes (the map itself); empty for transit cities
+      coast: this.coast, // #ocean: the shore-foam edge (WATER hexes touching land); empty for transit
       terrainCellM: this.terrainCellM, // fantasy hex size (m) → the hexagon circumradius
       trees: this.ruleset === "arcadia" ? this.trees : [], // 3D diorama pines; LOD-dropped at overview in composeAndSet
       townSprawl: this.ruleset === "arcadia" ? this.townSprawl : [], // #23 TG1 multi-cell town buildings; LOD-dropped at overview
       tideCells: this.decadenceTideAt(), // fantasy S10c: the cold decadence creep (read on each refresh)
       tidePulse: this.nextTidePulse(), // tide-frontier ring alpha, advanced per ~3 Hz recompose (not per frame)
+      foamPhase: this.ruleset === "arcadia" ? this.nextFoamPhase() : 0, // #ocean shore-foam lap (~3 Hz, not per frame)
       arcadia: this.ruleset === "arcadia", // cold-violet demand overlay + arcadia LOD
 
       resources: this.resources, // baked fantasy supply-chain source nodes; empty for transit cities
@@ -2929,6 +2934,45 @@ export class Game {
     return this.terrainBboxMm;
   }
 
+  /** #ocean: detect the shoreline — WATER hexes adjacent to land — once at load, via a spatial hash on mm
+   *  centres (the hex lattice step = √3·circumradius). A WATER cell is coast if a non-WATER hex sits within
+   *  ~1.3 steps. Drives the foam edge; the slightly generous threshold yields a 1–2-cell band (good for surf). */
+  buildCoast(): void {
+    this.coast = [];
+    if (this.ruleset !== "arcadia" || this.terrain.length === 0 || this.terrainCellM <= 0) return;
+    const WATER = 4;
+    const step = Math.sqrt(3) * this.terrainCellM * 1000; // centre-to-centre lattice pitch (mm)
+    if (step <= 0) return;
+    const mm: [number, number][] = this.terrain.map((c) => lngLatToMm([c.lng, c.lat]));
+    const bkey = (gx: number, gy: number) => `${gx},${gy}`;
+    const landByBucket = new Map<string, [number, number][]>();
+    this.terrain.forEach((c, i) => {
+      if (c.c === WATER) return;
+      const k = bkey(Math.floor(mm[i][0] / step), Math.floor(mm[i][1] / step));
+      const arr = landByBucket.get(k);
+      if (arr) arr.push(mm[i]);
+      else landByBucket.set(k, [mm[i]]);
+    });
+    const thr2 = (1.3 * step) ** 2;
+    this.terrain.forEach((c, i) => {
+      if (c.c !== WATER) return;
+      const [x, y] = mm[i];
+      const gx = Math.floor(x / step), gy = Math.floor(y / step);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const land = landByBucket.get(bkey(gx + dx, gy + dy));
+          if (!land) continue;
+          for (const [lx, ly] of land) {
+            if ((lx - x) ** 2 + (ly - y) ** 2 <= thr2) {
+              this.coast.push(c);
+              return; // this WATER cell is shore — done, next cell
+            }
+          }
+        }
+      }
+    });
+  }
+
   /** A* a land route between two lng/lat nodes over the buildability grid: 8-neighbour, blocked on WATER
    *  cells and anything off the terrain bounds. Returns a decimated lng/lat polyline (start → … → end) that
    *  hugs the coast and skirts the sea, or null if no land path exists (then the route is dropped — no cart
@@ -3295,6 +3339,14 @@ export class Game {
   private nextTidePulse(): number {
     this.tidePhase = (this.tidePhase + 1) % 12;
     return 150 + Math.round((80 * Math.abs(6 - this.tidePhase)) / 6); // triangle 150..230
+  }
+
+  /** #ocean: shore-foam lap phase (0..23), advanced one step per ~3 Hz recompose → a slow ~8 s surf swell.
+   *  Integer-quantized so deck's updateTriggers only fire on a real change (two-clocks: NOT per rAF). */
+  private foamPhase = 0;
+  private nextFoamPhase(): number {
+    this.foamPhase = (this.foamPhase + 1) % 24;
+    return this.foamPhase;
   }
 
   composeAndSet(vehicles: VehicleDot[], cars: CargoCar[], peeps: Layer | null): void {
