@@ -45,10 +45,13 @@ export class GameLoop {
           steps++;
         }
         alpha = this.acc / TICK_MS;
+        // #25 perf: compose the deck per-frame ONLY while running. In BUILD mode nothing in the sim moves, so
+        // the per-frame composeAndSet — ~10 WASM motion round-trips (army/raider/rival/spell) + the vehicle/
+        // peep/ambient rebuild — is pure waste. refresh() already keeps the deck current on every build edit +
+        // the 3 Hz slice (which also drives the foam/tide animation), so the build-mode picture stays live.
+        this.renderVehicles(alpha);
       }
-
-      this.renderVehicles(alpha);
-      this.game.drawEffects(now); // spatial juice canvas (ripples/flash/throbs) — rides this same rAF
+      this.game.drawEffects(now); // spatial juice canvas (ripples/flash/throbs) — rides this same rAF (build too)
     } finally {
       this.raf = requestAnimationFrame(this.frame);
     }
