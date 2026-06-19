@@ -37,7 +37,12 @@ const RAIDER_DAMAGE: i64 = 300;
 /// arrival rates. (A sub-unit accumulator carries the remainder so a slow heal isn't truncated to 0.)
 const BREACH_HEAL_PER_S: i64 = 6;
 /// A raider within this range (mm) of a station ON A BUILT LINE is cut down (coverage = defence).
-pub(crate) const DEFENSE_RANGE_MM: i64 = 4_000_000;
+/// #25 was 4_000_000 — at ~8 catchment-radii a covered network annihilated raiders long before they were
+/// ever FELT (the "too easy" concern: only the rail-attack seam ever landed, and only on sparse spans). At
+/// 2_500_000 (~5 catchment-radii) the cordon still means "coverage = defence" and stays strictly above
+/// RAIL_ATTACK_RANGE_MM (a defended station still cuts before the adjacent track), but a SPARSE network now
+/// leaks raiders that reach the seat — real, felt pressure that a denser network earns its way out of.
+pub(crate) const DEFENSE_RANGE_MM: i64 = 2_500_000;
 /// Rail-attack (#war): a raider that slips the station cordon and reaches an OPERATIONAL line's TRACK
 /// within this range (mm of the stop-to-stop polyline) CUTS it — freezing its trains for `RAIL_DISABLE_MS`
 /// — and spends itself (despawn). Strictly SMALLER than `DEFENSE_RANGE_MM`, so a defended station always

@@ -39,7 +39,11 @@ const GARRISON_MAX: i64 = 500;
 /// AT capture and FROZEN (a captured town never grows). 0 for a fresh frontier town (size 0).
 const BOUNTY_GOLD_PER_SIZE: i64 = 400; // tribute per size (size-5 ≈ 2000)
 const BOUNTY_MANPOWER_BASE: i64 = 4; // manpower for any capture
-const BOUNTY_MANPOWER_PER_SIZE: i64 = 8; // + per size (size-5 = 4+40 ≈ 5 legions at LAUNCH_COST 8)
+// #25 was 8 — the linear manpower bounty had no diminishing term: a size-5 capture minted ~44 manpower
+// (~5.5 legions), so each conquest funded ~5 more → the next siege sooner → a flattening late-game runway
+// where the first town is hard and every subsequent one nearly free. At 3 a size-5 mints 4+15 = 19 (~2.4
+// legions): a bigger siege still pays MORE, but the geometric refuel that trivialised the snowball is gone.
+const BOUNTY_MANPOWER_PER_SIZE: i64 = 3; // + per size (size-5 = 4+15 ≈ 2.4 legions at LAUNCH_COST 8)
 /// Hard cap on concurrent legions — bounds the separate SoA (a runaway-launch backstop; the proper
 /// per-tick bench gate is S10). Launches past this are skipped (logged-by-omission).
 const MAX_ARMIES: usize = 256;
