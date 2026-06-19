@@ -124,7 +124,9 @@ body {
     color 0.16s ease,
     border-color 0.16s ease;
 }
-#ui button:active {
+/* #25 no tactile press on inert controls (native-disabled OR aria-disabled gated keys) — the press would
+   contradict the dimmed "off" look with a false sub-100ms "I fired" cue. */
+#ui button:not(:disabled):not([aria-disabled="true"]):active {
   transform: translateY(1px) scale(0.985);
 }
 
@@ -169,7 +171,9 @@ body {
 /* Escalating-dread throb for a CRITICAL, rising decadence gauge (the doom clock) — a slow red wash so the
    threat is felt peripherally without distracting. Off under prefers-reduced-motion (the block below). */
 .ot-pulse {
-  animation: ot-pulse 1.1s ease-in-out infinite;
+  /* #25 the period comes from --ot-doom (set inline from the ETA-to-fall, ~3 Hz) so the dread ESCALATES as the
+     realm nears collapse; falls back to 1.1s where the var isn't set. */
+  animation: ot-pulse var(--ot-doom, 1.1s) ease-in-out infinite;
 }
 @keyframes ot-pulse {
   0%,
@@ -220,7 +224,10 @@ body {
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
   font: 600 13px system-ui, sans-serif;
 }
-.ot-key:hover {
+/* #25 don't brighten on hover when the key is inert — gated keys use aria-disabled (to stay focusable for the
+   tooltip) rather than native disabled, so without this guard they lit up + (below) pressed while doing nothing:
+   a false "I fired" acknowledgement. The opacity/saturate dimming already says "off". */
+.ot-key:not(:disabled):not([aria-disabled="true"]):hover {
   background: linear-gradient(180deg, #424a56 0%, #333a44 100%);
 }
 /* A LIT key — the active control: the accent glows from within, label brightens. Tone variants for the

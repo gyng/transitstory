@@ -343,10 +343,13 @@ export class Effects {
       cx.lineCap = "round";
       cx.stroke();
       // (b) a bright head gliding from start → end (energy flowing into the new line).
-      const head = this.pointAtFrac(scr, easeOut(Math.min(1, t * 1.15)));
+      const headFrac = easeOut(Math.min(1, t * 1.15));
+      const head = this.pointAtFrac(scr, headFrac);
       if (head) {
         const grad = cx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 9);
-        grad.addColorStop(0, `rgba(255,255,255,${(0.9 * (1 - t)).toFixed(3)})`);
+        // #25 the head DIMS as it arrives (headFrac→1) instead of parking motionless at the terminus for the
+        // final ~13% while only its alpha fades — energy flows in and out; the soft full-line glow carries the tail.
+        grad.addColorStop(0, `rgba(255,255,255,${(0.9 * (1 - t) * (1 - headFrac)).toFixed(3)})`);
         grad.addColorStop(1, "rgba(255,255,255,0)");
         cx.fillStyle = grad;
         cx.beginPath();

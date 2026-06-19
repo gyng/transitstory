@@ -859,6 +859,15 @@ export class Game {
     const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));
     this.bridge.apply(cmd.assignTrainset(line, this.lineSpec(line), count));
     this.refresh();
+    // #25 a sub-100ms echo on the drag-end commit — Headway is one of the two locked levers but was the only one
+    // with NO felt ack (place ripples + chimes, connect flashes + chimes). A soft tick + a faint pulse at the
+    // line midpoint. Only the user drag reaches setHeadwayMs (the auto-derive path goes via assignTrainset).
+    audio.tick();
+    const lv = this.bridge.linesView()[line];
+    if (lv && !lv.removed && lv.polylineMm.length >= 2) {
+      const [mlng, mlat] = mmToLngLat(lv.polylineMm[Math.floor(lv.polylineMm.length / 2)]);
+      this.effects.pulse(mlng, mlat);
+    }
   }
 
   private lineTrains(line: number): number {
@@ -889,6 +898,7 @@ export class Game {
 
   setMode(mode: Mode): void {
     this.mode = mode;
+    this.updateMapCursor(); // #25 Run uses the grab cursor; Build restores the armed-tool cue
     this.bridge.apply(cmd.setRunning(mode === "run"));
     if (mode === "run") this.cancelDraft();
     else this.effects.clear(); // back to Build — drop any lingering run-mode throbs/bursts
@@ -940,7 +950,31 @@ export class Game {
     }
     if (tool !== this.tool) audio.tick();
     this.tool = tool;
+    this.updateMapCursor();
     this.refresh();
+  }
+
+  /** #25 The map canvas cursor signals the ARMED tool (the CAD/OpenTTD convention pointer.ts cites): a crosshair
+   *  when about to PLACE/draw, a destructive cue for Bulldoze, and MapLibre's grab for Select + all of Run — so
+   *  "about to place" vs "about to demolish" vs "panning" is legible on hover. MapLibre re-asserts a grab during
+   *  an ACTIVE drag; the armed-but-idle state (the 99% read) wins. Called on every tool/mode change. */
+  private updateMapCursor(): void {
+    const canvas = this.map.getCanvas();
+    if (!canvas) return;
+    if (this.mode === "run") {
+      canvas.style.cursor = ""; // running — pan/inspect with MapLibre's grab
+      return;
+    }
+    switch (this.tool) {
+      case "bulldozer":
+        canvas.style.cursor = "not-allowed"; // DESTRUCTIVE — a deliberate hovering warning
+        break;
+      case "select":
+        canvas.style.cursor = ""; // inspect/pan — MapLibre's grab
+        break;
+      default:
+        canvas.style.cursor = "crosshair"; // station/line/service/barracks/bounty — about to PLACE
+    }
   }
 
   /** Select the transport mode for new construction (chorded bottom bar). Switching mode

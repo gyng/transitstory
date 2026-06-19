@@ -136,7 +136,10 @@ function FantasyStatsBar({ s }: { s: Stats }) {
         aria-valuemin={0}
         aria-valuemax={100}
         className={critical ? "ot-pulse" : undefined}
-        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help", padding: "2px 6px", borderRadius: 7 }}
+        // #25 ESCALATING dread: the pulse PERIOD shortens as the ETA-to-fall drops (the comment always promised
+        // this; the computed eta was thrown away). Updates on the ~3 Hz stats slice, no per-frame work; .ot-pulse
+        // reads var(--ot-doom). Clamped 0.55-1.3s so it stays a heartbeat, never a strobe.
+        style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help", padding: "2px 6px", borderRadius: 7, "--ot-doom": `${Math.max(0.55, Math.min(1.3, (eta ?? 30) / 26)).toFixed(2)}s` } as CSSProperties}
         title={
           (eta !== null
             ? `The Decadence — spreading corruption rising ${dt!.perMin.toFixed(1)}/min. At this rate the realm falls in ~${Math.max(1, Math.round(eta))} min. Conquer towns and Purge to hold it back.`

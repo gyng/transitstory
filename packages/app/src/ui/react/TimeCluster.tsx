@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useGame, useGameUI, useLoop, useStats } from "./GameContext";
 import { Button } from "./keys";
+import { audio } from "../../fx/audio";
 
 // A doubling gear ladder (1×→8×) for fine control + a max fast-forward. The sim speed is a GameLoop
 // knob (loop.setSpeed), never a Command — speed never touches sim state.
@@ -57,6 +58,7 @@ export function TimeCluster() {
   // Ignored while typing in a field and for ctrl/meta/alt chords.
   useEffect(() => {
     const setSpd = (mult: number) => {
+      if (mult !== speedRef.current) audio.tick(); // #25 the speed ladder was the only mute console key
       setSpeed(mult);
       loop.setSpeed(mult);
     };
@@ -120,6 +122,7 @@ export function TimeCluster() {
           label={label}
           testid={`speed-${mult}`}
           onClick={() => {
+            if (mult !== speed) audio.tick(); // #25 a speed-ladder click now chirps like the other console keys
             setSpeed(mult);
             loop.setSpeed(mult);
           }}
