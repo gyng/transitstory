@@ -17,11 +17,10 @@ use crate::world::World;
 /// (the flat `forge_stock` layout is `station * N_COMMODITIES + commodity`, a Canonical byte order).
 pub const N_COMMODITIES: usize = 8;
 pub const ORE: usize = 0; // raw → INGOT → ARMS (the war chain)
-#[allow(dead_code)]
+// (these three are NOT dead — tech::channel_of routes each delivered commodity into the Mana/Manpower
+// channels (the S11 split), so the #[allow(dead_code)] was both inert and misleading. Removed.)
 pub const GRAIN: usize = 1; // raw → FLOUR → BREAD (the town chain)
-#[allow(dead_code)]
 pub const AETHER: usize = 2;
-#[allow(dead_code)]
 pub const FUEL: usize = 3;
 /// First non-raw commodity index: `0..FIRST_MID` are raws (mined/grown at sources); `FIRST_MID..` are
 /// PROCESSED goods (mids 4..6, finals 6..8) a PROCESSOR node makes from raws (S7e multi-stage). A station
@@ -152,14 +151,12 @@ pub(crate) fn produce(world: &mut World, dt_ms: i64) {
             continue; // only towns (net sinks) consume into tribute
         }
         let base = s * N_COMMODITIES;
-        let recipe = world.station_recipe.get(s);
-        let multi = recipe.map(|r| r.len() >= 2).unwrap_or(false);
-        if multi {
-            // S7e-2 LIEBIG: a sink with a real ≥2-commodity recipe (a BREAD town = grain+fuel, an ARMS
-            // barracks = ingot+aether) yields output = MIN over its required inputs — the scarcer input
-            // throttles, so you must supply BOTH chains. Consume `limit` of EACH required commodity;
-            // non-recipe goods delivered here are left untouched (the sink doesn't want them).
-            let r = recipe.unwrap();
+        // S7e-2 LIEBIG: a sink with a real ≥2-commodity recipe (a BREAD town = grain+fuel, an ARMS barracks =
+        // ingot+aether) yields output = MIN over its required inputs — the scarcer input throttles, so you must
+        // supply BOTH chains. Bind with a ≥2 guard so this arm holds a PROVEN recipe `r` — no `.unwrap()` on the
+        // tick path (AGENTS: tick() never panics). A 0/1-commodity or recipe-less sink falls through to consume-all.
+        if let Some(r) = world.station_recipe.get(s).filter(|r| r.len() >= 2) {
+            // Consume `limit` of EACH required commodity; non-recipe goods delivered here are left untouched.
             let limit = r.iter().map(|&c| world.forge_stock[base + c as usize]).min().unwrap_or(0);
             if limit > 0 {
                 let mut mana = 0i64;

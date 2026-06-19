@@ -87,7 +87,9 @@ export const CHANNELS: Record<Channel, { glyph: string; statKey: "tribute" | "ma
   mana: { glyph: "✦", statKey: "mana" },
   manpower: { glyph: "⚔", statKey: "manpower" },
 };
-/** The tech table — MUST mirror crates/sim/tech.rs `TECHS` (id = index, mana cost, prereq). All tech is
+/** The tech table — the STRUCTURAL fields (id = index, mana cost, prereq) MUST mirror crates/sim/tech.rs
+ *  `TECHS`; `name`/`blurb` are the UI's player-facing strings and intentionally differ from the Rust constant
+ *  identifiers (e.g. id 8 "Forced March" = tech.rs WAR_MARCH, id 9 "Ley Tap" = AETHERIC_FONT). All tech is
  *  bought with MANA (the sole tech resource). `tier` + `prereq` drive the panel's tree layout + gating.
  *  The HUD reads `Stats.techUnlocked` (bit per id) + `Stats.mana` to render locked/affordable/owned. */
 export interface TechDef { id: number; name: string; cost: number; tier: number; prereq: number; blurb: string }

@@ -26,7 +26,7 @@ pub enum Command {
         /// Circular line (last stop connects back to the first) vs out-and-back.
         #[serde(default)]
         loop_line: bool,
-        /// Transport mode: 0=rail,1=bus,2=ferry,3=air.
+        /// Transport mode: 0=rail,1=bus,2=ferry,3=air,4=heavy.
         #[serde(default)]
         mode: u8,
         /// Literal geometry — follow supplied (imported OSM) waypoints directly instead of the

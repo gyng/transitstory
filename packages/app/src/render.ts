@@ -2000,8 +2000,8 @@ interface GlowPoint {
 }
 
 /** Warm NIGHT-LIGHT glows at the settled places (capital + towns + resource camps), fading in with the
- *  0..1 `night` factor — lit windows / hearth-fires against the cool dark. Two stacked discs per point:
- *  a soft metre-radius bloom + a small pixel hot-core. Arcadia only; the caller skips it by day
+ *  0..1 `night` factor — lit windows / hearth-fires against the cool dark. Three stacked PIXEL-radius discs
+ *  per point (a wide bloom + a mid ring + a bright hot-core). Arcadia only; the caller skips it by day
  *  (night≈0) and at the strategic overview. Bounded (~50 points) — cheap, `depthTest:false` so the glow
  *  reads over the tilted terrain. Rides the per-frame compose like the other motion layers. */
 export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[], night: number): Layer[] {

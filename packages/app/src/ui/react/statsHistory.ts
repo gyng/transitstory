@@ -95,10 +95,6 @@ export function cashTrend(balance: number): { perDay: number; runwayDays: number
   return { perDay, runwayDays };
 }
 
-export function getHistory(): Sample[] {
-  return HISTORY;
-}
-
 /** Per-sim-minute flow rate of the three fantasy economy channels, over the recent window — the "am I
  *  net-positive?" legibility a logistics economy needs (gold/mana/manpower velocity, not just stock). A
  *  sim-minute = 60_000 sim-ms (the playtest's telemetry granularity). Null until there's enough signal. */

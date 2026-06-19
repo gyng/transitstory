@@ -83,11 +83,11 @@ export function createMap(
  *  fallback), dead water/land fills, hidden labels, near-invisible road/boundary lines. Hosted CARTO layer
  *  ids can drift, so every override is guarded; the background fallback alone guarantees no white sheet.
  *  Idempotent + style-reload safe via the `styledata` retry. Call once in boot for arcadia cities only. */
-const DEAD_VELLUM = "#2b2d31"; // darker than terrain PLAIN [128,128,124] and WATER [34,40,52]
 // The off-continent void IS open ocean (the baked island floats on real sea), so paint the whole basemap a
 // deep muted ocean — background, water AND land fills alike, since the real geography under a fantasy
 // continent is irrelevant: a uniform sea is the cleanest figure-ground backdrop. Deeper + bluer than the
-// terrain's coastal WATER hexes (render.ts ~[24,60,86]) so the shelf reads shallow→deep shore-to-horizon.
+// terrain's coastal WATER shelf (render.ts [40,88,120]) so the sea ramps shallow→deep shore-to-horizon
+// (shelf [40,88,120] over deep [28,66,98] ≈ +12/+22/+22).
 const DEEP_OCEAN = "#1c4262"; // [28,66,98] — deep open water (muted, but clearly reads as sea not void)
 export function applyArcadiaBasemap(map: maplibregl.Map): void {
   let done = false;
