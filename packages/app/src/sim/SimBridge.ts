@@ -36,9 +36,15 @@ export class SimBridge {
   // per rAF frame. Cache here, invalidate on every write. READ-ONLY for callers (they already are).
   private _linesView: LineView[] | null = null;
   private _stationsView: StationView[] | null = null;
+  // #25 per-line derived arrays the vehicle builders read EVERY rAF frame — cached so the .map() over all
+  // lines runs once per Command (~3 Hz) instead of 60×/sec. Invalidated with the views on every write.
+  private _lineColors: number[] | null = null;
+  private _linePulls: boolean[] | null = null;
   private invalidateViews(): void {
     this._linesView = null;
     this._stationsView = null;
+    this._lineColors = null;
+    this._linePulls = null;
   }
 
   /** The single write path. Returns the sim's events (assigned ids, auto-names, rejections). */
@@ -250,6 +256,17 @@ export class SimBridge {
    *  (see `stationsView`). Collapses the roster's former O(lines²) per-row decode to O(lines). */
   linesView(): LineView[] {
     return (this._linesView ??= this.sim.linesView() as LineView[]);
+  }
+
+  /** Per-line colour (u32), cached (#25) — derived from linesView, invalidated on every write. The vehicle
+   *  builders read this per-frame; caching avoids a fresh .map() over all lines 60×/sec. */
+  lineColors(): number[] {
+    return (this._lineColors ??= this.linesView().map((l) => l.color));
+  }
+
+  /** Per-line "pulls cargo wagons" flag (rail mode 0 / heavy mode 4), cached like lineColors (#25). */
+  linePulls(): boolean[] {
+    return (this._linePulls ??= this.linesView().map((l) => l.mode === 0 || l.mode === 4));
   }
 
   /** OD "desire lines" for a selected station — its top destinations by gravity pull (read-only,

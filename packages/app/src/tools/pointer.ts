@@ -165,7 +165,10 @@ export function attachPointer(game: Game): void {
     // commits"): in the line tool, the station a click/drag would chain; in the bulldozer, the
     // station a click would demolish. Cleared for every other tool.
     const snappable = game.mode === "build" && (isDrawTool(game.tool) || game.tool === "bulldozer");
-    const snap = snappable ? game.nearestStation(e.point.x, e.point.y) : null;
+    // #25 one nearest-station sweep per move — reused for the snap candidate here AND the hover catchment
+    // below (was two full station scans + a map.project() each, per mousemove).
+    const nearId = game.nearestStation(e.point.x, e.point.y);
+    const snap = snappable ? nearId : null;
     const snapChanged = snap !== game.snapStation;
     game.snapStation = snap;
 
@@ -190,9 +193,11 @@ export function attachPointer(game: Game): void {
     }
     // Drag-to-draw: chain any station the cursor reaches, rubber-banding to the cursor.
     if (dragging === "draw") {
-      if (snap !== null) game.extendDraft(snap);
+      // #25 set the cursor FIRST so a chaining extendDraft's own refresh() paints the new cursor too — this was
+      // a DOUBLE full-topo rebuild per move (extendDraft refreshed, then the branch refreshed again).
       game.cursor = [e.lngLat.lng, e.lngLat.lat];
-      game.refresh();
+      if (snap !== null) game.extendDraft(snap);
+      else game.refresh();
       return;
     }
     // Live blueprint cursor while drawing (Track or Service).
@@ -215,8 +220,8 @@ export function attachPointer(game: Game): void {
       game.signalSnap = null;
       sigChanged = true;
     }
-    // Hover highlight: show the nearest station's catchment.
-    const id = game.nearestStation(e.point.x, e.point.y);
+    // Hover highlight: show the nearest station's catchment (reuses the single nearId sweep computed above).
+    const id = nearId;
     if (id !== game.hoveredStation || snapChanged || sigChanged) {
       game.hoveredStation = id;
       game.refresh();

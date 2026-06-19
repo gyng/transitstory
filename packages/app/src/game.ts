@@ -3415,6 +3415,12 @@ export class Game {
     return this.foamPhase;
   }
 
+  /** #25 cached static-position night glow (capital/towns/resource camps) — rebuilt only when nightFactor
+   *  moves (the 3 Hz sim-hour slice), not per rAF frame. The train headlamps (vehicleNightGlow) stay
+   *  per-frame because they actually move; only these ~50 fixed-place discs were being rebuilt 60×/sec. */
+  private _nightGlow: Layer[] | null = null;
+  private _nightGlowFactor = -1;
+
   composeAndSet(vehicles: VehicleDot[], cars: CargoCar[], peeps: Layer | null): void {
     const peep = peeps ? [peeps] : [];
     // #perf: the war / rival / spell motion builders each cross WASM EVERY frame (armyPositions, raider*,
@@ -3486,7 +3492,14 @@ export class Game {
     // Night LIGHTS (#5e): warm glows at the capital + towns + resource camps that fade in as night
     // falls (game.nightFactor, set on the 3 Hz sim-hour slice). Above the terrain/towns, below the
     // vehicles. Arcadia + zoomed-in only; an empty array by day (nightFactor≈0) → zero cost.
-    const nightGlow = this.ruleset === "arcadia" && detail ? nightGlowLayers(this.towns, this.resources, this.nightFactor) : [];
+    let nightGlow: Layer[] = [];
+    if (this.ruleset === "arcadia" && detail) {
+      if (this._nightGlow === null || this._nightGlowFactor !== this.nightFactor) {
+        this._nightGlow = nightGlowLayers(this.towns, this.resources, this.nightFactor); // rebuild only on a nightFactor change
+        this._nightGlowFactor = this.nightFactor;
+      }
+      nightGlow = this._nightGlow;
+    }
     // Train headlamps: a warm glow under each running train at night, beneath the loco mesh.
     const vehGlow = this.ruleset === "arcadia" && detail ? vehicleNightGlow(vehicles, this.nightFactor) : [];
     let layers = [...below, ...nightGlow, ...ambient, ...signals, ...placedSig, ...rivalGhost, ...vehGlow, ...vlayers, ...intentArcs, ...raiderIntentArcs, ...rivalIntentArcs, ...armyL, ...raider, ...rivalHost, ...spells, ...peep, ...above];
@@ -3499,9 +3512,9 @@ export class Game {
     this.overlay.setProps({ layers });
   }
 
-  /** Per-line colour table indexed by line id (for vehicle tint). */
+  /** Per-line colour table indexed by line id (for vehicle tint) — the cached SimBridge view (#25). */
   lineColors(): number[] {
-    return this.bridge.linesView().map((l) => l.color);
+    return this.bridge.lineColors();
   }
 
   /** Build vehicle dots interpolated at `alpha` (0 = previous tick, →1 = current), each carrying
@@ -3515,11 +3528,12 @@ export class Game {
     const angles = this.bridge.vehicleAngles();
     const loads = this.bridge.vehicleLoads(); // interleaved [onboard, capacity] per vehicle
     const cargo = this.bridge.vehicleCargo(); // dominant commodity per vehicle (255 = empty/transit)
-    const lines = this.bridge.linesView();
-    const colors = lines.map((l) => l.color);
+    // #25 cached per-line tables (rebuilt once per Command via SimBridge, not per frame) — vehicleDotsAt runs
+    // every rAF, so the old `linesView().map(...)` allocated two arrays over all lines 60×/sec for static data.
+    const colors = this.bridge.lineColors();
     // A rail/heavy line pulls cargo WAGONS (#multi-car) → its loco carries no on-body block (the load
     // shows on the trailing cars). tmode RAIL=0, HEAVY=4 (trainset.rs). Bus/ferry/air pull nothing.
-    const pulls = lines.map((l) => l.mode === 0 || l.mode === 4);
+    const pulls = this.bridge.linePulls();
     const dots: VehicleDot[] = [];
     for (let i = 0; i < cur.length; i += 2) {
       const vi = i / 2;
