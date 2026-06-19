@@ -925,14 +925,20 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       id: "track-rails",
       data: view.lines.filter((d) => d.serviced === false),
       getPath: (d: LinePath) => d.path,
-      getColor: [122, 128, 136, 205],
-      getWidth: 8,
+      // #25 the rival lays bare TRACK (no service) to march its hosts — so it reads here, not in the coloured
+      // "lines" layer. Render the rival's track crimson + wider so the enemy's advance is a threat, not the
+      // anonymous grey of the player's own unserviced infra.
+      getColor: (d: LinePath) => (d.faction === 1 ? [216, 64, 52, 235] : [122, 128, 136, 205]),
+      getWidth: (d: LinePath) => (d.faction === 1 ? 11 : 8),
       widthUnits: "pixels",
       widthMinPixels: 5,
       capRounded: true,
       jointRounded: true,
       pickable: true,
-      updateTriggers: { getColor: view.lines.filter((d) => d.serviced === false).length },
+      updateTriggers: {
+        getColor: view.lines.filter((d) => d.serviced === false).length + 7919 * view.lines.filter((d) => d.faction === 1).length,
+        getWidth: view.lines.filter((d) => d.faction === 1 && d.serviced === false).length,
+      },
     }),
     new PathLayer({
       id: "lines",
@@ -1057,23 +1063,28 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // Radius grows with cumulative boardings (sqrt, capped) so the static dot field becomes a
       // usage heatmap — busy stations swell. Selected adds a bump. Kept SMALLER than the line width
       // so 177 stops read as ticks ON the ribbon, not a swarm of beads obscuring it.
-      getRadius: (d: StationDot) => (d.selected ? 7 : 4) + Math.min(4, Math.sqrt(d.boardings) * 0.35),
+      // #25 a rival HOLD (faction 1) gets a larger base radius — the enemy realm expands by SEIZING nodes
+      // (its rail isn't drawn as a line), so its holds ARE its visible advance and must read at strategic zoom.
+      getRadius: (d: StationDot) => (d.faction === 1 ? 6.5 : d.selected ? 7 : 4) + Math.min(4, Math.sqrt(d.boardings) * 0.35),
       radiusUnits: "pixels",
       radiusMinPixels: 3,
       // Selected fill = selection blue (ties to its blue catchment ring). Otherwise an ORPHANED
       // station (no operational line serving it) is muted grey and a SERVED one is near-black, so
       // stations visibly "light up" as you connect + run them (place→draw→assign cause→effect).
-      // #13: a RIVAL-owned node (faction 1) reads crimson — the enemy realm's holds stand out from the
-      // player's served/orphaned greys at a glance (selection still wins for the active object).
+      // #13/#25: a RIVAL-owned node (faction 1) reads as a HOT threat — a brighter, more-saturated crimson
+      // so the enemy realm's holds stand out from the player's served/orphaned greys at a glance.
       getFillColor: (d: StationDot) =>
-        d.selected ? [0, 114, 178] : d.faction === 1 ? [190, 55, 55] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
+        d.selected ? [0, 114, 178] : d.faction === 1 ? [228, 52, 44] : d.serving > 0 ? [28, 32, 36] : [120, 126, 134],
       stroked: true,
-      getLineColor: [255, 255, 255, 230],
+      // #25 a hostile AMBER ring on rival holds (vs the player's white) — the enemy reads as menacing, not
+      // just "another colour", and the warm ring pops the crimson off the grey terrain.
+      getLineColor: (d: StationDot) => (d.faction === 1 ? [255, 198, 120, 245] : [255, 255, 255, 230]),
       lineWidthMinPixels: 1,
       pickable: true,
       updateTriggers: {
         getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}:${s.faction ?? 0}`).join(","),
-        getRadius: view.stations.map((s) => `${s.selected}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
+        getLineColor: view.stations.map((s) => s.faction ?? 0).join(","),
+        getRadius: view.stations.map((s) => `${s.selected}:${s.faction ?? 0}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
       },
     }),
     // Ghost station (fantasy "confirm build"): a translucent selection-blue disc at the snapped hex
