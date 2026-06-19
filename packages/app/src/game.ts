@@ -245,6 +245,10 @@ export class Game {
   /** Pending (un-confirmed) station: a ghost at the snapped hex cell the player clicked, awaiting the
    *  confirm bar's ✓/✗ (fantasy "confirm build"). Client-side only — no Command until confirmed. */
   pendingStation: { lng: number; lat: number; xMm: number; yMm: number } | null = null;
+  /** #25 Station-tool HOVER preview cell (render-only, client-side) — the snapped cell the cursor is over,
+   *  `blocked` if the one-per-cell rule would reject it. Drives the pre-commit ghost; cleared on tool change /
+   *  mouseleave. No Command, no optimistic state. */
+  stationHoverCell: { lng: number; lat: number; blocked: boolean } | null = null;
   /** In-progress line draft (ordered station ids) + live cursor lng/lat (T11). */
   draft: number[] = [];
   cursor: [number, number] | null = null;
@@ -636,6 +640,32 @@ export class Game {
     for (const cb of this.onChange) cb();
   }
 
+  /** #25 Station-tool hover preview: snap the cursor to its hex cell + flag whether the one-per-cell rule
+   *  blocks it, so the player sees WHERE a click will drop a station (red if blocked) BEFORE committing — the
+   *  pre-commit "highlight the snap candidate" feedback the place gesture lacked. Render-only (no Command,
+   *  no sim read beyond the snapToCell/cellOccupied the real placement uses); refreshes only when the snapped
+   *  cell or blocked-state actually changes, so it never churns per mousemove. */
+  updateStationHover(lng: number, lat: number): void {
+    if (this.cellMm <= 0) {
+      this.clearStationHover();
+      return;
+    }
+    const [rawX, rawY] = lngLatToMm([lng, lat]);
+    const { xMm, yMm, cell } = this.snapToCell(rawX, rawY);
+    const [slng, slat] = mmToLngLat([xMm, yMm]);
+    const blocked = cell ? this.cellOccupied(cell) : false;
+    const prev = this.stationHoverCell;
+    if (prev && prev.lng === slng && prev.lat === slat && prev.blocked === blocked) return; // same cell ⇒ no churn
+    this.stationHoverCell = { lng: slng, lat: slat, blocked };
+    this.refresh();
+  }
+
+  clearStationHover(): void {
+    if (this.stationHoverCell === null) return;
+    this.stationHoverCell = null;
+    this.refresh();
+  }
+
   /** Place a BARRACKS (fantasy) — a node that fields AI legions. Mirrors placeStation but emits the
    *  fantasy command; the transit ruleset rejects it (no node created), so the tool is fantasy-only. */
   placeBarracks(lng: number, lat: number): number {
@@ -899,7 +929,10 @@ export class Game {
     // Switching tools while drawing drops the in-progress draft — for EITHER draw tool (Track/Service),
     // since they share the draft pipeline (so a Track↔Service switch starts fresh, not mid-chain).
     if (isDrawTool(this.tool) && tool !== this.tool) this.cancelDraft();
-    if (this.tool === "station" && tool !== "station") this.pendingStation = null; // drop the ghost on tool change
+    if (this.tool === "station" && tool !== "station") {
+      this.pendingStation = null; // drop the ghost on tool change
+      this.stationHoverCell = null; // #25 and its hover preview
+    }
     if (tool !== this.tool) audio.tick();
     this.tool = tool;
     this.refresh();
@@ -2365,6 +2398,7 @@ export class Game {
       selectedLine: this.selectedLine,
       snapRing: this.snapRingView(),
       ghostStation: this.pendingStation ? { lng: this.pendingStation.lng, lat: this.pendingStation.lat } : null,
+      stationHoverCell: this.stationHoverCell, // #25 Station-tool pre-commit hover preview (null otherwise)
       nodePlates: this.nodePlatesView(),
     };
   }

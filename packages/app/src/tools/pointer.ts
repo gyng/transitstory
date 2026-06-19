@@ -157,6 +157,8 @@ export function attachPointer(game: Game): void {
   });
   // Camera moves dismiss an open menu (it would otherwise float over a stale location).
   map.on("movestart", () => game.closeContextMenu());
+  // #25 cursor leaving the map clears the Station-tool hover preview (no stale ghost stuck at the edge).
+  map.on("mouseout", () => game.clearStationHover());
 
   map.on("mousemove", (e) => {
     // Pre-commit snap highlight (AGENTS UX: "highlight the snap candidate BEFORE the click
@@ -171,6 +173,15 @@ export function attachPointer(game: Game): void {
     // change so it never churns the DOM per-frame. Computed before the drag/draw early-returns so it stays
     // live while drawing too.
     game.setHoverLabel(game.hoverLabelAt(e.point.x, e.point.y, e.lngLat.lng, e.lngLat.lat));
+
+    // #25 Station tool: a pre-commit hover PREVIEW of the cell a click would drop a station on (red if the
+    // one-per-cell rule blocks it) — the place gesture's missing sub-100 ms "snap candidate before the click"
+    // feedback. Only while the tool's armed, no ghost is already pending, and we're not mid-drag.
+    if (game.mode === "build" && game.tool === "station" && !game.pendingStation && dragging === null) {
+      game.updateStationHover(e.lngLat.lng, e.lngLat.lat);
+    } else if (game.stationHoverCell) {
+      game.clearStationHover();
+    }
 
     // Bending a control point: move it under the cursor (sub-100 ms, client-side).
     if (dragging === "handle") {

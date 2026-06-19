@@ -459,6 +459,9 @@ export interface RenderView {
   /** Un-confirmed station the player is about to build (fantasy "confirm build") — a translucent ghost
    *  at the snapped hex cell, drawn until the confirm bar commits or cancels it. */
   ghostStation?: { lng: number; lat: number } | null;
+  /** #25 Station-tool HOVER preview: the snapped cell a click WOULD drop a station on (a faint ghost,
+   *  red when the one-per-cell rule blocks it) — the pre-commit "highlight the snap candidate" feedback. */
+  stationHoverCell?: { lng: number; lat: number; blocked: boolean } | null;
   /** TTD signal markers (single-track block state) — only populated when the Signals lens is on. */
   signals?: SignalMarker[];
   /** TTD L5c player-placed block signals (the posts the player dropped) — shown when their line is the
@@ -1118,6 +1121,27 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
             getLineColor: [255, 255, 255, 235] as [number, number, number, number],
             lineWidthMinPixels: 2,
             pickable: false,
+          }),
+        ]
+      : []),
+    // #25 Station-tool HOVER preview: a faint ghost at the snapped cell the cursor is over (BEFORE any click),
+    // tinted red when the one-per-cell rule would block it — the sub-100 ms "where will this land" feedback the
+    // place gesture lacked. Fainter than the committed ghost-station; pickable:false so it never eats a click.
+    ...(view.stationHoverCell
+      ? [
+          new ScatterplotLayer({
+            id: "station-hover",
+            data: [view.stationHoverCell],
+            getPosition: (d: { lng: number; lat: number }) => [d.lng, d.lat],
+            getRadius: 8,
+            radiusUnits: "pixels",
+            radiusMinPixels: 6,
+            getFillColor: (d: { blocked: boolean }) => (d.blocked ? [214, 40, 40, 55] : [0, 114, 178, 55]) as [number, number, number, number],
+            stroked: true,
+            getLineColor: (d: { blocked: boolean }) => (d.blocked ? [214, 40, 40, 205] : [255, 255, 255, 170]) as [number, number, number, number],
+            lineWidthMinPixels: 1.5,
+            pickable: false,
+            updateTriggers: { getFillColor: view.stationHoverCell.blocked, getLineColor: view.stationHoverCell.blocked },
           }),
         ]
       : []),
