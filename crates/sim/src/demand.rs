@@ -197,6 +197,21 @@ pub(crate) fn prepare(world: &mut World) {
 
     world.captured_origin = origin;
     world.captured_dest = dest;
+    // #5 the conquest-gauge denominator: the BAKED town-sink count. Track its MAX during BUILD mode — the network
+    // grows as the baked supply graph + the player's initial build are placed (prepare re-runs on each change, and
+    // the full-network prepare often lands in build mode before the first Run) — then FREEZE it once the game is
+    // RUNNING. Fixed thereafter, so a later unserved sink placement can't inflate it and dip the score (the
+    // monotonicity invariant); ≈ the live count (the baked towns never leave), so no gauge re-tune. (A pure-build
+    // session keeps tracking the max — fine, the gauge isn't "locked in" until the player runs.)
+    if !world.running {
+        let count = world
+            .captured_dest
+            .iter()
+            .zip(world.captured_origin.iter())
+            .filter(|(&cd, &co)| cd > co && cd > 0.0)
+            .count() as i64;
+        world.baked_town_sinks = world.baked_town_sinks.max(count);
+    }
     world.dest_by_comm = flat_dest;
     world.has_multistage = has_multistage;
     world.station_commodity = station_commodity;

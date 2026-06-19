@@ -229,6 +229,24 @@ pub(crate) fn dispatch(world: &mut World) {
         }
     }
 
+    // #24a a line whose POST-CAP fleet is 0 (e.g. a 3rd line contending for a shared single block ⇒ cross_cap=0)
+    // dispatches NO vehicles — it moves nobody, so it must NOT mark its stations "served": leaving it in `serving`
+    // over-credited coverage_score AND mis-routed demand to a dead line. Prune it now the post-cap fleet is known.
+    // [State-affecting on a capped shared block, but GOLDEN-NEUTRAL in the pinned scenarios (they have no 0-cap
+    // line) — golden_arcadia/transit + the balance suite stay green; no re-pin needed.]
+    let dead: Vec<LineId> = world
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|&(li, line)| line.trainset.map(|t| t.count).unwrap_or(0).min(cross_cap[li]) == 0)
+        .map(|(li, _)| LineId(li as u32))
+        .collect();
+    if !dead.is_empty() {
+        for s in world.serving.iter_mut() {
+            s.retain(|x| !dead.contains(x));
+        }
+    }
+
     let lines = &world.lines;
     let junctions = &world.junctions; // P4: read the switch clusters for the tick-0 placement snap
     let v = &mut world.vehicles;

@@ -139,6 +139,11 @@ pub struct World {
     /// Per-station captured origin (resident) and destination (job) weight from the grid.
     pub captured_origin: Vec<f32>,
     pub captured_dest: Vec<f32>,
+    /// #5 The BAKED town-sink count, snapshotted ONCE at the first `prepare` (the supply graph's sink nodes,
+    /// before any player-placed station). The arcadia conquest-gauge denominator — FIXED so placing an unserved
+    /// sink station can't inflate it and dip the score (the "a strictly-better network never lowers the gauge"
+    /// invariant). -1 = not yet captured. A derived read-cache like `captured_dest`; NOT in `Canonical` ⇒ golden-neutral.
+    pub baked_town_sinks: i64,
     /// Fantasy (arcadia) S7e multi-stage: per-station captured DEST weight broken down BY commodity, flat
     /// `station * N_COMMODITIES + commodity`. Lets the router send a cart to a node that WANTS its
     /// commodity (a raw → its processor, a mid → its final sink) instead of the highest-TOTAL-dest node.
@@ -693,6 +698,7 @@ impl World {
             dispatch_dirty: false,
             captured_origin: Vec::new(),
             captured_dest: Vec::new(),
+            baked_town_sinks: -1, // #5 snapshotted at the first prepare (after the baked supply graph)
             dest_by_comm: Vec::new(),
             has_multistage: false,
             station_commodity: Vec::new(),
@@ -1068,13 +1074,13 @@ impl World {
     /// Fantasy (arcadia) progress gauge (S11): the realm's standing = SUPPLY REACH (town demand on an
     /// operational line) blended with CONQUEST (towns held), 0–100. The fantasy analog of the transit
     /// coverage gauge — it answers "how much of the realm am I supplying + holding?" rather than the
-    /// decadence gauge's "how close is the rot?". The SUPPLY channel is monotone (a superset network serves ≥ the
-    /// same town sinks). The CONQUEST channel rises with `towns_captured`, but its denominator `town_sinks` is
-    /// network-dependent — PLACING an unserved net-sink station inflates it, which can dip the blended score: a
-    /// known monotonicity edge case (every station carries a positive garrison, so there's no clean per-station
-    /// "town" marker to exclude redundant placements). A correct fix needs a FIXED conquerable-town denominator
-    /// captured at init + a gauge rebalance + an uncovered-case property test — a tracked follow-up, NOT a drop-in
-    /// (any fixed denominator re-tunes the 0.35 conquest contribution). A derived READ (f32, never hashed).
+    /// decadence gauge's "how close is the rot?". MONOTONIC by construction (the build plan's split-gauge
+    /// invariant, one channel each): the SUPPLY channel is non-decreasing (a superset network serves ≥ the same
+    /// town sinks), and the CONQUEST channel rises with `towns_captured` over a FIXED denominator — `baked_town_
+    /// sinks`, snapshotted at the first prepare (#5), so placing an unserved net-sink station can no longer inflate
+    /// the denominator and dip the score (the old live `town_sinks` count made it network-dependent). The baked
+    /// count ≈ the live count at all times (the baked towns never leave), so this is no gauge re-tune — it just
+    /// stops player infrastructure stations from contaminating it. A derived READ (f32, never hashed).
     pub(crate) fn arcadia_coverage_score(&self) -> u8 {
         let total_dest: f32 = self.city.demand.cells.iter().map(|c| c.dest_w).sum();
         let span = (MAX_HEADWAY_MS - MIN_HEADWAY_MS).max(1) as f32;
@@ -1100,8 +1106,12 @@ impl World {
             }
         }
         let supply = if total_dest > 0.0 { (served / total_dest).clamp(0.0, 1.0) } else { 0.0 };
-        let conquest = if town_sinks > 0 {
-            (self.towns_captured as f32 / town_sinks as f32).clamp(0.0, 1.0)
+        // #5 denominate against the FIXED baked town-sink count (snapshotted at the first prepare), NOT the live
+        // `town_sinks` — placing an unserved sink station inflates the live count and would dip the score, breaking
+        // the monotonicity invariant. Falls back to the live count only before the snapshot (pre-first-prepare).
+        let denom = if self.baked_town_sinks >= 0 { self.baked_town_sinks } else { town_sinks };
+        let conquest = if denom > 0 {
+            (self.towns_captured as f32 / denom as f32).clamp(0.0, 1.0)
         } else {
             0.0
         };

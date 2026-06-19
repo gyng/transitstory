@@ -208,6 +208,52 @@ fn arcadia_coverage_gauge_is_monotonic_under_a_superset_network() {
     assert!(after >= before, "serving another town never lowers the gauge ({before} -> {after})");
 }
 
+/// #5 The UNCOVERED monotonicity case the superset test above structurally can't catch (both its towns are net
+/// sinks from t=0, so the live `town_sinks` never changes): the conquest channel's denominator USED to be the
+/// LIVE `town_sinks`, which a NEW UNSERVED net-sink station inflates — dipping the standing gauge. The fix
+/// snapshots a FIXED `baked_town_sinks` at the first prepare. This locks that the snapshot is captured AND stays
+/// fixed when a redundant station is added, so the conquest denominator can never grow ⇒ the score can never dip.
+#[test]
+fn arcadia_unserved_sink_station_never_lowers_the_gauge() {
+    let city = CityData {
+        id: "arcadia".into(),
+        ruleset: "arcadia".into(),
+        seed: 7,
+        grid_cell_mm: 100_000,
+        demand: DemandGrid {
+            cell_m: 500.0,
+            cells: vec![
+                DemandCell { x_mm: 0, y_mm: 0, origin_w: 90.0, dest_w: 2.0, commodity: 0 }, // source
+                DemandCell { x_mm: 1_500_000, y_mm: 0, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // town A (served)
+                DemandCell { x_mm: 0, y_mm: 1_500_000, origin_w: 2.0, dest_w: 90.0, commodity: 0 }, // a sink cell, left UNSERVED
+            ],
+        },
+        ..Default::default()
+    };
+    let mut w = World::new(7, city);
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 0, name: None }); // source = 0
+    w.apply(&Command::PlaceStation { x_mm: 1_500_000, y_mm: 0, name: None }); // town A = 1
+    w.apply(&Command::CreateLine { color: 1, name: None, loop_line: false, mode: 0, literal: false });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(0), after: None });
+    w.apply(&Command::AddStop { line: LineId(0), station: StationId(1), after: None });
+    w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
+    w.apply(&Command::SetRunning { running: true });
+    for _ in 0..50 {
+        w.tick(50); // the first prepare snapshots baked_town_sinks (the fixed conquerable-town denominator)
+    }
+    let baked = w.baked_town_sinks;
+    let before = w.stats_snapshot().coverage_score;
+    assert!(baked > 0, "the baked town-sink denominator is snapshotted (got {baked})");
+    // Add a REDUNDANT, unserved station on the third sink cell — this inflated the LIVE town_sinks count (the bug).
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 1_500_000, name: None });
+    for _ in 0..50 {
+        w.tick(50); // re-prepare — the snapshot must NOT move
+    }
+    let after = w.stats_snapshot().coverage_score;
+    assert_eq!(baked, w.baked_town_sinks, "the conquest denominator is FIXED — a redundant station can't inflate it");
+    assert!(after >= before, "an UNSERVED sink station must never lower the gauge ({before} -> {after})");
+}
+
 /// #23 TG2 belt-and-braces for the LOCKED monotonicity invariant: town SIZE is deliberately kept OUT of the
 /// coverage gauge, so growing a town must NEVER move it. This guards against a future change wiring size into
 /// the gauge and silently breaking "a strictly-better network never lowers it" (the design's load-bearing rule).

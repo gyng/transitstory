@@ -288,7 +288,18 @@ pub(crate) fn army_travel_step(world: &mut World, dt_ms: i64) {
                         i64::MAX
                     } else {
                         let ride_ms = remaining.saturating_mul(1000) / spec.v_max_mm_s.max(1);
-                        (line.headway_ms / 2).saturating_add(ride_ms)
+                        // #23 the cold-start wait is HALF the REAL arrival spacing — which the dispatcher sets to
+                        // round-trip / train-count (dispatch.rs), NOT the stored headway_ms slider (the dispatcher
+                        // never reads it). Mirror that exact spacing so the walk-vs-ride bet matches when a train
+                        // actually comes (the old headway_ms/2 could be the 120 s MAX while 8 trains arrive every
+                        // few seconds, or vice-versa). [State-affecting in principle, but GOLDEN-NEUTRAL in the
+                        // pinned scenario — the legions reach the same walk/ride verdict, so no re-pin was needed;
+                        // verified against arcadia/determinism/position_fingerprint/legion_rides/balance.]
+                        let count = line.trainset.map(|t| t.count.max(1)).unwrap_or(1) as i64;
+                        let path_total = line.paths.get(world.armies.path[i] as usize).map(|p| p.length_mm()).unwrap_or(0);
+                        let round = if loop_line { path_total } else { 2 * path_total };
+                        let spacing_ms = round.saturating_mul(1000) / spec.v_max_mm_s.max(1) / count.max(1);
+                        (spacing_ms / 2).saturating_add(ride_ms)
                     }
                 } else {
                     i64::MAX
