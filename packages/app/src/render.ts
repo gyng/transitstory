@@ -112,15 +112,25 @@ export interface CargoCar {
   color: Rgb;
 }
 
-/** The 3D cargo-block colour for a vehicle's hauled commodity (#in-world-cargo) — the supply-chain GOODS
- *  made visible on the cart (ore steel-cyan, grain wheat-gold, aether violet, fuel green, processed steel),
- *  or a pale "passengers/sacks" tone when empty / a transit rider (255). */
+/** #25 Single-source COMMODITY colour (Okabe-Ito-anchored, CB-safe), id-keyed so the resource node dot
+ *  (resourceColor), the 3D cart block (cargoColor), and the wagon load shimmer (game.cargoOf) all paint a
+ *  commodity the SAME hue — "cyan = ore" can finally be learned (they used to diverge across three tables, so a
+ *  cart hauling ore rendered a different colour than the node it left). Tones with NO node twin (processed
+ *  goods, forge, bread, arms, passengers) stay local to their own table. */
+export const CARGO_COLOR: Rgb[] = [
+  [38, 150, 168], // 0 ore — steel-cyan iron (kept OFF the load-bearing selection-blue #0072b2)
+  [230, 159, 0], //  1 grain — wheat gold
+  [148, 96, 210], // 2 aether — arcane violet (the ley chroma)
+  [0, 158, 115], //  3 fuel — forest green
+];
+/** Commodity-kind STRING → CARGO_COLOR id (resource POIs speak strings; a cart's hauled cargo speaks ids). */
+export const CARGO_KIND_ID: Record<string, number> = { ore: 0, grain: 1, aether: 2, fuel: 3 };
+
+/** The 3D cargo-block colour for a vehicle's hauled commodity (#in-world-cargo): ore/grain/aether/fuel share the
+ *  single CARGO_COLOR identity (= their source node); processed goods + the empty/transit-rider tone stay local. */
 function cargoColor(cargo: number | undefined): Rgb {
+  if (cargo !== undefined && cargo >= 0 && cargo < CARGO_COLOR.length) return CARGO_COLOR[cargo];
   switch (cargo) {
-    case 0: return [70, 178, 196]; // ore — steel-cyan
-    case 1: return [240, 178, 40]; // grain — wheat gold
-    case 2: return [170, 120, 224]; // aether — arcane violet
-    case 3: return [40, 184, 142]; // fuel — forest green
     case 4: case 5: case 6: case 7: return [176, 180, 188]; // processed (ingot/arms/…) — pale steel
     default: return [222, 210, 188]; // empty / transit riders — pale sacks/passengers
   }
@@ -294,8 +304,8 @@ function townColor(kind: string, decadence: number): [number, number, number, nu
   if (kind === "capital") return [235, 175, 45, 255]; // gold — the seat of warmth
   if (kind === "starter") return [225, 135, 55, 255]; // warm amber-orange — your first hold (warmer than capital gold)
   // Neutral "good" towns: sickly cold-bright cyan-green (benevolent-but-unwell) → dark cold as the
-  // decadence floor rises. Off the blue family + warm lines (no collision with selection-blue/the empire);
-  // ≥80 value units clean→decayed so corruption still darkens legibly.
+  // decadence floor rises. Off the blue family + warm lines (no collision with selection-blue/the empire).
+  // Normalised over a ~5000-unit frontier ceiling (clean → fully decayed) so corruption darkens legibly.
   const t = Math.max(0, Math.min(1, decadence / 5000)); // 0 clean … 1 deep frontier
   const r = Math.round(168 - 90 * t);
   const g = Math.round(200 - 92 * t);
@@ -322,12 +332,10 @@ function townRadius(kind: string, value: number): number {
  *  ore = iron blue, grain = wheat gold, fuel = forest green, AETHER = violet (the arcane, the ley chroma).
  *  Drawn with a white stroke so they pop on the muted grey continent. */
 function resourceColor(kind: string): [number, number, number] {
+  const id = CARGO_KIND_ID[kind]; // #25 ore/grain/fuel/aether → the shared commodity palette (node = cart = shimmer)
+  if (id !== undefined) return CARGO_COLOR[id];
   switch (kind) {
-    case "ore": return [38, 150, 168];    // steel-cyan iron — kept OFF the load-bearing selection-blue #0072b2
-    case "grain": return [230, 159, 0];   // wheat gold
-    case "fuel": return [0, 158, 115];    // forest green
-    case "aether": return [148, 96, 210]; // arcane violet
-    case "forge": return [120, 124, 130];  // steel grey — a PROCESSOR (ore → INGOT), S7e multi-stage
+    case "forge": return [120, 124, 130]; // steel grey — a PROCESSOR (ore → INGOT), S7e multi-stage
     default: return [200, 200, 200];
   }
 }
@@ -501,7 +509,11 @@ function hexRadius(cellM: number): number {
  *  with warm/cool hue as the secondary cue. Weight still modulates intensity. */
 function demandColor(w: number, served?: boolean, cold?: boolean): [number, number, number, number] {
   const t = Math.max(0, Math.min(1, w / 5));
-  if (served) return cold ? [120, 124, 136, Math.round(8 + t * 22)] : [90, 130, 170, Math.round(10 + t * 26)];
+  // #25 transit SERVED is a neutral slate (was cool-blue [90,130,170], close enough to selection-blue [0,114,178]
+  // that "you've covered this" and "this station's reach" read as one blue when a selected shed overlapped served
+  // cells). Slate recedes ("covered") and keeps selection-blue the player's exclusive active-reach channel; alpha
+  // stays the CB-safe served/unmet cue. Matches the arcadia served grey.
+  if (served) return cold ? [120, 124, 136, Math.round(8 + t * 22)] : [120, 124, 132, Math.round(10 + t * 26)];
   // ARCADIA: warmth is reserved for the empire, so UNMET supply-demand glows cold-violet (the "cold need"
   // language of the tide), strength still on alpha (CB-safe). TRANSIT keeps the warm unmet-demand heat.
   const a = Math.round(58 + t * 112);

@@ -10,7 +10,7 @@
 import type { CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats } from "./GameContext";
-import { SIM_MS_PER_CLOCK_MIN, fmtCount, fmtMoney, loadPip } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, coverageColor, fmtCount, fmtMoney, loadPip } from "./shared";
 import { useTweenedNumber } from "./useTween";
 import { cityById } from "../../sim/cities";
 import { cashTrend, channelRates, decadenceTrend } from "./statsHistory";
@@ -220,7 +220,7 @@ export function StatsBar() {
 
   // Bar fills left→right. Coverage is a progression dial (it starts near 0 on a fresh map), so
   // the low band is neutral — not failure-red — and the hue only turns good once it's earned.
-  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "var(--ot-con-amber)" : "var(--ot-gauge-low)";
+  const covColor = coverageColor(c); // #25 the shared single-source band (this was the canonical neutral-low one)
 
   // Network strain: the fleet's mean load (avgLoadFactor) as a loadPip, with the live train count
   // in its tooltip. Mounts only once trains run, so it's never dead chrome (like the money box).
@@ -259,7 +259,7 @@ export function StatsBar() {
               bottom: 0,
               left: 0,
               width: `${c}%`,
-              background: coverageColor,
+              background: covColor,
               borderRadius: "6px",
               // Gauge fill eases toward each new coverage value; hue cross-fades good→bad (juice).
               transition: "width .5s var(--ot-ease), background-color .4s linear",

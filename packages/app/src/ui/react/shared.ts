@@ -24,7 +24,10 @@ export const MODES: ModeDef[] = [
     hint: "Terminals on the waterfront — routes cross open water with no track to build." },
   { id: 3, key: "4", icon: "✈", name: "Plane", color: "#cc79a7",
     hint: "Airports for long hops — flies over anything, at any distance." },
-  { id: 4, key: "5", icon: "🚄", name: "Heavy Rail", color: "#9467bd",
+  // #25 was #9467bd — a Tableau purple = the RESERVED arcane-violet (aether node, LEY terrain, garrison badge),
+  // so in arcadia (the only ruleset where Heavy Rail builds) arming it lit the desk in the aether colour. A
+  // distinct mainline sky-blue keeps violet exclusively arcane and follows the chip-from-palette convention.
+  { id: 4, key: "5", icon: "🚄", name: "Heavy Rail", color: "#56b4e9",
     hint: "High-speed / mainline rail — very fast and high-capacity, but expensive and needs grade-separated track (elevate or tunnel through built-up land and water)." },
 ];
 
@@ -38,6 +41,14 @@ export function modeIcon(m: number): string {
  *  against the in-game clock when divided by this. Hand-mirrored from the Rust frame constants
  *  (HOUR_MS=120_000 ⇒ CLOCK_SCALE=30 ⇒ 2_000) — keep in lockstep. */
 export const SIM_MS_PER_CLOCK_MIN = 2_000;
+
+/** #25 Single-source coverage-band colour (the % of city demand served well, 0-100). Neutral 'low' below 30,
+ *  amber 30-59, good 60+. Hoisted so the three readouts (StatsBar, ServiceReport, the dashboard KPI) can't drift:
+ *  ServiceReport painted <30 failure-RED and the dashboard flipped at 35, so a fresh network read "failing" in
+ *  one panel and "just starting" in another at the same instant — undercutting the monotonic-progression framing. */
+export function coverageColor(c: number): string {
+  return c >= 60 ? "var(--ot-gauge-good,#009e73)" : c >= 30 ? "var(--ot-con-amber,#f1ad44)" : "var(--ot-gauge-low,#7a93ad)";
+}
 
 /** Per-mode vehicle estimates for the frontend's round-trip/headway suggestion — hand-mirrored
  *  from trainset.rs `spec_for_mode` (CLOCK-FRAME values; keep in lockstep). AIR uses its roster

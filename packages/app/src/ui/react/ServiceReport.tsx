@@ -7,7 +7,7 @@
 import { useState, type CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats, useGameUI } from "./GameContext";
-import { SIM_MS_PER_CLOCK_MIN, MODES } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, MODES, coverageColor } from "./shared";
 
 // The travel-demand model in one line, keyed to the time of day: homes (trip origins) generate
 // trips, jobs (destinations) attract them, and the rush direction flips AM↔PM (sim `tod::work_bias`).
@@ -113,7 +113,7 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
   const maxMode = Math.max(1, ...modeRows.map((m) => m.riders));
 
   const cov = Math.round(s.coverageScore);
-  const covColor = cov >= 60 ? "var(--ot-gauge-good,#009e73)" : cov >= 30 ? "#e69f00" : "var(--ot-gauge-bad,#d62828)";
+  const covColor = coverageColor(cov); // #25 single-source band — was failure-RED below 30, contradicting the other panels
   const waiting = Math.round(s.waitingTotal);
   const denied = Math.round(s.deniedBoardings);
   const gaveUp = Math.round(s.abandoned);

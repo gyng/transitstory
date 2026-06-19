@@ -7,7 +7,7 @@ import type { Layer, PickingInfo } from "@deck.gl/core";
 import { ARCADIA_LINE_PALETTE, BUSY_WAITING, CATCHMENT_M, DETAIL_ZOOM, LINE_PALETTE, SNAP_PX, STARVED_WAITING, TICK_MS } from "./config";
 import { lngLatToMm, metersToLngLat, metersToLngLatInto, mmToLngLat } from "./coords/geo";
 import { cmd } from "./commands/codec";
-import { signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, resourceGlyph, townGlyph, reliefM, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
+import { CARGO_COLOR, signalLayer, placedSignalLayers, ambientCargoLayer, ambientTraderLayer, armyIntentLayer, legionLayer, legionCampfireLayer, legionNameLayer, entityBadgeLayer, raiderIntentLayer, raiderLayer, rivalHostLayer, rivalIntentLayer, rivalBuildGhostLayer, spellFlashLayer, colorToRgb, resourceGlyph, townGlyph, reliefM, nightGlowLayers, peepLayer, topoLayers, vehicleLayers, vehicleNightGlow, type AmbientTrader, type BufferPip, type CargoCar, type DecadenceAnchor, type DemandPoint, type DesireArc, type BarracksBadge, type FrontierNode, type HazardDot, type IntentArc, type LegionDot, type PlacedSignalMarker, type RaidLabel, type SignalGhost, type SiegeRing, type ReachDot, type RenderView, type ResourceMarker, type RiverSeg, type ShedHex, type TerrainCell, type TideCell, type TownMarker, type TreeInstance, type VehicleDot, type WaitingDot } from "./render";
 import { audio } from "./fx/audio";
 import { Effects, type Flow, type NightLight } from "./fx/effects";
 import { createSky, type Sky } from "./map/sky";
@@ -3026,11 +3026,14 @@ export class Game {
   private cargoOf(kind: string): { glyph: string; tint: [number, number, number] } {
     // Glyphs are drawn from the symbol-font CARGO_CHARSET (render.ts) — NOT emoji — so they render in
     // deck's TextLayer atlas. A cart's icon matches its source node's glyph (ore=⛏, grain=✿, …).
+    // #25 ore/grain/fuel/aether take their tint from the shared CARGO_COLOR (= their node dot + cart block), so
+    // the shimmer/float a resource emits matches the commodity's identity hue (was three divergent tables — ore
+    // shimmered BROWN here but rendered cyan on the node). bread/arms/passenger have no node twin → local tones.
     switch (kind) {
-      case "ore": return { glyph: "⛏", tint: [170, 138, 104] };
-      case "grain": return { glyph: "✿", tint: [214, 184, 86] };
-      case "fuel": return { glyph: "♣", tint: [120, 116, 86] };
-      case "aether": return { glyph: "✦", tint: [176, 124, 224] };
+      case "ore": return { glyph: "⛏", tint: CARGO_COLOR[0] };
+      case "grain": return { glyph: "✿", tint: CARGO_COLOR[1] };
+      case "fuel": return { glyph: "♣", tint: CARGO_COLOR[3] };
+      case "aether": return { glyph: "✦", tint: CARGO_COLOR[2] };
       case "bread": return { glyph: "❖", tint: [206, 172, 112] };
       case "arms": return { glyph: "⚔", tint: [182, 188, 198] };
       default: return { glyph: "◆", tint: [206, 178, 132] };

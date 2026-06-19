@@ -113,9 +113,9 @@ export function ChartCard({
 }) {
   const last = values.length ? values[values.length - 1] : 0;
   return (
-    <div data-testid={testid} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #eceef1" }}>
+    <div data-testid={testid} style={{ background: "var(--ot-well-bg)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--ot-con-edge)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
-        <span style={{ fontSize: 11, color: "#7a818a" }}>{title}</span>
+        <span style={{ fontSize: 11, color: "var(--ot-con-ink-dim)" }}>{title}</span>
         <b style={{ fontSize: 13, color }}>{format(last)}</b>
       </div>
       <Sparkline values={values} color={color} zeroLine={zeroLine} />
@@ -140,9 +140,9 @@ export function BarList({
         <div key={it.key}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{it.label}</span>
-            <span style={{ color: "#7a818a", flex: "0 0 auto", marginLeft: 6 }}>{format(it.value)}</span>
+            <span style={{ color: "var(--ot-con-ink-dim)", flex: "0 0 auto", marginLeft: 6 }}>{format(it.value)}</span>
           </div>
-          <div style={{ height: 6, background: "#eef0f3", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: 6, background: "var(--ot-well-bg)", borderRadius: 3, overflow: "hidden" }}>
             <div style={{ width: `${(it.value / max) * 100}%`, height: 6, background: it.color, borderRadius: 3 }} />
           </div>
         </div>

@@ -8,7 +8,7 @@ import { useGame, useStats } from "./GameContext";
 import { useStatsHistory } from "./statsHistory";
 import { ChartCard, BarList, DualSparkline } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
-import { SIM_MS_PER_CLOCK_MIN, hex, fmtMoney } from "./shared";
+import { SIM_MS_PER_CLOCK_MIN, coverageColor, hex, fmtMoney } from "./shared";
 
 /** Compact count formatter: 980 / 12.3k / 1.4M. */
 function fmtCount(v: number): string {
@@ -164,7 +164,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         {/* Headline gamey KPIs — big and prominent. */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           <Kpi label="Riders carried" value={fmtCount(s.ridershipTotal)} sub={`${lines.length} lines · ${s.vehicleCount} vehicles`} color="var(--ot-con-accent)" testid="kpi-ridership" />
-          <Kpi label="Coverage" value={`${Math.round(s.coverageScore)}`} sub="of the whole city" color={s.coverageScore >= 60 ? "var(--ot-gauge-good,#009e73)" : s.coverageScore >= 35 ? "#e69f00" : "var(--ot-con-ink-dim)"} testid="kpi-coverage" />
+          <Kpi label="Coverage" value={`${Math.round(s.coverageScore)}`} sub="of the whole city" color={coverageColor(s.coverageScore)} testid="kpi-coverage" />
           <Kpi label="Satisfaction" value={netSat == null ? "—" : `${netSat}%`} sub={netSat == null ? "no service" : netSat >= 70 ? "happy" : netSat >= 45 ? "ok" : "unhappy"} color={satColor} testid="kpi-satisfaction" />
           <Kpi label={s.economyEnabled ? "Balance" : "Balance (info)"} value={fmtMoney(balance)} sub={s.economyEnabled ? "economy ON" : "economy off"} color={balance >= 0 ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)"} testid="kpi-balance" />
           <Kpi label="Left behind" value={fmtCount(s.abandoned + s.deniedBoardings)} sub={`${fmtCount(s.waitingTotal)} waiting now`} color={s.abandoned + s.deniedBoardings > 0 ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink)"} testid="kpi-leftbehind" />
