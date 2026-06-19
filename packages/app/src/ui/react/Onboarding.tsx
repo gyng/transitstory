@@ -44,9 +44,11 @@ export function OnboardingCoach() {
   const stats = useStats();
   const arcadia = stats.ruleset === "arcadia";
   const key = arcadia ? SEEN_KEY_ARCADIA : SEEN_KEY;
-  // The loop is "discovered" once the player takes its first action: a station in transit, a LINE in the
-  // pre-populated fantasy campaign (its stations are baked in, so the first real act is railing them).
-  const done = arcadia ? stats.lineCount > 0 : stats.stationCount > 0;
+  // #25 The coach retires (and marks itself seen) only once the player closes the loop's KEYSTONE act — a town
+  // conquered (arcadia) or a LINE drawn (transit). The old gate (one line / one station) tripped the seen flag
+  // the instant ① was done, suppressing the ②③ guidance forever — even for a returning player who'd drawn a
+  // single line in some past session but never learned conquest. Now the most important steps persist.
+  const done = arcadia ? stats.townsCaptured > 0 : stats.lineCount > 0;
 
   // Per-key in-session dismissals (the ✕). localStorage is the cross-session memory, re-read each render
   // for the CURRENT key so a ruleset switch after boot resolves to the right "seen" flag.
@@ -114,16 +116,19 @@ export function OnboardingCoach() {
             <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
               ① {onLineTool ? "Rail" : "Pick Service (or Track), then rail"} a resource → a town to deliver supply ·
-              ② Raise legions at your capital and conquer towns to grow Standing · ③ Hold ahead of the ☠ Decadence
-              (you lose if it reaches your capital)
+              ② Supply grain &amp; arms to mint ⚔ manpower — your capital fields legions on its own and rails them to
+              contested towns (grow Standing) · ③ Hold ahead of the ☠ Decadence (you lose if it reaches your capital)
             </div>
           </div>
         ) : (
           <div style={{ lineHeight: 1.35 }}>
             <b style={{ fontSize: 14 }}>Build your first line</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
-              ① {onStationTool ? "Click the map" : "Pick the Station tool, then click"} to place 2 stations · ②
-              Run a Service between them (or lay Track + assign trains) · ③ Press ▶ Run
+              {/* #25 step-aware: once the 2 stations exist the coach (now retiring at the first LINE) points at the
+                  next act instead of repeating step ①. */}
+              {stats.stationCount >= 2
+                ? "✓ Stations placed — now ② run a Service between them (or lay Track + assign trains) · ③ press ▶ Run"
+                : `① ${onStationTool ? "Click the map" : "Pick the Station tool, then click"} to place 2 stations · ② Run a Service between them (or lay Track + assign trains) · ③ Press ▶ Run`}
             </div>
           </div>
         )}
@@ -207,6 +212,14 @@ export function TutorialCoach() {
       hint: "Press ▶ Run (top-right) to set your trains — and your supply — in motion.",
       done: ui.mode === "run" || stats.running,
     },
+    {
+      // #25 the campaign's SECOND objective (conquer towns) was never taught as an act — the tutorial retired at
+      // "run" and left the player staring at "0/3 towns" with no next step. This closes the loop the goal demands.
+      id: "conquer",
+      title: "Take a town",
+      hint: "Your capital fields legions once supply flows — they ride your rails to the nearest contested town. Keep supply running, or post a ⚑ Bounty to bait them onward.",
+      done: stats.townsCaptured > 0,
+    },
   ];
   const allDone = steps.every((s) => s.done);
   const activeIdx = steps.findIndex((s) => !s.done); // first incomplete = the current step
@@ -246,7 +259,7 @@ export function TutorialCoach() {
       <style>{TUT_CSS}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <b style={{ fontSize: 13, letterSpacing: 0.2 }}>
-          {allDone ? "✓ Your first line runs — with a siding." : "Tutorial · your first line with a siding"}
+          {allDone ? "✓ Supplied, running — and a town has fallen." : "Tutorial · a line with a siding, then a town"}
         </b>
         <button
           onClick={() => {

@@ -8,6 +8,14 @@ import { useStats } from "./GameContext";
 import { evalScenario, nextStatus, type Scenario, type Status } from "../../objectives";
 import { recordRealmSaved } from "../../sim/cities";
 
+// #25 The indirect "how" per goal — surfaced under an UNMET goal so a bare "0/3" counter isn't opaque. Both
+// arcadia goals start at 0 and move only through a chain (supply → manpower → legions → siege), so without this
+// the opening reads as a flat unmoving number with no hint of which lever feeds which goal.
+const GOAL_HOW: Record<string, string> = {
+  towns: "Rail supply to a contested town — your legions ride the rails and take it.",
+  standing: "Supply more towns + hold the realm ahead of the rot.",
+};
+
 export function ObjectivePanel({ scenario, embedded = false }: { scenario: Scenario; embedded?: boolean }) {
   const stats = useStats();
   const [status, setStatus] = useState<Status>("active");
@@ -85,13 +93,21 @@ export function ObjectivePanel({ scenario, embedded = false }: { scenario: Scena
         )}
         <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, margin: "2px 0 8px" }}>{scenario.blurb}</div>
         {e.goals.map((g, i) => (
-          <div key={i} data-testid={`objective-goal-${g.goal.kind}`} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-            <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-ink)" }}>
-              {g.met ? "✓" : "○"} {g.goal.label}
-            </span>
-            <span data-testid={`objective-goal-${g.goal.kind}-current`} style={{ color: "var(--ot-con-ink-dim)", fontVariantNumeric: "tabular-nums" }}>
-              {Math.round(g.current)}/{g.goal.target}
-            </span>
+          <div key={i} data-testid={`objective-goal-${g.goal.kind}`} style={{ padding: "2px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: g.met ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-ink)" }}>
+                {g.met ? "✓" : "○"} {g.goal.label}
+              </span>
+              <span data-testid={`objective-goal-${g.goal.kind}-current`} style={{ color: "var(--ot-con-ink-dim)", fontVariantNumeric: "tabular-nums" }}>
+                {Math.round(g.current)}/{g.goal.target}
+              </span>
+            </div>
+            {/* #25 dim "how" hint under an unmet goal, so the indirect lever is legible (not a bare counter). */}
+            {!g.met && GOAL_HOW[g.goal.kind] && (
+              <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 10, lineHeight: 1.3, opacity: 0.85, marginTop: 1 }}>
+                ↳ {GOAL_HOW[g.goal.kind]}
+              </div>
+            )}
           </div>
         ))}
         {scenario.deadlineMs !== undefined && status === "active" && (
