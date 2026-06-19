@@ -113,10 +113,9 @@ export function OnboardingCoach() {
           <div style={{ lineHeight: 1.35 }}>
             <b style={{ fontSize: 14 }}>Forge your dominion ⚜</b>
             <div style={{ color: "#aeb6bf", marginTop: 2 }}>
-              ① {onLineTool ? "Draw rail" : "Pick Service (or Track), then rail"} a resource → a town to deliver supply
-              (→ tribute) · ② Raise legions at your capital + post a Bounty to aim them, and conquer towns to grow
-              your ⚜ Standing (right gauge) · ③ Hold Standing ahead of the ☠ Decadence — you lose if the rot
-              reaches your capital (100%)
+              ① {onLineTool ? "Rail" : "Pick Service (or Track), then rail"} a resource → a town to deliver supply ·
+              ② Raise legions at your capital and conquer towns to grow Standing · ③ Hold ahead of the ☠ Decadence
+              (you lose if it reaches your capital)
             </div>
           </div>
         ) : (

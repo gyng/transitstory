@@ -111,11 +111,16 @@ function FantasyStatsBar({ s }: { s: Stats }) {
       )}
       <div
         data-testid="standing-gauge"
+        role="meter"
+        aria-label="Realm standing"
+        aria-valuenow={standing}
+        aria-valuemin={0}
+        aria-valuemax={100}
         style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help" }}
         title="Realm standing — how much of the realm you supply and hold. Build rail to towns and conquer them to raise it (the rising counterpart to the decadence you're racing)."
       >
         🛡 Standing
-        <div style={{ position: "relative", width: "90px", height: "10px", background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
           <div
             data-testid="standing-bar"
             style={{ position: "absolute", inset: "0 auto 0 0", width: `${standing}%`, background: sColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
@@ -125,6 +130,11 @@ function FantasyStatsBar({ s }: { s: Stats }) {
       </div>
       <div
         data-testid="decadence-gauge"
+        role="meter"
+        aria-label="Decadence"
+        aria-valuenow={d}
+        aria-valuemin={0}
+        aria-valuemax={100}
         className={critical ? "ot-pulse" : undefined}
         style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "help", padding: "2px 6px", borderRadius: 7 }}
         title={
@@ -135,7 +145,7 @@ function FantasyStatsBar({ s }: { s: Stats }) {
         }
       >
         ☠ Decadence
-        <div style={{ position: "relative", width: "90px", height: "10px", background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "90px", height: "10px", background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: "6px", overflow: "hidden" }}>
           <div
             data-testid="decadence-bar"
             style={{ position: "absolute", inset: "0 auto 0 0", width: `${d}%`, background: dColor, borderRadius: "6px", transition: "width .5s var(--ot-ease), background-color .4s linear" }}
@@ -232,7 +242,7 @@ export function StatsBar() {
             position: "relative",
             width: "90px",
             height: "10px",
-            background: "#14171c",
+            background: "var(--ot-well-bg)",
             boxShadow: "var(--ot-well)",
             borderRadius: "6px",
             overflow: "hidden",

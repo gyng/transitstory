@@ -44,10 +44,28 @@
   /* a console PANEL's full elevation: cut bevel + seam highlight + ambient lift off the map */
   --ot-con-elev: inset 0 1px 0 var(--ot-con-seam), inset 0 0 0 1px rgba(0, 0, 0, 0.25),
     0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
+  /* Recessed readout/gauge well bg + the neutral 'low band' gauge fill — were ad-hoc hex literals (#14171c,
+     #7a93ad) repeated across StatsBar/Panels/Settings, off the token system. Centralised here. */
+  --ot-well-bg: #14171c;
+  --ot-gauge-low: #7a93ad;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Keyboard focus: a visible ring on any console control reached by KEYBOARD (never on a mouse click —
+   :focus-visible, not :focus). The dark skeuomorphic look suppresses the browser default, so without this a
+   keyboard/switch user cannot see where focus sits — a WCAG focus failure. Token-driven, off the hot path. */
+#ui :focus-visible,
+.ot-shell :focus-visible {
+  outline: 2px solid var(--ot-con-accent);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+#ui input[type="range"]:focus-visible {
+  outline: 2px solid var(--ot-con-accent);
+  outline-offset: 3px;
 }
 
 html,

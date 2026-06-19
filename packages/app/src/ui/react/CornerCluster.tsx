@@ -32,10 +32,9 @@ export function CornerCluster({
   return (
     <div data-testid="corner-cluster" className="ot-console" style={CLUSTER_STYLE}>
       <Button label="↶" testid="undo" title="Undo last action (Ctrl-Z)" onClick={() => game.undo()} disabled={!game.canUndo()} />
-      {/* Redo renders only when there IS something to redo — dead chrome otherwise. */}
-      {game.canRedo() && (
-        <Button label="↷" testid="redo" title="Redo (Ctrl-Shift-Z / Ctrl-Y)" onClick={() => game.redo()} />
-      )}
+      {/* #25 Redo renders ALWAYS (greyed when empty, like Undo) so the cluster's width is stable — mounting it
+          only when canRedo() shifted the adjacent 📊/⚙ keys under the cursor on undo-then-build (target-stability). */}
+      <Button label="↷" testid="redo" title="Redo (Ctrl-Shift-Z / Ctrl-Y)" onClick={() => game.redo()} disabled={!game.canRedo()} />
       <Button label="📊" testid="open-dashboard" title="Network dashboard — ledger, ridership, satisfaction, trend charts" onClick={onOpenDashboard} />
       <Button label="⚙" testid="open-settings" title="Settings" onClick={onToggleSettings} />
     </div>

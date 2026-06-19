@@ -3,7 +3,7 @@
 // (transport-mode gates, economy, demand model, day-night tint, peeps visibility, sound). The
 // Keyboard-controls section renders the KEYMAP (keys.tsx) as a read-only legend (item 5c). Opens
 // from the bottom-left CornerCluster ⚙; reads Game/Stats state and re-renders on its hook slices.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
 import { MODES } from "./shared";
@@ -91,7 +91,7 @@ function Section({ title, first, children }: { title: string; first?: boolean; c
   );
 }
 
-export function Settings({ open }: { open: boolean; onClose: () => void }) {
+export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const game = useGame();
   const ui = useGameUI();
   const stats = useStats();
@@ -101,6 +101,17 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
   const [soundOn, setSoundOn] = useState(!audio.muted);
   // Day/night map tint (default on); the sky module owns the actual divs.
   const [dayNight, setDayNight] = useState(true);
+
+  // #25 Escape closes the panel (the onClose App plumbs was unused) — modal-style panels need a non-hunt exit,
+  // matching Onboarding/Tutorial. Listener only mounts while open; harmless no-op otherwise.
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -128,7 +139,17 @@ export function Settings({ open }: { open: boolean; onClose: () => void }) {
         font: "13px system-ui,sans-serif",
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 2, color: "var(--ot-con-ink)" }}>Settings</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+        <div style={{ fontWeight: 700, color: "var(--ot-con-ink)" }}>Settings</div>
+        <button
+          onClick={onClose}
+          aria-label="Close settings"
+          data-testid="settings-close"
+          style={{ border: 0, background: "transparent", color: "var(--ot-con-ink-dim)", cursor: "pointer", font: "15px system-ui", lineHeight: 1, padding: 0 }}
+        >
+          ✕
+        </button>
+      </div>
 
       {/* ── GRAPHICS ── visual-only toggles + a CB-safe / reduced-motion note. */}
       <Section title="Graphics" first>
