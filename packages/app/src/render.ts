@@ -39,6 +39,9 @@ export interface LinePath {
   // infrastructure, not a coloured service. It lights up to its hue the moment it gets a trainset.
   // Defaults to serviced (true) so non-L6 call sites are unchanged.
   serviced?: boolean;
+  /** #13 faction — 1 = the rival realm's rail (drawn hot-crimson + bolder so the enemy advance reads as a
+   *  threat). Set in the LinePath build by RIVAL_LINE_COLOR match; absent/0 = the player's own line. */
+  faction?: number;
 }
 /** Rail-attack (#war): a "⚔ RAIDED" badge at a severed line's midpoint, with the live recovery countdown. */
 export interface RaidLabel {

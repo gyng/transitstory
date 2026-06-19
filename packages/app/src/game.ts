@@ -2611,7 +2611,7 @@ export class Game {
         if (v && !v.removed) {
           const [lng, lat] = mmToLngLat([v.xMm, v.yMm]);
           this.effects.burst(lng, lat);
-          this.effects.floatText(lng, lat, "⚔ Engaged", [230, 170, 90], { rise: 26, size: 13, ttl: 1500 });
+          this.effects.floatText(lng, lat, "⚔ Engaged", "230,170,90", { rise: 26, size: 13, ttl: 1500 });
         }
       } else if (!engaged && this.celebratedSieges.has(ps.stationId)) {
         this.celebratedSieges.delete(ps.stationId); // siege lifted (fell or recovered) → allow a fresh echo

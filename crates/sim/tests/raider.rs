@@ -126,7 +126,7 @@ fn the_rail_network_cuts_raiders_down() {
         w.apply(&Command::PlaceStation { x_mm: cap.x_mm, y_mm: cap.y_mm, name: None }); // 0 capital
         if defended {
             // A chain of stations from the capital out toward the reservoir corner, then a line through
-            // them — so the corridor is blanketed within DEFENSE_RANGE (4 km, ~16 cells at 250 m).
+            // them — so the corridor is blanketed within DEFENSE_RANGE (2.5 km, ~10 cells at 250 m).
             let mut ids = vec![0u32];
             for k in 1..=12 {
                 let p = hexgrid::center_of((k, k), SIZE);
@@ -279,8 +279,8 @@ fn a_raider_at_the_track_cuts_the_line() {
     // the track, and CUTS the line (disabling it) — spending itself in the raid (DONE). The vulnerable seam is
     // a long sparse span; a dense network would have intercepted it first.
     let mut w = World::new(12, hex_world(40, 40, (0, 0)));
-    // Two stations FAR apart so their span's middle is out of cordon reach (DEFENSE_RANGE = 4_000_000 mm =
-    // 16 cells at 250 m; the midpoint of (2,38)–(38,2) sits ~26 cells from either endpoint).
+    // Two stations FAR apart so their span's middle is out of cordon reach (DEFENSE_RANGE = 2_500_000 mm =
+    // 10 cells at 250 m; the midpoint of (2,38)–(38,2) sits ~26 cells from either endpoint).
     let a = hexgrid::center_of((2, 38), SIZE);
     let b = hexgrid::center_of((38, 2), SIZE);
     w.apply(&Command::PlaceStation { x_mm: a.x_mm, y_mm: a.y_mm, name: None }); // 0
@@ -311,7 +311,7 @@ fn a_raider_at_the_track_cuts_the_line() {
 fn a_saboteur_raider_seeks_and_cuts_a_long_line() {
     // #war targeting: a SABOTEUR raider AIMS at a player line's SEAM and cuts it — the swarm actively SEEKS
     // rail (the felt rail-attack), not just grazes it. A long sparse line (its longest-span midpoint beyond
-    // the 4 km cordon) in a world with a reservoir: within a deterministic run, a saboteur marches to the
+    // the 2.5 km cordon) in a world with a reservoir: within a deterministic run, a saboteur marches to the
     // seam and severs the line — NO manual placement, the natural spawn does it.
     let mut w = World::new(12, hex_world(40, 40, (0, 0)));
     let a = hexgrid::center_of((2, 38), SIZE);
