@@ -242,8 +242,9 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
   const trainsRef = useCallback(
     (el: HTMLInputElement | null) => {
       if (!el) return;
-      // #25 floor-only clamp — the real ceiling is the sim's variable cross-line block cap (dispatch.rs), read
-      // back from the snapshot; this matches the Fleet stepper (was Editor [1,8] vs Fleet [1,24], a phantom-max bug).
+      // #25 floor-only clamp — the stored count is capped at the sim's FIXED MAX_TRAINS_PER_LINE (24, world.rs
+      // AssignTrainset) on apply and read back from the snapshot; this matches the Fleet stepper (was Editor [1,8]
+      // vs Fleet [1,24], a phantom-max bug). The runtime dispatch cap on shared single track is a separate limit.
       el.onchange = () => game.assignTrainset(id, Math.max(1, Number(el.value) | 0));
     },
     [game, id],

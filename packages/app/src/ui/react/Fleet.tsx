@@ -32,10 +32,11 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
   const spec = l.trainsetSpec ?? 0;
   const modelName = isRail ? (RAIL_ROSTER[spec]?.name ?? "Standard") : `${modeIcon(l.mode)} default`;
   const lf = l.loadFactor ?? 0;
-  // #25 clamp only the FLOOR — the real per-line ceiling is the sim's variable cross-line block cap
-  // (dispatch.rs), which clamps on apply; the snapshot reads back the true count, so both the Fleet stepper and
-  // the Editor stay in sync (was a 24 vs 8 magic-max divergence that read as a bug). Pressing + past the cap is a
-  // no-op (the count snaps back).
+  // #25 clamp only the FLOOR — AssignTrainset clamps the STORED count to the sim's fixed MAX_TRAINS_PER_LINE
+  // (=24, world.rs) on apply, and the snapshot reads that stored count back, so the Fleet stepper and the Editor
+  // stay in sync (was a 24-vs-8 magic-max divergence that read as a bug). Pressing + past 24 is a no-op. NOTE:
+  // on a shared single-track block the runtime DISPATCH cap (dispatch.rs cross_cap) may run fewer than shown —
+  // that cap bounds vehicles dispatched, not the stored trainset count, so the displayed number can exceed it.
   const setCount = (n: number) => game.assignTrainset(l.lineId, Math.max(1, n));
   return (
     <div data-testid={`fleet-row-${l.lineId}`} style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
