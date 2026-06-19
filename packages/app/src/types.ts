@@ -193,6 +193,9 @@ export interface Stats {
   armyAfield?: number;
   /** Decadence raiders marching (the rival, S11) — the mobile enemy your rail network must cut down. */
   raiderCount: number;
+  /** Cumulative raiders fielded since world start (monotone) — "the rival is live", even when the network
+   *  cuts them down the instant they spawn (raiderCount, the LIVE count, can sit at 0 under full defence). */
+  raidersFielded?: number;
   /** Raider BREACH pressure (#war) — the lose-meter floor raiders shoved on by reaching the capital,
    *  distinct from tide creep; lets the HUD split the decadence gauge + diagnose the threat. */
   raiderBreach?: number;

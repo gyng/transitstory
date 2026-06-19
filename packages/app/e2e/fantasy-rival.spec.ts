@@ -3,9 +3,11 @@ import { expect, test } from "@playwright/test";
 // S11 RIVAL — decadence raiders on the BAKED world. The decadence isn't just a passive tide: it FIELDS
 // marauders from the far-edge reservoir that march the capital and deepen the rot if they get through; the
 // player's rail network cuts them down. This proves, on the real bundle, that the rival is LIVE — raiders
-// actually field on the baked continent (raiderCount > 0) — and that they don't break winnability (the
-// realm still holds; the native tests/raider.rs gate the structural invariants: bounded, monotone, etc.).
-// Deterministic via tickMs.
+// actually field on the baked continent (raidersFielded > 0, the cumulative spawn count) — and that they
+// don't break winnability (the realm still holds). NOTE: a well-covered network cuts raiders the INSTANT
+// they spawn, so the LIVE count (raiderCount) can read 0 throughout even under steady assault — which is why
+// this asserts the cumulative raidersFielded, not an instantaneous catch. The native tests/raider.rs gate
+// the structural invariants (bounded, monotone, etc.). Deterministic via tickMs.
 test("fantasy baked world: the rival fields raiders, the realm still holds", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/?city=fantasy");
@@ -47,21 +49,20 @@ test("fantasy baked world: the rival fields raiders, the realm still holds", asy
     tt.postBounty(target.i, 3000);
   });
 
-  // Run deterministically, sampling the rival + the realm. The decadence-fed cadence means raiders ramp up
-  // as the rot deepens, so a long-enough run fields some.
-  let everRaider = false;
+  // Run deterministically, sampling the rival + the realm. The decadence-fed cadence fields raiders as the rot
+  // deepens; the covering network cuts them down on contact (so raiderCount, the LIVE count, can stay 0), but
+  // raidersFielded — the cumulative spawn count — climbs, proving the rival genuinely musters marauders.
   let last: any = null;
   for (let i = 0; i < 24; i++) {
     last = await page.evaluate(() => {
       (window as any).__ot_test.tickMs(150000);
       const s = (window as any).__ot_test.stats();
-      return { raiderCount: s.raiderCount, townsCaptured: s.townsCaptured, realmLost: s.realmLost, decadencePct: Math.round(s.decadencePct) };
+      return { raidersFielded: s.raidersFielded, townsCaptured: s.townsCaptured, realmLost: s.realmLost, decadencePct: Math.round(s.decadencePct) };
     });
-    if (last.raiderCount > 0) everRaider = true;
-    if (last.townsCaptured >= 1 && everRaider) break; // both facts observed → done
+    if (last.townsCaptured >= 1 && last.raidersFielded > 0) break; // both facts observed → done
   }
 
-  expect(everRaider).toBe(true); // the rival is LIVE on the baked world — raiders field from the reservoir
+  expect(last.raidersFielded).toBeGreaterThan(0); // the rival is LIVE — marauders field from the reservoir (the rail then cuts them down)
   expect(last.townsCaptured).toBeGreaterThanOrEqual(1); // conquest still lands…
   expect(last.realmLost).toBe(false); // …and the realm holds despite the raids (the network defends)
 

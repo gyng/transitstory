@@ -72,6 +72,10 @@ pub struct StatsSnapshot {
     /// Decadence RAIDERS marching (the rival, S11) — the mobile enemy your network must cut down. 0 for
     /// transit + a realm with no decadence field.
     pub raider_count: u32,
+    /// CUMULATIVE raiders fielded since world start (the spawn cursor — monotone, never reset). Lets a test or
+    /// the HUD tell "the rival IS live / has fielded marauders" even when a covering network cuts them down the
+    /// instant they spawn (`raider_count`, the LIVE count, can sit at 0 under steady, fully-defended assault).
+    pub raiders_fielded: u32,
     /// Raider BREACH pressure (#war): the floor raiders have shoved onto the lose meter by REACHING the
     /// capital, distinct from the tide creep. The decadence gauge blends both; surfaced separately so the
     /// player can tell "raiders are reaching my seat" (cover approaches) from "the front advanced" (Purge/

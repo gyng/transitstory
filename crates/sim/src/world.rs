@@ -1570,6 +1570,7 @@ impl World {
             // permanent inert garrisons). DONE = crate::army::DONE.
             army_afield: self.armies.state.iter().filter(|&&s| s != crate::army::DONE).count() as u32,
             raider_count: self.raiders.live() as u32,
+            raiders_fielded: self.raider_cursor, // cumulative spawns (the cursor, monotone) — "the rival is live"
             // #war legibility: the raider-breach pressure surfaced on its own (distinct from tide creep).
             raider_breach: self.raider_breach as f64,
             raider_breach_pct: (self.raider_breach as f64 / crate::decadence::CAPITAL_THRESHOLD as f64 * 100.0).clamp(0.0, 100.0),
