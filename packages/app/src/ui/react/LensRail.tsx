@@ -120,6 +120,7 @@ export function LensRail() {
                   key={id}
                   data-testid={`lens-${id}`}
                   title={`Lens: ${title}`}
+                  aria-pressed={sel} // #14 an exclusive one-of-N selector — convey the active lens to AT (it was background-only)
                   onClick={() => game.setLens(id)}
                   style={{
                     border: "none",

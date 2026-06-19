@@ -28,7 +28,7 @@ function MenuItem({
   return (
     <div
       data-testid={testid}
-      role="button"
+      role="menuitem" // #16 a menuitem inside the role="menu" container (was role="button")
       // #25 keyboard-operable: the rows announce as buttons but were mouse-only (no tab stop, no key handler).
       // Tab reaches each, Enter/Space activates, and focus reuses the hover highlight so the target is visible.
       tabIndex={disabled ? -1 : 0}
@@ -119,6 +119,8 @@ export function ContextMenu() {
     <div
       data-testid="context-menu"
       className="ot-console"
+      role="menu" // #16 it announces as a menu of menuitems now, not a bare div of buttons
+      aria-label={`Actions for this ${cm.kind}`}
       onContextMenu={(e) => e.preventDefault()}
       style={{
         position: "fixed",

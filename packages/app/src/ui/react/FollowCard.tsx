@@ -12,9 +12,10 @@ import type { FollowView } from "../../types";
 
 export function FollowCard() {
   const game = useGame();
-  useStats(); // live refresh on the 3 Hz snapshot
+  const stats = useStats(); // live refresh on the 3 Hz snapshot + the authoritative renege signal (abandoned)
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const lastSeen = useRef<FollowView | null>(null); // last live state, to infer the trip's outcome
+  const abandonedSeen = useRef(0); // #21 the global renege count at the last LIVE sighting of this rider
   useEffect(() => {
     game.onChange.push(bump);
     return () => {
@@ -26,16 +27,20 @@ export function FollowCard() {
   const id = game.followedCitizen;
   if (id === null) return null;
   const f = game.bridge.followCitizen(id);
-  if (f) lastSeen.current = f;
+  if (f) {
+    lastSeen.current = f;
+    abandonedSeen.current = stats.abandoned; // snapshot the global renege count while we can still see them
+  }
 
   // Not in transit right now — infer the outcome from the last live state. A rider who vanished
   // from a long queue gave up (reneged); otherwise they arrived. The card stays so when their next
   // commute spawns, `followCitizen` finds them again and the live view resumes (the daily routine).
   if (!f) {
     const prev = lastSeen.current;
-    // waitMin is CLOCK minutes; default patience is 10 clock-min, so a rider last seen waiting
-    // ~8+ almost certainly reneged rather than boarded between samples.
-    const gaveUp = !!prev && !prev.onboard && prev.waitMin > 8;
+    // #21 "gave up" requires the sim's AUTHORITATIVE renege signal — the global `abandoned` counter advanced
+    // since this rider's last live sighting — AND that they were still waiting near patience (~10 clock-min). The
+    // old waitMin>8 heuristic alone mislabelled a rider who BOARDED between two 3 Hz samples as a confident renege.
+    const gaveUp = !!prev && !prev.onboard && prev.waitMin >= 9 && stats.abandoned > abandonedSeen.current;
     return (
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

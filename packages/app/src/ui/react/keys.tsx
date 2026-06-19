@@ -177,6 +177,9 @@ export function Button({
       title={title}
       disabled={disabled && !gated}
       aria-disabled={disabled || undefined}
+      // #14 reflect the lit/toggle state for assistive tech (a layer toggle / Build-Run is a 2-state control);
+      // undefined for plain action buttons (no `on`), so React omits it there.
+      aria-pressed={on}
       style={{
         display: "inline-flex",
         alignItems: "center",

@@ -301,6 +301,7 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
           key={l.trains}
           ref={trainsRef}
           data-testid="trains-input"
+          aria-label="Trains per line" // #15 the visible "Trains" sits in a sibling label, not associated
           type="number"
           min="1"
           defaultValue={l.trains}
@@ -327,6 +328,10 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
         max="30"
         step="1"
         defaultValue={mins}
+        // #15 the sibling "Headway: N min" label isn't associated — name the slider + speak the unit, so AT
+        // announces "Headway, N minutes" rather than a bare "slider, 1 to 30, N".
+        aria-label="Headway (minutes)"
+        aria-valuetext={`${shownMins} minutes`}
         style={{ width: "100%" }}
       />
       <div style={{ color: "var(--ot-con-ink-dim)", margin: "4px 0 10px" }}>Capacity × frequency are your two levers.</div>
