@@ -123,6 +123,7 @@ export function Button({
   style,
   title,
   disabled,
+  gated,
   on,
   tone = "accent",
   compact = false,
@@ -134,6 +135,11 @@ export function Button({
   style?: CSSProperties;
   title?: string;
   disabled?: boolean;
+  /** A GATED control — off because a precondition isn't met (e.g. Reach needs a pinned station). When also
+   *  `disabled`, it stays FOCUSABLE via aria-disabled so a keyboard user can reach it and read the title's gate
+   *  reason; native `disabled` would drop BOTH the tooltip and the tab stop — hiding the "why is this off?" hint
+   *  that matters most. The onClick is still suppressed while disabled, so it's inert either way. */
+  gated?: boolean;
   on?: boolean;
   tone?: "accent" | "good" | "danger";
   /** When set, the text after the leading glyph is wrapped in `.ot-con-compact-label` so the responsive
@@ -169,7 +175,8 @@ export function Button({
       className={`ot-key ${onClass}`}
       onClick={disabled ? undefined : onClick}
       title={title}
-      disabled={disabled}
+      disabled={disabled && !gated}
+      aria-disabled={disabled || undefined}
       style={{
         display: "inline-flex",
         alignItems: "center",

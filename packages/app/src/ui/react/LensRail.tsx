@@ -45,6 +45,7 @@ export function LensRail() {
         label={arcadia ? "🌡 Supply" : "🌡 Demand"}
         testid="layer-demand"
         disabled={game.lensHides("demand")}
+        gated
         title={
           game.lensHides("demand")
             ? `Demand is hidden by the ${ui.lens} lens — switch to the All lens to show it.`
@@ -61,6 +62,7 @@ export function LensRail() {
         label="🕐 Reach"
         testid="layer-reach"
         disabled={ui.selectedStation === null}
+        gated
         title={ui.selectedStation === null ? "Reach needs a pinned station — click one first, then shade every other by how fast transit reaches it." : "Reach: shade every station by how fast transit gets there from the pinned one. Faster reach pulls more demand — extend it to unlock trips."}
         onClick={() => game.setShowReach(!ui.showReach)}
         on={ui.showReach}
