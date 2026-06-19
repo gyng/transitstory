@@ -75,7 +75,7 @@ function FantasyStatsBar({ s }: { s: Stats }) {
   // as a toxic-green tip on the gauge so the player can tell raider pressure from front advance (opposite fixes).
   const breachPct = Math.round(s.raiderBreachPct ?? 0);
   // Lose-meter: neutral while low, amber mid, red as the rot nears the capital.
-  const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "var(--ot-con-amber)" : "#7a93ad";
+  const dColor = d >= 66 ? "var(--ot-gauge-bad)" : d >= 33 ? "var(--ot-con-amber)" : "var(--ot-gauge-low)";
   // Threat projection: how fast the rot is rising + a sim-minute ETA to a fallen realm (only while it's
   // actually rising). The doom clock made legible — and the pulse below escalates as the ETA shortens.
   const dt = decadenceTrend(s.decadencePct);
@@ -84,7 +84,7 @@ function FantasyStatsBar({ s }: { s: Stats }) {
   // Realm STANDING — the progress gauge (supply reach + conquest), the rising counterpart to the
   // decadence gauge ("two gauges, two jobs"): what you've built + hold, vs. the rot you're racing.
   const standing = Math.round(s.coverageScore);
-  const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "var(--ot-con-amber)" : "#7a93ad";
+  const sColor = standing >= 60 ? "var(--ot-gauge-good)" : standing >= 30 ? "var(--ot-con-amber)" : "var(--ot-gauge-low)";
   return (
     <div id="stats-bar" data-testid="stats-bar" className="ot-console" style={BAR_STYLE}>
       <div data-testid="tribute" title="Gold — every town you supply pays this; it funds bounties and building.">
@@ -217,7 +217,7 @@ export function StatsBar() {
 
   // Bar fills left→right. Coverage is a progression dial (it starts near 0 on a fresh map), so
   // the low band is neutral — not failure-red — and the hue only turns good once it's earned.
-  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "var(--ot-con-amber)" : "#7a93ad";
+  const coverageColor = c >= 60 ? "var(--ot-gauge-good)" : c >= 30 ? "var(--ot-con-amber)" : "var(--ot-gauge-low)";
 
   // Network strain: the fleet's mean load (avgLoadFactor) as a loadPip, with the live train count
   // in its tooltip. Mounts only once trains run, so it's never dead chrome (like the money box).

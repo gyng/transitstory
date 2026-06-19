@@ -178,7 +178,7 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
               <span style={{ color: "var(--ot-con-ink-dim)" }} title="How much of the whole city's demand your network serves well — grows as you expand">City coverage</span>
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ position: "relative", width: 64, height: 7, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
+                <span style={{ position: "relative", width: 64, height: 7, background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
                   <span style={{ position: "absolute", inset: `0 ${100 - cov}% 0 0`, background: covColor }} />
                 </span>
                 <b data-testid="svc-coverage" className="ot-readout" style={{ minWidth: 24, padding: "0 5px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cov}</b>
@@ -200,7 +200,7 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
                 {modeRows.map((m) => (
                   <div key={m.id} data-testid={`svc-mode-${m.id}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0" }}>
                     <span style={{ width: 16, textAlign: "center" }}>{m.icon}</span>
-                    <span style={{ position: "relative", flex: 1, height: 8, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
+                    <span style={{ position: "relative", flex: 1, height: 8, background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: 4, overflow: "hidden" }}>
                       <span style={{ position: "absolute", inset: 0, width: `${(m.riders / maxMode) * 100}%`, background: m.color, borderRadius: 4 }} />
                     </span>
                     <b style={{ width: 38, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--ot-con-ink)" }}>{m.riders}</b>

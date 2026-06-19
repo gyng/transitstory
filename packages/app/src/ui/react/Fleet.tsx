@@ -60,7 +60,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
             <span style={{ color: "rgba(255,255,255,.18)" }}>·</span>
             {/* Live load bar — fills + colours with the fleet's mean load while running (view-mode status).
                 Track is a recessed well; the fill keeps its semantic load colour. */}
-            <span style={{ flex: 1, height: 6, background: "#14171c", boxShadow: "var(--ot-well)", borderRadius: 3, overflow: "hidden" }} title={`Load ${Math.round(lf * 100)}%`}>
+            <span style={{ flex: 1, height: 6, background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: 3, overflow: "hidden" }} title={`Load ${Math.round(lf * 100)}%`}>
               <span data-testid={`fleet-load-${l.lineId}`} style={{ display: "block", width: `${Math.min(100, Math.round(lf * 100))}%`, height: "100%", background: loadColor(lf), opacity: running ? 1 : 0.45 }} />
             </span>
           </>

@@ -303,7 +303,7 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
           style={{
             width: "56px",
             padding: "4px",
-            background: "#14171c",
+            background: "var(--ot-well-bg)",
             border: "1px solid rgba(255,255,255,.12)",
             borderRadius: 6,
             color: "var(--ot-con-accent)",

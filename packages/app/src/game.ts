@@ -299,6 +299,10 @@ export class Game {
   private puffCursor = 0;
   /** Town ids already celebrated with a conquest boom — so a fallen town fires its "⚔ Conquered!" once. */
   private celebratedTowns = new Set<number>();
+  /** #25 Town ids whose active SIEGE has been echoed (⚔ Engaged) — so a legion ARRIVING (the town's garrison
+   *  first dropping below max) sparks once, linking your bounty/steering to the legion that answered it.
+   *  Cleared when the siege lifts (resistance recovers to full) so a fresh siege re-fires. */
+  private celebratedSieges = new Set<number>();
   /** Cached last peep sweep (lng/lat interleaved + paired citizen ids) for click-to-inspect. */
   private peepXY: Float32Array = new Float32Array(0);
   private peepCit: Uint32Array = EMPTY_U32;
@@ -892,6 +896,7 @@ export class Game {
     // after an undo/load reset the cumulative counters). celebratedTowns rebuilds from the live `captured`.
     this.prevJuice.seeded = false;
     this.celebratedTowns.clear();
+    this.celebratedSieges.clear();
     audio.toggle(mode === "run");
     this.refresh();
   }
@@ -2539,6 +2544,7 @@ export class Game {
     // BEFORE refresh() so the night-glow layers pick up the fresh nightFactor this pass.
     if (this.updateLighting) this.nightFactor = this.updateLighting(s.simHour);
     if (s.running) this.emitStatsJuice(s);
+    if (s.running) this.emitSiegeJuice(s); // #25 ⚔ Engaged echo when a legion first reaches a town (arcadia)
     if (s.running) this.emitWorldJuice(s); // working smoke at forges + delivery pops (arcadia, detail-gated)
     this.updateSupplyFlow(s); // marching cargo pips along busy served lines (arcadia, detail, running)
     this.updateNightLights(); // twinkling settlement windows at night (arcadia, detail)
@@ -2585,6 +2591,32 @@ export class Game {
     }
     this.emitEconomyJuice(s, sv, deltas);
     this.emitTrainPuffs();
+  }
+
+  /** #25 Siege-ENGAGED echo (the bounty→legion link): on the 3 Hz slice, when a town's garrison FIRST drops
+   *  below its max — a legion has ARRIVED and begun grinding it down — spark once + float "⚔ Engaged", so the
+   *  cause (you baited a legion onto this town) reads the instant the effect lands, not only seconds later when
+   *  it falls. The set clears when the siege lifts (the town fell or recovered), so a fresh siege re-fires.
+   *  Pure outer-ring FX off the snapshot's townResistance/garrisonMax — no sim read, no deck rebuild. */
+  private emitSiegeJuice(s: Stats): void {
+    if (this.ruleset !== "arcadia") return;
+    const sv = this.bridge.stationsView();
+    for (const ps of s.perStation) {
+      const gmax = ps.garrisonMax ?? 0;
+      const res = ps.townResistance ?? 0;
+      const engaged = gmax > 0 && res > 0 && res < gmax; // same condition the siege ring uses
+      if (engaged && !this.celebratedSieges.has(ps.stationId)) {
+        this.celebratedSieges.add(ps.stationId);
+        const v = sv[ps.stationId];
+        if (v && !v.removed) {
+          const [lng, lat] = mmToLngLat([v.xMm, v.yMm]);
+          this.effects.burst(lng, lat);
+          this.effects.floatText(lng, lat, "⚔ Engaged", [230, 170, 90], { rise: 26, size: 13, ttl: 1500 });
+        }
+      } else if (!engaged && this.celebratedSieges.has(ps.stationId)) {
+        this.celebratedSieges.delete(ps.stationId); // siege lifted (fell or recovered) → allow a fresh echo
+      }
+    }
   }
 
   /** Floating profit/loss + conquest text driven off the cumulative-stat deltas between snapshots:

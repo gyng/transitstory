@@ -243,7 +243,7 @@ body {
 
 /* A recessed READOUT well — instrument digits sunk into the panel (counters, gauges). */
 .ot-readout {
-  background: #14171c;
+  background: var(--ot-well-bg);
   border: 1px solid var(--ot-con-edge);
   border-radius: 7px;
   box-shadow: var(--ot-well);

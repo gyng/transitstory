@@ -50,7 +50,7 @@ function Toggle({
           transition: "background .12s",
           flex: "0 0 auto",
           // ON = lit go-green (semantic); OFF = a recessed dark well in the console face.
-          background: on ? "var(--ot-con-green)" : "#14171c",
+          background: on ? "var(--ot-con-green)" : "var(--ot-well-bg)",
           boxShadow: on ? "0 0 8px var(--ot-con-green)" : "var(--ot-well)",
         }}
       >

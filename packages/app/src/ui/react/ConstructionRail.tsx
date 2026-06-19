@@ -29,9 +29,9 @@ import { TechPanel } from "./TechPanel";
 // Per-tool hint shown in the flyout (the "how to cancel" affordance). TTD L6: TRACK lays bare grey rail
 // (infrastructure); SERVICE draws the same way but lands a live coloured line (auto-stocked).
 const TOOL_HINT: Record<Tool, string> = {
-  line: "[T] Lay TRACK: click stations to chain bare rail (drops new ones as you go) · double-click to build · ⌫ undo · Esc to cancel. Stays grey until a service runs on it.",
-  service: "[R] Run a SERVICE: click stations to route a coloured line (over track or fresh) · double-click to build · ⌫ undo · Esc to cancel. Lands with trains already running — tune them in the panel.",
-  station: "[N] Click to drop a station — stays armed for the next · the Track/Service tools also drop them while chaining · Esc when done",
+  line: "[T] Lay TRACK: click EXISTING stations to chain bare rail between them · double-click to build · ⌫ undo · Esc to cancel. Stays grey until a service runs on it.",
+  service: "[R] Run a SERVICE: click EXISTING stations to route a coloured line over track (or fresh) · double-click to build · ⌫ undo · Esc to cancel. Lands with trains already running — tune them in the panel.",
+  station: "[N] Click empty ground to drop a station — stays armed for the next · then chain them with Track/Service · Esc when done",
   select: "[V] Click — or right-click anything — to inspect it. Click bare grey track to assign it trains.",
   bulldozer: "[X] Click a station or line to demolish it · Esc to stop · right-click to inspect",
   barracks: "[B] Click to place a barracks — it fields legions once supplied · Esc when done",

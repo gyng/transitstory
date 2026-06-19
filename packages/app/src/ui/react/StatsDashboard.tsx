@@ -27,7 +27,7 @@ const fmtClock = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${Str
 const TILE: CSSProperties = {
   flex: "1 1 0",
   minWidth: 88,
-  background: "#14171c",
+  background: "var(--ot-well-bg)",
   borderRadius: 10,
   padding: "10px 12px",
   boxShadow: "var(--ot-well)",
@@ -174,7 +174,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           {/* Ledger */}
           <div style={{ flex: "1 1 240px", minWidth: 240 }}>
             <div style={SECTION_TITLE}>Ledger</div>
-            <div style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+            <div style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
               <LedgerRow label="Fares collected" amount={fares} sign="+" />
               <LedgerRow label="Capital (build)" amount={capital} sign="-" />
               <LedgerRow label="Opex (upkeep)" amount={opex} sign="-" />
@@ -188,7 +188,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
             {/* Cash FLOW over time — income (fares) vs operating expense (opex) per sim-minute. The
                 "earning faster than I spend?" line the static one-row ledger above can't tell. */}
             <div style={{ ...SECTION_TITLE, marginTop: 12 }}>Cash flow</div>
-            <div data-testid="dashboard-cashflow" style={{ background: "#14171c", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
+            <div data-testid="dashboard-cashflow" style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
               <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 4 }}>
                 <span style={{ color: "#009e73" }}>● income</span>
                 <span style={{ color: "#e69f00" }}>● opex</span>
@@ -198,7 +198,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
             </div>
 
             <div style={{ ...SECTION_TITLE, marginTop: 12 }}>Line P&amp;L</div>
-            <div style={{ background: "#14171c", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
+            <div style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--ot-well)" }}>
               {topPnl.length === 0 ? (
                 <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12 }}>No lines yet.</div>
               ) : (
@@ -221,7 +221,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           {/* Per-line ridership ranking */}
           <div style={{ flex: "1 1 240px", minWidth: 240 }}>
             <div style={SECTION_TITLE}>Ridership by line</div>
-            <div style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+            <div style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
               {topRidership.length === 0 ? (
                 <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12 }}>No riders carried yet.</div>
               ) : (
@@ -236,7 +236,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div style={{ flex: "1 1 240px", minWidth: 240 }}>
             <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginBottom: 5 }}>Busiest platforms (boardings)</div>
-            <div data-testid="dashboard-busiest" style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+            <div data-testid="dashboard-busiest" style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
               {busiest.length === 0 ? (
                 <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 12 }}>No boardings yet.</div>
               ) : (
@@ -246,7 +246,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           </div>
           <div style={{ flex: "1 1 240px", minWidth: 240 }}>
             <div style={{ fontSize: 11, color: "var(--ot-con-ink-dim)", marginBottom: 5 }}>Most starved (waiting + left behind)</div>
-            <div data-testid="dashboard-starved" style={{ background: "#14171c", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
+            <div data-testid="dashboard-starved" style={{ background: "var(--ot-well-bg)", borderRadius: 10, padding: "10px 12px", boxShadow: "var(--ot-well)" }}>
               {starved.length === 0 ? (
                 <div style={{ color: "var(--ot-gauge-good,#009e73)", fontSize: 12 }}>No starvation — everyone's moving.</div>
               ) : (
