@@ -599,7 +599,11 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
         return [210, 240, 245, Math.round(70 + 70 * h + 45 * lap)];
       },
       filled: true,
-      stroked: false,
+      // #24 a thin cool outline on each surf disc → a crisp shore-LINE under the animated foam brightness,
+      // so the coast edge reads even at the dim phase of the lap (the fill alone was mushy at low alpha).
+      stroked: true,
+      getLineColor: [156, 188, 198, 95],
+      lineWidthMinPixels: 1,
       updateTriggers: { getFillColor: [view.coast.length, view.foamPhase ?? 0] },
     }),
     // FANTASY 3D DIORAMA (#3d-trees): lowpoly pines standing up on the forest hexes, right on the terrain

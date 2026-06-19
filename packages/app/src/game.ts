@@ -3029,7 +3029,7 @@ export class Game {
         }
       }
       const ln = Math.hypot(lvx, lvy);
-      if (ln === 0) return; // no land neighbour within reach ⇒ not shore
+      if (ln === 0) return; // no land neighbour within reach ⇒ open sea (the basemap void), not shore
       // push the foam ~0.4 of a lattice step toward land so the surf disc kisses the coastline (the small
       // radius in render.ts then reads as breaking surf at the shore, not a tint blob centred out in the sea).
       const [olng, olat] = mmToLngLat([x + (lvx / ln) * step * 0.4, y + (lvy / ln) * step * 0.4]);
