@@ -556,6 +556,11 @@ function reachBand(ms: number): 0 | 1 | 2 {
  *  a stable identity across frames). Split into below/above the vehicle layer to preserve the
  *  z-order catchment<lines<blueprint<vehicles<stations while only vehicles update per frame. */
 export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] } {
+  // #25 busiest station's cumulative boardings — the heatmap radius normalises against THIS (below) so the
+  // dot field keeps differentiating on a mature network. The old absolute sqrt cap saturated at +4 once a
+  // station passed ~131 boardings, after which every busy interchange read identical — the signal died exactly
+  // when there was the most ridership to show. (max 1 to avoid /0 on a fresh map.)
+  const maxBoardings = view.stations.reduce((m, s) => Math.max(m, s.boardings), 1);
   const below: Layer[] = [
     // FANTASY TERRAIN (the very back — it IS the map): one flat hexagon per baked buildability cell,
     // coloured by biome as VALUE not hue (ash-grey world, faint-violet ley). The hex circumradius =
@@ -1100,7 +1105,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // so 177 stops read as ticks ON the ribbon, not a swarm of beads obscuring it.
       // #25 a rival HOLD (faction 1) gets a larger base radius — the enemy realm expands by SEIZING nodes
       // (its rail isn't drawn as a line), so its holds ARE its visible advance and must read at strategic zoom.
-      getRadius: (d: StationDot) => (d.faction === 1 ? 6.5 : d.selected ? 7 : 4) + Math.min(4, Math.sqrt(d.boardings) * 0.35),
+      getRadius: (d: StationDot) => (d.faction === 1 ? 6.5 : d.selected ? 7 : 4) + 4 * Math.sqrt(Math.min(1, d.boardings / maxBoardings)),
       radiusUnits: "pixels",
       radiusMinPixels: 3,
       // Selected fill = selection blue (ties to its blue catchment ring). Otherwise an ORPHANED
@@ -1121,7 +1126,7 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       updateTriggers: {
         getFillColor: view.stations.map((s) => `${s.selected}:${s.serving > 0}:${s.faction ?? 0}`).join(","),
         getLineColor: view.stations.map((s) => s.faction ?? 0).join(","),
-        getRadius: view.stations.map((s) => `${s.selected}:${s.faction ?? 0}:${Math.round(Math.sqrt(s.boardings))}`).join(","),
+        getRadius: view.stations.map((s) => `${s.selected}:${s.faction ?? 0}:${Math.round(Math.sqrt(Math.min(1, s.boardings / maxBoardings)) * 8)}`).join(","),
       },
     }),
     // Ghost station (fantasy "confirm build"): a translucent selection-blue disc at the snapped hex

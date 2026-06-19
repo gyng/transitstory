@@ -27,7 +27,7 @@ function demandFlow(period: string): string {
 }
 
 // Heat-key swatch matching the demand overlay's colours (render.ts demandColor): warm = unserved,
-// cool = covered. A small <span>, so the legend reads next to the live map layer.
+// slate = covered (recedes). A small <span>, so the legend reads next to the live map layer.
 function Swatch({ rgb }: { rgb: string }) {
   return (
     <span
@@ -158,7 +158,9 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
               {ui.showDemand && (
                 <div data-testid="demand-key" style={{ marginTop: 4, lineHeight: 1.55 }}>
                   <div><Swatch rgb="rgb(196,96,46)" />unserved — build here</div>
-                  <div><Swatch rgb="rgb(90,130,170)" />covered by a station</div>
+                  {/* #25 covered swatch tracks the live demandColor served tone (slate, since the served-blue
+                      nudge) so the legend doesn't lie about what the overlay paints. */}
+                  <div><Swatch rgb="rgb(120,124,132)" />covered by a station</div>
                   <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 2 }}>
                     Pin a station → arcs show where its riders travel.
                   </div>
