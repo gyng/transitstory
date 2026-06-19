@@ -139,11 +139,16 @@ pub struct World {
     /// Per-station captured origin (resident) and destination (job) weight from the grid.
     pub captured_origin: Vec<f32>,
     pub captured_dest: Vec<f32>,
-    /// #5 The BAKED town-sink count, snapshotted ONCE at the first `prepare` (the supply graph's sink nodes,
-    /// before any player-placed station). The arcadia conquest-gauge denominator — FIXED so placing an unserved
-    /// sink station can't inflate it and dip the score (the "a strictly-better network never lowers the gauge"
-    /// invariant). -1 = not yet captured. A derived read-cache like `captured_dest`; NOT in `Canonical` ⇒ golden-neutral.
+    /// #5 The BAKED town-sink count — the arcadia conquest-gauge denominator. Tracked as the MAX town-sink count
+    /// through BUILD mode (the network grows as the baked graph + initial build are placed), then FROZEN forever
+    /// once `baked_locked` flips on the FIRST Run. FIXED thereafter, so a later unserved sink placement (even via
+    /// a Run→Build→place→Run loop) can't inflate it and dip the score (the "a strictly-better network never lowers
+    /// the gauge" invariant). -1 = not yet captured. A derived read-cache; NOT in `Canonical` ⇒ golden-neutral.
     pub baked_town_sinks: i64,
+    /// #5 One-way latch: false until the FIRST `SetRunning(true)`, true forever after — so the build-mode tracking
+    /// of `baked_town_sinks` stops the moment the player runs and can't re-arm on a return to Build. `running`
+    /// alone is the pause/play flag (toggles), which is why it can't gate the freeze. NOT in `Canonical`.
+    pub baked_locked: bool,
     /// Fantasy (arcadia) S7e multi-stage: per-station captured DEST weight broken down BY commodity, flat
     /// `station * N_COMMODITIES + commodity`. Lets the router send a cart to a node that WANTS its
     /// commodity (a raw → its processor, a mid → its final sink) instead of the highest-TOTAL-dest node.
@@ -698,7 +703,8 @@ impl World {
             dispatch_dirty: false,
             captured_origin: Vec::new(),
             captured_dest: Vec::new(),
-            baked_town_sinks: -1, // #5 snapshotted at the first prepare (after the baked supply graph)
+            baked_town_sinks: -1, // #5 tracked through build mode, frozen at the first Run (baked_locked)
+            baked_locked: false,
             dest_by_comm: Vec::new(),
             has_multistage: false,
             station_commodity: Vec::new(),
@@ -2163,6 +2169,9 @@ impl World {
             }
             Command::SetRunning { running } => {
                 self.running = *running;
+                if *running {
+                    self.baked_locked = true; // #5 one-way: freeze the conquest denominator on the FIRST Run
+                }
                 vec![Event::RunningSet { running: *running }]
             }
             Command::SetEconomy { enabled } => {

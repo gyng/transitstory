@@ -201,17 +201,20 @@ export function AlertCluster() {
   const ui = useGameUI();
   const game = useGame();
   const alerts = deriveAlerts(s, ui.notice);
-  // #9 the top alert as a screen-reader announcement. ALWAYS-MOUNTED + separate from the visual cluster (which
-  // unmounts when healthy) so it persists across empty→populated and catches the FIRST ping. React reconciliation
-  // debounces it — an unchanged string is no DOM mutation, so no re-announce on the ~3 Hz recompose. Assertive
-  // only for the critical realm-lost / decadence breach (sev>=90), else polite.
+  // #9 the top alert as a screen-reader announcement. Announce only the top alert's IDENTITY (its label), NEVER
+  // its live count — several alerts carry a count that climbs every ~3 Hz (decadence %, raiders, queues), which
+  // would re-announce continuously (the count is already conveyed visually + via the alert-<kind>-count node).
+  // TWO always-mounted regions on FIXED politeness (assertive for the critical sev>=90, polite otherwise) — write
+  // the message into the matching one so AT never has to re-register a politeness change on a live node, and they
+  // persist across empty→populated to catch the FIRST ping. React reconciliation debounces: an unchanged label is
+  // no DOM mutation ⇒ no re-announce on the 3 Hz recompose.
   const top = alerts[0];
-  const announce = top ? `Alert: ${top.label}${top.count > 1 ? `, ${top.count}` : ""}` : "";
+  const politeMsg = top && top.sev < 90 ? `Alert: ${top.label}` : "";
+  const assertiveMsg = top && top.sev >= 90 ? `Alert: ${top.label}` : "";
   return (
     <>
-      <div aria-live={top && top.sev >= 90 ? "assertive" : "polite"} aria-atomic="true" className="ot-sr-only">
-        {announce}
-      </div>
+      <div aria-live="polite" aria-atomic="true" className="ot-sr-only">{politeMsg}</div>
+      <div aria-live="assertive" aria-atomic="true" className="ot-sr-only">{assertiveMsg}</div>
       {alerts.length > 0 && (
         <div data-testid="alert-cluster" className="ot-console" role="group" aria-label="Network alerts" style={CLUSTER_STYLE}>
           {alerts.map((a) => (

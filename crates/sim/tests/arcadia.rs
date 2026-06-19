@@ -239,18 +239,26 @@ fn arcadia_unserved_sink_station_never_lowers_the_gauge() {
     w.apply(&Command::AssignTrainset { line: LineId(0), spec: 0, count: 2 });
     w.apply(&Command::SetRunning { running: true });
     for _ in 0..50 {
-        w.tick(50); // the first prepare snapshots baked_town_sinks (the fixed conquerable-town denominator)
+        w.tick(50); // the first Run freezes baked_town_sinks (the fixed conquerable-town denominator)
     }
+    // Give the CONQUEST channel a non-zero value so the denominator actually drives the score (with towns_captured
+    // == 0 the term is 0/denom regardless, and the test would pass against the pre-fix code too). Set directly —
+    // this is a focused unit test of the gauge MATH, not the (separate) legion-conquest mechanism.
+    w.towns_captured = 1;
     let baked = w.baked_town_sinks;
     let before = w.stats_snapshot().coverage_score;
     assert!(baked > 0, "the baked town-sink denominator is snapshotted (got {baked})");
-    // Add a REDUNDANT, unserved station on the third sink cell — this inflated the LIVE town_sinks count (the bug).
-    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 1_500_000, name: None });
+    // Traverse the REAL regression path the bug lived on: Run → back to BUILD → place a redundant unserved net-sink
+    // station (which inflates the LIVE town_sinks) → Run again. The one-way `baked_locked` latch must keep the
+    // frozen denominator fixed, so the strict-superset network can't dip the gauge.
+    w.apply(&Command::SetRunning { running: false }); // back to Build
+    w.apply(&Command::PlaceStation { x_mm: 0, y_mm: 1_500_000, name: None }); // unserved sink — would re-arm the old .max()
+    w.apply(&Command::SetRunning { running: true }); // Run again
     for _ in 0..50 {
-        w.tick(50); // re-prepare — the snapshot must NOT move
+        w.tick(50);
     }
     let after = w.stats_snapshot().coverage_score;
-    assert_eq!(baked, w.baked_town_sinks, "the conquest denominator is FIXED — a redundant station can't inflate it");
+    assert_eq!(baked, w.baked_town_sinks, "the conquest denominator is FIXED across a Run→Build→Run loop — a redundant station can't inflate it");
     assert!(after >= before, "an UNSERVED sink station must never lower the gauge ({before} -> {after})");
 }
 

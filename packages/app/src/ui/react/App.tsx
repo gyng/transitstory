@@ -467,7 +467,9 @@ export function App() {
             <div style={{ paddingTop: 0, pointerEvents: "none" }}>
               <ConstructionRail />
             </div>
-            <CornerCluster onOpenDashboard={() => setDashOpen(true)} onToggleSettings={() => setSettingsOpen((o) => !o)} />
+            {/* #10 mutually exclusive — opening one modal closes the other, so two document-level Escape handlers
+                (one per dialog) can never both be live at once (a single Esc closing both). */}
+            <CornerCluster onOpenDashboard={() => { setSettingsOpen(false); setDashOpen(true); }} onToggleSettings={() => { setDashOpen(false); setSettingsOpen((o) => !o); }} />
           </div>
         }
         right={
