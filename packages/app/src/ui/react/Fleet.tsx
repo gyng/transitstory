@@ -31,7 +31,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
   const isRail = l.mode === 0;
   const spec = l.trainsetSpec ?? 0;
   const modelName = isRail ? (RAIL_ROSTER[spec]?.name ?? "Standard") : `${modeIcon(l.mode)} default`;
-  const lf = l.loadFactor ?? 0;
+  const lf = Number.isFinite(l.loadFactor) ? l.loadFactor : 0; // #25 ?? only catches null/undefined — a NaN load would slip through to width:NaN%
   // #25 clamp only the FLOOR — AssignTrainset clamps the STORED count to the sim's fixed MAX_TRAINS_PER_LINE
   // (=24, world.rs) on apply, and the snapshot reads that stored count back, so the Fleet stepper and the Editor
   // stay in sync (was a 24-vs-8 magic-max divergence that read as a bug). Pressing + past 24 is a no-op. NOTE:
@@ -66,7 +66,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
             {/* Live load bar — fills + colours with the fleet's mean load while running (view-mode status).
                 Track is a recessed well; the fill keeps its semantic load colour. */}
             <span style={{ flex: 1, height: 6, background: "var(--ot-well-bg)", boxShadow: "var(--ot-well)", borderRadius: 3, overflow: "hidden" }} title={`Load ${Math.round(lf * 100)}%`}>
-              <span data-testid={`fleet-load-${l.lineId}`} style={{ display: "block", width: `${Math.min(100, Math.round(lf * 100))}%`, height: "100%", background: loadColor(lf), opacity: running ? 1 : 0.45 }} />
+              <span data-testid={`fleet-load-${l.lineId}`} style={{ display: "block", width: `${Math.max(0, Math.min(100, Math.round(lf * 100)))}%`, height: "100%", background: loadColor(lf), opacity: running ? 1 : 0.45 }} />
             </span>
           </>
         )}

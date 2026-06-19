@@ -91,7 +91,9 @@ export function DayReport() {
       const d = dayStart.current;
       const grewPct = d.demand > 0 ? ((s.demandOriginTotal - d.demand) / d.demand) * 100 : 0;
       setReport({
-        day: prevDay.current + 1,
+        // #12 label by the just-completed day INDEX (= the new simDay), not prevDay+1 — on a >1-day jump (3× speed
+        // or a throttled background tab) the diffs below cover several days, so "Day 1" would mislabel a Day-3 report.
+        day: s.simDay,
         riders: s.ridershipTotal - d.riders,
         coverage: s.coverageScore,
         coverageDelta: s.coverageScore - d.coverage,

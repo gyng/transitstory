@@ -251,17 +251,22 @@ export interface VehicleTip {
 }
 
 export function vehicleTipHtml(t: VehicleTip): string {
-  const lf = t.capacity > 0 ? t.onboard / t.capacity : 0;
+  // #26 a zero-capacity vehicle must not assert "0% load" on a non-empty car (was "3/0 aboard (0%)" — a 3-rider
+  // train read as healthy-empty). When capacity is unknown, drop the pip + percentage and just state the count.
+  const hasCap = t.capacity > 0;
+  const lf = hasCap ? t.onboard / t.capacity : 0;
   const pip = loadPip(lf);
   const swatch =
     `<span style="display:inline-block;width:11px;height:11px;border-radius:3px;` +
     `vertical-align:-1px;background:${hex(t.lineColor)}"></span>`;
+  const loadHtml = hasCap
+    ? `<span data-testid="vehicle-tip-load" style="color:${pip.color};font-weight:700">${pip.glyph} ${pip.word}</span> ` +
+      `<span style="color:#5a626b">${t.onboard}/${t.capacity} aboard (${pip.pct}%)</span>`
+    : `<span data-testid="vehicle-tip-load" style="color:#5a626b">${t.onboard} aboard</span>`;
   return (
     `<div data-testid="vehicle-tip" style="font:12px system-ui">` +
     `<b data-testid="vehicle-tip-line">${t.modeIcon} ${swatch} ${esc(t.lineName)}</b>` +
-    `<div style="margin-top:3px">` +
-    `<span data-testid="vehicle-tip-load" style="color:${pip.color};font-weight:700">${pip.glyph} ${pip.word}</span> ` +
-    `<span style="color:#5a626b">${t.onboard}/${t.capacity} aboard (${pip.pct}%)</span></div></div>`
+    `<div style="margin-top:3px">${loadHtml}</div></div>`
   );
 }
 
@@ -300,6 +305,7 @@ export function lineTipHtml(t: LineTip): string {
  *  $3.4k / $850. Never the old "$0k" for sub-thousand values. One decimal under 10 of a unit (keeps
  *  precision where it reads), rounded above; B keeps 2 dp under 10B then 1 (so the headline isn't fussy). */
 export function fmtMoney(d: number): string {
+  if (!Number.isFinite(d)) return "$0"; // #8 a NaN/Infinity (an empty-set divide upstream) must not render "$NaNB"
   const sign = d < 0 ? "−" : "";
   const a = Math.abs(d);
   const unit = (v: number, suf: string) => `${sign}$${v < 10 ? v.toFixed(1) : Math.round(v)}${suf}`;
@@ -313,6 +319,7 @@ export function fmtMoney(d: number): string {
 /** Count formatter (riders, waiting, etc.) — same abbreviation discipline as fmtMoney so the chrome
  *  reads consistently everywhere: 847 / 5.7k / 14k / 1.2M (one decimal under 10k for the live roll). */
 export function fmtCount(v: number): string {
+  if (!Number.isFinite(v)) return "0"; // #8 never "InfinityM"
   const a = Math.abs(v);
   if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
   if (a >= 1e3) return `${a / 1e3 < 10 ? (v / 1e3).toFixed(1) : Math.round(v / 1e3)}k`;
@@ -322,7 +329,7 @@ export function fmtCount(v: number): string {
 /** #25 Sim-ms → "N.N min" against the in-game clock (or "—" when zero) — the single journey/wait-time formatter,
  *  shared by StatsBar, ServiceReport, and the dashboard so the readouts can't drift (was hand-rolled 3×). */
 export function fmtMins(ms: number): string {
-  return ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—";
+  return Number.isFinite(ms) && ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—"; // #8 Infinity → "—", not "Infinity min"
 }
 
 // Shared inline-style fragments (token-driven; mirror the old vanilla chrome 1:1).

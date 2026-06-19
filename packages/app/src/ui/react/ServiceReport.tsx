@@ -77,14 +77,18 @@ function FantasyServiceReport({ s, embedded }: { s: Stats; embedded?: boolean })
     <div data-testid="service-report" className={embedded ? undefined : "ot-console"} style={wrap}>
       <div style={{ padding: "10px 12px 6px", fontWeight: 700, color: "var(--ot-con-ink)" }}>⚜ The Realm</div>
       <div style={{ padding: "0 12px 12px" }}>
-        <Row label="Tribute" value={`${Math.round(s.tribute)}`} testid="svc-tribute" />
+        {/* #20 "Gold" — the StatsBar's committed name for this field (stats.rs documents it as gold, named
+            tribute only for back-compat); the ⬢ unit matches the Upkeep row below. */}
+        <Row label="Gold" value={`${Math.round(s.tribute)}⬢`} testid="svc-tribute" />
         {s.goldUpkeepDaily > 0 && (
           <Row label="Upkeep" value={`−${Math.round(s.goldUpkeepDaily)}⬢/day`} tone="var(--ot-con-red)" testid="svc-upkeep" />
         )}
         <Row label="Supply delivered" value={`${Math.round(s.ridershipTotal)}`} />
         <Divider />
         <Row label="🏰 Towns taken" value={`${Math.round(s.townsCaptured)}`} testid="svc-towns" />
-        <Row label="⚔ Legions afield" value={`${Math.round(s.armyCount)}`} />
+        {/* #1 use armyAfield — armyCount is armies.len() incl. DONE legions (the SoA never removes them), so it
+            climbs forever and contradicts the StatsBar/Beats (both armyAfield ?? armyCount) at the same instant. */}
+        <Row label="⚔ Legions afield" value={`${Math.round(s.armyAfield ?? s.armyCount)}`} />
         <Row label="☠ Decadence" value={`${decay}%`} tone={decayColor} testid="svc-decadence" />
         <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 8, lineHeight: 1.35 }}>
           Supply towns for tribute · field legions from a barracks · post bounties to steer them · hold back the decadence.

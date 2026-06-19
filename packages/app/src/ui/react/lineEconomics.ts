@@ -83,6 +83,7 @@ export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | n
  *  discipline as shared.fmtMoney (1 dp under 10 of a unit, rounded above — so round values aren't the
  *  fussy "$15.0M") but ALWAYS sign-prefixed (+/−), which is the roster's "is this line up or down" read. */
 export function fmtSignedMoney(d: number): string {
+  if (!Number.isFinite(d)) return "+$0"; // #8 a non-finite P&L delta must not render "+$NaN"
   const sign = d < 0 ? "−" : "+";
   const a = Math.abs(d);
   const unit = (v: number, suf: string) => `${sign}$${v < 10 ? v.toFixed(1) : Math.round(v)}${suf}`;

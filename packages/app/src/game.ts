@@ -856,7 +856,9 @@ export class Game {
 
   setHeadwayMs(line: number, ms: number): void {
     this.bridge.apply(cmd.setHeadway(line, ms));
-    const count = Math.max(1, Math.min(8, Math.round(this.roundTripMs(line) / ms)));
+    // #17 cap at the sim's MAX_TRAINS_PER_LINE (24, world.rs AssignTrainset) — the old min(8) meant dragging the
+    // Headway lever silently knocked a 24-train line down to ≤8 (the Editor/Fleet allow up to the sim's 24).
+    const count = Math.max(1, Math.min(24, Math.round(this.roundTripMs(line) / ms)));
     this.bridge.apply(cmd.assignTrainset(line, this.lineSpec(line), count));
     this.refresh();
     // #25 a sub-100ms echo on the drag-end commit — Headway is one of the two locked levers but was the only one

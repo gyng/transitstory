@@ -88,7 +88,7 @@ function useEventLog(): string[] {
       return;
     }
     if (s.simDay > prevDay.current) {
-      push(`🌅 Day ${prevDay.current + 1} complete`);
+      push(`🌅 Day ${s.simDay} complete`); // #12 label by the new simDay, not prevDay+1 — a >1-day jump must read its true day
       prevDay.current = s.simDay;
     }
     while (nextRider.current! < RIDER_STEPS.current.length && s.ridershipTotal >= RIDER_STEPS.current[nextRider.current!]) {
@@ -131,7 +131,8 @@ function DayDigest() {
     }
     if (s.simDay > prevDay.current) {
       const gained = Math.round(s.ridershipTotal - startRiders.current);
-      setDigest(`Day ${prevDay.current + 1}: +${gained} ${s.ruleset === "arcadia" ? "supply" : "riders"} · coverage ${Math.round(s.coverageScore)}`);
+      // #12 label by the new simDay (the just-completed day), not prevDay+1, so a >1-day jump attributes its diff correctly.
+      setDigest(`Day ${s.simDay}: +${gained} ${s.ruleset === "arcadia" ? "supply" : "riders"} · coverage ${Math.round(s.coverageScore)}`);
       prevDay.current = s.simDay;
       startRiders.current = s.ridershipTotal;
     }
