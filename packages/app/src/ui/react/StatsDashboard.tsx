@@ -36,7 +36,7 @@ function Kpi({ label, value, sub, color, testid }: { label: string; value: strin
 }
 
 function LedgerRow({ label, amount, sign }: { label: string; amount: number; sign: "+" | "-" | "=" }) {
-  const color = sign === "+" ? "var(--ot-gauge-good,#009e73)" : sign === "-" ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink)";
+  const color = sign === "+" ? "var(--ot-gauge-good,#009e73)" : sign === "-" ? "var(--ot-con-red)" : "var(--ot-con-ink)";
   const prefix = sign === "+" ? "+" : sign === "-" ? "−" : "";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: sign === "=" ? "1px solid rgba(255,255,255,.08)" : "none" }}>
@@ -68,7 +68,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
     }
   }
   const netSat = satDen > 0 ? Math.round(satNum / satDen) : null;
-  const satColor = netSat == null ? "var(--ot-con-ink-dim)" : netSat >= 70 ? "var(--ot-gauge-good,#009e73)" : netSat >= 45 ? "#e69f00" : "var(--ot-gauge-bad,#d62828)";
+  const satColor = netSat == null ? "var(--ot-con-ink-dim)" : netSat >= 70 ? "var(--ot-gauge-good,#009e73)" : netSat >= 45 ? "#e69f00" : "var(--ot-con-red)";
 
   // Ledger figures (informational even when the economy is off — the sim always tallies fares).
   const fares = s.fareRevenue;
@@ -158,8 +158,8 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
           <Kpi label="Riders carried" value={fmtCount(s.ridershipTotal)} sub={`${lines.length} lines · ${s.vehicleCount} vehicles`} color="var(--ot-con-accent)" testid="kpi-ridership" />
           <Kpi label="Coverage" value={`${Math.round(s.coverageScore)}`} sub="of the whole city" color={coverageColor(s.coverageScore)} testid="kpi-coverage" />
           <Kpi label="Satisfaction" value={netSat == null ? "—" : `${netSat}%`} sub={netSat == null ? "no service" : netSat >= 70 ? "happy" : netSat >= 45 ? "ok" : "unhappy"} color={satColor} testid="kpi-satisfaction" />
-          <Kpi label={s.economyEnabled ? "Balance" : "Balance (info)"} value={fmtMoney(balance)} sub={s.economyEnabled ? "economy ON" : "economy off"} color={balance >= 0 ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)"} testid="kpi-balance" />
-          <Kpi label="Left behind" value={fmtCount(s.abandoned + s.deniedBoardings)} sub={`${fmtCount(s.waitingTotal)} waiting now`} color={s.abandoned + s.deniedBoardings > 0 ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink)"} testid="kpi-leftbehind" />
+          <Kpi label={s.economyEnabled ? "Balance" : "Balance (info)"} value={fmtMoney(balance)} sub={s.economyEnabled ? "economy ON" : "economy off"} color={balance >= 0 ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-red)"} testid="kpi-balance" />
+          <Kpi label="Left behind" value={fmtCount(s.abandoned + s.deniedBoardings)} sub={`${fmtCount(s.waitingTotal)} waiting now`} color={s.abandoned + s.deniedBoardings > 0 ? "var(--ot-con-red)" : "var(--ot-con-ink)"} testid="kpi-leftbehind" />
         </div>
 
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -203,7 +203,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
                         −{fmtMoney(p.opexPerDay)}/d
                       </span>
                     )}
-                    <b style={{ color: p.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)", flex: "0 0 auto", marginLeft: 8 }}>{fmtSignedMoney(p.net)}</b>
+                    <b style={{ color: p.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-red)", flex: "0 0 auto", marginLeft: 8 }}>{fmtSignedMoney(p.net)}</b>
                   </div>
                 ))
               )}

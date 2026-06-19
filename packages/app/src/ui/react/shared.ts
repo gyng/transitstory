@@ -99,8 +99,10 @@ export const RAIL_ROSTER: TrainModelDef[] = [
 ];
 
 /** Cargo-WAGON count a rail train of `capacity` pulls (#multi-car) — the consist length the player picks by
- *  choosing a model. Hand-mirror of the sim's `render_buf::car_count` (`((cap+5)/4).clamp(2,6)`): Standard→3,
- *  Heavy→5, Express→2. Keep in lockstep with the Rust copy-out so the picker's "N cars" matches what's drawn. */
+ *  choosing a model. #29 Hand-mirror of ONLY the RAIL/HEAVY branch of the sim's `render_buf::car_count`
+ *  (`((cap+5)/4).clamp(2,6)`): Standard→3, Heavy→5, Express→2. (The Rust fn also takes a mode and returns 0 for
+ *  non-rail modes; this copy is only ever called for RAIL_ROSTER models, so it omits that branch.) Keep the
+ *  rail branch in lockstep with the Rust copy-out so the picker's "N cars" matches what's drawn. */
 export function railCarCount(capacity: number): number {
   return Math.max(2, Math.min(6, Math.floor((capacity + 5) / 4)));
 }

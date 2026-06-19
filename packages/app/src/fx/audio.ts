@@ -20,6 +20,11 @@ class AudioKit {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private _muted = false;
+  // #31 outer-ring debounces (performance.now is render-only — banned only inside crates/sim). _lastCelebrate is
+  // SHARED by milestone() + conquer() so their arpeggios can't pile into a muddy blare on one 3 Hz slice;
+  // _lastPlace stops a fast multi-place / seed-replay burst of identical 320 Hz plucks phase-adding into a buzz.
+  private _lastCelebrate = 0;
+  private _lastPlace = 0;
 
   constructor() {
     try {
@@ -90,6 +95,9 @@ class AudioKit {
   // --- cues (subtle & satisfying) -------------------------------------------------------------
   /** Placing a station — a soft, short pluck. */
   place(): void {
+    const now = performance.now();
+    if (now - this._lastPlace < 45) return; // #31 deliberate clicks always exceed 45ms; a replay/multi-place burst doesn't
+    this._lastPlace = now;
     this.play([{ freq: 320, dur: 0.07, type: "triangle", gain: 0.15 }]);
   }
   /** A line committed — a gentle rising two-note "connected". */
@@ -118,6 +126,9 @@ class AudioKit {
    *  arpeggio, distinctly more triumphant than `connect` so the achievement reads as an achievement.
    *  Caller rate-limits (milestones are rare); keep it gentle so it celebrates, never blares. */
   milestone(): void {
+    const now = performance.now();
+    if (now - this._lastCelebrate < 400) return; // #31 share the celebrate gate with conquer (they often coincide)
+    this._lastCelebrate = now;
     this.play([
       { freq: 523.25, dur: 0.12, type: "triangle", gain: 0.13 }, // C5
       { freq: 659.25, dur: 0.12, type: "triangle", gain: 0.13, delay: 0.08 }, // E5
@@ -135,6 +146,9 @@ class AudioKit {
   /** A town conquered (fantasy) — a low, brief triumphant swell with a hair of weight (the drum of
    *  the legion arriving). Distinct from `connect`; fired on the conquest beat, not per tick. */
   conquer(): void {
+    const now = performance.now();
+    if (now - this._lastCelebrate < 400) return; // #31 shares the celebrate gate with milestone — no muddy overlap
+    this._lastCelebrate = now;
     this.play([
       { freq: 110, dur: 0.22, type: "sawtooth", gain: 0.09 }, // A2 — the weight
       { freq: 196, dur: 0.16, type: "triangle", gain: 0.12, glideTo: 261.63 }, // G3 → C4 lift

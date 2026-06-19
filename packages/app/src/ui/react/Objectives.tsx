@@ -67,7 +67,7 @@ export function ObjectivePanel({ scenario, embedded = false }: { scenario: Scena
             data-testid="objective-status"
             style={{
               fontSize: 11,
-              color: status === "won" ? "var(--ot-gauge-good,#009e73)" : status === "lost" ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink-dim)",
+              color: status === "won" ? "var(--ot-gauge-good,#009e73)" : status === "lost" ? "var(--ot-con-red)" : "var(--ot-con-ink-dim)",
             }}
           >
             {status === "active" ? "in progress" : status}
@@ -143,7 +143,7 @@ export function ObjectivePanel({ scenario, embedded = false }: { scenario: Scena
             }}
           >
             <div style={{ fontSize: 40 }}>{status === "won" ? "🎉" : "⏱️"}</div>
-            <h2 style={{ margin: "8px 0 4px", color: status === "won" ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)" }}>
+            <h2 style={{ margin: "8px 0 4px", color: status === "won" ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-red)" }}>
               {status === "won" ? `${scenario.title} complete!` : "Challenge failed"}
             </h2>
             <p style={{ margin: "0 0 14px", color: "var(--ot-con-ink-dim)", fontSize: 14 }}>

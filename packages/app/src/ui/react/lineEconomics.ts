@@ -66,8 +66,9 @@ export function meanStopQueue(stops: number[], perStation: Map<number, { waiting
  *  infrequent, or visibly-queueing one scores low. Returns null with no service (no trains). */
 export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | null {
   if (l.trains <= 0) return null;
-  // Crowding: comfortable up to ~70% load, then unhappiness ramps; crush (>~110%) is miserable.
-  const crowd = l.loadFactor <= 0.7 ? 0 : Math.min(60, (l.loadFactor - 0.7) * 150);
+  // #19 Crowding, aligned to loadPip's bands (healthy <0.6, busy 0.6–0.9, crush ≥0.9) so the chip glyph and the
+  // satisfaction score don't disagree side-by-side: the penalty starts at busy (0.6) and saturates by crush (0.9).
+  const crowd = l.loadFactor <= 0.6 ? 0 : Math.min(60, (l.loadFactor - 0.6) * 200);
   // Wait: about half the headway. Painless under ~4 min, then ramps.
   const waitMin = l.headwayMs / 2 / SIM_MS_PER_CLOCK_MIN; // clock minutes (frame-unified)
   const wait = waitMin <= 4 ? 0 : Math.min(40, (waitMin - 4) * 4);
@@ -76,7 +77,7 @@ export function lineSatisfaction(l: PerLine, queueAtStops = 0): Satisfaction | n
   const score = Math.max(0, Math.min(100, Math.round(100 - crowd - wait - queue)));
   if (score >= 70) return { score, glyph: "😀", color: "var(--ot-gauge-good,#009e73)", word: "happy" };
   if (score >= 45) return { score, glyph: "😐", color: "#e69f00", word: "ok" };
-  return { score, glyph: "😟", color: "var(--ot-gauge-bad,#d62828)", word: "unhappy" };
+  return { score, glyph: "😟", color: "var(--ot-con-red)", word: "unhappy" };
 }
 
 /** Compact signed-money for the roster (tight columns): +$1.2M / −$340k / +$980. Same abbreviation
@@ -94,14 +95,10 @@ export function fmtSignedMoney(d: number): string {
   return `${sign}$${b < 10 ? b.toFixed(2) : b.toFixed(1)}B`;
 }
 
-/** Compact count for the roster's number column: 847 / 12.3k / 1.2M. */
-export function fmtCount(v: number): string {
-  const a = Math.abs(v);
-  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (a >= 1e4) return `${(v / 1e3).toFixed(0)}k`;
-  if (a >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
-  return `${Math.round(v)}`;
-}
+// #27 fmtCount's canonical home is shared.ts — re-export it here so Panels (which imports it from this module)
+// keeps working while there's a single source of truth (this was a duplicate "drift is a bug" trap; the bodies
+// were behaviourally identical).
+export { fmtCount } from "./shared";
 
 /** Shorten an official line name for the roster + derive a 2–3 char identity badge code. This is
  *  DISPLAY-ONLY (the command-log auto-name is untouched), and lives here so the roster, hover tips,

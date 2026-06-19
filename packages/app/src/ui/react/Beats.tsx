@@ -126,7 +126,7 @@ export function DayReport() {
       </div>
       <Row label="Riders carried" value={`+${fmtCount(report.riders)}`} tone="var(--ot-con-accent)" />
       <Row label="Coverage" value={`${report.coverage}${report.coverageDelta !== 0 ? ` (${sign(report.coverageDelta)})` : ""}`} />
-      {report.gaveUp > 0 && <Row label="Gave up waiting" value={`+${fmtCount(report.gaveUp)}`} tone="var(--ot-gauge-bad,#d62828)" />}
+      {report.gaveUp > 0 && <Row label="Gave up waiting" value={`+${fmtCount(report.gaveUp)}`} tone="var(--ot-con-red)" />}
       {report.grewPct >= 0.5 && (
         <Row label="🏙 The city grew" value={`+${report.grewPct.toFixed(1)}% demand`} tone="var(--ot-gauge-good,#009e73)" />
       )}

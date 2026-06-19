@@ -24,7 +24,7 @@ function MenuItem({
   disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-  const color = disabled ? "var(--ot-con-ink-dim)" : danger ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-con-ink)";
+  const color = disabled ? "var(--ot-con-ink-dim)" : danger ? "var(--ot-con-red)" : "var(--ot-con-ink)";
   return (
     <div
       data-testid={testid}

@@ -2002,6 +2002,7 @@ export class Game {
    *  sunk — undo restores it, demolish doesn't refund it). */
   private demolishEcho(name: string, at: [number, number] | null, capitalCost = 0): void {
     if (at) this.effects.ripple(at[0], at[1], "214,40,40");
+    audio.alert(); // #18 the red ripple was acoustically silent while place/connect chime — the soft descending "no"
     const sunk = this.lastStats.economyEnabled && capitalCost > 0 ? ` — ${fmtMoney(capitalCost)} build cost written off` : "";
     this.notice = `Demolished ${name}${sunk}`;
   }
@@ -2815,6 +2816,7 @@ export class Game {
           this.effects.floatText(p.lng, p.lat, "⚔ Lost!", "230,90,90", { rise: 38, size: 16, ttl: 2100 });
         }
       }
+      if (lost.length > 0) audio.alert(); // #18 losing a held town was silent while conquering swells — the unified "loss" voice (rate-limited to one per 3 Hz beat, mirroring conquer)
     }
 
     this.prevJuice = { tribute: s.tribute, fare: s.fareRevenue, opex: s.opexSpent, towns: s.townsCaptured, day: s.simDay, seeded: true };

@@ -42,7 +42,7 @@ export function FollowCard() {
           <b data-testid="follow-name">{gaveUp ? "😞" : "🏁"} {prev?.name ?? "Commuter"}</b>
           <Stop onClick={() => game.clearFollowed()} />
         </div>
-        <div data-testid="follow-status" style={{ fontWeight: 600, marginTop: 3, color: gaveUp ? "var(--ot-gauge-bad,#d62828)" : "var(--ot-gauge-good,#009e73)" }}>
+        <div data-testid="follow-status" style={{ fontWeight: 600, marginTop: 3, color: gaveUp ? "var(--ot-con-red)" : "var(--ot-gauge-good,#009e73)" }}>
           {gaveUp ? `gave up waiting at ${prev?.at}` : `✅ arrived at ${prev?.dest ?? "their destination"}`}
         </div>
         <div style={{ color: "var(--ot-con-ink-dim)", fontSize: 11, marginTop: 3, lineHeight: 1.3 }}>

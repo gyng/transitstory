@@ -69,7 +69,7 @@ function Divider() {
  *  drops the fixed card so it flows in the Outliner's Report tab. */
 function FantasyServiceReport({ s, embedded }: { s: Stats; embedded?: boolean }) {
   const decay = Math.round(s.decadencePct);
-  const decayColor = decay >= 66 ? "var(--ot-gauge-bad,#d62828)" : decay >= 33 ? "#e69f00" : "var(--ot-con-ink-dim)";
+  const decayColor = decay >= 66 ? "var(--ot-con-red)" : decay >= 33 ? "#e69f00" : "var(--ot-con-ink-dim)";
   const wrap: CSSProperties = embedded
     ? { height: "100%", overflowY: "auto", font: "12px system-ui,sans-serif", color: "var(--ot-con-ink)" }
     : CARD;
@@ -195,8 +195,8 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
 
             {/* Pressure — the only difficulty source in the money-free game (AGENTS game design). */}
             <Row label="Waiting now" value={`${waiting}`} tone={waiting > 200 ? "#e69f00" : undefined} testid="svc-waiting" />
-            <Row label="Passed by full trains" value={`${denied}`} tone={denied > 0 ? "var(--ot-gauge-bad,#d62828)" : undefined} testid="svc-denied" />
-            <Row label="Gave up waiting" value={`${gaveUp}`} tone={gaveUp > 0 ? "var(--ot-gauge-bad,#d62828)" : undefined} testid="svc-gaveup" />
+            <Row label="Passed by full trains" value={`${denied}`} tone={denied > 0 ? "var(--ot-con-red)" : undefined} testid="svc-denied" />
+            <Row label="Gave up waiting" value={`${gaveUp}`} tone={gaveUp > 0 ? "var(--ot-con-red)" : undefined} testid="svc-gaveup" />
 
             {/* Ridership by mode — makes the multi-modal network legible at a glance. */}
             {modeRows.length > 0 && (

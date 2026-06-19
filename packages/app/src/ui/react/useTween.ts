@@ -5,6 +5,10 @@
 // Honours prefers-reduced-motion (snaps), and snaps under the e2e hook so tests read exact values.
 import { useEffect, useRef } from "react";
 
+/** #30 PRECONDITION: pass a STABLE `fmt` (a module-level fn or useCallback). It's in the effect deps below, so an
+ *  inline `(n) => ...` would get a fresh identity each render and RESTART the ease-out on every ~3 Hz push
+ *  (visible stutter + rAF churn), defeating the "zero re-renders / decoupled from the render loop" promise above.
+ *  Both current callers pass module-level fns. */
 export function useTweenedNumber(
   target: number,
   fmt: (n: number) => string,

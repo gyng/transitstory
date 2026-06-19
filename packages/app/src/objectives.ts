@@ -45,7 +45,8 @@ export interface GoalState {
 export interface ScenarioEval {
   goals: GoalState[];
   allMet: boolean;
-  /** True once a hard fail condition (deadline / abandonment / bankruptcy) has tripped. */
+  /** #28 True once a hard fail condition (realm-lost / deadline / abandonment / bankruptcy) has tripped. The
+   *  realm-lost check runs FIRST and is the ONLY fail the arcadia-conquest scenario relies on (it has no deadline). */
   failed: boolean;
   failReason: string | null;
 }

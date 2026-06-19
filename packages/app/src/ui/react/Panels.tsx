@@ -165,7 +165,7 @@ function LineRow({ l, s, selected }: { l: PerLine; s: Stats; selected: boolean }
           <span
             data-testid={`line-pnl-${l.lineId}`}
             title={`Fares earned $${Math.round(pnl.revenue).toLocaleString()} − build cost $${Math.round(pnl.capital).toLocaleString()}`}
-            style={{ font: "600 11px system-ui,sans-serif", color: pnl.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-gauge-bad,#d62828)" }}
+            style={{ font: "600 11px system-ui,sans-serif", color: pnl.inBlack ? "var(--ot-gauge-good,#009e73)" : "var(--ot-con-red)" }}
           >
             {pnl.inBlack ? "▲" : "▼"} {fmtSignedMoney(pnl.net)}
           </span>
