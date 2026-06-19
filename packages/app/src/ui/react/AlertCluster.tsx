@@ -201,23 +201,35 @@ export function AlertCluster() {
   const ui = useGameUI();
   const game = useGame();
   const alerts = deriveAlerts(s, ui.notice);
-  if (alerts.length === 0) return null;
+  // #9 the top alert as a screen-reader announcement. ALWAYS-MOUNTED + separate from the visual cluster (which
+  // unmounts when healthy) so it persists across empty→populated and catches the FIRST ping. React reconciliation
+  // debounces it — an unchanged string is no DOM mutation, so no re-announce on the ~3 Hz recompose. Assertive
+  // only for the critical realm-lost / decadence breach (sev>=90), else polite.
+  const top = alerts[0];
+  const announce = top ? `Alert: ${top.label}${top.count > 1 ? `, ${top.count}` : ""}` : "";
   return (
-    <div data-testid="alert-cluster" className="ot-console" style={CLUSTER_STYLE}>
-      {alerts.map((a) => (
-        <Ping
-          key={a.kind}
-          a={a}
-          onClick={() => {
-            // notice pings dismiss the toast; anchored pings fly to their station + arm the remedy tool;
-            // global fantasy pings (#18) fly to the threat (raiders → nearest marauder, else the capital).
-            if (a.kind === "notice") game.dismissNotice();
-            else if (a.station !== null) game.flyToAlert(a.station, a.tool);
-            else if (a.kind === "raiders") game.flyToThreat();
-            else if (GLOBAL_FLY.has(a.kind)) game.flyToCapital();
-          }}
-        />
-      ))}
-    </div>
+    <>
+      <div aria-live={top && top.sev >= 90 ? "assertive" : "polite"} aria-atomic="true" className="ot-sr-only">
+        {announce}
+      </div>
+      {alerts.length > 0 && (
+        <div data-testid="alert-cluster" className="ot-console" role="group" aria-label="Network alerts" style={CLUSTER_STYLE}>
+          {alerts.map((a) => (
+            <Ping
+              key={a.kind}
+              a={a}
+              onClick={() => {
+                // notice pings dismiss the toast; anchored pings fly to their station + arm the remedy tool;
+                // global fantasy pings (#18) fly to the threat (raiders → nearest marauder, else the capital).
+                if (a.kind === "notice") game.dismissNotice();
+                else if (a.station !== null) game.flyToAlert(a.station, a.tool);
+                else if (a.kind === "raiders") game.flyToThreat();
+                else if (GLOBAL_FLY.has(a.kind)) game.flyToCapital();
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
   );
 }

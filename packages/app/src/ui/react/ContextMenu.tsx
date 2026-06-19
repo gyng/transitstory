@@ -136,17 +136,17 @@ export function ContextMenu() {
     >
       {cm.kind === "station" && (
         <>
-          <div style={HEADER}>◉ {station?.name || `Station ${cm.id + 1}`}</div>
+          <div role="presentation" style={HEADER}>◉ {station?.name || `Station ${cm.id + 1}`}</div>
           {/* The supply-chain role of the town/resource this station sits on (every fantasy station does). */}
           {poi?.town && (
-            <div style={INFO}>
+            <div role="presentation" style={INFO}>
               {townInfo(poi.town.kind).glyph} {townInfo(poi.town.kind).label} · tribute {poi.town.value.toLocaleString()}
               {poi.town.chain ? <><br />Needs: {chainNeeds(poi.town.chain)}</> : null}
               {poi.town.decadence > 0 ? <><br />Decadence floor: {Math.round(poi.town.decadence)}%</> : null}
             </div>
           )}
           {poi?.resource && !poi.town && (
-            <div style={INFO}>
+            <div role="presentation" style={INFO}>
               {resourceInfo(poi.resource.kind).glyph} {resourceInfo(poi.resource.kind).label} · yield {poi.resource.yield}
               <br />Feeds: {poi.resource.kind === "grain" || poi.resource.kind === "fuel" ? "bread chain" : poi.resource.kind === "ore" || poi.resource.kind === "aether" ? "arms chain" : "supply"}
             </div>
@@ -167,7 +167,7 @@ export function ContextMenu() {
               />
             );
           })()}
-          <div style={SEP} />
+          <div role="separator" style={SEP} />
           <MenuItem
             icon="💥"
             label={armed ? "Bulldoze — confirm?" : "Bulldoze"}
@@ -180,12 +180,12 @@ export function ContextMenu() {
 
       {cm.kind === "line" && (
         <>
-          <div style={HEADER}>
+          <div role="presentation" style={HEADER}>
             <span style={{ width: 11, height: 11, borderRadius: 3, flex: "0 0 auto", background: hex(line?.color ?? 0x888888) }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{line?.name || `Line ${cm.id + 1}`}</span>
           </div>
           <MenuItem icon="🔍" label="Inspect / Edit" testid="ctx-inspect" onClick={() => { game.selectLine(cm.id); close(); }} />
-          <div style={SEP} />
+          <div role="separator" style={SEP} />
           <MenuItem
             icon="💥"
             label={armed ? "Bulldoze line — confirm?" : "Bulldoze line"}
@@ -198,11 +198,11 @@ export function ContextMenu() {
 
       {cm.kind === "vehicle" && veh && (
         <>
-          <div style={HEADER}>
+          <div role="presentation" style={HEADER}>
             <span style={{ width: 11, height: 11, borderRadius: 3, flex: "0 0 auto", background: hex(veh.color) }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>🚆 {veh.name}</span>
           </div>
-          <div style={INFO}>
+          <div role="presentation" style={INFO}>
             Hauling {veh.onboard} / {veh.capacity}
             {veh.capacity > 0 ? ` (${Math.round((veh.onboard / veh.capacity) * 100)}%)` : ""}
           </div>
@@ -212,7 +212,7 @@ export function ContextMenu() {
 
       {cm.kind === "peep" && (
         <>
-          <div style={HEADER}>🧍 Rider</div>
+          <div role="presentation" style={HEADER}>🧍 Rider</div>
           <MenuItem icon="👁" label="Follow this rider" testid="ctx-follow" onClick={() => { game.setFollowed(cm.id); close(); }} />
           <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
         </>
@@ -220,25 +220,25 @@ export function ContextMenu() {
 
       {cm.kind === "town" && town && (
         <>
-          <div style={HEADER}>{townInfo(town.kind).glyph} {townInfo(town.kind).label}</div>
-          <div style={INFO}>
+          <div role="presentation" style={HEADER}>{townInfo(town.kind).glyph} {townInfo(town.kind).label}</div>
+          <div role="presentation" style={INFO}>
             Tribute reward: {town.value.toLocaleString()}
             {town.chain ? <><br />Needs: {chainNeeds(town.chain)}</> : null}
             <br />Decadence: {Math.round(town.decadence)}%
           </div>
-          <div style={SEP} />
+          <div role="separator" style={SEP} />
           <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
         </>
       )}
 
       {cm.kind === "resource" && res && (
         <>
-          <div style={HEADER}>{resourceInfo(res.kind).glyph} {resourceInfo(res.kind).label}</div>
-          <div style={INFO}>
+          <div role="presentation" style={HEADER}>{resourceInfo(res.kind).glyph} {resourceInfo(res.kind).label}</div>
+          <div role="presentation" style={INFO}>
             Yield: {res.yield}/cycle
             <br />Feeds: {res.kind === "grain" || res.kind === "fuel" ? "bread chain" : res.kind === "ore" || res.kind === "aether" ? "arms chain" : "supply"}
           </div>
-          <div style={SEP} />
+          <div role="separator" style={SEP} />
           <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
         </>
       )}
@@ -248,7 +248,7 @@ export function ContextMenu() {
           <MenuItem icon="🧍" label={`${ui.showPeeps ? "Hide" : "Show"} riders (peeps)`} testid="ctx-peeps" onClick={() => { game.setShowPeeps(!ui.showPeeps); close(); }} />
           <MenuItem icon="🌡" label={`${ui.showDemand ? "Hide" : "Show"} demand heat`} testid="ctx-demand" onClick={() => { game.setShowDemand(!ui.showDemand); close(); }} />
           <MenuItem icon="👁" label="Follow a random rider" testid="ctx-follow" onClick={() => { game.followRandomPeep(); close(); }} />
-          <div style={SEP} />
+          <div role="separator" style={SEP} />
           <MenuItem icon="📍" label="Center here" testid="ctx-center" onClick={() => { game.map.easeTo({ center: [cm.lngLat.lng, cm.lngLat.lat] }); close(); }} />
         </>
       )}

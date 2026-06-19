@@ -60,6 +60,10 @@ function TabButton({ id, label, active, onClick }: { id: Tab; label: string; act
   return (
     <button
       data-testid={`outliner-tab-${id}`}
+      id={`outliner-tab-${id}`}
+      role="tab" // #13 announce as "tab N of 3, selected" rather than three unrelated buttons
+      aria-selected={active}
+      aria-controls="outliner-tabpanel"
       className={`ot-key ${active ? "on" : ""}`}
       onClick={onClick}
       style={{ padding: "3px 11px", font: "600 12px system-ui,sans-serif", cursor: "pointer" }}
@@ -157,15 +161,17 @@ export function Outliner({ scenario }: { scenario: Scenario | null }) {
       {/* LEFT ⅔ — the tabbed roster dock */}
       <div className="ot-console" style={ROSTER_STYLE}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flex: "0 0 auto" }}>
-          <TabButton id="roster" label="Roster" active={tab === "roster"} onClick={() => setTab("roster")} />
-          <TabButton id="fleet" label="Fleet" active={tab === "fleet"} onClick={() => setTab("fleet")} />
-          <TabButton id="report" label="Report" active={tab === "report"} onClick={() => setTab("report")} />
+          <div role="tablist" aria-label="Network panels" style={{ display: "flex", gap: 6 }}>
+            <TabButton id="roster" label="Roster" active={tab === "roster"} onClick={() => setTab("roster")} />
+            <TabButton id="fleet" label="Fleet" active={tab === "fleet"} onClick={() => setTab("fleet")} />
+            <TabButton id="report" label="Report" active={tab === "report"} onClick={() => setTab("report")} />
+          </div>
           {/* Fantasy: the spell bar lives roster-adjacent as an embedded popover (its spell-toggle key
               mounts only once SPELLCRAFT is owned). `embedded` is REQUIRED — without it the SpellBar
               falls back to its legacy fixed bottom-right bar and never renders the dock toggle. */}
           {arcadia && <div style={{ marginLeft: "auto" }}><SpellBar embedded /></div>}
         </div>
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div role="tabpanel" id="outliner-tabpanel" aria-labelledby={`outliner-tab-${tab}`} style={{ flex: 1, minHeight: 0 }}>
           {tab === "roster" && <LineList embedded />}
           {tab === "fleet" && <FleetBody />}
           {tab === "report" && <ServiceReport embedded />}

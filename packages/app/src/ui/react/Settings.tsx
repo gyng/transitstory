@@ -3,9 +3,10 @@
 // (transport-mode gates, economy, demand model, day-night tint, peeps visibility, sound). The
 // Keyboard-controls section renders the KEYMAP (keys.tsx) as a read-only legend (item 5c). Opens
 // from the bottom-left CornerCluster ⚙; reads Game/Stats state and re-renders on its hook slices.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
+import { useDialog } from "./useDialog";
 import { MODES } from "./shared";
 import { KEYMAP, Kbd } from "./keys";
 import { audio } from "../../fx/audio";
@@ -102,16 +103,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   // Day/night map tint (default on); the sky module owns the actual divs.
   const [dayNight, setDayNight] = useState(true);
 
-  // #25 Escape closes the panel (the onClose App plumbs was unused) — modal-style panels need a non-hunt exit,
-  // matching Onboarding/Tutorial. Listener only mounts while open; harmless no-op otherwise.
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open, onClose]);
+  // #10 full modal-dialog focus machinery (was a manual Escape-only effect): focus-in on open, a Tab/Shift+Tab
+  // trap, Escape close, and focus restore to the ⚙ trigger on close.
+  const dialogRef = useDialog(open, onClose);
 
   if (!open) return null;
 
@@ -120,9 +114,14 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
 
   return (
     <div
+      ref={dialogRef}
       id="settings-panel"
       data-testid="settings-panel"
       className="ot-console"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabIndex={-1}
       style={{
         // Anchored near the bottom-LEFT ⚙ trigger in the CornerCluster. Opens upward from just above
         // the corner cluster so the ⚙ and its panel read as one control. Capped height with scroll so
@@ -140,7 +139,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-        <div style={{ fontWeight: 700, color: "var(--ot-con-ink)" }}>Settings</div>
+        <div id="settings-title" style={{ fontWeight: 700, color: "var(--ot-con-ink)" }}>Settings</div>
         <button
           onClick={onClose}
           aria-label="Close settings"

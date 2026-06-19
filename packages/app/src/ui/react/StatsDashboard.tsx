@@ -5,6 +5,7 @@
 // recorder that feeds the charts is mounted separately and always-on, so history survives close.
 import type { CSSProperties } from "react";
 import { useGame, useStats } from "./GameContext";
+import { useDialog } from "./useDialog";
 import { useStatsHistory } from "./statsHistory";
 import { ChartCard, BarList, DualSparkline } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
@@ -52,6 +53,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
   const game = useGame();
   const s = useStats();
   const history = useStatsHistory();
+  const dialogRef = useDialog(open, onClose); // #10 focus-in on open / Tab-trap / Escape / restore on close
   if (!open) return null;
 
   const lines = s.perLine;
@@ -123,8 +125,13 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         style={{ position: "fixed", inset: 0, background: "rgba(12,15,19,.35)", zIndex: 40 }}
       />
       <div
+        ref={dialogRef}
         data-testid="stats-dashboard"
         className="ot-console"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dashboard-title"
+        tabIndex={-1}
         style={{
           position: "fixed",
           top: "50%",
@@ -139,7 +146,7 @@ export function StatsDashboard({ open, onClose }: { open: boolean; onClose: () =
         }}
       >
         <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "var(--ot-con-ink)" }}>📊 Network Dashboard</div>
+          <div id="dashboard-title" style={{ fontSize: 17, fontWeight: 800, color: "var(--ot-con-ink)" }}>📊 Network Dashboard</div>
           <div style={{ marginLeft: 10, color: "var(--ot-con-ink-dim)", fontSize: 12 }}>
             {s.period} · {fmtClock(s.simHour)} · {s.running ? "running" : "paused"}
           </div>

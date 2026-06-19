@@ -175,6 +175,19 @@ body {
      realm nears collapse; falls back to 1.1s where the var isn't set. */
   animation: ot-pulse var(--ot-doom, 1.1s) ease-in-out infinite;
 }
+/* #9 visually-hidden but screen-reader-readable — for the alert-tray live region that must announce without
+   painting (the standard a11y clip pattern). */
+.ot-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 @keyframes ot-pulse {
   0%,
   100% {

@@ -16,6 +16,7 @@ export function FollowCard() {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const lastSeen = useRef<FollowView | null>(null); // last live state, to infer the trip's outcome
   const abandonedSeen = useRef(0); // #21 the global renege count at the last LIVE sighting of this rider
+  const verdict = useRef<boolean | null>(null); // #21 the trip outcome, LATCHED once at live→gone (null = undetermined)
   useEffect(() => {
     game.onChange.push(bump);
     return () => {
@@ -30,6 +31,13 @@ export function FollowCard() {
   if (f) {
     lastSeen.current = f;
     abandonedSeen.current = stats.abandoned; // snapshot the global renege count while we can still see them
+    verdict.current = null; // #21 live again — clear any latched outcome
+  } else if (verdict.current === null && lastSeen.current) {
+    // #21 LATCH the outcome ONCE at the live→gone transition — don't recompute it each 3 Hz render, or the
+    // city-wide `abandoned` counter climbing (from ANY unrelated rider's renege) would retroactively flip a
+    // settled "arrived" into "gave up". Computed from the authoritative signal at the instant they vanished.
+    const prev = lastSeen.current;
+    verdict.current = !prev.onboard && prev.waitMin >= 9 && stats.abandoned > abandonedSeen.current;
   }
 
   // Not in transit right now — infer the outcome from the last live state. A rider who vanished
@@ -37,10 +45,7 @@ export function FollowCard() {
   // commute spawns, `followCitizen` finds them again and the live view resumes (the daily routine).
   if (!f) {
     const prev = lastSeen.current;
-    // #21 "gave up" requires the sim's AUTHORITATIVE renege signal — the global `abandoned` counter advanced
-    // since this rider's last live sighting — AND that they were still waiting near patience (~10 clock-min). The
-    // old waitMin>8 heuristic alone mislabelled a rider who BOARDED between two 3 Hz samples as a confident renege.
-    const gaveUp = !!prev && !prev.onboard && prev.waitMin >= 9 && stats.abandoned > abandonedSeen.current;
+    const gaveUp = verdict.current === true; // #21 the outcome latched once at the live→gone transition (above), never recomputed
     return (
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
