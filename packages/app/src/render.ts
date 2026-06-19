@@ -1765,7 +1765,7 @@ export function legionLayer(legions: LegionDot[]): Layer {
 
 /** Campfires under the CAMPED legions (#daynight): a warm ember glow so a foot-march resting through the
  *  night reads as a lit camp, not a stalled dot. Drawn UNDER the standards; empty (zero cost) by day or
- *  with no camped host. Pixel-radius so it reads at any zoom; depthTest off to sit on the dark ground. */
+ *  with no camped host. Pixel-radius so it reads at any zoom; depth test off (depthCompare:always) to sit on the dark ground. */
 export function legionCampfireLayer(camped: LegionDot[]): Layer {
   return new ScatterplotLayer<LegionDot>({
     id: "legion-campfires",
@@ -1777,7 +1777,7 @@ export function legionCampfireLayer(camped: LegionDot[]): Layer {
     radiusMaxPixels: 11,
     getFillColor: [255, 154, 62, 150],
     stroked: false,
-    parameters: { depthTest: false },
+    parameters: { depthCompare: "always" },
     updateTriggers: { getFillColor: camped.length },
   });
 }
@@ -2050,7 +2050,7 @@ interface GlowPoint {
 /** Warm NIGHT-LIGHT glows at the settled places (capital + towns + resource camps), fading in with the
  *  0..1 `night` factor — lit windows / hearth-fires against the cool dark. Three stacked PIXEL-radius discs
  *  per point (a wide bloom + a mid ring + a bright hot-core). Arcadia only; the caller skips it by day
- *  (night≈0) and at the strategic overview. Bounded (~50 points) — cheap, `depthTest:false` so the glow
+ *  (night≈0) and at the strategic overview. Bounded (~50 points) — cheap, `depthCompare:'always'` so the glow
  *  reads over the tilted terrain. Rides the per-frame compose like the other motion layers. */
 export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[], night: number): Layer[] {
   if (night <= 0.02) return [];
@@ -2062,7 +2062,7 @@ export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[]
   const trig = Math.round(night * 20); // quantize so the updateTrigger only bumps on a real change
   // Pixel radii (not metres) so a glow reads as a compact LIGHT halo at any zoom, never a terrain-wide
   // wash. Three stacked translucent discs fake a soft radial falloff: a faint wide bloom, a mid ring,
-  // a bright hot core. Bounded; depthTest:false so they read over the tilted terrain.
+  // a bright hot core. Bounded; depthCompare:'always' so they read over the tilted terrain.
   const disc = (id: string, capPx: number, px: number, rgb: [number, number, number], capA: number, a: number) =>
     new ScatterplotLayer<GlowPoint>({
       id,
@@ -2074,7 +2074,7 @@ export function nightGlowLayers(towns: TownMarker[], resources: ResourceMarker[]
       getFillColor: (d: GlowPoint) => [rgb[0], rgb[1], rgb[2], Math.round((d.cap ? capA : a) * night)],
       stroked: false,
       pickable: false,
-      parameters: { depthTest: false },
+      parameters: { depthCompare: "always" },
       updateTriggers: { getFillColor: trig, getRadius: 0 },
     });
   return [
@@ -2100,7 +2100,7 @@ export function vehicleNightGlow(vehicles: VehicleDot[], night: number): Layer[]
       getFillColor: [255, 214, 140, Math.round(72 * night)],
       stroked: false,
       pickable: false,
-      parameters: { depthTest: false },
+      parameters: { depthCompare: "always" },
       updateTriggers: { getFillColor: Math.round(night * 20) },
     }),
   ];
