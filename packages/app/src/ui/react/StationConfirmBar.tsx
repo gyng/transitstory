@@ -43,6 +43,7 @@ export function StationConfirmBar() {
       <button
         data-testid="station-confirm-build"
         className="ot-key on-good"
+        title="Build a station on this hex (Enter)" // #25 match the DraftControls line-confirm buttons' titles
         onClick={() => game.confirmPendingStation()}
         style={BTN}
       >
@@ -51,6 +52,7 @@ export function StationConfirmBar() {
       <button
         data-testid="station-confirm-cancel"
         className="ot-key"
+        title="Discard this ghost (Esc)"
         onClick={() => game.cancelPendingStation()}
         style={BTN}
       >

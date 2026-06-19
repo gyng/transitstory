@@ -319,6 +319,12 @@ export function fmtCount(v: number): string {
   return `${Math.round(v)}`;
 }
 
+/** #25 Sim-ms → "N.N min" against the in-game clock (or "—" when zero) — the single journey/wait-time formatter,
+ *  shared by StatsBar, ServiceReport, and the dashboard so the readouts can't drift (was hand-rolled 3×). */
+export function fmtMins(ms: number): string {
+  return ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—";
+}
+
 // Shared inline-style fragments (token-driven; mirror the old vanilla chrome 1:1).
 // #28 diegetic console theme: panels are brushed-graphite console faces (see .ot-console in styles.css).
 export const PANEL_STYLE =

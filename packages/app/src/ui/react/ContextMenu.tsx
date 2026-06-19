@@ -29,9 +29,16 @@ function MenuItem({
     <div
       data-testid={testid}
       role="button"
+      // #25 keyboard-operable: the rows announce as buttons but were mouse-only (no tab stop, no key handler).
+      // Tab reaches each, Enter/Space activates, and focus reuses the hover highlight so the target is visible.
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onClick}
+      onKeyDown={disabled ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={() => setHover(false)}
       style={{
         display: "flex",
         alignItems: "center",

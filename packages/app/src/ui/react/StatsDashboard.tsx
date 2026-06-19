@@ -8,17 +8,9 @@ import { useGame, useStats } from "./GameContext";
 import { useStatsHistory } from "./statsHistory";
 import { ChartCard, BarList, DualSparkline } from "./Charts";
 import { linePnl, lineSatisfaction, fmtSignedMoney } from "./lineEconomics";
-import { SIM_MS_PER_CLOCK_MIN, coverageColor, hex, fmtMoney } from "./shared";
+import { coverageColor, fmtCount, fmtMins, hex, fmtMoney } from "./shared";
 
-/** Compact count formatter: 980 / 12.3k / 1.4M. */
-function fmtCount(v: number): string {
-  const a = Math.abs(v);
-  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (a >= 1e4) return `${(v / 1e3).toFixed(0)}k`;
-  if (a >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
-  return `${Math.round(v)}`;
-}
-const fmtMins = (ms: number) => (ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—"); // clock minutes
+// #25 fmtCount + fmtMins now come from shared.ts (were hand-rolled local copies — the "drift is a bug" trap).
 /** simHour is a float (e.g. 21.44) — render as a wall clock, same as StatsBar. */
 const fmtClock = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.floor((h % 1) * 60)).padStart(2, "0")}`;
 

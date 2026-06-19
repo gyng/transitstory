@@ -7,7 +7,7 @@
 import { useState, type CSSProperties } from "react";
 import type { Stats } from "../../types";
 import { useStats, useGameUI } from "./GameContext";
-import { SIM_MS_PER_CLOCK_MIN, MODES, coverageColor } from "./shared";
+import { MODES, coverageColor, fmtMins } from "./shared";
 
 // The travel-demand model in one line, keyed to the time of day: homes (trip origins) generate
 // trips, jobs (destinations) attract them, and the rush direction flips AM↔PM (sim `tod::work_bias`).
@@ -47,8 +47,6 @@ const CARD: CSSProperties = {
   font: "12px system-ui,sans-serif",
   overflow: "hidden",
 };
-
-const fmtMin = (ms: number): string => (ms > 0 ? `${(ms / SIM_MS_PER_CLOCK_MIN).toFixed(1)} min` : "—"); // clock minutes
 
 /** One label/value row; `tone` colours the value for pressure readouts. */
 function Row({ label, value, tone, testid }: { label: string; value: string; tone?: string; testid?: string }) {
@@ -170,8 +168,8 @@ export function ServiceReport({ embedded = false }: { embedded?: boolean } = {})
             <Divider />
 
             {/* Service quality — the journey-time telemetry, previously only in a hover tooltip. */}
-            <Row label="Avg wait" value={fmtMin(s.avgWaitMs)} testid="svc-avg-wait" />
-            <Row label="Avg trip" value={fmtMin(s.avgJourneyMs)} testid="svc-avg-trip" />
+            <Row label="Avg wait" value={fmtMins(s.avgWaitMs)} testid="svc-avg-wait" />
+            <Row label="Avg trip" value={fmtMins(s.avgJourneyMs)} testid="svc-avg-trip" />
             <Divider />
 
             {/* Coverage (% of the whole city's demand served well) + the time-of-day rush level. */}
