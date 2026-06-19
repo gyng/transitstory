@@ -940,7 +940,9 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       data: view.lines.filter((d) => d.serviced !== false),
       getPath: (d: LinePath) => d.path,
       getColor: (d: LinePath) => d.color,
-      getWidth: (d: LinePath) => (d.mode === HEAVY_RAIL ? 9 : 7),
+      // #25 the RIVAL's rail (faction 1) is drawn bolder than the player's so the enemy's creep toward the
+      // capital is a legible threat, not a faint thread lost among the player's lines at strategic zoom.
+      getWidth: (d: LinePath) => (d.faction === 1 ? 12 : d.mode === HEAVY_RAIL ? 9 : 7),
       widthUnits: "pixels",
       // The network is the FIGURE — keep the coloured ribbon wider than the station/vehicle dots
       // (~4px) so it reads as a continuous line, not a string of beads under the dot field.
@@ -950,7 +952,10 @@ export function topoLayers(view: RenderView): { below: Layer[]; above: Layer[] }
       // Pickable so hovering the track raises the line inspector (under stations + trains in
       // z-order, so it only fires on bare track). The pick hit-area widens with pickingRadius.
       pickable: true,
-      updateTriggers: { getColor: view.lines.filter((d) => d.serviced !== false).length },
+      updateTriggers: {
+        getColor: view.lines.filter((d) => d.serviced !== false).length,
+        getWidth: view.lines.filter((d) => d.faction === 1).length, // rebuild widths when a rival line appears
+      },
     }),
     new PathLayer({
       id: "lines-heavy-centre",

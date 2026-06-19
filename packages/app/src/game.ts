@@ -2147,7 +2147,14 @@ export class Game {
       .filter((l) => !l.removed)
       .flatMap((l) => {
         // A line with surface track over water renders red until elevated/tunnelled.
-        const color = l.crossesWaterSurface ? ([214, 40, 40] as [number, number, number]) : colorToRgb(l.color);
+        const isRival = (l.color & 0xffffff) === 0xbe3737; // #13 the rival realm's rail (RIVAL_LINE_COLOR)
+        // #25 threat legibility: the rival's rail reads HOT — a brighter, more saturated crimson than its
+        // muted hold colour, so the enemy creeping toward your capital is unmistakable (also widened in render).
+        const color = l.crossesWaterSurface
+          ? ([214, 40, 40] as [number, number, number])
+          : isRival
+            ? ([230, 60, 48] as [number, number, number])
+            : colorToRgb(l.color);
         const mode = l.mode; // heavy/high-speed rail (4) gets distinct mainline styling
         const raided = (l.raidedRemainingMs ?? 0) > 0; // #war: a raider has CUT this line (trains frozen)
         const serviced = servicedLines.has(l.id); // false ⇒ bare track (grey infra), true ⇒ coloured service
@@ -2156,7 +2163,7 @@ export class Game {
         const paths = [l.polylineMm, ...(l.branchPolylinesMm ?? [])];
         return paths
           .filter((p) => p.length >= 2)
-          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided, serviced }));
+          .map((p) => ({ id: l.id, color, path: p.map(([x, y]) => mmToLngLat([x, y])), mode, raided, serviced, faction: isRival ? 1 : 0 }));
       });
 
     // Rail-attack (#war): a "⚔ RAIDED" badge + recovery countdown at each cut line's midpoint, so the
