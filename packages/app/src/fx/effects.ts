@@ -307,8 +307,12 @@ export class Effects {
     const live: Ring[] = [];
     for (const e of this.rings) {
       const t = (now - e.born) / e.ttl;
-      if (t >= 1) continue;
-      live.push(e);
+      if (t >= 1) continue; // expired — drop it
+      live.push(e); // still alive (carry to the next frame)
+      // #25 a SCHEDULED ring (boom() schedules its echo at born = now + 90 ms) hasn't started yet → t < 0. Keep
+      // it alive but DON'T draw: easeOut(t<0) yields a negative radius, and cx.arc(neg) throws a DOMException
+      // that aborts the rest of effects.draw() (later rings, flashes, float-text) for ~5–6 frames every boom.
+      if (t < 0) continue;
       const k = easeOut(t);
       const r = e.r0 + (e.r1 - e.r0) * k;
       const p = this.map.project([e.lng, e.lat]);

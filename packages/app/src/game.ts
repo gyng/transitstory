@@ -1919,7 +1919,9 @@ export class Game {
       const [lng, lat] = mmToLngLat([s.xMm, s.yMm]);
       const p = this.map.project([lng, lat]);
       const d = Math.hypot(p.x - px, p.y - py);
-      if (d <= bestD) {
+      // #25 strict `<` so an exact tie keeps the FIRST (lower-id, stable) station — `<=` let the last-iterated
+      // one win, flicking the snap-ring / hover catchment / click target between two candidates at the midline.
+      if (d < bestD) {
         bestD = d;
         best = s.id;
       }

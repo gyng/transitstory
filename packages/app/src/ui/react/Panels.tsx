@@ -222,7 +222,9 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
   const id = l.lineId;
   const panelStyle = embedded ? EDITOR_EMBED_STYLE : EDITOR_STYLE;
   const panelClass = embedded ? "ot-console" : undefined;
-  const mins = Math.max(2, Math.min(20, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN)));
+  // #25 share the slider's TRUE range [1,30] — the old [2,20] display clamp left the thumb + label pinned at
+  // 20 for a 25-min line (the sim ran 25), and a drag to 25 snapped back to 20 on the next snapshot.
+  const mins = Math.max(1, Math.min(30, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN)));
   // Local preview of the headway slider — `input` updates only this label; `change` commits.
   const [previewMins, setPreviewMins] = useState<number | null>(null);
 
@@ -240,7 +242,9 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
   const trainsRef = useCallback(
     (el: HTMLInputElement | null) => {
       if (!el) return;
-      el.onchange = () => game.assignTrainset(id, Math.max(1, Math.min(8, Number(el.value) | 0)));
+      // #25 floor-only clamp — the real ceiling is the sim's variable cross-line block cap (dispatch.rs), read
+      // back from the snapshot; this matches the Fleet stepper (was Editor [1,8] vs Fleet [1,24], a phantom-max bug).
+      el.onchange = () => game.assignTrainset(id, Math.max(1, Number(el.value) | 0));
     },
     [game, id],
   );
@@ -298,7 +302,6 @@ function Editor({ l, embedded = false }: { l: PerLine; embedded?: boolean }) {
           data-testid="trains-input"
           type="number"
           min="1"
-          max="8"
           defaultValue={l.trains}
           style={{
             width: "56px",

@@ -5,7 +5,7 @@
 // (AssignTrainset). No sim mutation here, no per-frame work — the load bar tracks the snapshot, not rAF.
 import { useState } from "react";
 import { useGame, useGameUI, useStats } from "./GameContext";
-import { RAIL_ROSTER, fmtMoney, hex, modeIcon } from "./shared";
+import { RAIL_ROSTER, SIM_MS_PER_CLOCK_MIN, fmtMoney, hex, modeIcon } from "./shared";
 import type { PerLine } from "../../types";
 
 // The FLEET panel face — a brushed-graphite console (.ot-console owns bg/border/shadow/radius/text).
@@ -32,7 +32,11 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
   const spec = l.trainsetSpec ?? 0;
   const modelName = isRail ? (RAIL_ROSTER[spec]?.name ?? "Standard") : `${modeIcon(l.mode)} default`;
   const lf = l.loadFactor ?? 0;
-  const setCount = (n: number) => game.assignTrainset(l.lineId, Math.max(1, Math.min(24, n)));
+  // #25 clamp only the FLOOR — the real per-line ceiling is the sim's variable cross-line block cap
+  // (dispatch.rs), which clamps on apply; the snapshot reads back the true count, so both the Fleet stepper and
+  // the Editor stay in sync (was a 24 vs 8 magic-max divergence that read as a bug). Pressing + past the cap is a
+  // no-op (the count snaps back).
+  const setCount = (n: number) => game.assignTrainset(l.lineId, Math.max(1, n));
   return (
     <div data-testid={`fleet-row-${l.lineId}`} style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -54,7 +58,7 @@ function FleetRow({ l, running }: { l: PerLine; running: boolean }) {
       <div style={{ marginLeft: 29, marginTop: 4, display: "flex", alignItems: "center", gap: 8, color: "var(--ot-con-ink-dim)", fontSize: 11 }}>
         <span>{modelName}</span>
         <span style={{ color: "rgba(255,255,255,.18)" }}>·</span>
-        <span>{Math.max(1, Math.round(l.headwayMs / 60000))} min</span>
+        <span>{Math.max(1, Math.round(l.headwayMs / SIM_MS_PER_CLOCK_MIN))} min</span>
         {hasTrains && (
           <>
             <span style={{ color: "rgba(255,255,255,.18)" }}>·</span>
